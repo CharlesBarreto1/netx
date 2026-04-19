@@ -113,19 +113,27 @@ async function main() {
   }
 
   // 2. System roles (tenantId = null → system-wide templates)
+  // Prisma não suporta `null` em composite unique, então usamos findFirst + create/update
   console.log('  → System roles');
   const allPermissions = await prisma.permission.findMany();
   for (const r of systemRoles) {
-    const role = await prisma.role.upsert({
-      where: { tenantId_name: { tenantId: null as unknown as string, name: r.name } },
-      update: { description: r.description, priority: r.priority, isSystem: true },
-      create: {
-        name: r.name,
-        description: r.description,
-        priority: r.priority,
-        isSystem: true,
-      },
+    const existing = await prisma.role.findFirst({
+      where: { name: r.name, tenantId: null },
     });
+
+    const role = existing
+      ? await prisma.role.update({
+          where: { id: existing.id },
+          data: { description: r.description, priority: r.priority, isSystem: true },
+        })
+      : await prisma.role.create({
+          data: {
+            name: r.name,
+            description: r.description,
+            priority: r.priority,
+            isSystem: true,
+          },
+        });
 
     const perms =
       r.permissions === '*'
