@@ -17,7 +17,11 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger));
 
-  app.set('trust proxy', 1);
+  // trust proxy (Express adapter) — para obter IP real atrás do Nginx
+  (app.getHttpAdapter().getInstance() as { set: (k: string, v: unknown) => void }).set(
+    'trust proxy',
+    1,
+  );
   app.use(helmet());
 
   app.enableCors({

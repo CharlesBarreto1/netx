@@ -34,39 +34,39 @@ export interface JwtConfig {
 }
 
 export function createJwtSigner(config: JwtConfig): JwtSigner {
-  const commonSign: SignOptions = {
-    issuer: config.issuer ?? 'netx',
-    audience: config.audience ?? 'netx-api',
-  };
+  const issuer: string = config.issuer ?? 'netx';
+  const audience: string = config.audience ?? 'netx-api';
 
   return {
     signAccess(payload) {
       return jwt.sign(payload, config.accessSecret, {
-        ...commonSign,
+        issuer,
+        audience,
         expiresIn: config.accessExpiresIn as SignOptions['expiresIn'],
         algorithm: 'HS256',
       });
     },
     signRefresh(payload) {
       return jwt.sign(payload, config.refreshSecret, {
-        ...commonSign,
+        issuer,
+        audience,
         expiresIn: config.refreshExpiresIn as SignOptions['expiresIn'],
         algorithm: 'HS256',
       });
     },
     verifyAccess(token) {
       return jwt.verify(token, config.accessSecret, {
-        issuer: commonSign.issuer,
-        audience: commonSign.audience,
+        issuer,
+        audience,
         algorithms: ['HS256'],
-      }) as AccessTokenPayload;
+      }) as unknown as AccessTokenPayload;
     },
     verifyRefresh(token) {
       return jwt.verify(token, config.refreshSecret, {
-        issuer: commonSign.issuer,
-        audience: commonSign.audience,
+        issuer,
+        audience,
         algorithms: ['HS256'],
-      }) as RefreshTokenPayload;
+      }) as unknown as RefreshTokenPayload;
     },
   };
 }

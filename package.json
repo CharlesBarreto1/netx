@@ -22,15 +22,15 @@
     "dev:api-gateway": "nx run api-gateway:dev",
     "dev:core": "nx run core-service:dev",
     "dev:web": "nx run web:dev",
-    "infra:up": "docker compose -f infra/docker/docker-compose.yml up -d",
-    "infra:down": "docker compose -f infra/docker/docker-compose.yml down",
-    "infra:logs": "docker compose -f infra/docker/docker-compose.yml logs -f",
-    "infra:reset": "docker compose -f infra/docker/docker-compose.yml down -v && docker compose -f infra/docker/docker-compose.yml up -d",
+    "infra:up": "docker compose --env-file .env -f infra/docker/docker-compose.yml up -d",
+    "infra:down": "docker compose --env-file .env -f infra/docker/docker-compose.yml down",
+    "infra:logs": "docker compose --env-file .env -f infra/docker/docker-compose.yml logs -f",
+    "infra:reset": "docker compose --env-file .env -f infra/docker/docker-compose.yml down -v && docker compose --env-file .env -f infra/docker/docker-compose.yml up -d",
     "db:migrate": "npm run -w apps/core-service db:migrate",
     "db:generate": "npm run -w apps/core-service db:generate",
     "db:seed": "npm run -w apps/core-service db:seed",
     "db:studio": "npm run -w apps/core-service db:studio",
-    "prepare": "husky install"
+    "prepare": "husky || true"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.3.0",
