@@ -1,0 +1,104 @@
+version: '3.9'
+
+# =============================================================================
+# NetX — Local development stack
+# Bring up:   docker compose -f infra/docker/docker-compose.yml up -d
+# Tear down:  docker compose -f infra/docker/docker-compose.yml down -v
+# =============================================================================
+
+name: netx-dev
+
+networks:
+  netx:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: netx-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-netx}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-netx_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-netx}
+      POSTGRES_INITDB_ARGS: '--encoding=UTF-8 --lc-collate=C --lc-ctype=C'
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-netx} -d ${POSTGRES_DB:-netx}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - netx
+
+  redis:
+    image: redis:7-alpine
+    container_name: netx-redis
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory-policy', 'allkeys-lru']
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - netx
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: netx-rabbitmq
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-netx}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-netx_dev_password}
+    ports:
+      - '5672:5672'    # AMQP
+      - '15672:15672'  # Management UI
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 10s
+      timeout: 10s
+      retries: 10
+    networks:
+      - netx
+
+  mailhog:
+    # Catch-all SMTP server for dev — read emails at http://localhost:8025
+    image: mailhog/mailhog:latest
+    container_name: netx-mailhog
+    restart: unless-stopped
+    ports:
+      - '1025:1025'
+      - '8025:8025'
+    networks:
+      - netx
+
+  adminer:
+    image: adminer:latest
+    container_name: netx-adminer
+    restart: unless-stopped
+    ports:
+      - '8080:8080'
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: nette
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - netx
