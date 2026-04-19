@@ -1,0 +1,39 @@
+{
+  "compileOnSave": false,
+  "compilerOptions": {
+    "rootDir": ".",
+    "sourceMap": true,
+    "declaration": false,
+    "moduleResolution": "node",
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "importHelpers": true,
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022", "DOM"],
+    "skipLibCheck": true,
+    "skipDefaultLibCheck": true,
+    "baseUrl": ".",
+    "strict": true,
+    "strictNullChecks": true,
+    "noImplicitAny": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "paths": {
+      "@netx/shared": ["packages/shared/src/index.ts"],
+      "@netx/shared/*": ["packages/shared/src/*"],
+      "@netx/database": ["packages/database/src/index.ts"],
+      "@netx/database/*": ["packages/database/src/*"],
+      "@netx/auth": ["packages/auth/src/index.ts"],
+      "@netx/auth/*": ["packages/auth/src/*"],
+      "@netx/config": ["packages/config/src/index.ts"],
+      "@netx/config/*": ["packages/config/src/*"],
+      "@netx/logger": ["packages/logger/src/index.ts"],
+      "@netx/logger/*": ["packages/logger/src/*"]
+    }
+  },
+  "exclude": ["node_modules", "tmp", "dist"]
+}

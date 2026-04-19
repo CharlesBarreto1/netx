@@ -1,0 +1,59 @@
+{
+  "name": "netx",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NetX — Plataforma SaaS multinacional para provedores de internet (ISP)",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "scripts": {
+    "preinstall": "npx only-allow npm",
+    "build": "nx run-many -t build",
+    "test": "nx run-many -t test",
+    "lint": "nx run-many -t lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,yml,yaml}\"",
+    "dev": "nx run-many -t dev --parallel=5",
+    "dev:api-gateway": "nx run api-gateway:dev",
+    "dev:core": "nx run core-service:dev",
+    "dev:web": "nx run web:dev",
+    "infra:up": "docker compose -f infra/docker/docker-compose.yml up -d",
+    "infra:down": "docker compose -f infra/docker/docker-compose.yml down",
+    "infra:logs": "docker compose -f infra/docker/docker-compose.yml logs -f",
+    "infra:reset": "docker compose -f infra/docker/docker-compose.yml down -v && docker compose -f infra/docker/docker-compose.yml up -d",
+    "db:migrate": "npm run -w apps/core-service db:migrate",
+    "db:generate": "npm run -w apps/core-service db:generate",
+    "db:seed": "npm run -w apps/core-service db:seed",
+    "db:studio": "npm run -w apps/core-service db:studio",
+    "prepare": "husky install"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.3.0",
+    "@commitlint/config-conventional": "^19.2.2",
+    "@types/node": "^20.14.0",
+    "@typescript-eslint/eslint-plugin": "^7.13.0",
+    "@typescript-eslint/parser": "^7.13.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.29.1",
+    "husky": "^9.0.11",
+    "lint-staged": "^15.2.7",
+    "nx": "^19.3.0",
+    "prettier": "^3.3.2",
+    "typescript": "^5.5.2"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{json,md,yml,yaml}": [
+      "prettier --write"
+    ]
+  }
+}
