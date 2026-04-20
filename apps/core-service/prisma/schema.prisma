@@ -50,6 +50,8 @@ model Tenant {
   sessions    Session[]
   apiKeys     ApiKey[]
   auditLogs   AuditLog[]
+  customers   Customer[]
+  customerTags CustomerTag[]
 
   @@index([status])
   @@index([country])
@@ -124,6 +126,10 @@ model User {
   userRoles    UserRole[]
   sessions     Session[]
   auditLogs    AuditLog[]
+  customersCreated Customer[] @relation("CustomerCreatedBy")
+  customersUpdated Customer[] @relation("CustomerUpdatedBy")
+  customerNotes    CustomerNote[]
+  customerTagAssignments CustomerTagAssignment[]
 
   @@unique([tenantId, email])
   @@index([tenantId, status])
@@ -271,4 +277,318 @@ model AuditLog {
   @@index([resource, resourceId])
   @@index([userId])
   @@map("audit_logs")
+}
+
+// =============================================================================
+// MODULE 2 — CRM
+//
+// Entidades:
+//   - Customer            (PF ou PJ, multi-país via TaxIdType)
+//   - CustomerAddress     (1..N endereços por cliente, tipados)
+//   - CustomerContact     (1..N emails/fones, opt-in por canal)
+//   - CustomerTag         (catálogo de tags por tenant)
+//   - CustomerTagAssignment (N..N cliente↔tag)
+//   - CustomerConsent     (LGPD/GDPR: propósito + status + timestamps)
+//   - CustomerNote        (histórico livre, autor + pinned)
+// =============================================================================
+
+enum CustomerType {
+  INDIVIDUAL   // Pessoa Física
+  COMPANY      // Pessoa Jurídica
+}
+
+enum CustomerStatus {
+  LEAD
+  PROSPECT
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+  CHURNED
+}
+
+enum TaxIdType {
+  // Brasil
+  CPF
+  CNPJ
+  // Paraguay
+  CI
+  RUC
+  // Placeholders futuros (validators adicionados por país)
+  VAT     // EU
+  NIF     // Espanha/Portugal
+  RFC     // México
+  CUIT    // Argentina
+  RUT     // Chile
+  NIT     // Colômbia
+  SSN     // USA (individual)
+  EIN     // USA (company)
+  OTHER
+}
+
+enum AddressType {
+  BILLING      // faturamento
+  SERVICE      // endereço de instalação do serviço
+  SHIPPING     // envio de equipamentos
+  OTHER
+}
+
+enum ContactType {
+  EMAIL
+  PHONE
+  MOBILE
+  WHATSAPP
+  TELEGRAM
+  OTHER
+}
+
+enum ConsentPurpose {
+  MARKETING_EMAIL
+  MARKETING_SMS
+  MARKETING_WHATSAPP
+  MARKETING_VOICE
+  DATA_PROCESSING
+  THIRD_PARTY_SHARING
+  CREDIT_SCORE_QUERY
+  CONTRACT_NOTIFICATION
+  SUPPORT_RECORDING
+  OTHER
+}
+
+enum ConsentStatus {
+  GRANTED
+  REVOKED
+  PENDING
+  EXPIRED
+}
+
+enum ConsentMethod {
+  WEB_FORM
+  EMAIL
+  IN_PERSON
+  VOICE
+  API
+  IMPORT
+  OTHER
+}
+
+// -----------------------------------------------------------------------------
+// CUSTOMER
+// -----------------------------------------------------------------------------
+model Customer {
+  id              String         @id @default(uuid()) @db.Uuid
+  tenantId        String         @map("tenant_id") @db.Uuid
+  code            String?        @db.VarChar(32)                    // código humano ex. CLI-000123
+  type            CustomerType
+  status          CustomerStatus @default(LEAD)
+
+  // Identificação PF
+  firstName       String?        @map("first_name") @db.VarChar(120)
+  lastName        String?        @map("last_name") @db.VarChar(120)
+  birthDate       DateTime?      @map("birth_date") @db.Date
+  gender          String?        @db.VarChar(32)
+  motherName      String?        @map("mother_name") @db.VarChar(255)
+
+  // Identificação PJ
+  companyName     String?        @map("company_name") @db.VarChar(255) // razão social
+  tradeName       String?        @map("trade_name") @db.VarChar(255)   // nome fantasia
+  foundedAt       DateTime?      @map("founded_at") @db.Date
+  stateRegistration String?      @map("state_registration") @db.VarChar(64)
+  municipalRegistration String?  @map("municipal_registration") @db.VarChar(64)
+
+  // Comum / busca
+  displayName     String         @map("display_name") @db.VarChar(255) // desnormalizado para busca
+  taxId           String?        @map("tax_id") @db.VarChar(32)
+  taxIdType       TaxIdType?     @map("tax_id_type")
+  taxIdCountry    String?        @map("tax_id_country") @db.Char(2)    // ISO 3166-1 alpha-2
+  taxIdVerifiedAt DateTime?      @map("tax_id_verified_at")
+
+  primaryEmail    String?        @map("primary_email") @db.Citext
+  primaryPhone    String?        @map("primary_phone") @db.VarChar(32)
+
+  preferredLanguage String?      @map("preferred_language") @db.VarChar(10)
+  timezone          String?      @db.VarChar(64)
+
+  shortNote       String?        @map("short_note") @db.VarChar(500)   // nota rápida (ex. "cliente VIP")
+  metadata        Json?          // campo livre por tenant
+
+  createdById     String?        @map("created_by_id") @db.Uuid
+  updatedById     String?        @map("updated_by_id") @db.Uuid
+
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  deletedAt       DateTime?      @map("deleted_at")
+
+  tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy       User?             @relation("CustomerCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy       User?             @relation("CustomerUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  addresses       CustomerAddress[]
+  contacts        CustomerContact[]
+  consents        CustomerConsent[]
+  notes           CustomerNote[]
+  tagAssignments  CustomerTagAssignment[]
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, taxId, taxIdType])
+  @@index([tenantId, status])
+  @@index([tenantId, type])
+  @@index([tenantId, displayName])
+  @@index([tenantId, primaryEmail])
+  @@index([tenantId, primaryPhone])
+  @@index([tenantId, createdAt])
+  @@map("customers")
+}
+
+// -----------------------------------------------------------------------------
+// CUSTOMER ADDRESS
+// -----------------------------------------------------------------------------
+model CustomerAddress {
+  id          String      @id @default(uuid()) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  customerId  String      @map("customer_id") @db.Uuid
+  type        AddressType @default(BILLING)
+  label       String?     @db.VarChar(64)                  // "Casa", "Escritório"
+
+  country     String      @db.Char(2)                      // ISO alpha-2
+  state       String?     @db.VarChar(120)
+  city        String      @db.VarChar(120)
+  district    String?     @db.VarChar(120)                 // bairro
+  street      String      @db.VarChar(255)
+  number      String?     @db.VarChar(32)
+  complement  String?     @db.VarChar(120)
+  postalCode  String?     @map("postal_code") @db.VarChar(16)
+
+  latitude    Decimal?    @db.Decimal(9, 6)
+  longitude   Decimal?    @db.Decimal(9, 6)
+
+  isPrimary   Boolean     @default(false) @map("is_primary")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  customer    Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, customerId])
+  @@index([tenantId, postalCode])
+  @@index([tenantId, city])
+  @@map("customer_addresses")
+}
+
+// -----------------------------------------------------------------------------
+// CUSTOMER CONTACT
+// -----------------------------------------------------------------------------
+model CustomerContact {
+  id          String      @id @default(uuid()) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  customerId  String      @map("customer_id") @db.Uuid
+  type        ContactType
+  label       String?     @db.VarChar(64)                  // "Trabalho", "Pessoal"
+  value       String      @db.VarChar(255)                 // normalizado (E.164 p/ telefones)
+
+  isPrimary   Boolean     @default(false) @map("is_primary")
+  isVerified  Boolean     @default(false) @map("is_verified")
+  optIn       Boolean     @default(false) @map("opt_in")   // marketing opt-in específico do canal
+
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  customer    Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, customerId, type, value])
+  @@index([tenantId, customerId])
+  @@index([tenantId, type, value])
+  @@map("customer_contacts")
+}
+
+// -----------------------------------------------------------------------------
+// CUSTOMER TAG (catálogo) + ASSIGNMENT (N..N)
+// -----------------------------------------------------------------------------
+model CustomerTag {
+  id          String      @id @default(uuid()) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  name        String      @db.VarChar(64)
+  color       String?     @db.VarChar(7)                   // hex "#RRGGBB"
+  description String?     @db.VarChar(255)
+
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  assignments CustomerTagAssignment[]
+
+  @@unique([tenantId, name])
+  @@map("customer_tags")
+}
+
+model CustomerTagAssignment {
+  customerId  String      @map("customer_id") @db.Uuid
+  tagId       String      @map("tag_id") @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid       // denorm p/ índice
+  assignedById String?    @map("assigned_by_id") @db.Uuid
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  customer    Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tag         CustomerTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  assignedBy  User?       @relation(fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@id([customerId, tagId])
+  @@index([tagId])
+  @@index([tenantId, customerId])
+  @@map("customer_tag_assignments")
+}
+
+// -----------------------------------------------------------------------------
+// CUSTOMER CONSENT (LGPD / GDPR)
+// -----------------------------------------------------------------------------
+model CustomerConsent {
+  id           String          @id @default(uuid()) @db.Uuid
+  tenantId     String          @map("tenant_id") @db.Uuid
+  customerId   String          @map("customer_id") @db.Uuid
+
+  purpose      ConsentPurpose
+  status       ConsentStatus   @default(PENDING)
+  method       ConsentMethod   @default(WEB_FORM)
+
+  grantedAt    DateTime?       @map("granted_at")
+  revokedAt    DateTime?       @map("revoked_at")
+  expiresAt    DateTime?       @map("expires_at")
+
+  policyVersion String?        @map("policy_version") @db.VarChar(32)   // ex. "privacy-2026-01"
+  sourceIp      String?        @map("source_ip") @db.Inet
+  sourceUserAgent String?      @map("source_user_agent") @db.VarChar(512)
+  evidenceUrl   String?        @map("evidence_url")                      // link p/ PDF/áudio da evidência
+  notes         String?        @db.VarChar(500)
+
+  metadata     Json?
+
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  customer     Customer        @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, customerId])
+  @@index([tenantId, purpose, status])
+  @@map("customer_consents")
+}
+
+// -----------------------------------------------------------------------------
+// CUSTOMER NOTE (histórico livre)
+// -----------------------------------------------------------------------------
+model CustomerNote {
+  id          String      @id @default(uuid()) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  customerId  String      @map("customer_id") @db.Uuid
+  authorId    String?     @map("author_id") @db.Uuid
+
+  title       String?     @db.VarChar(255)
+  body        String      @db.Text
+  pinned      Boolean     @default(false)
+
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  customer    Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  author      User?       @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, customerId, createdAt])
+  @@index([tenantId, pinned])
+  @@map("customer_notes")
 }

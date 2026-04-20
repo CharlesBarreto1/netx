@@ -46,6 +46,19 @@ const corePermissions = [
   { code: 'audit.read', module: 'core', resource: 'audit_logs', action: 'read' },
 ];
 
+// -----------------------------------------------------------------------------
+// Permission catalog for Module 2 (CRM / Clientes)
+// -----------------------------------------------------------------------------
+const crmPermissions = [
+  { code: 'customers.create', module: 'crm', resource: 'customers', action: 'create' },
+  { code: 'customers.read', module: 'crm', resource: 'customers', action: 'read' },
+  { code: 'customers.update', module: 'crm', resource: 'customers', action: 'update' },
+  { code: 'customers.delete', module: 'crm', resource: 'customers', action: 'delete' },
+  { code: 'customers.tags.manage', module: 'crm', resource: 'customer_tags', action: 'manage' },
+  { code: 'customers.consents.manage', module: 'crm', resource: 'customer_consents', action: 'manage' },
+  { code: 'customers.notes.manage', module: 'crm', resource: 'customer_notes', action: 'manage' },
+];
+
 // Role → permission mapping
 const systemRoles = [
   {
@@ -76,11 +89,19 @@ const systemRoles = [
       'api_keys.read',
       'api_keys.revoke',
       'audit.read',
+      // CRM
+      'customers.create',
+      'customers.read',
+      'customers.update',
+      'customers.delete',
+      'customers.tags.manage',
+      'customers.consents.manage',
+      'customers.notes.manage',
     ],
   },
   {
     name: 'operator',
-    description: 'Operação diária — usuários e leitura de auditoria',
+    description: 'Operação diária — usuários, clientes e leitura de auditoria',
     priority: 50,
     permissions: [
       'tenants.read',
@@ -89,13 +110,20 @@ const systemRoles = [
       'users.invite',
       'roles.read',
       'audit.read',
+      // CRM (operação)
+      'customers.create',
+      'customers.read',
+      'customers.update',
+      'customers.tags.manage',
+      'customers.consents.manage',
+      'customers.notes.manage',
     ],
   },
   {
     name: 'viewer',
     description: 'Acesso somente-leitura',
     priority: 100,
-    permissions: ['tenants.read', 'users.read', 'roles.read'],
+    permissions: ['tenants.read', 'users.read', 'roles.read', 'customers.read'],
   },
 ];
 
@@ -104,7 +132,7 @@ async function main() {
 
   // 1. Permissions (global catalog)
   console.log('  → Permissions');
-  for (const p of corePermissions) {
+  for (const p of [...corePermissions, ...crmPermissions]) {
     await prisma.permission.upsert({
       where: { code: p.code },
       update: { module: p.module, resource: p.resource, action: p.action },

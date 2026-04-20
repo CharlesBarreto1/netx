@@ -6,6 +6,7 @@ import { LoggerModule } from 'nestjs-pino';
 
 import { AuthModule } from './modules/auth/auth.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { CrmModule } from './modules/crm/crm.module';
 import { HealthModule } from './modules/health/health.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { RolesModule } from './modules/roles/roles.module';
@@ -53,6 +54,7 @@ import { UsersModule } from './modules/users/users.module';
     UsersModule,
     RolesModule,
     AuditModule,
+    CrmModule,
   ],
 })
 export class AppModule {}

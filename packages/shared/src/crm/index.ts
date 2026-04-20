@@ -1,0 +1,6 @@
+export * from './customer.dto';
+export * from './customer-address.dto';
+export * from './customer-contact.dto';
+export * from './customer-tag.dto';
+export * from './customer-consent.dto';
+export * from './customer-note.dto';

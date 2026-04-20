@@ -6,9 +6,9 @@ Planejamento de alto nível. Detalhes por sprint ficam no board (Linear/Jira).
 
 | Sprint | Entregáveis |
 |--------|-------------|
-| S1–S2 | **Scaffolding** + Core (✅ em andamento) |
+| S1–S2 | **Scaffolding** + Core (✅ entregue) |
 | S3 | Email/invite flow, MFA TOTP, SSO (OIDC) |
-| S4–S5 | **CRM básico**: clientes PF/PJ, endereços, contatos |
+| S4–S5 | **CRM básico** (✅ fundação entregue): clientes PF/PJ, endereços, contatos, tags, consentimentos LGPD/GDPR, anotações; validadores de documento BR (CPF/CNPJ) e PY (CI/RUC) |
 | S6–S7 | **Contratos**: modelos, assinatura eletrônica (integração D4Sign) |
 | S8–S10 | **Financeiro v1**: mensalidades, boleto/PIX, régua de cobrança, gateway (Asaas) |
 | S11 | **Portal do cliente** v1 (2ª via, histórico) |

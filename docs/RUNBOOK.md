@@ -41,6 +41,38 @@ npm run db:generate
 npm run infra:reset && npm run db:migrate && npm run db:seed
 ```
 
+## Deploy do Módulo 02 (CRM) em VPS já produtivo
+
+Assumindo usuário `netx`, código em `/home/netx/apps/netx` e PM2 sob systemd:
+```bash
+ssh netx@<host>
+cd /home/netx/apps/netx
+git pull
+npm ci
+npm run build --workspace @netx/shared
+npm run prisma:generate --workspace @netx/core-service
+cd apps/core-service
+npx prisma migrate deploy          # aplica a migration crm_foundation
+cd -
+npm run db:seed                    # popula novas permissões CRM (idempotente)
+npm run build --workspace @netx/core-service
+npm run build --workspace @netx/api-gateway
+npm run build --workspace @netx/web
+pm2 reload ecosystem.config.js --update-env
+pm2 save
+```
+Smoke test:
+```bash
+TOKEN=$(curl -s -X POST https://<dominio>/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"admin@netx.local","password":"ChangeMe!2026","tenantSlug":"default"}' \
+  | jq -r .accessToken)
+
+curl -s https://<dominio>/api/v1/customers \
+  -H "Authorization: Bearer $TOKEN" | jq
+```
+Esperado: lista vazia (`{ data: [], pagination: ... }`) logo após o deploy.
+
 ## Produção (preview — será preenchido na Fase 5)
 
 ### Rotação de secrets
