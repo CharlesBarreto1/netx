@@ -135,7 +135,9 @@ export function ContactsTab({ customerId }: { customerId: string }) {
       <ConfirmDialog
         open={!!confirmDelete}
         onClose={() => setConfirmDelete(null)}
-        onConfirm={() => confirmDelete && handleDelete(confirmDelete)}
+        onConfirm={() => {
+          if (confirmDelete) return handleDelete(confirmDelete);
+        }}
         title="Excluir contato"
         message={`Excluir o contato "${confirmDelete?.value ?? ''}"?`}
         confirmLabel="Excluir"

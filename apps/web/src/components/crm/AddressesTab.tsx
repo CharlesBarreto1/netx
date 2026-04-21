@@ -139,7 +139,9 @@ export function AddressesTab({ customerId }: { customerId: string }) {
       <ConfirmDialog
         open={!!confirmDelete}
         onClose={() => setConfirmDelete(null)}
-        onConfirm={() => confirmDelete && handleDelete(confirmDelete)}
+        onConfirm={() => {
+          if (confirmDelete) return handleDelete(confirmDelete);
+        }}
         title="Excluir endereço"
         message={`Tem certeza que deseja excluir o endereço "${confirmDelete?.street ?? ''}"?`}
         confirmLabel="Excluir"

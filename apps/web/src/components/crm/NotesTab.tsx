@@ -134,7 +134,9 @@ export function NotesTab({ customerId }: { customerId: string }) {
       <ConfirmDialog
         open={!!confirmDelete}
         onClose={() => setConfirmDelete(null)}
-        onConfirm={() => confirmDelete && handleDelete(confirmDelete)}
+        onConfirm={() => {
+          if (confirmDelete) return handleDelete(confirmDelete);
+        }}
         title="Excluir anotação"
         message="Essa ação não pode ser desfeita."
         confirmLabel="Excluir"

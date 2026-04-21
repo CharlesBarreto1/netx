@@ -139,7 +139,9 @@ export default function TagsCatalogPage() {
       <ConfirmDialog
         open={!!confirmDelete}
         onClose={() => setConfirmDelete(null)}
-        onConfirm={() => confirmDelete && handleDelete(confirmDelete)}
+        onConfirm={() => {
+          if (confirmDelete) return handleDelete(confirmDelete);
+        }}
         title="Excluir tag"
         message={`Remover a tag "${confirmDelete?.name ?? ''}"? Ela será desassociada de todos os clientes.`}
         confirmLabel="Excluir"
