@@ -45,9 +45,10 @@ export default function CustomerDetailPage() {
   const [deleting, setDeleting] = useState(false);
 
   function switchTab(next: TabKey) {
-    const url = new URL(window.location.href);
-    url.searchParams.set('tab', next);
-    router.replace(url.pathname + url.search);
+    if (!id) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('tab', next);
+    router.replace(`/customers/${id}?${params.toString()}`);
   }
 
   async function handleDelete() {
