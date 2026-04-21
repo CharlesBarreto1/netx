@@ -13,7 +13,7 @@ Sistema modular, multi-tenant e event-driven que integra as operações administ
 | Camada | Tecnologia |
 |--------|-----------|
 | Backend | Node.js 20 + NestJS 10 + TypeScript 5 |
-| Frontend Web | Next.js 14 + React 18 + TailwindCSS + shadcn/ui |
+| Frontend Web | Next.js 14 (App Router, typedRoutes) + React 18 + TailwindCSS + primitivos caseiros + SWR |
 | ORM | Prisma 5 (PostgreSQL 16) |
 | Cache / Fila | Redis 7 + RabbitMQ |
 | Monorepo | Nx 19 |
@@ -96,6 +96,10 @@ Serviços expostos:
 | `npm run infra:up` / `infra:down` | Sobe / derruba containers |
 | `npm run db:migrate` | Aplica migrations Prisma |
 | `npm run db:studio` | Abre Prisma Studio |
+| `npm run preflight:web` | Checa lockfile + build + lint do web (pré-push) |
+| `npm run preflight:core` | Idem para `core-service` |
+| `npm run preflight:gateway` | Idem para `api-gateway` |
+| `npm run preflight` | Roda preflight completo (todos os apps) |
 
 ---
 
@@ -105,9 +109,23 @@ A plataforma é multi-tenant desde o dia um. A estratégia de isolamento default
 
 ---
 
+## Documentação
+
+| Doc | Conteúdo |
+|-----|----------|
+| `docs/ARCHITECTURE.md` | Visão de arquitetura do monorepo |
+| `docs/MULTI-TENANCY.md` | Design e RLS de multi-tenancy |
+| `docs/RUNBOOK.md` | Deploy, troubleshooting, PM2, rollback |
+| `docs/CONTRIBUTING.md` | Workflow, commits, preflight, DoD |
+| `docs/CONVENTIONS-FRONTEND.md` | **Obrigatório** para qualquer mudança em `apps/web` — typedRoutes, callbacks, lockfile, env vars |
+| `docs/SECURITY.md` | Modelo de ameaças e práticas |
+| `docs/ROADMAP.md` | Fases e entregas |
+| `docs/modules/02-crm.md` | Documentação do Módulo 02 (CRM) |
+| `docs/adr/` | Architecture Decision Records |
+
 ## Contribuindo
 
-Siga `docs/CONTRIBUTING.md`. Usamos **Conventional Commits** e `husky` roda `lint-staged` antes de cada commit.
+Siga `docs/CONTRIBUTING.md`. Usamos **Conventional Commits** e `husky` roda `lint-staged` antes de cada commit. Rode `npm run preflight:<app>` antes de `git push`.
 
 ---
 

@@ -30,6 +30,10 @@
     "db:generate": "npm run -w apps/core-service db:generate",
     "db:seed": "npm run -w apps/core-service db:seed",
     "db:studio": "npm run -w apps/core-service db:studio",
+    "preflight": "bash scripts/preflight.sh",
+    "preflight:web": "bash scripts/preflight.sh web",
+    "preflight:core": "bash scripts/preflight.sh core-service",
+    "preflight:gateway": "bash scripts/preflight.sh api-gateway",
     "prepare": "husky || true"
   },
   "devDependencies": {
