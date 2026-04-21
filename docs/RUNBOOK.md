@@ -304,6 +304,41 @@ o gateway ter liberado o Origin da web.
   pm2 reload netx-gateway --update-env
   ```
 
+### Gateway retorna 400 `"Expected number, received nan"` em endpoints paginados
+
+Sintoma: `GET /api/v1/customers?page=1&pageSize=20` via gateway devolve 400
+`"Invalid query parameters"` com `errors: [{ path: 'page', message: 'Expected
+number, received nan' }, { path: 'pageSize', message: ... }]`. Ao chamar
+**direto** no core-service (`http://localhost:3101/v1/customers?...`) funciona.
+
+Causa: o proxy do gateway estava duplicando a query string. `req.originalUrl`
+já carrega `?page=1&pageSize=20`, e passávamos `params: req.query` no axios —
+o axios faz append, e o core recebe `?page=1&pageSize=20&page=1&pageSize=20`.
+O Express parseia como `{ page: ['1','1'], pageSize: ['20','20'] }`, e o
+`z.coerce.number()` aplicado em array devolve `NaN`.
+
+Fix (corrigido no commit): remover `params: req.query` em
+`apps/api-gateway/src/proxy/proxy.service.ts`. A query string já está em
+`targetPath` — passar de novo é duplicar.
+
+Como confirmar na VPS:
+```bash
+TOKEN=$(curl -sS -X POST https://<dominio>/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"...","password":"...","tenantSlug":"default"}' | jq -r .accessToken)
+
+# core direto — deve passar
+curl -sS "http://localhost:3101/v1/customers?page=1&pageSize=20" \
+  -H "Authorization: Bearer $TOKEN" | jq '.pagination'
+
+# gateway — precisa passar igual ao core
+curl -sS "http://localhost:3000/api/v1/customers?page=1&pageSize=20" \
+  -H "Authorization: Bearer $TOKEN" | jq '.pagination'
+```
+
+Se o gateway ainda falhar após o pull+rebuild, confirme que o deploy buildou o
+gateway: `npm run build --workspace api-gateway && pm2 reload netx-gateway`.
+
 ### `next build` reclama de `_next/static` 404 depois do reload
 
 PM2 às vezes mantém um worker antigo apontando para `.next` que foi sobrescrito.

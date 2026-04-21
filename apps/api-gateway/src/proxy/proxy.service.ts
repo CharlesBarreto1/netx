@@ -42,7 +42,12 @@ export class ProxyService {
           method: req.method,
           url,
           headers: forwardedHeaders,
-          params: req.query,
+          // NÃO passar `params: req.query` — `targetPath` já carrega a query
+          // string (vem de `req.originalUrl`). Se passar de novo, o axios faz
+          // append e duplica cada parâmetro (`?page=1&pageSize=20&page=1&pageSize=20`),
+          // o que o Express do core parseia como `{ page: ['1','1'] }`. Aí o
+          // `z.coerce.number()` recebe array e devolve `NaN`, retornando 400
+          // "Expected number, received nan".
           data: req.body,
           validateStatus: () => true, // never throw on 4xx/5xx
           timeout: 15_000,
