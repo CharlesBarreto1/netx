@@ -65,6 +65,47 @@ Quando for usar `as Route`, deixe um comentário explicando por quê.
 Para redirecionar para domínio externo (OAuth callback, etc.) use
 `window.location.href = ...`, não o router.
 
+### Arrays / estruturas de dados com `href`
+
+Quando um objeto carrega o path como propriedade (ex.: items de menu, breadcrumbs),
+o TS **alarga** o literal `'/dashboard'` para `string` assim que vira campo de
+um interface sem tipagem estrita. Isso quebra no `<Link href={it.href}>`.
+
+Use o tipo `Route` do Next:
+
+**✅ Correto**
+
+```tsx
+import type { Route } from 'next';
+
+interface NavItem {
+  href: Route;
+  label: string;
+}
+
+const nav: NavItem[] = [
+  { href: '/dashboard', label: 'Dashboard' },      // literal é aceito como Route
+  { href: '/customers', label: 'Clientes' },
+];
+
+<Link href={it.href}>{it.label}</Link>             // ok, href é Route
+```
+
+**❌ Errado**
+
+```tsx
+interface NavItem {
+  href: string;              // alarga o tipo — typedRoutes rejeita
+}
+```
+
+Se precisar montar o path com template literal, tipa como `Route` e o TS
+valida contra o filesystem em compile time:
+
+```tsx
+const href: Route = `/customers/${id}`;
+```
+
 ### Checklist ao adicionar nova rota
 
 1. Criar `app/(protected)/<pasta>/page.tsx` (ou `app/<pasta>/page.tsx` se

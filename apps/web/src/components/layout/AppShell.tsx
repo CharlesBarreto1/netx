@@ -1,5 +1,6 @@
 'use client';
 
+import type { Route } from 'next';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -7,7 +8,7 @@ import { cn } from '@/lib/cn';
 import { clearSession, displayName, type Session } from '@/lib/session';
 
 export interface NavItem {
-  href: string;
+  href: Route;
   label: string;
   icon?: React.ReactNode;
   permission?: string;
