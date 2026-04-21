@@ -3,13 +3,14 @@
  *
  * Convenções:
  *   - Token em sessionStorage (`netx.accessToken`) — mesma chave do fluxo de login.
- *   - Base URL via NEXT_PUBLIC_API_URL (default http://localhost:3000/api).
+ *   - Base URL via NEXT_PUBLIC_API_URL (default `/api`, ou seja, same-origin —
+ *     o Next proxia `/api/*` para o gateway via rewrite em next.config.mjs).
+ *     Só sobrescreva se o frontend e o backend rodam em domínios diferentes.
  *   - Em caso de 401 no client, limpa sessão e redireciona para /login.
  *   - Erros devolvidos pelo backend no formato RFC 7807-like são expostos via ApiError.
  */
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') ?? 'http://localhost:3000/api';
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? '/api').replace(/\/$/, '');
 
 export interface LoginInput {
   email: string;

@@ -264,6 +264,46 @@ topo deste runbook. Em caso de dúvida: `pm2 status`.
 2. Rode `npm run build --workspace web`.
 3. `pm2 reload netx-web`.
 
+### Login falha com `Failed to fetch` / `ERR_CONNECTION_REFUSED`
+
+Causa: o bundle do browser está tentando chegar em `http://localhost:3000/...`
+(o valor default do código). Isso só funciona no laptop do dev — em produção,
+o `localhost` do browser é o computador do usuário, não o VPS.
+
+**Abra o DevTools → Network** e confirme: a URL da request tem `localhost:3000`?
+Se sim, é isso.
+
+Fix definitivo (same-origin via Nginx → Next → gateway):
+
+```bash
+# Em /home/netx/apps/netx/apps/web/.env.production:
+NEXT_PUBLIC_API_URL=/api
+INTERNAL_API_URL=http://localhost:3000/api
+
+# Rebuild (NEXT_PUBLIC_* é bakeada no build)
+cd /home/netx/apps/netx
+npm run build --workspace web
+pm2 reload netx-web --update-env
+```
+
+Como funciona: browser chama `/api/v1/...` relativo, Nginx encaminha pro Next
+(porta 3200), Next vê o rewrite e proxia pro gateway (porta 3000).
+
+Ver `docs/CONVENTIONS-FRONTEND.md §4` pra detalhes das duas env vars.
+
+### CORS policy: No 'Access-Control-Allow-Origin'
+
+Browser bloqueou porque `NEXT_PUBLIC_API_URL` aponta para outro domínio sem
+o gateway ter liberado o Origin da web.
+
+- **Fix preferido**: mudar pra same-origin (`NEXT_PUBLIC_API_URL=/api`). Sem
+  CORS porque a requisição é relativa.
+- **Alternativa**: liberar o Origin no gateway. Variável
+  `API_GATEWAY_CORS_ORIGINS` no `.env` do gateway, e reload:
+  ```bash
+  pm2 reload netx-gateway --update-env
+  ```
+
 ### `next build` reclama de `_next/static` 404 depois do reload
 
 PM2 às vezes mantém um worker antigo apontando para `.next` que foi sobrescrito.

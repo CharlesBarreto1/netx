@@ -190,22 +190,69 @@ npm install --dry-run                    # não deve reportar mudanças se lockf
 git status                               # package-lock.json NÃO deve aparecer como modificado
 ```
 
-## 4. Env vars `NEXT_PUBLIC_*`
+## 4. Env vars — `NEXT_PUBLIC_*` vs server-only
 
-Variáveis `NEXT_PUBLIC_*` são **bakeadas no bundle** no momento do `next build`.
-Consequências:
+Regra geral: variáveis `NEXT_PUBLIC_*` são **bakeadas no bundle** no momento do
+`next build`. Consequências:
 
 - Mudar `.env.production` depois do build **não tem efeito**. Precisa rebuildar.
 - O valor vai pro browser — **nunca** coloque segredo em `NEXT_PUBLIC_*`.
 - Em deploy, garanta que a env está setada **antes** do `npm run build`.
 
-Vars atuais em uso:
+Variáveis sem o prefixo `NEXT_PUBLIC_` ficam **server-side only** — o Next usa
+em SSR, API routes, rewrites, etc., mas elas não entram no bundle do browser.
+Mude livremente sem rebuildar; precisa só de `pm2 reload --update-env`.
 
-| Variável | Onde usada | Default |
-|----------|------------|---------|
-| `NEXT_PUBLIC_API_URL` | `apps/web/src/lib/api.ts`, rewrites | `http://localhost:3000/api` |
+### As duas vars do frontend
 
-Em produção: `https://<dominio>/api`.
+| Variável | Usada por | Default | Onde entra |
+|----------|-----------|---------|------------|
+| `NEXT_PUBLIC_API_URL` | **Browser** (`lib/api.ts`) | `/api` | Bakeada no bundle |
+| `INTERNAL_API_URL` | **Servidor Next** (rewrite de `next.config.mjs`) | `http://localhost:3000/api` | Lida em runtime |
+
+### Por que duas?
+
+O fluxo correto de uma requisição em produção same-origin:
+
+```
+Browser                    Nginx                 Next (3200)          Gateway (3000)
+  │                          │                      │                     │
+  │  GET /api/v1/customers   │                      │                     │
+  ├─────────────────────────>│                      │                     │
+  │                          ├─────────────────────>│                     │
+  │                          │                      │  proxy via rewrite  │
+  │                          │                      ├────────────────────>│
+  │                          │                      │                     │
+```
+
+- Browser chama `/api/v1/...` **relativo** (mesma origem) → sem CORS, sem mixed
+  content, independe de domínio. Isso exige `NEXT_PUBLIC_API_URL=/api`.
+- Next, server-side, proxia `/api/*` pra `http://localhost:3000/api/*` (o
+  gateway) via `rewrites()`. Isso exige `INTERNAL_API_URL=http://localhost:3000/api`.
+
+Se usar **a mesma env** pros dois lados, o rewrite vira loop (`/api` → `/api`)
+ou o browser quebra (tentando chegar em `http://localhost:3000` diretamente,
+sem passar pelo Next).
+
+### Quando sobrescrever
+
+| Cenário | `NEXT_PUBLIC_API_URL` | `INTERNAL_API_URL` |
+|---------|------------------------|--------------------|
+| Dev local | `/api` (default) | `http://localhost:3000/api` (default) |
+| Prod same-origin (Nginx → Next → gateway) | `/api` (default) | `http://localhost:3000/api` (default) |
+| Prod cross-origin (ex.: `app.x.com` → `api.x.com`) | `https://api.x.com/api` | não importa (rewrite não é usado) |
+| Gateway em porta customizada | `/api` | `http://localhost:<porta>/api` |
+
+### Erros típicos
+
+- `Failed to fetch` / `ERR_CONNECTION_REFUSED` com URL `http://localhost:3000/...`
+  no DevTools → o bundle tem o default antigo bakeado. Seta
+  `NEXT_PUBLIC_API_URL=/api` no `.env.production` e rebuilda.
+- `CORS policy: No 'Access-Control-Allow-Origin'` → você está em cross-origin
+  mas o gateway não libera o Origin do frontend. Ou volta pra same-origin, ou
+  configura CORS no gateway.
+- Rewrite loop (requisições timed-out com status 504) → `INTERNAL_API_URL`
+  ficou apontando pra dentro do próprio Next em vez do gateway.
 
 ## 5. Cliente HTTP (`lib/api.ts`) e SWR
 
