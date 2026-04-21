@@ -43,23 +43,38 @@ npm run infra:reset && npm run db:migrate && npm run db:seed
 
 ## Deploy do Módulo 02 (CRM) em VPS já produtivo
 
-Assumindo usuário `netx`, código em `/home/netx/apps/netx` e PM2 sob systemd:
+Assumindo usuário `netx`, código em `/home/netx/apps/netx` e PM2 sob systemd.
+
+> **Importante sobre nomes de workspaces:** apenas os pacotes em `packages/*` usam o prefixo `@netx/` (ex.: `@netx/shared`, `@netx/auth`). Os apps em `apps/*` são `core-service`, `api-gateway`, `web` — sem prefixo.
+
 ```bash
 ssh netx@<host>
 cd /home/netx/apps/netx
 git pull
 npm ci
+
+# Pacotes compartilhados primeiro (TS emitido consumido pelos apps)
 npm run build --workspace @netx/shared
-npm run prisma:generate --workspace @netx/core-service
-cd apps/core-service
-npx prisma migrate deploy          # aplica a migration crm_foundation
-cd -
-npm run db:seed                    # popula novas permissões CRM (idempotente)
-npm run build --workspace @netx/core-service
-npm run build --workspace @netx/api-gateway
-npm run build --workspace @netx/web
-pm2 reload ecosystem.config.js --update-env
-pm2 save
+
+# Regenerar o Prisma Client (npm ci reinstala node_modules; .prisma/client fica defasado)
+npm run db:generate
+
+# Criar + aplicar a migration CRM
+npm run -w core-service db:migrate -- --name crm_foundation
+# (alternativa com revisão manual do SQL antes de aplicar:)
+# npm run -w core-service db:migrate -- --name crm_foundation --create-only
+# npm run -w core-service db:migrate:deploy
+
+# Popula permissões CRM (idempotente)
+npm run db:seed
+
+# Build dos apps (nomes sem @netx/)
+npm run build --workspace core-service
+npm run build --workspace api-gateway
+npm run build --workspace web
+
+# Reload PM2
+pm2 reload ecosystem.config.js --update-env && pm2 save
 ```
 Smoke test:
 ```bash

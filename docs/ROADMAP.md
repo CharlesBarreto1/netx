@@ -8,7 +8,7 @@ Planejamento de alto nível. Detalhes por sprint ficam no board (Linear/Jira).
 |--------|-------------|
 | S1–S2 | **Scaffolding** + Core (✅ entregue) |
 | S3 | Email/invite flow, MFA TOTP, SSO (OIDC) |
-| S4–S5 | **CRM básico** (✅ fundação entregue): clientes PF/PJ, endereços, contatos, tags, consentimentos LGPD/GDPR, anotações; validadores de documento BR (CPF/CNPJ) e PY (CI/RUC) |
+| S4–S5 | **CRM básico** (✅ entregue end-to-end): clientes PF/PJ, endereços, contatos, tags, consentimentos LGPD/GDPR, anotações; validadores de documento BR (CPF/CNPJ) e PY (CI/RUC); frontend operacional Next.js com lista filtrada, formulário PF/PJ, detalhe 360° e catálogo de tags |
 | S6–S7 | **Contratos**: modelos, assinatura eletrônica (integração D4Sign) |
 | S8–S10 | **Financeiro v1**: mensalidades, boleto/PIX, régua de cobrança, gateway (Asaas) |
 | S11 | **Portal do cliente** v1 (2ª via, histórico) |

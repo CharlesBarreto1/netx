@@ -273,7 +273,28 @@ Isso popula as novas permissões CRM (`customers.create`, `customers.read`, `cus
 
 ---
 
-## 9. Próximos passos do CRM
+## 9. Frontend operacional (apps/web)
+
+O frontend do CRM já está entregue e vive em `apps/web/src/app/(protected)/`:
+
+| Rota | Arquivo | Descrição |
+|------|---------|-----------|
+| `/dashboard` | `(protected)/dashboard/page.tsx` | KPI de clientes (total) + meta do tenant |
+| `/customers` | `(protected)/customers/page.tsx` | Lista com filtros na URL (search/status/type/tag/country) e paginação |
+| `/customers/new` | `(protected)/customers/new/page.tsx` | Form PF/PJ reutilizável |
+| `/customers/[id]` | `(protected)/customers/[id]/page.tsx` | Detalhe 360° com abas: Dados, Endereços, Contatos, Tags, Consentimentos, Anotações |
+| `/customers/[id]/edit` | `(protected)/customers/[id]/edit/page.tsx` | Edição reutilizando o mesmo `CustomerForm` |
+| `/crm/tags` | `(protected)/crm/tags/page.tsx` | Catálogo de tags com color picker |
+
+**Infra de UI:** `components/ui/{Button,Input,Badge,Modal,Tabs,Spinner}` — Tailwind puro, sem libs de componentes. `components/layout/AppShell.tsx` fornece sidebar + topbar + menu de usuário. Guard de sessão no `(protected)/layout.tsx` redireciona para `/login` quando não há token em `sessionStorage`.
+
+**Dados:** SWR configurado globalmente no `(protected)/layout.tsx` com fetcher do `lib/api.ts`. Cada aba do detalhe consome seu endpoint nested (`/v1/customers/:id/{addresses|contacts|consents|notes}`) e revalida localmente após POST/PATCH/DELETE.
+
+**Permissões:** os botões de CRUD checam as mesmas permissões do backend (`customers.create`, `customers.update`, `customers.delete`, `customers.tags.manage`, `customers.consents.manage`, `customers.notes.manage`) via `hasPermission()` em `lib/session.ts`.
+
+---
+
+## 10. Próximos passos do CRM
 
 1. **Pipeline de vendas** — entidades `Lead`, `Opportunity`, `Stage`, `Activity`
 2. **Score de crédito** — integração plugável (Serasa/Equifax/Boa Vista), com cache por 30 dias
