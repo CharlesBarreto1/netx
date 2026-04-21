@@ -57,6 +57,15 @@ const crmPermissions = [
   { code: 'customers.tags.manage', module: 'crm', resource: 'customer_tags', action: 'manage' },
   { code: 'customers.consents.manage', module: 'crm', resource: 'customer_consents', action: 'manage' },
   { code: 'customers.notes.manage', module: 'crm', resource: 'customer_notes', action: 'manage' },
+
+  // Vendas — pipelines/deals/activities
+  { code: 'pipelines.manage', module: 'crm', resource: 'pipelines', action: 'manage' },
+  { code: 'deals.read', module: 'crm', resource: 'deals', action: 'read' },
+  { code: 'deals.write', module: 'crm', resource: 'deals', action: 'write' },
+  { code: 'deals.delete', module: 'crm', resource: 'deals', action: 'delete' },
+  { code: 'activities.read', module: 'crm', resource: 'activities', action: 'read' },
+  { code: 'activities.write', module: 'crm', resource: 'activities', action: 'write' },
+  { code: 'activities.delete', module: 'crm', resource: 'activities', action: 'delete' },
 ];
 
 // Role → permission mapping
@@ -89,7 +98,7 @@ const systemRoles = [
       'api_keys.read',
       'api_keys.revoke',
       'audit.read',
-      // CRM
+      // CRM — clientes
       'customers.create',
       'customers.read',
       'customers.update',
@@ -97,6 +106,14 @@ const systemRoles = [
       'customers.tags.manage',
       'customers.consents.manage',
       'customers.notes.manage',
+      // CRM — vendas
+      'pipelines.manage',
+      'deals.read',
+      'deals.write',
+      'deals.delete',
+      'activities.read',
+      'activities.write',
+      'activities.delete',
     ],
   },
   {
@@ -117,13 +134,25 @@ const systemRoles = [
       'customers.tags.manage',
       'customers.consents.manage',
       'customers.notes.manage',
+      // CRM — vendas (operação diária; sem excluir pipelines)
+      'deals.read',
+      'deals.write',
+      'activities.read',
+      'activities.write',
     ],
   },
   {
     name: 'viewer',
     description: 'Acesso somente-leitura',
     priority: 100,
-    permissions: ['tenants.read', 'users.read', 'roles.read', 'customers.read'],
+    permissions: [
+      'tenants.read',
+      'users.read',
+      'roles.read',
+      'customers.read',
+      'deals.read',
+      'activities.read',
+    ],
   },
 ];
 
@@ -247,6 +276,34 @@ async function main() {
     update: {},
     create: { userId: admin.id, roleId: tenantAdmin.id },
   });
+
+  // 5. Default sales pipeline (idempotente)
+  console.log('  → Default sales pipeline');
+  const existingDefault = await prisma.pipeline.findFirst({
+    where: { tenantId: tenant.id, slug: 'vendas' },
+  });
+  if (!existingDefault) {
+    await prisma.pipeline.create({
+      data: {
+        tenantId: tenant.id,
+        name: 'Vendas',
+        slug: 'vendas',
+        description: 'Funil padrão — lead → qualificação → proposta → negociação → fechamento',
+        color: '#0ea5e9',
+        isDefault: true,
+        stages: {
+          create: [
+            { tenantId: tenant.id, name: 'Novo lead',        order: 0, probability: 10,  color: '#64748b' },
+            { tenantId: tenant.id, name: 'Qualificado',      order: 1, probability: 25,  color: '#0ea5e9' },
+            { tenantId: tenant.id, name: 'Proposta enviada', order: 2, probability: 50,  color: '#a855f7' },
+            { tenantId: tenant.id, name: 'Negociação',       order: 3, probability: 75,  color: '#f59e0b' },
+            { tenantId: tenant.id, name: 'Ganho',            order: 4, probability: 100, color: '#22c55e', isWon: true },
+            { tenantId: tenant.id, name: 'Perdido',          order: 5, probability: 0,   color: '#ef4444', isLost: true },
+          ],
+        },
+      },
+    });
+  }
 
   console.log('✅ Seed completed.');
   console.log('');

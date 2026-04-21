@@ -52,6 +52,9 @@ model Tenant {
   auditLogs   AuditLog[]
   customers   Customer[]
   customerTags CustomerTag[]
+  pipelines   Pipeline[]
+  deals       Deal[]
+  activities  Activity[]
 
   @@index([status])
   @@index([country])
@@ -130,6 +133,15 @@ model User {
   customersUpdated Customer[] @relation("CustomerUpdatedBy")
   customerNotes    CustomerNote[]
   customerTagAssignments CustomerTagAssignment[]
+
+  // Deals / Activities (CRM sales)
+  dealsOwned       Deal[]          @relation("DealOwner")
+  dealsCreated     Deal[]          @relation("DealCreatedBy")
+  dealsUpdated     Deal[]          @relation("DealUpdatedBy")
+  dealHistoryEvents DealHistory[]
+  activitiesOwned  Activity[]      @relation("ActivityOwner")
+  activitiesCreated Activity[]     @relation("ActivityCreatedBy")
+  activitiesCompleted Activity[]   @relation("ActivityCompletedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId, status])
@@ -426,6 +438,8 @@ model Customer {
   consents        CustomerConsent[]
   notes           CustomerNote[]
   tagAssignments  CustomerTagAssignment[]
+  deals           Deal[]
+  activities      Activity[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, taxId, taxIdType])
@@ -591,4 +605,217 @@ model CustomerNote {
   @@index([tenantId, customerId, createdAt])
   @@index([tenantId, pinned])
   @@map("customer_notes")
+}
+
+// =============================================================================
+// MODULE 2 — CRM (Sales: Pipelines, Deals, Activities)
+//
+// Pipeline       = funil comercial (tenant pode ter múltiplos)
+// PipelineStage  = coluna do Kanban, ordenada, com probabilidade default
+// Deal           = oportunidade/negócio em um estágio, com valor e dono
+// DealHistory    = trilha de auditoria de mudança de estágio (p/ conversão)
+// Activity       = tarefa/ligação/reunião/email associada a deal/customer
+// =============================================================================
+
+enum DealStatus {
+  OPEN
+  WON
+  LOST
+}
+
+enum DealLostReason {
+  PRICE
+  COMPETITOR
+  TIMING
+  NO_BUDGET
+  NO_DECISION
+  NO_RESPONSE
+  OTHER
+}
+
+enum ActivityType {
+  CALL
+  MEETING
+  EMAIL
+  TASK
+  WHATSAPP
+  VISIT
+  OTHER
+}
+
+enum ActivityStatus {
+  PENDING
+  DONE
+  CANCELLED
+}
+
+// -----------------------------------------------------------------------------
+// PIPELINE (funil comercial)
+// -----------------------------------------------------------------------------
+model Pipeline {
+  id          String          @id @default(uuid()) @db.Uuid
+  tenantId    String          @map("tenant_id") @db.Uuid
+  name        String          @db.VarChar(120)
+  slug        String          @db.VarChar(64)            // para URLs: "vendas", "onboarding"
+  description String?         @db.VarChar(500)
+  color       String?         @db.VarChar(7)             // hex "#RRGGBB"
+  isDefault   Boolean         @default(false) @map("is_default")
+  isArchived  Boolean         @default(false) @map("is_archived")
+
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stages      PipelineStage[]
+  deals       Deal[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, isArchived])
+  @@map("pipelines")
+}
+
+// -----------------------------------------------------------------------------
+// PIPELINE STAGE (colunas do Kanban)
+// -----------------------------------------------------------------------------
+model PipelineStage {
+  id           String     @id @default(uuid()) @db.Uuid
+  tenantId     String     @map("tenant_id") @db.Uuid
+  pipelineId   String     @map("pipeline_id") @db.Uuid
+  name         String     @db.VarChar(120)
+  order        Int                                         // 0-based, ordenação das colunas
+  probability  Int        @default(0)                       // 0..100 — sugestão de prob. de fechamento
+  color        String?    @db.VarChar(7)
+  isWon        Boolean    @default(false) @map("is_won")    // estágio terminal "Ganho"
+  isLost       Boolean    @default(false) @map("is_lost")   // estágio terminal "Perdido"
+
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  pipeline     Pipeline   @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  deals        Deal[]
+
+  @@unique([pipelineId, order])
+  @@index([tenantId, pipelineId])
+  @@map("pipeline_stages")
+}
+
+// -----------------------------------------------------------------------------
+// DEAL (oportunidade)
+// -----------------------------------------------------------------------------
+model Deal {
+  id             String         @id @default(uuid()) @db.Uuid
+  tenantId       String         @map("tenant_id") @db.Uuid
+  pipelineId     String         @map("pipeline_id") @db.Uuid
+  stageId        String         @map("stage_id") @db.Uuid
+
+  title          String         @db.VarChar(255)
+  description    String?        @db.Text
+  value          Decimal        @default(0) @db.Decimal(14, 2)
+  currency       String         @default("BRL") @db.Char(3)
+  probability    Int?                                      // override do stage.probability
+  expectedCloseAt DateTime?     @map("expected_close_at") @db.Date
+
+  status         DealStatus     @default(OPEN)
+  lostReason     DealLostReason? @map("lost_reason")
+  lostNote       String?        @map("lost_note") @db.VarChar(500)
+
+  // Posição dentro da coluna (para drag-drop vertical + reorder)
+  position       Int            @default(0)
+
+  customerId     String?        @map("customer_id") @db.Uuid
+  ownerId        String?        @map("owner_id") @db.Uuid
+  createdById    String?        @map("created_by_id") @db.Uuid
+  updatedById    String?        @map("updated_by_id") @db.Uuid
+
+  closedAt       DateTime?      @map("closed_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  deletedAt      DateTime?      @map("deleted_at")
+
+  tenant         Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pipeline       Pipeline       @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  stage          PipelineStage  @relation(fields: [stageId], references: [id])
+  customer       Customer?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  owner          User?          @relation("DealOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdBy      User?          @relation("DealCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy      User?          @relation("DealUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  history        DealHistory[]
+  activities     Activity[]
+
+  @@index([tenantId, pipelineId, stageId, position])
+  @@index([tenantId, status])
+  @@index([tenantId, ownerId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, expectedCloseAt])
+  @@map("deals")
+}
+
+// -----------------------------------------------------------------------------
+// DEAL HISTORY (auditoria de mudança de estágio — funil de conversão)
+// -----------------------------------------------------------------------------
+model DealHistory {
+  id           String      @id @default(uuid()) @db.Uuid
+  tenantId     String      @map("tenant_id") @db.Uuid
+  dealId       String      @map("deal_id") @db.Uuid
+
+  fromStageId  String?     @map("from_stage_id") @db.Uuid
+  toStageId    String      @map("to_stage_id") @db.Uuid
+  fromStatus   DealStatus?
+  toStatus     DealStatus
+
+  changedById  String?     @map("changed_by_id") @db.Uuid
+  reason       String?     @db.VarChar(500)                // motivo opcional
+  metadata     Json?
+
+  createdAt    DateTime    @default(now()) @map("created_at")
+
+  deal         Deal        @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  changedBy    User?       @relation(fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, dealId, createdAt])
+  @@index([tenantId, toStageId])
+  @@map("deal_history")
+}
+
+// -----------------------------------------------------------------------------
+// ACTIVITY (tarefas, calls, reuniões, emails — liga em deal OU customer)
+// -----------------------------------------------------------------------------
+model Activity {
+  id             String          @id @default(uuid()) @db.Uuid
+  tenantId       String          @map("tenant_id") @db.Uuid
+
+  type           ActivityType
+  status         ActivityStatus  @default(PENDING)
+
+  title          String          @db.VarChar(255)
+  notes          String?         @db.Text
+  location       String?         @db.VarChar(255)           // meetings/visits
+  durationMin    Int?            @map("duration_min")
+
+  dueAt          DateTime?       @map("due_at")
+  completedAt    DateTime?       @map("completed_at")
+
+  dealId         String?         @map("deal_id") @db.Uuid
+  customerId     String?         @map("customer_id") @db.Uuid
+  ownerId        String?         @map("owner_id") @db.Uuid
+  createdById    String?         @map("created_by_id") @db.Uuid
+  completedById  String?         @map("completed_by_id") @db.Uuid
+
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  deletedAt      DateTime?       @map("deleted_at")
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deal           Deal?           @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  customer       Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  owner          User?           @relation("ActivityOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  createdBy      User?           @relation("ActivityCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  completedBy    User?           @relation("ActivityCompletedBy", fields: [completedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, dealId, dueAt])
+  @@index([tenantId, customerId, dueAt])
+  @@index([tenantId, ownerId, status, dueAt])
+  @@index([tenantId, status, dueAt])
+  @@map("activities")
 }
