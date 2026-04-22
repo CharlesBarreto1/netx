@@ -1,0 +1,150 @@
+'use client';
+
+import { Plus, Settings2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import useSWR from 'swr';
+
+import { DealBoard } from '@/components/deals/DealBoard';
+import { NewDealDialog } from '@/components/deals/NewDealDialog';
+import { Button } from '@/components/ui/Button';
+import { Select } from '@/components/ui/Input';
+import { PageLoader } from '@/components/ui/Spinner';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { dealsApi, pipelinesApi } from '@/lib/crm-sales-api';
+import type { DealBoard as DealBoardType, Pipeline } from '@/lib/crm-sales-types';
+import { hasPermission } from '@/lib/session';
+
+/**
+ * /deals — Kanban board de oportunidades.
+ *
+ * MVP enxuto: lista pipelines do tenant, abre o pipeline default na primeira
+ * carga, e mostra o board correspondente. Novo deal via dialog (botão "Novo
+ * deal" no header ou "+" em cada coluna).
+ */
+export default function DealsPage() {
+  const canCreate = hasPermission('deals.write');
+
+  // Pipelines ativos do tenant
+  const { data: pipelines } = useSWR<Pipeline[]>(pipelinesApi.path());
+
+  const [pipelineId, setPipelineId] = useState<string | null>(null);
+
+  // Seleciona o default na primeira carga.
+  useEffect(() => {
+    if (pipelineId || !pipelines || pipelines.length === 0) return;
+    const def = pipelines.find((p) => p.isDefault) ?? pipelines[0];
+    setPipelineId(def.id);
+  }, [pipelines, pipelineId]);
+
+  const currentPipeline = pipelines?.find((p) => p.id === pipelineId) ?? null;
+
+  // Board do pipeline selecionado
+  const boardKey = pipelineId ? dealsApi.boardPath({ pipelineId }) : null;
+  const {
+    data: board,
+    isLoading: boardLoading,
+    mutate: mutateBoard,
+  } = useSWR<DealBoardType>(boardKey);
+
+  // Dialog "Novo deal"
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [defaultStageId, setDefaultStageId] = useState<string | null>(null);
+
+  function openNewDealAt(stageId?: string) {
+    setDefaultStageId(stageId ?? null);
+    setDialogOpen(true);
+  }
+
+  function openDealDetail(dealId: string) {
+    // TODO: rota dedicada (#40). Por enquanto rola um log + console — sem quebrar tipos.
+    // eslint-disable-next-line no-console
+    console.log('open deal detail', dealId);
+  }
+
+  return (
+    <TooltipProvider>
+      <div className="flex h-[calc(100vh-3.5rem-3rem)] min-h-0 flex-col gap-4">
+        {/* Header */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col">
+            <h1 className="text-xl font-semibold tracking-tight text-text">
+              Vendas
+            </h1>
+            <p className="text-xs text-text-muted">
+              Pipeline de oportunidades — arraste cards entre colunas para mover de estágio.
+            </p>
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            {pipelines && pipelines.length > 0 && (
+              <Select
+                aria-label="Pipeline"
+                className="h-8 w-56 py-1"
+                value={pipelineId ?? ''}
+                onChange={(e) => setPipelineId(e.target.value)}
+              >
+                {pipelines.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                    {p.isDefault ? ' · padrão' : ''}
+                  </option>
+                ))}
+              </Select>
+            )}
+
+            <Button variant="outline" size="md" disabled aria-label="Configurar pipeline">
+              <Settings2 className="h-3.5 w-3.5" />
+              <span className="hidden md:inline">Configurar</span>
+            </Button>
+
+            {canCreate && (
+              <Button onClick={() => openNewDealAt()} disabled={!currentPipeline}>
+                <Plus className="h-3.5 w-3.5" />
+                Novo deal
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* Board */}
+        <div className="min-h-0 flex-1">
+          {!pipelines || boardLoading || !board ? (
+            <PageLoader label="Carregando pipeline…" />
+          ) : pipelines.length === 0 ? (
+            <EmptyState />
+          ) : (
+            <DealBoard
+              board={board}
+              onAddDeal={openNewDealAt}
+              onOpenDeal={openDealDetail}
+              onMutated={() => mutateBoard()}
+            />
+          )}
+        </div>
+
+        {/* Dialog de criação */}
+        <NewDealDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          pipeline={currentPipeline}
+          defaultStageId={defaultStageId}
+          onCreated={() => mutateBoard()}
+        />
+      </div>
+    </TooltipProvider>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-border surface-aurora">
+      <div className="max-w-md text-center">
+        <h3 className="text-base font-semibold text-text">Nenhum pipeline configurado</h3>
+        <p className="mt-1 text-sm text-text-muted">
+          Rode o seed (<code className="rounded bg-surface-muted px-1">npm run db:seed</code>)
+          ou crie o pipeline padrão pela API <code className="rounded bg-surface-muted px-1">POST /v1/crm/pipelines</code>.
+        </p>
+      </div>
+    </div>
+  );
+}

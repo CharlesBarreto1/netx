@@ -79,6 +79,59 @@ export function formatDateTime(iso: string | null | undefined, locale = 'pt-BR')
   }
 }
 
+/**
+ * Formata dinheiro com Intl.NumberFormat. Se `short`, colapsa em k/M para
+ * cards de Kanban (R$ 12,3 k / R$ 2,1 M). Valor vem sempre como number
+ * (o backend retorna Decimal serializado → number).
+ */
+export function formatMoney(
+  value: number | null | undefined,
+  currency = 'BRL',
+  opts: { short?: boolean; locale?: string } = {},
+): string {
+  const locale = opts.locale ?? 'pt-BR';
+  const v = typeof value === 'number' && Number.isFinite(value) ? value : 0;
+
+  if (opts.short) {
+    const abs = Math.abs(v);
+    const sign = v < 0 ? '-' : '';
+    const symbol = currencySymbol(currency, locale);
+    if (abs >= 1_000_000)
+      return `${sign}${symbol} ${(abs / 1_000_000).toLocaleString(locale, {
+        maximumFractionDigits: 1,
+      })} M`;
+    if (abs >= 1_000)
+      return `${sign}${symbol} ${(abs / 1_000).toLocaleString(locale, {
+        maximumFractionDigits: 1,
+      })} k`;
+    return `${sign}${symbol} ${abs.toLocaleString(locale, {
+      maximumFractionDigits: 0,
+    })}`;
+  }
+
+  try {
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 2,
+    }).format(v);
+  } catch {
+    return `${currency} ${v.toFixed(2)}`;
+  }
+}
+
+function currencySymbol(currency: string, locale: string): string {
+  try {
+    const parts = new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+    }).formatToParts(0);
+    return parts.find((p) => p.type === 'currency')?.value ?? currency;
+  } catch {
+    return currency;
+  }
+}
+
 export function relativeTime(iso: string | null | undefined, locale = 'pt-BR'): string {
   if (!iso) return '—';
   const then = new Date(iso).getTime();

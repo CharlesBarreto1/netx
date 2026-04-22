@@ -4,6 +4,7 @@ import type { Route } from 'next';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { Toaster } from '@/components/ui/sonner';
 import { cn } from '@/lib/cn';
 import { clearSession, displayName, type Session } from '@/lib/session';
 
@@ -17,6 +18,7 @@ export interface NavItem {
 
 const nav: NavItem[] = [
   { href: '/dashboard', label: 'Dashboard', icon: <IconDashboard /> },
+  { href: '/deals', label: 'Vendas', icon: <IconKanban />, permission: 'deals.read' },
   { href: '/customers', label: 'Clientes', icon: <IconUsers />, permission: 'customers.read' },
   { href: '/crm/tags', label: 'Tags', icon: <IconTag />, permission: 'customers.tags.manage' },
 ];
@@ -114,6 +116,8 @@ export function AppShell({
           <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8">{children}</div>
         </main>
       </div>
+
+      <Toaster />
     </div>
   );
 }
@@ -220,6 +224,16 @@ function IconUsers() {
       <circle cx="9" cy="7" r="4" />
       <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
       <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
+function IconKanban() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-full w-full">
+      <rect x="3" y="3" width="6" height="14" rx="1" />
+      <rect x="11" y="3" width="6" height="9" rx="1" />
+      <rect x="19" y="3" width="2" height="5" rx="1" />
     </svg>
   );
 }
