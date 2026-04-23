@@ -23,11 +23,19 @@ export default function NewContractPage() {
   const params = useSearchParams();
   const prefilledCustomerId = params.get('customerId');
 
-  // Carrega clientes para o Select (limite 200 ativos — suficiente p/ MVP).
+  // Carrega clientes para o Select (limite 100 = teto do backend — suficiente
+  // p/ MVP; o schema Zod de /v1/customers não aceita sortBy/sortDir, então
+  // ordenamos no cliente).
   const { data: customersResp, isLoading: loadingCustomers } = useSWR<Paginated<Customer>>(
-    '/v1/customers?pageSize=200&sortBy=displayName&sortDir=asc',
+    '/v1/customers?pageSize=100',
   );
-  const customers = customersResp?.data ?? [];
+  const customers = useMemo(
+    () =>
+      (customersResp?.data ?? [])
+        .slice()
+        .sort((a, b) => a.displayName.localeCompare(b.displayName, 'pt-BR')),
+    [customersResp],
+  );
 
   const [form, setForm] = useState({
     customerId: prefilledCustomerId ?? '',
