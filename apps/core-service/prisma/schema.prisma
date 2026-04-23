@@ -55,6 +55,9 @@ model Tenant {
   pipelines   Pipeline[]
   deals       Deal[]
   activities  Activity[]
+  contracts   Contract[]
+  contractInvoices ContractInvoice[]
+  radiusEvents RadiusEvent[]
 
   @@index([status])
   @@index([country])
@@ -142,6 +145,10 @@ model User {
   activitiesOwned  Activity[]      @relation("ActivityOwner")
   activitiesCreated Activity[]     @relation("ActivityCreatedBy")
   activitiesCompleted Activity[]   @relation("ActivityCompletedBy")
+
+  // Contracts
+  contractsCreated Contract[]      @relation("ContractCreatedBy")
+  contractsUpdated Contract[]      @relation("ContractUpdatedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId, status])
@@ -440,6 +447,7 @@ model Customer {
   tagAssignments  CustomerTagAssignment[]
   deals           Deal[]
   activities      Activity[]
+  contracts       Contract[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, taxId, taxIdType])
@@ -818,4 +826,147 @@ model Activity {
   @@index([tenantId, ownerId, status, dueAt])
   @@index([tenantId, status, dueAt])
   @@map("activities")
+}
+
+// =============================================================================
+// CONTRACTS (Módulo 03) — contratos de serviço básicos
+// Alimenta RADIUS (autorização PPPoE) e Financeiro interno (faturas).
+// =============================================================================
+
+enum ContractStatus {
+  ACTIVE      // libera PPPoE
+  SUSPENDED   // pool de IP "bloqueados"
+  CANCELLED   // pool de IP "cancelados"
+}
+
+enum InvoiceStatus {
+  OPEN
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum ContractSuspendReason {
+  MANUAL
+  OVERDUE_PAYMENT
+  OTHER
+}
+
+model Contract {
+  id                  String         @id @default(uuid()) @db.Uuid
+  tenantId            String         @map("tenant_id") @db.Uuid
+  customerId          String         @map("customer_id") @db.Uuid
+
+  // Código humano ex. CTR-000123 (opcional, gerado pelo service)
+  code                String?        @db.VarChar(32)
+
+  // Autenticação PPPoE
+  pppoeUsername       String         @map("pppoe_username") @db.VarChar(64)
+  pppoePassword       String         @map("pppoe_password") @db.VarChar(128)
+
+  // Endereço de instalação (string simples agora; migrar depois para FK CustomerAddress)
+  installationAddress String         @map("installation_address") @db.VarChar(500)
+
+  // Comerciais
+  monthlyValue        Decimal        @map("monthly_value") @db.Decimal(12, 2)
+  bandwidthMbps       Int            @map("bandwidth_mbps")             // velocidade em Mbps
+  dueDay              Int            @map("due_day")                    // 1..28
+
+  // Estado
+  status              ContractStatus        @default(ACTIVE)
+  suspendReason       ContractSuspendReason? @map("suspend_reason")
+
+  activatedAt         DateTime?      @map("activated_at")
+  suspendedAt         DateTime?      @map("suspended_at")
+  cancelledAt         DateTime?      @map("cancelled_at")
+
+  notes               String?        @db.Text
+
+  createdById         String?        @map("created_by_id") @db.Uuid
+  updatedById         String?        @map("updated_by_id") @db.Uuid
+
+  createdAt           DateTime       @default(now()) @map("created_at")
+  updatedAt           DateTime       @updatedAt @map("updated_at")
+  deletedAt           DateTime?      @map("deleted_at")
+
+  tenant              Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer            Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  createdBy           User?          @relation("ContractCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy           User?          @relation("ContractUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  invoices            ContractInvoice[]
+  radiusEvents        RadiusEvent[]
+
+  @@unique([tenantId, pppoeUsername])
+  @@unique([tenantId, code])
+  @@index([tenantId, customerId])
+  @@index([tenantId, status])
+  @@index([tenantId, dueDay])
+  @@map("contracts")
+}
+
+model ContractInvoice {
+  id           String         @id @default(uuid()) @db.Uuid
+  tenantId     String         @map("tenant_id") @db.Uuid
+  contractId   String         @map("contract_id") @db.Uuid
+
+  // Denormalizado p/ histórico (cliente muda de valor, fatura mantém o valor cobrado)
+  amount       Decimal        @db.Decimal(12, 2)
+  dueDate      DateTime       @map("due_date") @db.Date
+  issuedAt     DateTime       @default(now()) @map("issued_at")
+
+  status       InvoiceStatus  @default(OPEN)
+  paidAt       DateTime?      @map("paid_at")
+  paidAmount   Decimal?       @map("paid_amount") @db.Decimal(12, 2)
+  paymentNote  String?        @map("payment_note") @db.VarChar(255)
+
+  // Referência textual p/ controle interno ex. "Mensalidade 05/2026"
+  reference    String?        @db.VarChar(120)
+
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contract     Contract       @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, contractId])
+  @@index([tenantId, status, dueDate])
+  @@map("contract_invoices")
+}
+
+// Trilha de eventos de sincronização com RADIUS/Mikrotik.
+// Inicialmente apenas registro em log; futuramente consumido por worker que
+// aplica CoA/disconnect real e provisiona o pool correto.
+enum RadiusAction {
+  AUTHORIZE       // contrato ativo -> libera PPPoE
+  BLOCK           // contrato suspenso -> pool bloqueados
+  CANCEL          // contrato cancelado -> pool cancelados
+  DISCONNECT      // força desconexão (CoA)
+}
+
+enum RadiusEventStatus {
+  PENDING
+  APPLIED
+  FAILED
+}
+
+model RadiusEvent {
+  id           String             @id @default(uuid()) @db.Uuid
+  tenantId     String             @map("tenant_id") @db.Uuid
+  contractId   String             @map("contract_id") @db.Uuid
+  action       RadiusAction
+  status       RadiusEventStatus  @default(PENDING)
+  pppoeUsername String            @map("pppoe_username") @db.VarChar(64)
+  targetPool   String?            @map("target_pool") @db.VarChar(64)
+  note         String?            @db.VarChar(500)
+  error        String?            @db.Text
+  appliedAt    DateTime?          @map("applied_at")
+  createdAt    DateTime           @default(now()) @map("created_at")
+
+  tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contract     Contract           @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, contractId, createdAt])
+  @@index([tenantId, status])
+  @@map("radius_events")
 }

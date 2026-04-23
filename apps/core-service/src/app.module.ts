@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ClsModule } from 'nestjs-cls';
 import { LoggerModule } from 'nestjs-pino';
 
 import { AuthModule } from './modules/auth/auth.module';
 import { AuditModule } from './modules/audit/audit.module';
+import { ContractsModule } from './modules/contracts/contracts.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { HealthModule } from './modules/health/health.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
@@ -44,6 +46,9 @@ import { UsersModule } from './modules/users/users.module';
     // Rate limiting (per-IP default; tighter limits on /auth/login in the guard)
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
 
+    // Scheduled jobs (cron) — usado pelo módulo Contratos, entre outros
+    ScheduleModule.forRoot(),
+
     // Infrastructure
     PrismaModule,
     HealthModule,
@@ -55,6 +60,7 @@ import { UsersModule } from './modules/users/users.module';
     RolesModule,
     AuditModule,
     CrmModule,
+    ContractsModule,
   ],
 })
 export class AppModule {}

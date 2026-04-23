@@ -68,6 +68,16 @@ const crmPermissions = [
   { code: 'activities.delete', module: 'crm', resource: 'activities', action: 'delete' },
 ];
 
+// -----------------------------------------------------------------------------
+// Permission catalog for Module 3 (Contratos)
+// -----------------------------------------------------------------------------
+const contractsPermissions = [
+  { code: 'contracts.read', module: 'contracts', resource: 'contracts', action: 'read' },
+  { code: 'contracts.write', module: 'contracts', resource: 'contracts', action: 'write' },
+  { code: 'contracts.delete', module: 'contracts', resource: 'contracts', action: 'delete' },
+  { code: 'contracts.admin', module: 'contracts', resource: 'contracts', action: 'admin' },
+];
+
 // Role → permission mapping
 const systemRoles = [
   {
@@ -114,6 +124,11 @@ const systemRoles = [
       'activities.read',
       'activities.write',
       'activities.delete',
+      // Contratos
+      'contracts.read',
+      'contracts.write',
+      'contracts.delete',
+      'contracts.admin',
     ],
   },
   {
@@ -139,6 +154,9 @@ const systemRoles = [
       'deals.write',
       'activities.read',
       'activities.write',
+      // Contratos (operação)
+      'contracts.read',
+      'contracts.write',
     ],
   },
   {
@@ -152,6 +170,7 @@ const systemRoles = [
       'customers.read',
       'deals.read',
       'activities.read',
+      'contracts.read',
     ],
   },
 ];
@@ -161,7 +180,7 @@ async function main() {
 
   // 1. Permissions (global catalog)
   console.log('  → Permissions');
-  for (const p of [...corePermissions, ...crmPermissions]) {
+  for (const p of [...corePermissions, ...crmPermissions, ...contractsPermissions]) {
     await prisma.permission.upsert({
       where: { code: p.code },
       update: { module: p.module, resource: p.resource, action: p.action },

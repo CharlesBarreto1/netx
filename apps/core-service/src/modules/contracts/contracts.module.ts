@@ -1,0 +1,38 @@
+import { Module } from '@nestjs/common';
+
+import { AuditModule } from '../audit/audit.module';
+
+import { ContractsController } from './contracts.controller';
+import { ContractsService } from './contracts.service';
+import { ContractInvoicesController } from './contract-invoices.controller';
+import { ContractInvoicesService } from './contract-invoices.service';
+import { InvoiceGeneratorService } from './invoice-generator.service';
+import { OverdueScanService } from './overdue-scan.service';
+import { RadiusSyncService } from './radius-sync.service';
+
+/**
+ * Módulo 03 — Contratos (básico)
+ *
+ * Endpoints:
+ *   /contracts                     -> CRUD + suspend/reactivate/cancel
+ *   /contracts/:id/invoices        -> listagem/criação aninhada
+ *   /contract-invoices             -> listagem global
+ *   /contract-invoices/:id/pay     -> baixa (reativa contrato se estava bloqueado por inadimplência)
+ *   /contract-invoices/:id/cancel  -> cancelar fatura
+ *   /contracts/_tasks/run-overdue-scan -> rodar cron manualmente (admin)
+ *
+ * Cron diário (06:00): gera próximas faturas e suspende contratos c/ fatura > 5 dias.
+ */
+@Module({
+  imports: [AuditModule],
+  controllers: [ContractsController, ContractInvoicesController],
+  providers: [
+    ContractsService,
+    ContractInvoicesService,
+    InvoiceGeneratorService,
+    OverdueScanService,
+    RadiusSyncService,
+  ],
+  exports: [ContractsService, ContractInvoicesService, RadiusSyncService],
+})
+export class ContractsModule {}
