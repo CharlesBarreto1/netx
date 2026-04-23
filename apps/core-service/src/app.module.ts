@@ -11,6 +11,7 @@ import { ContractsModule } from './modules/contracts/contracts.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { HealthModule } from './modules/health/health.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
+import { RadiusModule } from './modules/radius/radius.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { UsersModule } from './modules/users/users.module';
@@ -61,6 +62,7 @@ import { UsersModule } from './modules/users/users.module';
     AuditModule,
     CrmModule,
     ContractsModule,
+    RadiusModule,
   ],
 })
 export class AppModule {}
