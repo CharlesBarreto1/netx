@@ -598,7 +598,7 @@ export class DealsService {
     const rows = await this.prisma.dealHistory.findMany({
       where: { tenantId, dealId: id },
       orderBy: { createdAt: 'asc' },
-      include: { changedBy: { select: { id: true, name: true } } },
+      include: { changedBy: { select: { id: true, firstName: true, lastName: true } } },
     });
     return rows.map((h) => ({
       id: h.id,
@@ -608,7 +608,7 @@ export class DealsService {
       fromStatus: h.fromStatus,
       toStatus: h.toStatus,
       changedById: h.changedById,
-      changedByName: h.changedBy?.name ?? null,
+      changedByName: h.changedBy ? `${h.changedBy.firstName} ${h.changedBy.lastName}`.trim() : null,
       reason: h.reason,
       createdAt: h.createdAt.toISOString(),
     }));
@@ -651,7 +651,7 @@ function defaultInclude() {
         primaryPhone: true,
       },
     },
-    owner: { select: { id: true, name: true, email: true } },
+    owner: { select: { id: true, firstName: true, lastName: true, email: true } },
     stage: {
       select: { id: true, name: true, color: true, isWon: true, isLost: true },
     },
@@ -692,7 +692,7 @@ function toDealResponse(d: DealRow): DealResponse {
         }
       : null,
     owner: d.owner
-      ? { id: d.owner.id, name: d.owner.name, email: d.owner.email }
+      ? { id: d.owner.id, name: `${d.owner.firstName} ${d.owner.lastName}`.trim(), email: d.owner.email }
       : null,
     stage: d.stage
       ? {

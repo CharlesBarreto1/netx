@@ -346,10 +346,15 @@ function defaultInclude() {
   return {
     deal: { select: { id: true, title: true } },
     customer: { select: { id: true, displayName: true } },
-    owner: { select: { id: true, name: true } },
-    createdBy: { select: { id: true, name: true } },
-    completedBy: { select: { id: true, name: true } },
+    owner: { select: { id: true, firstName: true, lastName: true } },
+    createdBy: { select: { id: true, firstName: true, lastName: true } },
+    completedBy: { select: { id: true, firstName: true, lastName: true } },
   } satisfies Prisma.ActivityInclude;
+}
+
+function fullName(u: { firstName: string; lastName: string } | null | undefined): string {
+  if (!u) return '';
+  return `${u.firstName} ${u.lastName}`.trim();
 }
 type ActivityRow = Prisma.ActivityGetPayload<{ include: ReturnType<typeof defaultInclude> }>;
 
@@ -373,9 +378,9 @@ function toActivityResponse(a: ActivityRow): ActivityResponse {
     deletedAt: a.deletedAt ? a.deletedAt.toISOString() : null,
     deal: a.deal ? { id: a.deal.id, title: a.deal.title } : null,
     customer: a.customer ? { id: a.customer.id, displayName: a.customer.displayName } : null,
-    owner: a.owner ? { id: a.owner.id, name: a.owner.name } : null,
-    createdBy: a.createdBy ? { id: a.createdBy.id, name: a.createdBy.name } : undefined,
-    completedBy: a.completedBy ? { id: a.completedBy.id, name: a.completedBy.name } : null,
+    owner: a.owner ? { id: a.owner.id, name: fullName(a.owner) } : null,
+    createdBy: a.createdBy ? { id: a.createdBy.id, name: fullName(a.createdBy) } : undefined,
+    completedBy: a.completedBy ? { id: a.completedBy.id, name: fullName(a.completedBy) } : null,
   };
 }
 

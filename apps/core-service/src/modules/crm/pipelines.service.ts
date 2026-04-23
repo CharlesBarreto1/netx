@@ -473,11 +473,11 @@ function toPipelineResponse(
 // =============================================================================
 export function defaultStages(): PipelineStageInput[] {
   return [
-    { name: 'Novo lead', probability: 10, color: '#64748b' },
-    { name: 'Qualificado', probability: 25, color: '#0ea5e9' },
-    { name: 'Proposta enviada', probability: 50, color: '#a855f7' },
-    { name: 'Negociação', probability: 75, color: '#f59e0b' },
-    { name: 'Ganho', probability: 100, color: '#22c55e', isWon: true },
-    { name: 'Perdido', probability: 0, color: '#ef4444', isLost: true },
+    { name: 'Novo lead', probability: 10, color: '#64748b', isWon: false, isLost: false },
+    { name: 'Qualificado', probability: 25, color: '#0ea5e9', isWon: false, isLost: false },
+    { name: 'Proposta enviada', probability: 50, color: '#a855f7', isWon: false, isLost: false },
+    { name: 'Negociação', probability: 75, color: '#f59e0b', isWon: false, isLost: false },
+    { name: 'Ganho', probability: 100, color: '#22c55e', isWon: true, isLost: false },
+    { name: 'Perdido', probability: 0, color: '#ef4444', isWon: false, isLost: true },
   ];
 }

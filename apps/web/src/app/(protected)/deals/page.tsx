@@ -108,10 +108,12 @@ export default function DealsPage() {
 
         {/* Board */}
         <div className="min-h-0 flex-1">
-          {!pipelines || boardLoading || !board ? (
+          {!pipelines ? (
             <PageLoader label="Carregando pipeline…" />
           ) : pipelines.length === 0 ? (
             <EmptyState />
+          ) : boardLoading || !board ? (
+            <PageLoader label="Carregando pipeline…" />
           ) : (
             <DealBoard
               board={board}
