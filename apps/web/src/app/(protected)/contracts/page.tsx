@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import useSWR from 'swr';
 
-import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Input, Select } from '@/components/ui/Input';
 import { PageLoader } from '@/components/ui/Spinner';
@@ -12,6 +11,8 @@ import { contractsApi, type Contract, type ContractStatus } from '@/lib/contract
 import type { Paginated } from '@/lib/crm-types';
 import { formatDate, formatMoney } from '@/lib/format';
 import { hasPermission } from '@/lib/session';
+
+import { StatusBadge } from './_components/StatusBadge';
 
 /**
  * /contracts — lista simples de contratos com filtros.
@@ -167,19 +168,6 @@ export default function ContractsPage() {
       )}
     </div>
   );
-}
-
-export function StatusBadge({ status }: { status: ContractStatus }) {
-  switch (status) {
-    case 'ACTIVE':
-      return <Badge tone="success">Ativo</Badge>;
-    case 'SUSPENDED':
-      return <Badge tone="warning">Suspenso</Badge>;
-    case 'CANCELLED':
-      return <Badge tone="danger">Cancelado</Badge>;
-    default:
-      return <Badge>{status}</Badge>;
-  }
 }
 
 function EmptyState({ canWrite }: { canWrite: boolean }) {

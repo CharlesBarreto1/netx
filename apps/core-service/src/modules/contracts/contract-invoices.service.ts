@@ -82,7 +82,7 @@ export class ContractInvoicesService {
 
     return {
       data: rows.map(toInvoiceResponse),
-      meta: paginationMeta(q.page, q.pageSize, total),
+      pagination: paginationMeta(total, q.page, q.pageSize),
     };
   }
 

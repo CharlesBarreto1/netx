@@ -157,7 +157,7 @@ export class ContractsService {
     ]);
     return {
       data: rows.map((r) => toContractResponse(r, { includePassword: false })),
-      meta: paginationMeta(q.page, q.pageSize, total),
+      pagination: paginationMeta(total, q.page, q.pageSize),
     };
   }
 

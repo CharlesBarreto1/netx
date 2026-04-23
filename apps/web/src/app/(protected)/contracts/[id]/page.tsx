@@ -23,7 +23,7 @@ import type { Paginated } from '@/lib/crm-types';
 import { formatDate, formatDateTime, formatMoney } from '@/lib/format';
 import { hasPermission } from '@/lib/session';
 
-import { StatusBadge } from '../page';
+import { StatusBadge } from '../_components/StatusBadge';
 
 /**
  * /contracts/[id] — detalhe do contrato.
