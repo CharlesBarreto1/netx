@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 
 import { DealBoard } from '@/components/deals/DealBoard';
+import { DealDetailDialog } from '@/components/deals/DealDetailDialog';
 import { NewDealDialog } from '@/components/deals/NewDealDialog';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Input';
@@ -50,15 +51,17 @@ export default function DealsPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [defaultStageId, setDefaultStageId] = useState<string | null>(null);
 
+  // Dialog de detalhe (edição + ações + conversão)
+  const [detailDealId, setDetailDealId] = useState<string | null>(null);
+  const detailOpen = detailDealId !== null;
+
   function openNewDealAt(stageId?: string) {
     setDefaultStageId(stageId ?? null);
     setDialogOpen(true);
   }
 
   function openDealDetail(dealId: string) {
-    // TODO: rota dedicada (#40). Por enquanto rola um log + console — sem quebrar tipos.
-    // eslint-disable-next-line no-console
-    console.log('open deal detail', dealId);
+    setDetailDealId(dealId);
   }
 
   return (
@@ -131,6 +134,17 @@ export default function DealsPage() {
           pipeline={currentPipeline}
           defaultStageId={defaultStageId}
           onCreated={() => mutateBoard()}
+        />
+
+        {/* Dialog de detalhe / edição / conversão */}
+        <DealDetailDialog
+          open={detailOpen}
+          dealId={detailDealId}
+          pipeline={currentPipeline}
+          onOpenChange={(v) => {
+            if (!v) setDetailDealId(null);
+          }}
+          onMutated={() => mutateBoard()}
         />
       </div>
     </TooltipProvider>
