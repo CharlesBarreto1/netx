@@ -3,8 +3,10 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
 import {
   CreateUserRequestSchema,
+  UpdateMyUserRequestSchema,
   UpdateUserRequestSchema,
   type CreateUserRequest,
+  type UpdateMyUserRequest,
   type UpdateUserRequest,
   type AuthenticatedPrincipal,
 } from '@netx/shared';
@@ -28,6 +30,28 @@ export class UsersController {
     @Query('search') search?: string,
   ) {
     return this.users.list(user.tenantId, Math.max(1, Number(page)), Math.min(100, Math.max(1, Number(pageSize))), search);
+  }
+
+  /**
+   * GET /v1/users/me — eu mesmo. Sem requerer `users.read` (qualquer user
+   * autenticado pode ler o próprio perfil). DEVE vir antes de `:id` pra que
+   * o roteador do Nest não interprete "me" como um id.
+   */
+  @Get('me')
+  getMe(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.users.findById(user.tenantId, user.sub);
+  }
+
+  /**
+   * PATCH /v1/users/me — atualiza preferências pessoais (locale, timezone,
+   * nome, telefone). Sem `users.update` — é o próprio usuário.
+   */
+  @Patch('me')
+  updateMe(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @ZodBody(UpdateMyUserRequestSchema) body: UpdateMyUserRequest,
+  ) {
+    return this.users.updateMe(user.sub, body);
   }
 
   @Get(':id')

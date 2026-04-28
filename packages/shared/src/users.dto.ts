@@ -20,6 +20,22 @@ export const UpdateUserRequestSchema = CreateUserRequestSchema.partial().extend(
 });
 export type UpdateUserRequest = z.infer<typeof UpdateUserRequestSchema>;
 
+/**
+ * "Eu mesmo edito o meu user" — endpoint /v1/users/me. Mais restritivo que
+ * UpdateUser admin: só permite preferências pessoais, nunca status, roles
+ * ou email. Locale aqui é o cara: o switcher de idioma chama esse endpoint.
+ */
+export const UpdateMyUserRequestSchema = z
+  .object({
+    firstName: z.string().min(1).max(120).optional(),
+    lastName: z.string().min(1).max(120).optional(),
+    phone: z.string().max(32).nullish(),
+    locale: z.string().max(10).nullish(),
+    timezone: z.string().max(64).nullish(),
+  })
+  .strict();
+export type UpdateMyUserRequest = z.infer<typeof UpdateMyUserRequestSchema>;
+
 export interface UserResponse {
   id: string;
   tenantId: string;

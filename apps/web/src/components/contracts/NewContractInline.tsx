@@ -16,6 +16,7 @@ import { toast } from '@/components/ui/sonner';
 import { ApiError } from '@/lib/api';
 import { contractsApi, type Contract } from '@/lib/contracts-api';
 import type { Customer, Paginated } from '@/lib/crm-types';
+import { useTenantConfig } from '@/lib/tenant-config';
 
 /**
  * NewContractInline — formulário reusável de criação de contrato.
@@ -68,6 +69,8 @@ export function NewContractInline({
   onSkip,
   skipLabel = 'Pular',
 }: NewContractInlineProps) {
+  const { currency, currencySymbol } = useTenantConfig();
+  const moneyLabel = `${currencySymbol ?? currency}`;
   // Carrega clientes para o Select só quando precisamos (i.e., não está travado).
   const customersKey = lockedCustomerId ? null : '/v1/customers?pageSize=100';
   const { data: customersResp, isLoading: loadingCustomers } = useSWR<Paginated<Customer>>(
@@ -126,8 +129,12 @@ export function NewContractInline({
     if (!form.installationAddress || form.installationAddress.length < 5)
       e.installationAddress = 'Informe o endereço de instalação';
     if (form.installationMapsUrl) {
+      // Aceita URL com ou sem protocolo: se faltar, normalizamos pra https://
+      // antes de mandar pro backend (Zod `.url()` exige protocolo). Validamos
+      // o resultado aqui pra dar feedback inline em vez de receber 400.
+      const normalized = normalizeMapsUrl(form.installationMapsUrl);
       try {
-        const u = new URL(form.installationMapsUrl);
+        const u = new URL(normalized);
         if (!/^https?:$/.test(u.protocol)) e.installationMapsUrl = 'Use http(s)://';
       } catch {
         e.installationMapsUrl = 'URL inválida';
@@ -154,7 +161,9 @@ export function NewContractInline({
         pppoeUsername: form.pppoeUsername,
         pppoePassword: form.pppoePassword,
         installationAddress: form.installationAddress,
-        installationMapsUrl: form.installationMapsUrl.trim() || null,
+        installationMapsUrl: form.installationMapsUrl.trim()
+          ? normalizeMapsUrl(form.installationMapsUrl)
+          : null,
         monthlyValue: Number(String(form.monthlyValue).replace(',', '.')),
         bandwidthMbps: Number(form.bandwidthMbps),
         dueDay: Number(form.dueDay),
@@ -271,7 +280,7 @@ export function NewContractInline({
       <div className="grid gap-4 md:grid-cols-3">
         <div>
           <Label htmlFor="contract-monthlyValue" required>
-            Mensalidade (R$)
+            Mensalidade ({moneyLabel})
           </Label>
           <Input
             id="contract-monthlyValue"
@@ -364,4 +373,17 @@ export function NewContractInline({
       </div>
     </form>
   );
+}
+
+/**
+ * Normaliza URL do Google Maps (ou qualquer link público): se o usuário colar
+ * `maps.app.goo.gl/abc` sem protocolo, prepend `https://`. O backend usa
+ * `z.string().url()`, que exige protocolo — sem essa normalização a UX fica
+ * frustrante (erro 400 silencioso no submit).
+ */
+function normalizeMapsUrl(raw: string): string {
+  const v = raw.trim();
+  if (!v) return v;
+  if (/^https?:\/\//i.test(v)) return v;
+  return `https://${v}`;
 }

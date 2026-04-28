@@ -21,6 +21,7 @@ import {
   type CustomerType,
   type TaxIdType,
 } from '@/lib/crm-types';
+import { useTenantConfig } from '@/lib/tenant-config';
 import { STATUS_LABEL } from '@/components/ui/Badge';
 
 export interface CustomerFormValues {
@@ -59,13 +60,16 @@ export interface CustomerFormProps {
   onCancel?: () => void;
 }
 
-function defaultValues(initial?: Customer): CustomerFormValues {
+function defaultValues(
+  initial?: Customer,
+  presetDefaults?: { taxIdCountry: string; taxIdType: TaxIdType },
+): CustomerFormValues {
   if (!initial) {
     return {
       type: 'INDIVIDUAL',
       status: 'LEAD',
-      taxIdCountry: 'BR',
-      taxIdType: 'CPF',
+      taxIdCountry: presetDefaults?.taxIdCountry ?? 'BR',
+      taxIdType: presetDefaults?.taxIdType ?? 'CPF',
     };
   }
   return {
@@ -107,7 +111,15 @@ function autoFormatTaxId(type: TaxIdType | null | undefined, v: string) {
 }
 
 export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerFormProps) {
-  const [v, setV] = useState<CustomerFormValues>(defaultValues(initial));
+  const { preset } = useTenantConfig();
+  // Default do PF do país (CPF para BR, CI para PY, etc). PJ default vem na
+  // troca de tipo no Select abaixo.
+  const [v, setV] = useState<CustomerFormValues>(() =>
+    defaultValues(initial, {
+      taxIdCountry: preset.defaultTaxIdCountry,
+      taxIdType: preset.defaultTaxIdType.INDIVIDUAL as TaxIdType,
+    }),
+  );
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -163,7 +175,17 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
           <Select
             id="type"
             value={v.type}
-            onChange={(e) => upd('type', e.target.value as CustomerType)}
+            onChange={(e) => {
+              const next = e.target.value as CustomerType;
+              // Ao trocar PF/PJ no create, atualiza o tipo de documento default
+              // pro que faz sentido nesse país (BR PF=CPF, PJ=CNPJ; PY PF=CI, PJ=RUC).
+              setV((prev) => ({
+                ...prev,
+                type: next,
+                taxIdType: preset.defaultTaxIdType[next] as TaxIdType,
+                taxIdCountry: preset.defaultTaxIdCountry,
+              }));
+            }}
             disabled={isEdit}
           >
             <option value="INDIVIDUAL">Pessoa Física</option>

@@ -30,3 +30,23 @@ export interface TenantResponse {
   createdAt: string;
   updatedAt: string;
 }
+
+/**
+ * Atualização das parametrizações da operação (tenant atual).
+ * `applyCountryDefaults` quando true: ao mudar `country`, o serviço sobrescreve
+ * `locale`, `currency` e `timezone` com o preset desse país. Útil pro fluxo
+ * de setup inicial — o admin escolhe "Paraguay" e o resto se ajusta sozinho.
+ */
+export const UpdateTenantSettingsRequestSchema = z
+  .object({
+    name: z.string().min(2).max(255).optional(),
+    legalName: z.string().max(255).nullish(),
+    taxId: z.string().max(32).nullish(),
+    country: z.string().length(2).toUpperCase().optional(),
+    locale: z.string().max(10).optional(),
+    timezone: z.string().max(64).optional(),
+    currency: z.string().length(3).toUpperCase().optional(),
+    applyCountryDefaults: z.boolean().optional(),
+  })
+  .strict();
+export type UpdateTenantSettingsRequest = z.infer<typeof UpdateTenantSettingsRequestSchema>;

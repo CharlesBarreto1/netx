@@ -5,5 +5,6 @@ export * from './pagination';
 export * from './errors';
 export * from './tenant-context';
 export * from './validators/documents';
+export * from './i18n/country-presets';
 export * from './crm';
 export * from './contracts';

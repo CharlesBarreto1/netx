@@ -24,6 +24,13 @@ export interface ApiProblem {
   status?: number;
   detail?: string;
   errors?: Array<{ path: string; message: string }>;
+  /**
+   * Campo padrão do NestJS (HttpException). Pode ser string ou array de strings
+   * (em ValidationPipe). Usado como fallback caso o backend ainda não tenha o
+   * filtro RFC 7807 aplicado — sem isso, ConflictException/NotFoundException
+   * apareciam como "HTTP 409" no toast.
+   */
+  message?: string | string[];
 }
 
 export class ApiError extends Error {
@@ -31,19 +38,42 @@ export class ApiError extends Error {
     public readonly status: number,
     public readonly problem: ApiProblem,
   ) {
-    super(problem.detail ?? problem.title ?? `HTTP ${status}`);
+    super(
+      problem.detail ??
+        problem.title ??
+        nestMessageToString(problem.message) ??
+        `HTTP ${status}`,
+    );
     this.name = 'ApiError';
   }
 
-  /** Retorna mensagem amigável: junta errors[] quando validation, senão detail/title. */
+  /**
+   * Mensagem amigável para toast / inline error. Ordem de fallback:
+   *   1. `errors[]` (Zod pipe / RFC 7807) — junta em uma linha
+   *   2. `detail` (RFC 7807)
+   *   3. `title` (RFC 7807)
+   *   4. `message` (NestJS HttpException default) — string ou array
+   *   5. mensagem genérica do `super`
+   */
   get friendlyMessage(): string {
     if (this.problem.errors && this.problem.errors.length) {
       return this.problem.errors
         .map((e) => `${e.path ? e.path + ': ' : ''}${e.message}`)
         .join(' · ');
     }
-    return this.problem.detail ?? this.problem.title ?? this.message;
+    return (
+      this.problem.detail ??
+      this.problem.title ??
+      nestMessageToString(this.problem.message) ??
+      this.message
+    );
   }
+}
+
+function nestMessageToString(m: string | string[] | undefined): string | undefined {
+  if (!m) return undefined;
+  if (Array.isArray(m)) return m.length ? m.join(' · ') : undefined;
+  return m;
 }
 
 function authHeaders(): HeadersInit {

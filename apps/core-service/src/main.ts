@@ -8,6 +8,7 @@ import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
 import { loadConfig } from '@netx/config';
+import { GlobalExceptionFilter } from './common/global-exception.filter';
 
 async function bootstrap() {
   const config = loadConfig();
@@ -34,6 +35,11 @@ async function bootstrap() {
       transformOptions: { enableImplicitConversion: true },
     }),
   );
+
+  // Filtro global RFC 7807 — todas as exceptions saem como ProblemDetails,
+  // o que faz o frontend (`ApiError.friendlyMessage`) mostrar mensagens reais
+  // como "PPPoE username já em uso" em vez de "HTTP 409".
+  app.useGlobalFilters(new GlobalExceptionFilter());
 
   // Swagger (disabled in production)
   if (config.env !== 'production') {

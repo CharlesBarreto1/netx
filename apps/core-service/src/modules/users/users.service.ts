@@ -3,7 +3,13 @@ import { UserStatus } from '@prisma/client';
 
 import { hashPassword } from '@netx/auth';
 import { loadConfig } from '@netx/config';
-import type { CreateUserRequest, UpdateUserRequest, UserResponse, Paginated } from '@netx/shared';
+import type {
+  CreateUserRequest,
+  UpdateMyUserRequest,
+  UpdateUserRequest,
+  UserResponse,
+  Paginated,
+} from '@netx/shared';
 import { paginationMeta } from '@netx/shared';
 import { randomBytes } from 'crypto';
 
@@ -146,6 +152,41 @@ export class UsersService {
       resourceId: id,
       beforeState: { status: before.status },
       afterState: { status: updated.status },
+    });
+
+    return this.toResponse(updated);
+  }
+
+  /**
+   * Atualiza o próprio user (escopo /me): mais restritivo que `update`.
+   * Não mexe em status, roles, email ou MFA. Principal uso hoje é o switcher
+   * de idioma (locale).
+   */
+  async updateMe(userId: string, input: UpdateMyUserRequest): Promise<UserResponse> {
+    const before = await this.prisma.user.findFirst({
+      where: { id: userId, deletedAt: null },
+    });
+    if (!before) throw new NotFoundException('User not found');
+
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        firstName: input.firstName,
+        lastName: input.lastName,
+        phone: input.phone,
+        locale: input.locale,
+        timezone: input.timezone,
+      },
+      include: { userRoles: { include: { role: true } } },
+    });
+
+    await this.audit.log({
+      tenantId: before.tenantId,
+      userId,
+      action: 'user.self_updated',
+      resource: 'users',
+      resourceId: userId,
+      afterState: { locale: updated.locale, timezone: updated.timezone },
     });
 
     return this.toResponse(updated);

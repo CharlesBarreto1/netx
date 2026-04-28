@@ -19,6 +19,7 @@ import { dealsApi, type CreateDealInput } from '@/lib/crm-sales-api';
 import type { Pipeline } from '@/lib/crm-sales-types';
 import type { Customer, Paginated } from '@/lib/crm-types';
 import { ApiError } from '@/lib/api';
+import { useTenantConfig } from '@/lib/tenant-config';
 
 /**
  * NewDealDialog — modal de criação rápida de deal.
@@ -39,9 +40,11 @@ export function NewDealDialog({
   defaultStageId?: string | null;
   onCreated: () => void;
 }) {
+  const { currency: tenantCurrency } = useTenantConfig();
+
   const [title, setTitle] = useState('');
   const [value, setValue] = useState<string>(''); // string p/ aceitar input vazio
-  const [currency, setCurrency] = useState('BRL');
+  const [currency, setCurrency] = useState(tenantCurrency);
   const [stageId, setStageId] = useState<string>('');
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerId, setCustomerId] = useState<string | null>(null);
@@ -53,13 +56,13 @@ export function NewDealDialog({
     if (open) {
       setTitle('');
       setValue('');
-      setCurrency('BRL');
+      setCurrency(tenantCurrency);
       setStageId(defaultStageId ?? pipeline?.stages[0]?.id ?? '');
       setCustomerSearch('');
       setCustomerId(null);
       setError(null);
     }
-  }, [open, defaultStageId, pipeline]);
+  }, [open, defaultStageId, pipeline, tenantCurrency]);
 
   // Busca de clientes — só dispara se digitar 2+ chars.
   const customerKey =

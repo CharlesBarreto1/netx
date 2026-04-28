@@ -7,11 +7,18 @@ import { SWRConfig } from 'swr';
 import { AppShell } from '@/components/layout/AppShell';
 import { PageLoader } from '@/components/ui/Spinner';
 import { swrFetcher } from '@/lib/api';
+import { I18nProvider } from '@/lib/i18n-provider';
 import { getSession, type Session } from '@/lib/session';
+import { TenantConfigProvider } from '@/lib/tenant-config';
 
 /**
  * Guard do grupo (protected): lê a sessão no client e redireciona para /login
- * se não houver token. Também provê o `SWRConfig` global com o fetcher do api.ts.
+ * se não houver token. Provê:
+ *   - SWRConfig global com `swrFetcher`
+ *   - TenantConfigProvider (carrega /tenants/me + /users/me, expõe locale/currency/preset)
+ *   - I18nProvider (NextIntlClientProvider com locale efetivo)
+ *
+ * Ordem importa: SWR → TenantConfig (usa SWR) → I18n (usa TenantConfig).
  */
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -46,7 +53,11 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
         },
       }}
     >
-      <AppShell session={session}>{children}</AppShell>
+      <TenantConfigProvider>
+        <I18nProvider>
+          <AppShell session={session}>{children}</AppShell>
+        </I18nProvider>
+      </TenantConfigProvider>
     </SWRConfig>
   );
 }
