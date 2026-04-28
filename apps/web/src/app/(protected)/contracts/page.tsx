@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 
 import { Button } from '@/components/ui/Button';
@@ -9,7 +10,8 @@ import { Input, Select } from '@/components/ui/Input';
 import { PageLoader } from '@/components/ui/Spinner';
 import { contractsApi, type Contract, type ContractStatus } from '@/lib/contracts-api';
 import type { Paginated } from '@/lib/crm-types';
-import { formatDate, formatMoney } from '@/lib/format';
+import { formatDate } from '@/lib/format';
+import { useFormatMoney } from '@/lib/use-money';
 import { hasPermission } from '@/lib/session';
 
 import { StatusBadge } from './_components/StatusBadge';
@@ -25,6 +27,8 @@ import { StatusBadge } from './_components/StatusBadge';
  */
 export default function ContractsPage() {
   const canWrite = hasPermission('contracts.write');
+  const formatMoney = useFormatMoney();
+  const tContracts = useTranslations('contracts');
 
   const [status, setStatus] = useState<ContractStatus | ''>('');
   const [search, setSearch] = useState('');
@@ -50,15 +54,14 @@ export default function ContractsPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex flex-col">
-          <h1 className="text-xl font-semibold tracking-tight text-text">Contratos</h1>
-          <p className="text-xs text-text-muted">
-            Serviços vendidos a clientes — PPPoE, mensalidade, status no RADIUS.
-          </p>
+          <h1 className="text-xl font-semibold tracking-tight text-text">
+            {tContracts('title')}
+          </h1>
         </div>
         <div className="ml-auto flex items-center gap-2">
           {canWrite && (
             <Link href="/contracts/new">
-              <Button size="sm">Novo contrato</Button>
+              <Button size="sm">{tContracts('new')}</Button>
             </Link>
           )}
         </div>

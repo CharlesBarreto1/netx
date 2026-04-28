@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 
 import { AddressesTab } from '@/components/crm/AddressesTab';
@@ -52,6 +53,7 @@ export default function CustomerDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
+  const tTabs = useTranslations('customers.tabs');
   const id = params?.id;
   const key = id ? `/v1/customers/${id}` : null;
 
@@ -92,14 +94,14 @@ export default function CustomerDetailPage() {
   if (!customer) return null;
 
   const items: TabItem<TabKey>[] = [
-    { value: 'dados', label: 'Dados' },
-    { value: 'enderecos', label: 'Endereços' },
-    { value: 'contatos', label: 'Contatos' },
-    { value: 'contratos', label: 'Contratos' },
-    { value: 'financeiro', label: 'Financeiro' },
-    { value: 'tags', label: 'Tags', badge: customer.tags?.length ?? 0 },
-    { value: 'consentimentos', label: 'Consentimentos' },
-    { value: 'anotacoes', label: 'Anotações' },
+    { value: 'dados', label: tTabs('data') },
+    { value: 'enderecos', label: tTabs('addresses') },
+    { value: 'contatos', label: tTabs('contacts') },
+    { value: 'contratos', label: tTabs('contracts') },
+    { value: 'financeiro', label: tTabs('finance') },
+    { value: 'tags', label: tTabs('tags'), badge: customer.tags?.length ?? 0 },
+    { value: 'consentimentos', label: tTabs('consents') },
+    { value: 'anotacoes', label: tTabs('notes') },
   ];
 
   return (

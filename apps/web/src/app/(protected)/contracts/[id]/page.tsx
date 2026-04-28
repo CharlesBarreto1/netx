@@ -20,7 +20,8 @@ import {
   type InvoiceStatus,
 } from '@/lib/contracts-api';
 import type { Paginated } from '@/lib/crm-types';
-import { formatDate, formatDateTime, formatMoney } from '@/lib/format';
+import { formatDate, formatDateTime } from '@/lib/format';
+import { useFormatMoney } from '@/lib/use-money';
 import { hasPermission } from '@/lib/session';
 
 import { StatusBadge } from '../_components/StatusBadge';
@@ -39,6 +40,7 @@ export default function ContractDetailPage() {
 
   const canWrite = hasPermission('contracts.write');
   const canDelete = hasPermission('contracts.delete');
+  const formatMoney = useFormatMoney();
 
   const contractKey = id ? `/v1/contracts/${id}` : null;
   const invoicesKey = id ? contractInvoicesApi.byContractPath(id) : null;

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { SimpleTooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/cn';
 import type { DealBoardColumn } from '@/lib/crm-sales-types';
-import { formatMoney } from '@/lib/format';
+import { useFormatMoney } from '@/lib/use-money';
 
 import { DealCard } from './DealCard';
 
@@ -31,6 +31,7 @@ export function DealColumn({
   onOpenDeal: (dealId: string) => void;
   activeDealId?: string | null;
 }) {
+  const formatMoney = useFormatMoney();
   const { setNodeRef, isOver } = useDroppable({
     id: `stage:${column.stage.id}`,
     data: { type: 'stage', stageId: column.stage.id },
@@ -76,7 +77,7 @@ export function DealColumn({
       {/* Soma + probabilidade */}
       <div className="flex items-center justify-between gap-2 px-3 pb-2 text-2xs text-text-muted">
         <span className="tabular">
-          {formatMoney(column.totalValue, 'BRL', { short: true })}
+          {formatMoney(column.totalValue, undefined, { short: true })}
         </span>
         <span className="tabular">{column.stage.probability}% prob.</span>
       </div>

@@ -2,6 +2,7 @@
 
 import { Plus, Settings2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 
 import { DealBoard } from '@/components/deals/DealBoard';
@@ -24,6 +25,7 @@ import { hasPermission } from '@/lib/session';
  */
 export default function DealsPage() {
   const canCreate = hasPermission('deals.write');
+  const tDeals = useTranslations('deals');
 
   // Pipelines ativos do tenant
   const { data: pipelines } = useSWR<Pipeline[]>(pipelinesApi.path());
@@ -71,11 +73,9 @@ export default function DealsPage() {
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex flex-col">
             <h1 className="text-xl font-semibold tracking-tight text-text">
-              Vendas
+              {tDeals('title')}
             </h1>
-            <p className="text-xs text-text-muted">
-              Pipeline de oportunidades — arraste cards entre colunas para mover de estágio.
-            </p>
+            <p className="text-xs text-text-muted">{tDeals('subtitle')}</p>
           </div>
 
           <div className="ml-auto flex items-center gap-2">

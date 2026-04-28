@@ -3,7 +3,8 @@
 import type { Route } from 'next';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { Toaster } from '@/components/ui/sonner';
 import { LocaleSwitcher } from '@/components/layout/LocaleSwitcher';
 import { cn } from '@/lib/cn';
@@ -17,14 +18,25 @@ export interface NavItem {
   badge?: React.ReactNode;
 }
 
-const nav: NavItem[] = [
-  { href: '/dashboard', label: 'Dashboard', icon: <IconDashboard /> },
-  { href: '/deals', label: 'Vendas', icon: <IconKanban />, permission: 'deals.read' },
-  { href: '/customers', label: 'Clientes', icon: <IconUsers />, permission: 'customers.read' },
-  { href: '/contracts', label: 'Contratos', icon: <IconContract />, permission: 'contracts.read' },
-  { href: '/crm/tags', label: 'Tags', icon: <IconTag />, permission: 'customers.tags.manage' },
-  // Settings ficam visíveis só para admins do tenant.
-  { href: '/settings/tenant', label: 'Configurações', icon: <IconSettings />, permission: 'tenants.update' },
+/**
+ * Items da sidebar. Os `labelKey` apontam pro namespace `nav` dos dicionários
+ * (`nav.dashboard`, `nav.sales`, etc.). Resolução acontece dentro do componente
+ * via `useTranslations('nav')`.
+ */
+interface NavItemDef {
+  href: Route;
+  labelKey: string;
+  icon: React.ReactNode;
+  permission?: string;
+}
+
+const NAV_ITEMS: NavItemDef[] = [
+  { href: '/dashboard', labelKey: 'dashboard', icon: <IconDashboard /> },
+  { href: '/deals', labelKey: 'sales', icon: <IconKanban />, permission: 'deals.read' },
+  { href: '/customers', labelKey: 'customers', icon: <IconUsers />, permission: 'customers.read' },
+  { href: '/contracts', labelKey: 'contracts', icon: <IconContract />, permission: 'contracts.read' },
+  { href: '/crm/tags', labelKey: 'tags', icon: <IconTag />, permission: 'customers.tags.manage' },
+  { href: '/settings/tenant', labelKey: 'settings', icon: <IconSettings />, permission: 'tenants.update' },
 ];
 
 export function AppShell({
@@ -36,6 +48,7 @@ export function AppShell({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const tNav = useTranslations('nav');
   const [open, setOpen] = useState(false); // mobile sidebar
 
   // Fecha o sidebar mobile ao navegar.
@@ -43,8 +56,18 @@ export function AppShell({
     setOpen(false);
   }, [pathname]);
 
-  const allowed = nav.filter(
-    (n) => !n.permission || session.user.permissions.includes(n.permission),
+  // Resolve os labels via translations e aplica o filtro de permissão.
+  const allowed = useMemo<NavItem[]>(
+    () =>
+      NAV_ITEMS.filter(
+        (n) => !n.permission || session.user.permissions.includes(n.permission),
+      ).map((n) => ({
+        href: n.href,
+        label: tNav(n.labelKey as 'dashboard'),
+        icon: n.icon,
+        permission: n.permission,
+      })),
+    [session.user.permissions, tNav],
   );
 
   function logout() {
@@ -156,6 +179,7 @@ function SidebarNav({ items, pathname }: { items: NavItem[]; pathname: string })
 }
 
 function UserMenu({ session, onLogout }: { session: Session; onLogout: () => void }) {
+  const tNav = useTranslations('nav');
   const [open, setOpen] = useState(false);
   const name = displayName(session.user) || session.user.email;
 
@@ -201,7 +225,7 @@ function UserMenu({ session, onLogout }: { session: Session; onLogout: () => voi
             onClick={onLogout}
             className="w-full px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
           >
-            Sair
+            {tNav('logout')}
           </button>
         </div>
       )}

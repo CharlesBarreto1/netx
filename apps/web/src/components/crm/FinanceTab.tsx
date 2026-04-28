@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import useSWR from 'swr';
 
@@ -18,7 +19,8 @@ import {
   type InvoiceStatus,
 } from '@/lib/contracts-api';
 import type { Paginated } from '@/lib/crm-types';
-import { formatDate, formatMoney } from '@/lib/format';
+import { formatDate } from '@/lib/format';
+import { useFormatMoney } from '@/lib/use-money';
 import { hasPermission } from '@/lib/session';
 
 /**
@@ -41,15 +43,15 @@ const STATUS_TONE: Record<InvoiceStatus, 'info' | 'success' | 'warning' | 'dange
   OVERDUE: 'danger',
   CANCELLED: 'warning',
 };
-const STATUS_LABEL: Record<InvoiceStatus, string> = {
-  OPEN: 'Em aberto',
-  PAID: 'Paga',
-  OVERDUE: 'Em atraso',
-  CANCELLED: 'Cancelada',
-};
 
 export function FinanceTab({ customerId }: { customerId: string }) {
   const canWrite = hasPermission('contracts.write');
+  const formatMoney = useFormatMoney();
+  const tFinance = useTranslations('finance');
+  const tCommon = useTranslations('common');
+  // Status do invoice traduzido vem do dict via key.
+  const statusLabel = (s: InvoiceStatus): string =>
+    tFinance(`invoice.status.${s}` as 'invoice.status.OPEN');
 
   // Faturas do cliente. O backend aceita customerId direto em ListContractInvoicesQuery.
   const invoicesKey = contractInvoicesApi.listPath({
@@ -121,16 +123,20 @@ export function FinanceTab({ customerId }: { customerId: string }) {
       {/* Totais */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <SummaryCard
-          label="Em aberto"
+          label={tFinance('summary.open')}
           value={formatMoney(open)}
           tone="info"
         />
         <SummaryCard
-          label="Em atraso"
+          label={tFinance('summary.overdue')}
           value={formatMoney(overdue)}
           tone={overdue > 0 ? 'danger' : 'neutral'}
         />
-        <SummaryCard label="Total recebido" value={formatMoney(paidTotal)} tone="success" />
+        <SummaryCard
+          label={tFinance('summary.paidTotal')}
+          value={formatMoney(paidTotal)}
+          tone="success"
+        />
       </div>
 
       {invoices.length === 0 ? (
@@ -185,7 +191,7 @@ export function FinanceTab({ customerId }: { customerId: string }) {
                         )}
                     </td>
                     <td className="px-3 py-2">
-                      <Badge tone={STATUS_TONE[inv.status]}>{STATUS_LABEL[inv.status]}</Badge>
+                      <Badge tone={STATUS_TONE[inv.status]}>{statusLabel(inv.status)}</Badge>
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center justify-end gap-2">
@@ -195,7 +201,7 @@ export function FinanceTab({ customerId }: { customerId: string }) {
                             size="xs"
                             onClick={() => setPaying(inv)}
                           >
-                            Dar baixa
+                            {tFinance('invoice.payAction')}
                           </Button>
                         )}
                         <Link
@@ -204,7 +210,7 @@ export function FinanceTab({ customerId }: { customerId: string }) {
                           rel="noopener noreferrer"
                         >
                           <Button variant="ghost" size="xs">
-                            Baixar
+                            {tFinance('invoice.downloadAction')}
                           </Button>
                         </Link>
                       </div>
@@ -221,7 +227,7 @@ export function FinanceTab({ customerId }: { customerId: string }) {
         open={paying !== null}
         onClose={() => setPaying(null)}
         onConfirm={handlePay}
-        title="Dar baixa na fatura?"
+        title={tFinance('invoice.payConfirmTitle')}
         message={
           paying
             ? `Confirmar pagamento de ${formatMoney(paying.amount)} (vencimento ${formatDate(
@@ -229,7 +235,7 @@ export function FinanceTab({ customerId }: { customerId: string }) {
               )}). Se o contrato estava suspenso por inadimplência, será reativado automaticamente.`
             : ''
         }
-        confirmLabel="Confirmar baixa"
+        confirmLabel={tCommon('confirm')}
         loading={busy}
       />
     </div>

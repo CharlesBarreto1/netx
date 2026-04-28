@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { Plus } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 
 import { Badge } from '@/components/ui/Badge';
@@ -9,7 +10,8 @@ import { Button } from '@/components/ui/Button';
 import { InlineLoader } from '@/components/ui/Spinner';
 import { contractsApi, type Contract } from '@/lib/contracts-api';
 import type { Paginated } from '@/lib/crm-types';
-import { formatDate, formatMoney } from '@/lib/format';
+import { formatDate } from '@/lib/format';
+import { useFormatMoney } from '@/lib/use-money';
 import { hasPermission } from '@/lib/session';
 
 /**
@@ -24,14 +26,12 @@ const STATUS_TONE: Record<Contract['status'], 'success' | 'warning' | 'danger'> 
   SUSPENDED: 'warning',
   CANCELLED: 'danger',
 };
-const STATUS_LABEL: Record<Contract['status'], string> = {
-  ACTIVE: 'Ativo',
-  SUSPENDED: 'Suspenso',
-  CANCELLED: 'Cancelado',
-};
-
 export function ContractsTab({ customerId }: { customerId: string }) {
   const canWrite = hasPermission('contracts.write');
+  const formatMoney = useFormatMoney();
+  const tContracts = useTranslations('contracts');
+  const statusLabel = (s: Contract['status']) =>
+    tContracts(`status.${s.toLowerCase()}` as 'status.active');
 
   const key = contractsApi.listPath({
     customerId,
@@ -103,7 +103,7 @@ export function ContractsTab({ customerId }: { customerId: string }) {
                     dia {c.dueDay}
                   </td>
                   <td className="px-3 py-2">
-                    <Badge tone={STATUS_TONE[c.status]}>{STATUS_LABEL[c.status]}</Badge>
+                    <Badge tone={STATUS_TONE[c.status]}>{statusLabel(c.status)}</Badge>
                   </td>
                   <td className="px-3 py-2 text-slate-500">{formatDate(c.createdAt)}</td>
                   <td className="px-3 py-2 text-right">

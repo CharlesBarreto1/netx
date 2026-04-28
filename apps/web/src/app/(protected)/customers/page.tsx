@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
+import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 
 import { Badge, STATUS_LABEL, statusTone } from '@/components/ui/Badge';
@@ -59,6 +60,7 @@ export default function CustomersListPage() {
   const sp = useSearchParams();
   const filters = useMemo(() => readFilters(sp), [sp]);
   const canCreate = hasPermission('customers.create');
+  const tCustomers = useTranslations('customers');
 
   const apiQs = toQuery(filters);
   const { data, isLoading, error } = useSWR<Paginated<Customer>>(
@@ -82,14 +84,11 @@ export default function CustomersListPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Clientes</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Visão 360° dos clientes PF e PJ do seu provedor.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{tCustomers('title')}</h1>
         </div>
         {canCreate && (
           <Link href="/customers/new">
-            <Button>Novo cliente</Button>
+            <Button>{tCustomers('new')}</Button>
           </Link>
         )}
       </header>

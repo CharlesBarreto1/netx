@@ -80,22 +80,57 @@ export function formatDateTime(iso: string | null | undefined, locale = 'pt-BR')
 }
 
 /**
- * Formata dinheiro com Intl.NumberFormat. Se `short`, colapsa em k/M para
- * cards de Kanban (R$ 12,3 k / R$ 2,1 M). Valor vem sempre como number
- * (o backend retorna Decimal serializado → number).
+ * Símbolos forçados por moeda. O Intl às vezes devolve "R$" pra BRL no pt-BR
+ * mas "BRL" em outros locales; e devolve "PYG" pro guarani em pt-BR. Como o
+ * usuário sempre quer ver o símbolo nativo, sobrescrevemos por aqui.
+ *
+ * Convenção pedida pelo cliente:
+ *   - BRL → R$
+ *   - PYG → ₲
+ *   - USD → U$  (informal brasileiro; o padrão Intl seria "US$")
+ *   - EUR → €
+ *   - ARS → $   (Intl já retorna $; mantido por consistência)
+ */
+const CURRENCY_SYMBOL: Record<string, string> = {
+  BRL: 'R$',
+  PYG: '₲',
+  USD: 'U$',
+  EUR: '€',
+  ARS: '$',
+  COP: '$',
+  MXN: '$',
+};
+
+/**
+ * Casas decimais default por moeda. Guarani não tem centavos, então 0.
+ * Demais moedas usam 2 (Intl resolve o resto).
+ */
+const CURRENCY_DECIMALS: Record<string, number> = {
+  PYG: 0,
+};
+
+/**
+ * Formata dinheiro. Quando `short`, colapsa em k/M para cards (R$ 12,3 k / ₲ 1,2 M).
+ *
+ * Estratégia: forçamos o símbolo via `CURRENCY_SYMBOL` em vez de delegar pro
+ * Intl, porque o Intl varia de locale pra locale. Para o número em si, ainda
+ * usamos `Intl.NumberFormat` style `decimal` pra ter agrupamento e separadores
+ * locale-aware.
  */
 export function formatMoney(
   value: number | null | undefined,
   currency = 'BRL',
-  opts: { short?: boolean; locale?: string } = {},
+  opts: { short?: boolean; locale?: string; decimals?: number } = {},
 ): string {
   const locale = opts.locale ?? 'pt-BR';
   const v = typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  const symbol = CURRENCY_SYMBOL[currency] ?? currency;
+  const decimals =
+    opts.decimals ?? CURRENCY_DECIMALS[currency] ?? 2;
 
   if (opts.short) {
     const abs = Math.abs(v);
     const sign = v < 0 ? '-' : '';
-    const symbol = currencySymbol(currency, locale);
     if (abs >= 1_000_000)
       return `${sign}${symbol} ${(abs / 1_000_000).toLocaleString(locale, {
         maximumFractionDigits: 1,
@@ -110,25 +145,13 @@ export function formatMoney(
   }
 
   try {
-    return new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 2,
-    }).format(v);
+    const num = v.toLocaleString(locale, {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals,
+    });
+    return `${symbol} ${num}`;
   } catch {
-    return `${currency} ${v.toFixed(2)}`;
-  }
-}
-
-function currencySymbol(currency: string, locale: string): string {
-  try {
-    const parts = new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency,
-    }).formatToParts(0);
-    return parts.find((p) => p.type === 'currency')?.value ?? currency;
-  } catch {
-    return currency;
+    return `${symbol} ${v.toFixed(decimals)}`;
   }
 }
 

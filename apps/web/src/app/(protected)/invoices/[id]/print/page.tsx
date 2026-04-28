@@ -13,7 +13,8 @@ import {
   type ContractInvoice,
 } from '@/lib/contracts-api';
 import type { Customer } from '@/lib/crm-types';
-import { formatDate, formatDateTime, formatMoney, formatTaxId } from '@/lib/format';
+import { formatDate, formatDateTime, formatTaxId } from '@/lib/format';
+import { useFormatMoney } from '@/lib/use-money';
 
 /**
  * /invoices/[id]/print — visão printer-friendly de uma fatura.
@@ -30,6 +31,7 @@ import { formatDate, formatDateTime, formatMoney, formatTaxId } from '@/lib/form
 export default function InvoicePrintPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id;
+  const formatMoney = useFormatMoney();
 
   const invoiceKey = id ? `/v1/contract-invoices/${id}` : null;
   const { data: invoice, error: invErr } = useSWR<ContractInvoice>(invoiceKey);
