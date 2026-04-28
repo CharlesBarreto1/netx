@@ -152,6 +152,12 @@ export class AuthService {
         lastName: user.lastName,
         roles,
         permissions,
+        // menuAccess sai como Json — normaliza pra string[] | null pro frontend.
+        menuAccess: Array.isArray(user.menuAccess)
+          ? (user.menuAccess as unknown[]).filter(
+              (x): x is string => typeof x === 'string',
+            )
+          : null,
       },
       tenant: {
         id: tenant.id,

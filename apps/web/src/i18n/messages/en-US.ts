@@ -41,6 +41,7 @@ const messages = {
     contracts: 'Contracts',
     tags: 'Tags',
     settings: 'Settings',
+    users: 'Users',
     logout: 'Sign out',
     language: 'Language',
     tenantDefault: 'Tenant default',

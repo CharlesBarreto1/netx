@@ -11,6 +11,12 @@ export const CreateUserRequestSchema = z.object({
   locale: z.string().max(10).optional(),
   timezone: z.string().max(64).optional(),
   roleIds: z.array(z.string().uuid()).default([]),
+  /**
+   * Override de visibilidade de menus por usuário. Null/undefined = sem
+   * override (usa só permissões). Array = só esses menus aparecem no sidebar
+   * (intersecção com permissões).
+   */
+  menuAccess: z.array(z.string().min(1).max(64)).max(64).nullish(),
   sendInvite: z.boolean().default(true),
 });
 export type CreateUserRequest = z.infer<typeof CreateUserRequestSchema>;
@@ -49,6 +55,8 @@ export interface UserResponse {
   status: UserStatus;
   mfaEnabled: boolean;
   roles: Array<{ id: string; name: string }>;
+  /** Lista de chaves de menu que esse user pode ver, ou null pra usar só perms. */
+  menuAccess: string[] | null;
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;

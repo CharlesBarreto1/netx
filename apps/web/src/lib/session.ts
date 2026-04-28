@@ -10,6 +10,8 @@ export interface SessionUser {
   lastName: string;
   roles: string[];
   permissions: string[];
+  /** Override de visibilidade de menus. null/undefined = sem restrição extra. */
+  menuAccess?: string[] | null;
 }
 
 export interface SessionTenant {

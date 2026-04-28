@@ -41,6 +41,7 @@ const messages = {
     contracts: 'Contratos',
     tags: 'Etiquetas',
     settings: 'Configuración',
+    users: 'Usuarios',
     logout: 'Salir',
     language: 'Idioma',
     tenantDefault: 'Idioma de la operación',

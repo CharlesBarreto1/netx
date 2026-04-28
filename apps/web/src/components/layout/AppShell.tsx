@@ -8,6 +8,7 @@ import { useTranslations } from 'next-intl';
 import { Toaster } from '@/components/ui/sonner';
 import { LocaleSwitcher } from '@/components/layout/LocaleSwitcher';
 import { cn } from '@/lib/cn';
+import { visibleMenus, type MenuDef } from '@/lib/menus';
 import { clearSession, displayName, type Session } from '@/lib/session';
 
 export interface NavItem {
@@ -19,25 +20,19 @@ export interface NavItem {
 }
 
 /**
- * Items da sidebar. Os `labelKey` apontam pro namespace `nav` dos dicionários
- * (`nav.dashboard`, `nav.sales`, etc.). Resolução acontece dentro do componente
- * via `useTranslations('nav')`.
+ * Mapa do `key` do MENU_CATALOG → ícone (a única coisa que vive aqui).
+ * Tudo o mais (href, labelKey, permission) vem do catálogo central em
+ * `lib/menus.ts`, que também é usado pelo checklist de Usuários.
  */
-interface NavItemDef {
-  href: Route;
-  labelKey: string;
-  icon: React.ReactNode;
-  permission?: string;
-}
-
-const NAV_ITEMS: NavItemDef[] = [
-  { href: '/dashboard', labelKey: 'dashboard', icon: <IconDashboard /> },
-  { href: '/deals', labelKey: 'sales', icon: <IconKanban />, permission: 'deals.read' },
-  { href: '/customers', labelKey: 'customers', icon: <IconUsers />, permission: 'customers.read' },
-  { href: '/contracts', labelKey: 'contracts', icon: <IconContract />, permission: 'contracts.read' },
-  { href: '/crm/tags', labelKey: 'tags', icon: <IconTag />, permission: 'customers.tags.manage' },
-  { href: '/settings/tenant', labelKey: 'settings', icon: <IconSettings />, permission: 'tenants.update' },
-];
+const MENU_ICON: Record<string, React.ReactNode> = {
+  dashboard: <IconDashboard />,
+  sales: <IconKanban />,
+  customers: <IconUsers />,
+  contracts: <IconContract />,
+  tags: <IconTag />,
+  settings: <IconSettings />,
+  users: <IconUsers />,
+};
 
 export function AppShell({
   session,
@@ -56,18 +51,21 @@ export function AppShell({
     setOpen(false);
   }, [pathname]);
 
-  // Resolve os labels via translations e aplica o filtro de permissão.
+  // Resolve os menus via catálogo central:
+  //   1. filtra por permissão do role
+  //   2. intersecta com `menuAccess` se for array (override por usuário)
+  //   3. resolve label do dicionário i18n
   const allowed = useMemo<NavItem[]>(
     () =>
-      NAV_ITEMS.filter(
-        (n) => !n.permission || session.user.permissions.includes(n.permission),
-      ).map((n) => ({
-        href: n.href,
-        label: tNav(n.labelKey as 'dashboard'),
-        icon: n.icon,
-        permission: n.permission,
-      })),
-    [session.user.permissions, tNav],
+      visibleMenus(session.user.permissions, session.user.menuAccess ?? null).map(
+        (m: MenuDef) => ({
+          href: m.href as Route,
+          label: tNav(m.labelKey as 'dashboard'),
+          icon: MENU_ICON[m.key],
+          permission: m.permission,
+        }),
+      ),
+    [session.user.permissions, session.user.menuAccess, tNav],
   );
 
   function logout() {

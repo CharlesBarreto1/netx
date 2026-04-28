@@ -28,6 +28,8 @@ export interface LoginResponse extends AuthTokens {
     lastName: string;
     roles: string[];
     permissions: string[];
+    /** Override de visibilidade de menus. null = usa só permissões. */
+    menuAccess: string[] | null;
   };
   tenant: {
     id: string;

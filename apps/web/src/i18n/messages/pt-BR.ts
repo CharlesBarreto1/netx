@@ -51,6 +51,7 @@ const messages = {
     contracts: 'Contratos',
     tags: 'Tags',
     settings: 'Configurações',
+    users: 'Usuários',
     logout: 'Sair',
     language: 'Idioma',
     tenantDefault: 'Padrão da operação',

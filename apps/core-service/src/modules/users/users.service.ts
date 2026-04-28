@@ -48,6 +48,8 @@ export class UsersService {
         passwordHash,
         status: input.sendInvite ? UserStatus.INVITED : UserStatus.ACTIVE,
         invitedById: actorUserId,
+        // null = sem override; array = lista permitida
+        menuAccess: input.menuAccess ?? null,
         userRoles: {
           create: input.roleIds.map((roleId) => ({ roleId })),
         },
@@ -132,6 +134,9 @@ export class UsersService {
         locale: input.locale,
         timezone: input.timezone,
         status: input.status,
+        // input.menuAccess === null limpa override (sem restrição extra);
+        // === undefined deixa como está; array sobrescreve.
+        ...(input.menuAccess !== undefined ? { menuAccess: input.menuAccess } : {}),
         ...(input.roleIds
           ? {
               userRoles: {
@@ -224,6 +229,10 @@ export class UsersService {
       status: u.status,
       mfaEnabled: u.mfaEnabled,
       roles: u.userRoles?.map((ur: any) => ({ id: ur.role.id, name: ur.role.name })) ?? [],
+      // menuAccess vem do Postgres como Json (any). Normalizamos pra string[]|null.
+      menuAccess: Array.isArray(u.menuAccess)
+        ? (u.menuAccess as unknown[]).filter((x): x is string => typeof x === 'string')
+        : null,
       lastLoginAt: u.lastLoginAt?.toISOString() ?? null,
       createdAt: u.createdAt.toISOString(),
       updatedAt: u.updatedAt.toISOString(),
