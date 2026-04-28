@@ -1,17 +1,19 @@
 'use client';
 
-import { NextIntlClientProvider } from 'next-intl';
+import { NextIntlClientProvider, type AbstractIntlMessages } from 'next-intl';
 
 import { getMessages } from '@/i18n';
 import { useTenantConfig } from './tenant-config';
 
 /**
  * I18nProvider — conecta o `NextIntlClientProvider` aos valores efetivos do
- * usuário/tenant. Renderiza children sem provider enquanto `tenant`/`user`
- * carregam (NextIntlClientProvider exige `messages` definido).
+ * usuário/tenant.
  *
- * Estratégia: enquanto `isLoading`, mostramos um fallback. Isso garante que
- * todos os `useTranslations` sob a árvore tenham locale válido.
+ * Sobre o cast em `messages`:
+ *   `next-intl` exige `AbstractIntlMessages`, que é um tipo recursivo
+ *   `{ [k: string]: string | AbstractIntlMessages }`. O nosso `Messages` é
+ *   estruturalmente compatível (objeto de strings aninhadas), mas o TS não
+ *   consegue inferir isso pelo `typeof` literal — daí o cast via `unknown`.
  */
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const { effectiveLocale, tenant } = useTenantConfig();
@@ -20,7 +22,7 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
   return (
     <NextIntlClientProvider
       locale={effectiveLocale}
-      messages={messages as Record<string, unknown>}
+      messages={messages as unknown as AbstractIntlMessages}
       timeZone={tenant?.timezone ?? 'America/Sao_Paulo'}
     >
       {children}
