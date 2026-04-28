@@ -121,12 +121,10 @@ model User {
   mfaEnabled     Boolean    @default(false) @map("mfa_enabled")
   mfaSecret      String?    @map("mfa_secret")
   mfaBackupCodes String[]   @default([]) @map("mfa_backup_codes")
-  /**
-   * Override de visibilidade de menus por usuário. Quando null (default), o
-   * sidebar usa só permissões. Quando array (ex.: `["dashboard","customers"]`),
-   * o sidebar intersecta com essa lista — útil pra esconder menus que o user
-   * teria permissão mas o admin quer ocultar individualmente.
-   */
+  // Override de visibilidade de menus por usuário. Quando null (default), o
+  // sidebar usa só permissões. Quando array (ex. ["dashboard","customers"]),
+  // o sidebar intersecta com essa lista — útil pra esconder menus que o user
+  // teria permissão mas o admin quer ocultar individualmente.
   menuAccess     Json?      @map("menu_access")
   invitedById    String?    @map("invited_by_id") @db.Uuid
   createdAt      DateTime   @default(now()) @map("created_at")
