@@ -24,6 +24,9 @@ const baseContractFields = {
     .regex(/^[A-Za-z0-9._-]+$/u, 'pppoeUsername deve conter apenas letras, números, "." "_" "-"'),
   pppoePassword: z.string().min(4).max(128),
   installationAddress: z.string().min(5).max(500),
+  // Link de localização (Google Maps / OSM / Apple Maps). Validação leve:
+  // só exige URL válida; aceitar qualquer host pra não amarrar a um provedor.
+  installationMapsUrl: z.string().url().max(500).nullish(),
   monthlyValue: z.coerce.number().positive().max(1_000_000),
   bandwidthMbps: z.coerce.number().int().min(1).max(100_000),
   dueDay: z.coerce.number().int().min(1).max(28),
@@ -96,6 +99,7 @@ export interface ContractResponse {
   pppoePassword?: string;
 
   installationAddress: string;
+  installationMapsUrl: string | null;
   monthlyValue: number;
   bandwidthMbps: number;
   dueDay: number;

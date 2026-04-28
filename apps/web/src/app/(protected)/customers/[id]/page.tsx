@@ -8,7 +8,9 @@ import useSWR from 'swr';
 import { AddressesTab } from '@/components/crm/AddressesTab';
 import { ConsentsTab } from '@/components/crm/ConsentsTab';
 import { ContactsTab } from '@/components/crm/ContactsTab';
+import { ContractsTab } from '@/components/crm/ContractsTab';
 import { CustomerTagsTab } from '@/components/crm/CustomerTagsTab';
+import { FinanceTab } from '@/components/crm/FinanceTab';
 import { NotesTab } from '@/components/crm/NotesTab';
 import { Badge, STATUS_LABEL, statusTone } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -20,12 +22,29 @@ import { formatDateTime, formatPhone, formatTaxId } from '@/lib/format';
 import { hasPermission } from '@/lib/session';
 import type { Customer } from '@/lib/crm-types';
 
-type TabKey = 'dados' | 'enderecos' | 'contatos' | 'tags' | 'consentimentos' | 'anotacoes';
+type TabKey =
+  | 'dados'
+  | 'enderecos'
+  | 'contatos'
+  | 'contratos'
+  | 'financeiro'
+  | 'tags'
+  | 'consentimentos'
+  | 'anotacoes';
 
 const DEFAULT_TAB: TabKey = 'dados';
 
 function validTab(t: string | null): TabKey {
-  const all: TabKey[] = ['dados', 'enderecos', 'contatos', 'tags', 'consentimentos', 'anotacoes'];
+  const all: TabKey[] = [
+    'dados',
+    'enderecos',
+    'contatos',
+    'contratos',
+    'financeiro',
+    'tags',
+    'consentimentos',
+    'anotacoes',
+  ];
   return (all as string[]).includes(t ?? '') ? (t as TabKey) : DEFAULT_TAB;
 }
 
@@ -76,6 +95,8 @@ export default function CustomerDetailPage() {
     { value: 'dados', label: 'Dados' },
     { value: 'enderecos', label: 'Endereços' },
     { value: 'contatos', label: 'Contatos' },
+    { value: 'contratos', label: 'Contratos' },
+    { value: 'financeiro', label: 'Financeiro' },
     { value: 'tags', label: 'Tags', badge: customer.tags?.length ?? 0 },
     { value: 'consentimentos', label: 'Consentimentos' },
     { value: 'anotacoes', label: 'Anotações' },
@@ -148,6 +169,8 @@ export default function CustomerDetailPage() {
         {activeTab === 'dados' && <DataTab customer={customer} />}
         {activeTab === 'enderecos' && <AddressesTab customerId={customer.id} />}
         {activeTab === 'contatos' && <ContactsTab customerId={customer.id} />}
+        {activeTab === 'contratos' && <ContractsTab customerId={customer.id} />}
+        {activeTab === 'financeiro' && <FinanceTab customerId={customer.id} />}
         {activeTab === 'tags' && (
           <CustomerTagsTab
             customerId={customer.id}

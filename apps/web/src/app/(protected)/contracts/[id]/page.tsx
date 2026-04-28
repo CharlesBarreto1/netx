@@ -244,6 +244,21 @@ export default function ContractDetailPage() {
           <DataRow label="Velocidade" value={`${contract.bandwidthMbps} Mbps`} />
           <DataRow label="Dia de vencimento" value={`dia ${contract.dueDay}`} />
           <DataRow label="Endereço de instalação" value={contract.installationAddress} />
+          {contract.installationMapsUrl && (
+            <DataRow
+              label="Localização"
+              value={
+                <a
+                  href={contract.installationMapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-brand-500 hover:underline"
+                >
+                  Abrir no mapa ↗
+                </a>
+              }
+            />
+          )}
         </InfoCard>
 
         <InfoCard title="Credenciais PPPoE">

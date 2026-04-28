@@ -39,6 +39,7 @@ export interface NewContractInlineProps {
     code: string;
     notes: string;
     installationAddress: string;
+    installationMapsUrl: string;
     pppoeUsername: string;
     pppoePassword: string;
     firstDueDate: string;
@@ -90,6 +91,7 @@ export function NewContractInline({
     pppoeUsername: initial?.pppoeUsername ?? '',
     pppoePassword: initial?.pppoePassword ?? '',
     installationAddress: initial?.installationAddress ?? '',
+    installationMapsUrl: initial?.installationMapsUrl ?? '',
     monthlyValue:
       initial?.monthlyValue !== undefined ? String(initial.monthlyValue) : '',
     bandwidthMbps:
@@ -123,6 +125,14 @@ export function NewContractInline({
       e.pppoePassword = 'Mínimo 4 caracteres';
     if (!form.installationAddress || form.installationAddress.length < 5)
       e.installationAddress = 'Informe o endereço de instalação';
+    if (form.installationMapsUrl) {
+      try {
+        const u = new URL(form.installationMapsUrl);
+        if (!/^https?:$/.test(u.protocol)) e.installationMapsUrl = 'Use http(s)://';
+      } catch {
+        e.installationMapsUrl = 'URL inválida';
+      }
+    }
     const mv = Number(String(form.monthlyValue).replace(',', '.'));
     if (!Number.isFinite(mv) || mv <= 0) e.monthlyValue = 'Valor inválido';
     const bw = Number(form.bandwidthMbps);
@@ -144,6 +154,7 @@ export function NewContractInline({
         pppoeUsername: form.pppoeUsername,
         pppoePassword: form.pppoePassword,
         installationAddress: form.installationAddress,
+        installationMapsUrl: form.installationMapsUrl.trim() || null,
         monthlyValue: Number(String(form.monthlyValue).replace(',', '.')),
         bandwidthMbps: Number(form.bandwidthMbps),
         dueDay: Number(form.dueDay),
@@ -238,6 +249,23 @@ export function NewContractInline({
           rows={2}
         />
         <FieldError>{errors.installationAddress}</FieldError>
+      </div>
+
+      <div>
+        <Label htmlFor="contract-installationMapsUrl">
+          Link de localização (Google Maps)
+        </Label>
+        <Input
+          id="contract-installationMapsUrl"
+          type="url"
+          value={form.installationMapsUrl}
+          onChange={(e) => update('installationMapsUrl', e.target.value)}
+          placeholder="https://maps.app.goo.gl/…"
+        />
+        <FieldError>{errors.installationMapsUrl}</FieldError>
+        <FieldHelp>
+          Cole o link compartilhável do Google Maps (ou qualquer URL pública). Útil pro técnico abrir direto no celular.
+        </FieldHelp>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">

@@ -78,6 +78,7 @@ export class ContractsService {
             pppoeUsername: input.pppoeUsername,
             pppoePassword: input.pppoePassword,
             installationAddress: input.installationAddress,
+            installationMapsUrl: input.installationMapsUrl ?? null,
             monthlyValue: new Prisma.Decimal(input.monthlyValue),
             bandwidthMbps: input.bandwidthMbps,
             dueDay: input.dueDay,
@@ -181,6 +182,8 @@ export class ContractsService {
     if (input.pppoeUsername !== undefined) data.pppoeUsername = input.pppoeUsername;
     if (input.pppoePassword !== undefined) data.pppoePassword = input.pppoePassword;
     if (input.installationAddress !== undefined) data.installationAddress = input.installationAddress;
+    if (input.installationMapsUrl !== undefined)
+      data.installationMapsUrl = input.installationMapsUrl ?? null;
     if (input.monthlyValue !== undefined) data.monthlyValue = new Prisma.Decimal(input.monthlyValue);
     if (input.bandwidthMbps !== undefined) data.bandwidthMbps = input.bandwidthMbps;
     if (input.dueDay !== undefined) data.dueDay = input.dueDay;
@@ -417,6 +420,7 @@ function toContractResponse(
     pppoeUsername: c.pppoeUsername,
     ...(opts.includePassword ? { pppoePassword: c.pppoePassword } : {}),
     installationAddress: c.installationAddress,
+    installationMapsUrl: c.installationMapsUrl,
     monthlyValue: Number(c.monthlyValue),
     bandwidthMbps: c.bandwidthMbps,
     dueDay: c.dueDay,

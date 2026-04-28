@@ -866,6 +866,8 @@ model Contract {
 
   // Endereço de instalação (string simples agora; migrar depois para FK CustomerAddress)
   installationAddress String         @map("installation_address") @db.VarChar(500)
+  // Link público de localização (Google Maps, OpenStreetMap, etc.) — opcional.
+  installationMapsUrl String?        @map("installation_maps_url") @db.VarChar(500)
 
   // Comerciais
   monthlyValue        Decimal        @map("monthly_value") @db.Decimal(12, 2)

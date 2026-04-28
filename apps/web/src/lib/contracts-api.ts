@@ -21,6 +21,7 @@ export interface Contract {
   pppoeUsername: string;
   pppoePassword?: string;
   installationAddress: string;
+  installationMapsUrl: string | null;
   monthlyValue: number;
   bandwidthMbps: number;
   dueDay: number;
@@ -90,6 +91,7 @@ export interface CreateContractInput {
   pppoeUsername: string;
   pppoePassword: string;
   installationAddress: string;
+  installationMapsUrl?: string | null;
   monthlyValue: number;
   bandwidthMbps: number;
   dueDay: number;
@@ -101,6 +103,7 @@ export interface UpdateContractInput {
   pppoeUsername?: string;
   pppoePassword?: string;
   installationAddress?: string;
+  installationMapsUrl?: string | null;
   monthlyValue?: number;
   bandwidthMbps?: number;
   dueDay?: number;
