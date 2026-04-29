@@ -10,20 +10,20 @@ import { toast } from '@/components/ui/sonner';
 export default function NewUserPage() {
   const router = useRouter();
   const tCommon = useTranslations('common');
+  const tUsers = useTranslations('users');
+  const tForm = useTranslations('users.form');
 
   return (
     <div className="space-y-5">
       <header>
         <nav className="text-xs text-slate-500 dark:text-slate-400">
           <Link href="/settings/users" className="hover:underline">
-            Usuários
+            {tUsers('title')}
           </Link>{' '}
-          › Novo
+          › {tCommon('new')}
         </nav>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight">Novo usuário</h1>
-        <p className="text-sm text-text-muted">
-          Um email de convite (com senha temporária) será enviado pro novo usuário.
-        </p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight">{tUsers('new')}</h1>
+        <p className="text-sm text-text-muted">{tForm('newSubtitle')}</p>
       </header>
 
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-800">

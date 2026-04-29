@@ -29,6 +29,9 @@ export default function EditUserPage() {
   const { mutate } = useSWRConfig();
   const params = useParams<{ id: string }>();
   const tCommon = useTranslations('common');
+  const tUsers = useTranslations('users');
+  const tForm = useTranslations('users.form');
+  const tStatus = useTranslations('users.statusLabel');
   const id = params?.id;
   const canDelete = hasPermission('users.delete');
 
@@ -66,7 +69,7 @@ export default function EditUserPage() {
       <header className="space-y-2">
         <nav className="text-xs text-slate-500 dark:text-slate-400">
           <Link href="/settings/users" className="hover:underline">
-            Usuários
+            {tUsers('title')}
           </Link>{' '}
           › {user.firstName} {user.lastName}
         </nav>
@@ -76,15 +79,19 @@ export default function EditUserPage() {
               <h1 className="text-2xl font-bold tracking-tight">
                 {user.firstName} {user.lastName}
               </h1>
-              <Badge tone={STATUS_TONE[user.status]}>{user.status}</Badge>
+              <Badge tone={STATUS_TONE[user.status]}>
+                {tStatus(user.status as 'ACTIVE')}
+              </Badge>
               {user.menuAccess !== null && user.menuAccess !== undefined && (
-                <Badge tone="warning">Menu restrito</Badge>
+                <Badge tone="warning">{tForm('menuRestricted')}</Badge>
               )}
             </div>
             <p className="text-sm text-text-muted">{user.email}</p>
             <p className="text-xs text-text-muted">
-              Último acesso:{' '}
-              {user.lastLoginAt ? formatDateTime(user.lastLoginAt) : 'nunca'}
+              {tForm('lastAccessLabel')}:{' '}
+              {user.lastLoginAt
+                ? formatDateTime(user.lastLoginAt)
+                : tForm('lastAccessNever')}
             </p>
           </div>
           {canDelete && (
@@ -112,8 +119,10 @@ export default function EditUserPage() {
         open={confirmDelete}
         onClose={() => setConfirmDelete(false)}
         onConfirm={handleDelete}
-        title="Excluir usuário"
-        message={`Tem certeza que quer excluir "${user.firstName} ${user.lastName}"? O acesso é desabilitado imediatamente (soft-delete; histórico preservado).`}
+        title={tForm('deleteTitle')}
+        message={tForm('deleteMessage', {
+          name: `${user.firstName} ${user.lastName}`,
+        })}
         confirmLabel={tCommon('delete')}
         variant="danger"
         loading={deleting}

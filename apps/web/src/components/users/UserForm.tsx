@@ -48,15 +48,11 @@ export interface UserFormProps {
   onCancel?: () => void;
 }
 
-const ROLE_NAME_LABEL: Record<string, string> = {
-  superadmin: 'Superadministrador',
-  admin: 'Administrador',
-  operator: 'Operador',
-  viewer: 'Visualizador',
-};
-
 export function UserForm({ mode, initial, onSuccess, onCancel }: UserFormProps) {
   const tCommon = useTranslations('common');
+  const tForm = useTranslations('users.form');
+  const tRoles = useTranslations('users.roles');
+  const tStatus = useTranslations('users.statusLabel');
   const isEdit = mode === 'edit';
 
   // Roles disponíveis no tenant (pra montar o select).
@@ -207,13 +203,11 @@ export function UserForm({ mode, initial, onSuccess, onCancel }: UserFormProps) 
             disabled={isEdit}
           />
           <FieldError>{fieldErrors.email}</FieldError>
-          {isEdit && (
-            <FieldHelp>O email não pode ser alterado por aqui.</FieldHelp>
-          )}
+          {isEdit && <FieldHelp>{tForm('emailHelp')}</FieldHelp>}
         </div>
         <div>
           <Label htmlFor="u-firstName" required>
-            Nome
+            {tCommon('name')}
           </Label>
           <Input
             id="u-firstName"
@@ -234,26 +228,25 @@ export function UserForm({ mode, initial, onSuccess, onCancel }: UserFormProps) 
           <FieldError>{fieldErrors.lastName}</FieldError>
         </div>
         <div>
-          <Label htmlFor="u-phone">Telefone</Label>
+          <Label htmlFor="u-phone">{tCommon('phone')}</Label>
           <Input
             id="u-phone"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
-            placeholder="+55 11 99999-8888"
           />
         </div>
         {isEdit && (
           <div>
-            <Label htmlFor="u-status">Status</Label>
+            <Label htmlFor="u-status">{tCommon('status')}</Label>
             <Select
               id="u-status"
               value={status}
               onChange={(e) => setStatus(e.target.value as UserStatus)}
             >
-              <option value="ACTIVE">Ativo</option>
-              <option value="INVITED">Convidado</option>
-              <option value="SUSPENDED">Suspenso</option>
-              <option value="DISABLED">Desabilitado</option>
+              <option value="ACTIVE">{tStatus('ACTIVE')}</option>
+              <option value="INVITED">{tStatus('INVITED')}</option>
+              <option value="SUSPENDED">{tStatus('SUSPENDED')}</option>
+              <option value="DISABLED">{tStatus('DISABLED')}</option>
             </Select>
           </div>
         )}
@@ -261,11 +254,8 @@ export function UserForm({ mode, initial, onSuccess, onCancel }: UserFormProps) 
 
       {/* Papel */}
       <section>
-        <h3 className="text-sm font-semibold text-text">Papel</h3>
-        <p className="text-xs text-text-muted">
-          Define o conjunto base de permissões. Você pode refinar a visibilidade
-          dos menus abaixo.
-        </p>
+        <h3 className="text-sm font-semibold text-text">{tForm('roleTitle')}</h3>
+        <p className="text-xs text-text-muted">{tForm('roleSubtitle')}</p>
         <div className="mt-2">
           <Select value={roleId} onChange={(e) => setRoleId(e.target.value)}>
             {sortedRoles.length === 0 && (
@@ -273,7 +263,7 @@ export function UserForm({ mode, initial, onSuccess, onCancel }: UserFormProps) 
             )}
             {sortedRoles.map((r) => (
               <option key={r.id} value={r.id}>
-                {ROLE_NAME_LABEL[r.name] ?? r.name}
+                {translateRoleName(tRoles, r.name)}
                 {r.description ? ` — ${r.description}` : ''}
               </option>
             ))}
@@ -285,12 +275,8 @@ export function UserForm({ mode, initial, onSuccess, onCancel }: UserFormProps) 
       <section>
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-text">Menus visíveis</h3>
-            <p className="text-xs text-text-muted">
-              Marque os cards que aparecem na barra lateral para este usuário.
-              Mesmo marcado, o menu só aparece se a permissão do papel também
-              permite — é uma camada extra de ocultação.
-            </p>
+            <h3 className="text-sm font-semibold text-text">{tForm('menusTitle')}</h3>
+            <p className="text-xs text-text-muted">{tForm('menusSubtitle')}</p>
           </div>
           <div className="flex gap-1 text-xs">
             <button
@@ -298,14 +284,14 @@ export function UserForm({ mode, initial, onSuccess, onCancel }: UserFormProps) 
               onClick={selectAll}
               className="rounded px-2 py-1 text-brand-600 hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-brand-500/10"
             >
-              Marcar todos
+              {tForm('checkAll')}
             </button>
             <button
               type="button"
               onClick={selectNone}
               className="rounded px-2 py-1 text-text-muted hover:bg-slate-100 dark:hover:bg-slate-800"
             >
-              Desmarcar todos
+              {tForm('uncheckAll')}
             </button>
           </div>
         </div>
@@ -345,4 +331,24 @@ export function UserForm({ mode, initial, onSuccess, onCancel }: UserFormProps) 
       </footer>
     </form>
   );
+}
+
+/**
+ * Tenta traduzir o nome do role (admin/operator/viewer/superadmin). Se vier
+ * um role custom criado pelo tenant que não existe no dict, devolve o nome
+ * original — assim a UI nunca quebra.
+ */
+function translateRoleName(
+  t: (key: 'admin' | 'operator' | 'viewer' | 'superadmin') => string,
+  roleName: string,
+): string {
+  if (
+    roleName === 'admin' ||
+    roleName === 'operator' ||
+    roleName === 'viewer' ||
+    roleName === 'superadmin'
+  ) {
+    return t(roleName);
+  }
+  return roleName;
 }

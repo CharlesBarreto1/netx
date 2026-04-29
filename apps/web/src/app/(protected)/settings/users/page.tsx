@@ -31,7 +31,9 @@ const STATUS_TONE: Record<UserResponse['status'], 'success' | 'warning' | 'info'
  */
 export default function UsersListPage() {
   const tCommon = useTranslations('common');
-  const tNav = useTranslations('nav');
+  const tUsers = useTranslations('users');
+  const tList = useTranslations('users.list');
+  const tStatus = useTranslations('users.statusLabel');
   const canCreate = hasPermission('users.create');
   const canUpdate = hasPermission('users.update');
 
@@ -55,17 +57,14 @@ export default function UsersListPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">{tNav('users')}</h1>
-          <p className="text-sm text-text-muted">
-            Convide ou edite a equipe da operação. Cada usuário tem um papel
-            (Operador / Administrador) e uma lista de menus visíveis.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{tUsers('title')}</h1>
+          <p className="text-sm text-text-muted">{tUsers('subtitle')}</p>
         </div>
         {canCreate && (
           <Link href="/settings/users/new">
             <Button>
               <Plus className="h-3.5 w-3.5" />
-              Novo usuário
+              {tUsers('new')}
             </Button>
           </Link>
         )}
@@ -87,11 +86,11 @@ export default function UsersListPage() {
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:bg-slate-900/40 dark:text-slate-400">
             <tr>
-              <th className="px-3 py-2">Nome</th>
-              <th className="px-3 py-2">Email</th>
-              <th className="px-3 py-2">Papéis</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2">Último acesso</th>
+              <th className="px-3 py-2">{tList('cols.name')}</th>
+              <th className="px-3 py-2">{tList('cols.email')}</th>
+              <th className="px-3 py-2">{tList('cols.roles')}</th>
+              <th className="px-3 py-2">{tList('cols.status')}</th>
+              <th className="px-3 py-2">{tList('cols.lastLogin')}</th>
               <th className="px-3 py-2"></th>
             </tr>
           </thead>
@@ -99,7 +98,7 @@ export default function UsersListPage() {
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-3 py-6 text-center text-text-muted">
-                  Nenhum usuário encontrado.
+                  {tList('empty')}
                 </td>
               </tr>
             ) : (
@@ -113,7 +112,9 @@ export default function UsersListPage() {
                     {u.roles.map((r) => r.name).join(', ') || '—'}
                   </td>
                   <td className="px-3 py-2">
-                    <Badge tone={STATUS_TONE[u.status]}>{u.status}</Badge>
+                    <Badge tone={STATUS_TONE[u.status]}>
+                      {tStatus(u.status as 'ACTIVE')}
+                    </Badge>
                   </td>
                   <td className="px-3 py-2 text-slate-500">
                     {u.lastLoginAt ? formatDateTime(u.lastLoginAt) : '—'}

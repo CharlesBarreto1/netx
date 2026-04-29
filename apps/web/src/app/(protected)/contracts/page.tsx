@@ -29,6 +29,9 @@ export default function ContractsPage() {
   const canWrite = hasPermission('contracts.write');
   const formatMoney = useFormatMoney();
   const tContracts = useTranslations('contracts');
+  const tList = useTranslations('contracts.list');
+  const tStatus = useTranslations('contracts.status');
+  const tCommon = useTranslations('common');
 
   const [status, setStatus] = useState<ContractStatus | ''>('');
   const [search, setSearch] = useState('');
@@ -70,7 +73,7 @@ export default function ContractsPage() {
       {/* Filtros */}
       <div className="flex flex-wrap items-center gap-3">
         <Input
-          placeholder="Buscar por código, PPPoE ou endereço…"
+          placeholder={tList('searchPlaceholder')}
           value={search}
           onChange={(e) => {
             setPage(1);
@@ -86,19 +89,19 @@ export default function ContractsPage() {
           }}
           className="w-40"
         >
-          <option value="">Todos os status</option>
-          <option value="ACTIVE">Ativo</option>
-          <option value="SUSPENDED">Suspenso</option>
-          <option value="CANCELLED">Cancelado</option>
+          <option value="">{tList('allStatuses')}</option>
+          <option value="ACTIVE">{tStatus('active')}</option>
+          <option value="SUSPENDED">{tStatus('suspended')}</option>
+          <option value="CANCELLED">{tStatus('cancelled')}</option>
         </Select>
         <span className="ml-auto text-xs text-text-muted">
-          {data?.pagination ? `${data.pagination.total} contrato(s)` : ''}
+          {data?.pagination ? `${data.pagination.total} ${tList('countSuffix')}` : ''}
         </span>
       </div>
 
       {/* Lista */}
       {isLoading && !data ? (
-        <PageLoader label="Carregando contratos…" />
+        <PageLoader label={tList('loading')} />
       ) : !data || data.data.length === 0 ? (
         <EmptyState canWrite={canWrite} />
       ) : (
@@ -106,13 +109,13 @@ export default function ContractsPage() {
           <table className="min-w-full text-sm">
             <thead className="bg-surface-muted text-xs uppercase tracking-wide text-text-muted">
               <tr>
-                <th className="px-3 py-2 text-left">Cliente</th>
-                <th className="px-3 py-2 text-left">PPPoE</th>
-                <th className="px-3 py-2 text-left">Velocidade</th>
-                <th className="px-3 py-2 text-right">Mensalidade</th>
-                <th className="px-3 py-2 text-center">Venc.</th>
-                <th className="px-3 py-2 text-left">Status</th>
-                <th className="px-3 py-2 text-left">Criado em</th>
+                <th className="px-3 py-2 text-left">{tList('cols.customer')}</th>
+                <th className="px-3 py-2 text-left">{tList('cols.pppoe')}</th>
+                <th className="px-3 py-2 text-left">{tList('cols.bandwidth')}</th>
+                <th className="px-3 py-2 text-right">{tList('cols.monthly')}</th>
+                <th className="px-3 py-2 text-center">{tList('cols.dueDay')}</th>
+                <th className="px-3 py-2 text-left">{tList('cols.status')}</th>
+                <th className="px-3 py-2 text-left">{tList('cols.createdAt')}</th>
               </tr>
             </thead>
             <tbody>
@@ -147,7 +150,8 @@ export default function ContractsPage() {
       {data && data.pagination && data.pagination.totalPages > 1 && (
         <div className="flex items-center justify-between text-xs text-text-muted">
           <span>
-            Página {data.pagination.page} de {data.pagination.totalPages}
+            {tCommon('page')} {data.pagination.page} {tCommon('of')}{' '}
+            {data.pagination.totalPages}
           </span>
           <div className="flex gap-2">
             <Button
@@ -156,7 +160,7 @@ export default function ContractsPage() {
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
-              Anterior
+              {tCommon('previous')}
             </Button>
             <Button
               variant="outline"
@@ -164,7 +168,7 @@ export default function ContractsPage() {
               disabled={page >= data.pagination.totalPages}
               onClick={() => setPage((p) => p + 1)}
             >
-              Próxima
+              {tCommon('next')}
             </Button>
           </div>
         </div>
@@ -174,15 +178,14 @@ export default function ContractsPage() {
 }
 
 function EmptyState({ canWrite }: { canWrite: boolean }) {
+  const tList = useTranslations('contracts.list');
   return (
     <div className="flex flex-col items-center gap-3 rounded-md border border-dashed border-border bg-surface px-6 py-12 text-center">
-      <p className="text-sm font-medium text-text">Nenhum contrato cadastrado ainda</p>
-      <p className="max-w-md text-xs text-text-muted">
-        Cadastre o primeiro contrato para começar a provisionar clientes no RADIUS e gerar faturas automaticamente.
-      </p>
+      <p className="text-sm font-medium text-text">{tList('empty')}</p>
+      <p className="max-w-md text-xs text-text-muted">{tList('emptyHelp')}</p>
       {canWrite && (
         <Link href="/contracts/new">
-          <Button size="sm">Criar contrato</Button>
+          <Button size="sm">{tList('createCta')}</Button>
         </Link>
       )}
     </div>

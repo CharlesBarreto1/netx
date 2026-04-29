@@ -61,6 +61,9 @@ export default function CustomersListPage() {
   const filters = useMemo(() => readFilters(sp), [sp]);
   const canCreate = hasPermission('customers.create');
   const tCustomers = useTranslations('customers');
+  const tList = useTranslations('customers.list');
+  const tType = useTranslations('customers.type');
+  const tCommon = useTranslations('common');
 
   const apiQs = toQuery(filters);
   const { data, isLoading, error } = useSWR<Paginated<Customer>>(
@@ -109,18 +112,18 @@ export default function CustomersListPage() {
           }}
         >
           <div className="md:col-span-2">
-            <Label htmlFor="search">Buscar</Label>
+            <Label htmlFor="search">{tCommon('search')}</Label>
             <Input
               id="search"
               name="search"
-              placeholder="Nome, email, telefone, documento…"
+              placeholder={tList('searchPlaceholder')}
               defaultValue={filters.search}
             />
           </div>
           <div>
-            <Label htmlFor="status">Status</Label>
+            <Label htmlFor="status">{tCommon('status')}</Label>
             <Select id="status" name="status" defaultValue={filters.status}>
-              <option value="">Todos</option>
+              <option value="">{tCommon('all')}</option>
               {CUSTOMER_STATUSES.map((s) => (
                 <option key={s} value={s}>
                   {STATUS_LABEL[s] ?? s}
@@ -129,20 +132,20 @@ export default function CustomersListPage() {
             </Select>
           </div>
           <div>
-            <Label htmlFor="type">Tipo</Label>
+            <Label htmlFor="type">{tCommon('type')}</Label>
             <Select id="type" name="type" defaultValue={filters.type}>
-              <option value="">Todos</option>
+              <option value="">{tCommon('all')}</option>
               {CUSTOMER_TYPES.map((t) => (
                 <option key={t} value={t}>
-                  {t === 'INDIVIDUAL' ? 'Pessoa Física' : 'Pessoa Jurídica'}
+                  {t === 'INDIVIDUAL' ? tType('individual') : tType('company')}
                 </option>
               ))}
             </Select>
           </div>
           <div>
-            <Label htmlFor="country">País do documento</Label>
+            <Label htmlFor="country">{tCustomers('fields.taxIdCountry')}</Label>
             <Select id="country" name="country" defaultValue={filters.country}>
-              <option value="">Todos</option>
+              <option value="">{tCommon('all')}</option>
               {COUNTRY_OPTIONS.map((c) => (
                 <option key={c.code} value={c.code}>
                   {c.name} ({c.code})
@@ -153,7 +156,7 @@ export default function CustomersListPage() {
           <div>
             <Label htmlFor="tag">Tag</Label>
             <Select id="tag" name="tag" defaultValue={filters.tag}>
-              <option value="">Todas</option>
+              <option value="">{tCommon('all')}</option>
               {tags?.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
@@ -164,20 +167,20 @@ export default function CustomersListPage() {
 
           <div className="md:col-span-6 flex flex-wrap items-center justify-end gap-2">
             <Button type="button" variant="ghost" onClick={clear}>
-              Limpar
+              {tCommon('clear')}
             </Button>
             <Button type="submit" variant="secondary">
-              Aplicar
+              {tCommon('apply')}
             </Button>
           </div>
         </form>
       </section>
 
-      {isLoading && <PageLoader label="Buscando clientes…" />}
+      {isLoading && <PageLoader label={tCommon('loading')} />}
 
       {error && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-          Falha ao carregar clientes. {String((error as Error).message ?? '')}
+          {tCommon('error')}. {String((error as Error).message ?? '')}
         </div>
       )}
 
@@ -188,13 +191,13 @@ export default function CustomersListPage() {
               <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
                 <thead className="bg-slate-50 dark:bg-slate-900/40">
                   <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    <th className="px-4 py-3">Cliente</th>
-                    <th className="px-4 py-3">Tipo</th>
-                    <th className="px-4 py-3">Documento</th>
-                    <th className="px-4 py-3">Contato</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">Criado</th>
-                    <th className="px-4 py-3 text-right">Ações</th>
+                    <th className="px-4 py-3">{tList('cols.name')}</th>
+                    <th className="px-4 py-3">{tList('cols.type')}</th>
+                    <th className="px-4 py-3">{tList('cols.document')}</th>
+                    <th className="px-4 py-3">{tList('cols.email')}</th>
+                    <th className="px-4 py-3">{tList('cols.status')}</th>
+                    <th className="px-4 py-3">{tList('cols.createdAt')}</th>
+                    <th className="px-4 py-3 text-right">{tCommon('actions')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -204,7 +207,7 @@ export default function CustomersListPage() {
                         colSpan={7}
                         className="px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-400"
                       >
-                        Nenhum cliente encontrado com os filtros atuais.
+                        {tList('empty')}
                       </td>
                     </tr>
                   )}
@@ -234,7 +237,9 @@ export default function CustomersListPage() {
                       </td>
                       <td className="px-4 py-3">
                         <Badge tone={c.type === 'INDIVIDUAL' ? 'info' : 'brand'}>
-                          {c.type === 'INDIVIDUAL' ? 'PF' : 'PJ'}
+                          {c.type === 'INDIVIDUAL'
+                            ? tCustomers('typeShort.individual')
+                            : tCustomers('typeShort.company')}
                         </Badge>
                       </td>
                       <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
@@ -269,7 +274,7 @@ export default function CustomersListPage() {
                           href={`/customers/${c.id}`}
                           className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
                         >
-                          Abrir
+                          {tCommon('open')}
                         </Link>
                       </td>
                     </tr>
@@ -305,12 +310,13 @@ function Pagination({
   pageSize: number;
   onPageChange: (p: number) => void;
 }) {
+  const tCommon = useTranslations('common');
   const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, total);
   return (
     <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600 dark:text-slate-300">
       <span>
-        Mostrando <strong>{from}</strong>–<strong>{to}</strong> de{' '}
+        <strong>{from}</strong>–<strong>{to}</strong> {tCommon('of')}{' '}
         <strong>{total}</strong>
       </span>
       <div className="flex items-center gap-2">
@@ -320,10 +326,10 @@ function Pagination({
           disabled={page <= 1}
           onClick={() => onPageChange(page - 1)}
         >
-          Anterior
+          {tCommon('previous')}
         </Button>
         <span>
-          Página <strong>{page}</strong> de {totalPages}
+          {tCommon('page')} <strong>{page}</strong> {tCommon('of')} {totalPages}
         </span>
         <Button
           size="sm"
@@ -331,7 +337,7 @@ function Pagination({
           disabled={page >= totalPages}
           onClick={() => onPageChange(page + 1)}
         >
-          Próxima
+          {tCommon('next')}
         </Button>
       </div>
     </div>

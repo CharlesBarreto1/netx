@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import useSWR, { mutate } from 'swr';
 
@@ -41,6 +42,9 @@ export default function ContractDetailPage() {
   const canWrite = hasPermission('contracts.write');
   const canDelete = hasPermission('contracts.delete');
   const formatMoney = useFormatMoney();
+  const tCommon = useTranslations('common');
+  const tContracts = useTranslations('contracts');
+  const tDetail = useTranslations('contracts.detail');
 
   const contractKey = id ? `/v1/contracts/${id}` : null;
   const invoicesKey = id ? contractInvoicesApi.byContractPath(id) : null;
@@ -67,7 +71,7 @@ export default function ContractDetailPage() {
   const [noteValue, setNoteValue] = useState('');
   const [busy, setBusy] = useState(false);
 
-  if (loadingContract && !contract) return <PageLoader label="Carregando contrato…" />;
+  if (loadingContract && !contract) return <PageLoader label={tCommon('loading')} />;
   if (contractError) {
     const msg =
       contractError instanceof ApiError ? contractError.friendlyMessage : (contractError as Error).message;
@@ -241,14 +245,23 @@ export default function ContractDetailPage() {
 
       {/* Info do contrato */}
       <div className="grid gap-4 md:grid-cols-2">
-        <InfoCard title="Serviço">
-          <DataRow label="Mensalidade" value={formatMoney(contract.monthlyValue)} />
-          <DataRow label="Velocidade" value={`${contract.bandwidthMbps} Mbps`} />
-          <DataRow label="Dia de vencimento" value={`dia ${contract.dueDay}`} />
-          <DataRow label="Endereço de instalação" value={contract.installationAddress} />
+        <InfoCard title={tDetail('service')}>
+          <DataRow
+            label={tContracts('fields.monthlyValue')}
+            value={formatMoney(contract.monthlyValue)}
+          />
+          <DataRow
+            label={tDetail('bandwidth')}
+            value={`${contract.bandwidthMbps} Mbps`}
+          />
+          <DataRow label={tDetail('dueDay')} value={`${contract.dueDay}`} />
+          <DataRow
+            label={tDetail('installationAddress')}
+            value={contract.installationAddress}
+          />
           {contract.installationMapsUrl && (
             <DataRow
-              label="Localização"
+              label={tDetail('mapsLink')}
               value={
                 <a
                   href={contract.installationMapsUrl}
@@ -256,31 +269,31 @@ export default function ContractDetailPage() {
                   rel="noopener noreferrer"
                   className="text-brand-500 hover:underline"
                 >
-                  Abrir no mapa ↗
+                  {tDetail('mapsOpen')}
                 </a>
               }
             />
           )}
         </InfoCard>
 
-        <InfoCard title="Credenciais PPPoE">
+        <InfoCard title={tDetail('pppoeCard')}>
           <DataRow
-            label="Usuário"
+            label={tDetail('pppoeUserLabel')}
             value={<span className="font-mono text-xs">{contract.pppoeUsername}</span>}
           />
           <DataRow
-            label="Senha"
+            label={tDetail('pppoePassLabel')}
             value={
               contract.pppoePassword ? (
                 <span className="font-mono text-xs">{contract.pppoePassword}</span>
               ) : (
-                <span className="text-xs text-text-muted">oculta</span>
+                <span className="text-xs text-text-muted">{tDetail('pppoeHidden')}</span>
               )
             }
           />
           {contract.customer && (
             <DataRow
-              label="Cliente"
+              label={tDetail('customer')}
               value={
                 <Link
                   href={`/customers/${contract.customerId}`}
@@ -295,39 +308,48 @@ export default function ContractDetailPage() {
       </div>
 
       {contract.notes && (
-        <InfoCard title="Observações">
+        <InfoCard title={tDetail('notesTitle')}>
           <p className="whitespace-pre-wrap text-sm text-text">{contract.notes}</p>
         </InfoCard>
       )}
 
       {/* Timeline resumida */}
-      <InfoCard title="Histórico">
-        <DataRow label="Criado em" value={formatDateTime(contract.createdAt)} />
+      <InfoCard title={tDetail('historyTitle')}>
+        <DataRow
+          label={tDetail('createdAt')}
+          value={formatDateTime(contract.createdAt)}
+        />
         {contract.activatedAt && (
-          <DataRow label="Ativado em" value={formatDateTime(contract.activatedAt)} />
+          <DataRow
+            label={tDetail('activatedAt')}
+            value={formatDateTime(contract.activatedAt)}
+          />
         )}
         {contract.suspendedAt && (
-          <DataRow label="Suspenso em" value={formatDateTime(contract.suspendedAt)} />
+          <DataRow
+            label={tDetail('suspendedAt')}
+            value={formatDateTime(contract.suspendedAt)}
+          />
         )}
         {contract.cancelledAt && (
-          <DataRow label="Cancelado em" value={formatDateTime(contract.cancelledAt)} />
+          <DataRow
+            label={tDetail('cancelledAt')}
+            value={formatDateTime(contract.cancelledAt)}
+          />
         )}
       </InfoCard>
 
       {/* Faturas */}
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-text">Faturas</h2>
-          <span className="text-xs text-text-muted">
-            {invoicesResp?.pagination ? `${invoicesResp.pagination.total} fatura(s)` : ''}
-          </span>
+          <h2 className="text-sm font-semibold text-text">{tDetail('invoicesTitle')}</h2>
         </div>
 
         {loadingInvoices && !invoicesResp ? (
-          <PageLoader label="Carregando faturas…" />
+          <PageLoader label={tCommon('loading')} />
         ) : invoices.length === 0 ? (
           <div className="rounded-md border border-dashed border-border bg-surface px-4 py-8 text-center text-xs text-text-muted">
-            Nenhuma fatura gerada ainda.
+            {tCommon('nothingHere')}
           </div>
         ) : (
           <div className="overflow-x-auto rounded-md border border-border bg-surface">
