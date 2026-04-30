@@ -33,8 +33,10 @@ export const MENU_CATALOG: MenuDef[] = [
   { key: 'sales', href: '/deals', labelKey: 'sales', permission: 'deals.read' },
   { key: 'customers', href: '/customers', labelKey: 'customers', permission: 'customers.read' },
   { key: 'contracts', href: '/contracts', labelKey: 'contracts', permission: 'contracts.read' },
+  { key: 'serviceOrders', href: '/service-orders', labelKey: 'serviceOrders', permission: 'service_orders.read' },
   { key: 'tags', href: '/crm/tags', labelKey: 'tags', permission: 'customers.tags.manage' },
   { key: 'settings', href: '/settings/tenant', labelKey: 'settings', permission: 'tenants.update' },
+  { key: 'serviceOrderReasons', href: '/settings/service-order-reasons', labelKey: 'serviceOrderReasons', permission: 'service_order_reasons.manage' },
   { key: 'users', href: '/settings/users', labelKey: 'users', permission: 'users.read' },
 ];
 

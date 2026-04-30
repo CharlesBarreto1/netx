@@ -78,6 +78,17 @@ const contractsPermissions = [
   { code: 'contracts.admin', module: 'contracts', resource: 'contracts', action: 'admin' },
 ];
 
+// -----------------------------------------------------------------------------
+// Permission catalog — Ordens de Serviço (O.S)
+// -----------------------------------------------------------------------------
+const serviceOrdersPermissions = [
+  { code: 'service_orders.read', module: 'service_orders', resource: 'service_orders', action: 'read' },
+  { code: 'service_orders.write', module: 'service_orders', resource: 'service_orders', action: 'write' },
+  { code: 'service_orders.delete', module: 'service_orders', resource: 'service_orders', action: 'delete' },
+  // Cadastro de motivos da O.S (config do tenant).
+  { code: 'service_order_reasons.manage', module: 'service_orders', resource: 'service_order_reasons', action: 'manage' },
+];
+
 // Role → permission mapping
 const systemRoles = [
   {
@@ -129,6 +140,11 @@ const systemRoles = [
       'contracts.write',
       'contracts.delete',
       'contracts.admin',
+      // Ordens de Serviço
+      'service_orders.read',
+      'service_orders.write',
+      'service_orders.delete',
+      'service_order_reasons.manage',
     ],
   },
   {
@@ -157,6 +173,9 @@ const systemRoles = [
       // Contratos (operação)
       'contracts.read',
       'contracts.write',
+      // Ordens de Serviço (operação — sem deletar nem mexer em motivos)
+      'service_orders.read',
+      'service_orders.write',
     ],
   },
   {
@@ -171,6 +190,7 @@ const systemRoles = [
       'deals.read',
       'activities.read',
       'contracts.read',
+      'service_orders.read',
     ],
   },
 ];
@@ -180,7 +200,12 @@ async function main() {
 
   // 1. Permissions (global catalog)
   console.log('  → Permissions');
-  for (const p of [...corePermissions, ...crmPermissions, ...contractsPermissions]) {
+  for (const p of [
+    ...corePermissions,
+    ...crmPermissions,
+    ...contractsPermissions,
+    ...serviceOrdersPermissions,
+  ]) {
     await prisma.permission.upsert({
       where: { code: p.code },
       update: { module: p.module, resource: p.resource, action: p.action },

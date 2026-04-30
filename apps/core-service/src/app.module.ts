@@ -9,6 +9,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { ContractsModule } from './modules/contracts/contracts.module';
 import { CrmModule } from './modules/crm/crm.module';
+import { ServiceOrdersModule } from './modules/service-orders/service-orders.module';
 import { HealthModule } from './modules/health/health.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { RadiusModule } from './modules/radius/radius.module';
@@ -62,6 +63,7 @@ import { UsersModule } from './modules/users/users.module';
     AuditModule,
     CrmModule,
     ContractsModule,
+    ServiceOrdersModule,
     RadiusModule,
   ],
 })

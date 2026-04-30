@@ -1,6 +1,13 @@
 import { cn } from '@/lib/cn';
 
-type Tone = 'neutral' | 'success' | 'warning' | 'danger' | 'info' | 'brand';
+type Tone =
+  | 'neutral'
+  | 'success'
+  | 'warning'
+  | 'danger'
+  | 'info'
+  | 'brand'
+  | 'purple';
 
 const toneClass: Record<Tone, string> = {
   neutral: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
@@ -9,6 +16,9 @@ const toneClass: Record<Tone, string> = {
   danger: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300',
   info: 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300',
   brand: 'bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-100',
+  // Roxo — usado no status "Em Execução" das O.S.
+  purple:
+    'bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300',
 };
 
 export function Badge({

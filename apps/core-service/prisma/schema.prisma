@@ -58,6 +58,8 @@ model Tenant {
   contracts   Contract[]
   contractInvoices ContractInvoice[]
   radiusEvents RadiusEvent[]
+  serviceOrders        ServiceOrder[]
+  serviceOrderReasons  ServiceOrderReason[]
 
   @@index([status])
   @@index([country])
@@ -154,6 +156,11 @@ model User {
   // Contracts
   contractsCreated Contract[]      @relation("ContractCreatedBy")
   contractsUpdated Contract[]      @relation("ContractUpdatedBy")
+
+  // Service Orders
+  serviceOrdersAssigned ServiceOrder[] @relation("ServiceOrderAssignedTo")
+  serviceOrdersCreated  ServiceOrder[] @relation("ServiceOrderCreatedBy")
+  serviceOrdersUpdated  ServiceOrder[] @relation("ServiceOrderUpdatedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId, status])
@@ -903,6 +910,7 @@ model Contract {
 
   invoices            ContractInvoice[]
   radiusEvents        RadiusEvent[]
+  serviceOrders       ServiceOrder[]
 
   @@unique([tenantId, pppoeUsername])
   @@unique([tenantId, code])
@@ -976,4 +984,101 @@ model RadiusEvent {
   @@index([tenantId, contractId, createdAt])
   @@index([tenantId, status])
   @@map("radius_events")
+}
+
+// =============================================================================
+// SERVICE ORDERS (O.S — Ordens de Serviço)
+// =============================================================================
+// Cada O.S é uma demanda operacional vinculada a um contrato. Pode ser
+// agendada, executada e finalizada com descrição. Cidade/estado são
+// denormalizados pra filtros rápidos sem precisar JOIN no customer/address.
+//
+// Status:
+//   - OPEN: criada, sem agendamento
+//   - SCHEDULED: tem scheduledAt no futuro
+//   - IN_PROGRESS: técnico iniciou (startedAt setado)
+//   - COMPLETED: finalizada com closeDescription
+//   - CANCELLED: cancelada
+//   - OVERDUE: derivado em runtime (não persistido) — quando scheduledAt < now
+//     e status ∈ {OPEN, SCHEDULED}.
+enum ServiceOrderStatus {
+  OPEN
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+// Cadastro de motivos para a O.S (config do tenant). O admin gerencia em
+// /settings/service-order-reasons. Linha não é deletada — vira `isActive=false`
+// pra preservar referências históricas.
+model ServiceOrderReason {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  name        String   @db.VarChar(120)
+  description String?  @db.VarChar(500)
+  isActive    Boolean  @default(true) @map("is_active")
+  // Ordem de exibição em selects (asc).
+  order       Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serviceOrders ServiceOrder[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive, order])
+  @@map("service_order_reasons")
+}
+
+model ServiceOrder {
+  id                 String              @id @default(uuid()) @db.Uuid
+  tenantId           String              @map("tenant_id") @db.Uuid
+  contractId         String              @map("contract_id") @db.Uuid
+  reasonId           String              @map("reason_id") @db.Uuid
+
+  // Código humano (ex.: OS-000123). Gerado pelo service.
+  code               String?             @db.VarChar(32)
+
+  status             ServiceOrderStatus  @default(OPEN)
+
+  // Datas do ciclo de vida.
+  openedAt           DateTime            @default(now()) @map("opened_at")
+  scheduledAt        DateTime?           @map("scheduled_at")
+  startedAt          DateTime?           @map("started_at")
+  completedAt        DateTime?           @map("completed_at")
+  cancelledAt        DateTime?           @map("cancelled_at")
+
+  // Descrições
+  openDescription    String              @map("open_description") @db.Text
+  closeDescription   String?             @map("close_description") @db.Text
+
+  // Localização denormalizada (preenchida no create a partir do customer).
+  city               String?             @db.VarChar(120)
+  state              String?             @db.VarChar(120)
+
+  // Atribuição opcional ao técnico/responsável.
+  assignedToId       String?             @map("assigned_to_id") @db.Uuid
+
+  createdById        String?             @map("created_by_id") @db.Uuid
+  updatedById        String?             @map("updated_by_id") @db.Uuid
+
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+  deletedAt          DateTime?           @map("deleted_at")
+
+  tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contract           Contract            @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  reason             ServiceOrderReason  @relation(fields: [reasonId], references: [id], onDelete: Restrict)
+  assignedTo         User?               @relation("ServiceOrderAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  createdBy          User?               @relation("ServiceOrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy          User?               @relation("ServiceOrderUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, status])
+  @@index([tenantId, contractId])
+  @@index([tenantId, scheduledAt])
+  @@index([tenantId, city])
+  @@index([tenantId, assignedToId, status])
+  @@map("service_orders")
 }
