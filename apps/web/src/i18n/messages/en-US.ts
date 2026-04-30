@@ -251,10 +251,23 @@ const messages = {
       lastAccessNever: 'never',
       lastAccessLabel: 'Last login',
       newSubtitle:
-        'An invite email (with a temporary password) will be sent to the new user.',
+        'Set a password now or leave blank to generate an invite.',
       deleteTitle: 'Delete user',
       deleteMessage:
         'Are you sure you want to delete "{name}"? Access is disabled immediately (soft-delete; history preserved).',
+      passwordLabel: 'Password',
+      passwordHelp:
+        'Minimum 8 characters. If empty, the user stays "Invited" and you must send a password via another channel.',
+      passwordOptional: 'Password (optional)',
+      passwordResetTitle: 'Reset password',
+      passwordResetCta: 'Reset password',
+      passwordResetSuccess: 'Password updated',
+      passwordResetHelp:
+        'Set a new password. Existing sessions remain active until the user signs out.',
+      passwordTooShort: 'Password too short (min 8 characters)',
+      sendInvite: 'Send email invite',
+      sendInviteHelp:
+        'Sends a welcome link to the user\'s email. Still in development — for now use the password field.',
     },
     roles: {
       superadmin: 'Super admin',

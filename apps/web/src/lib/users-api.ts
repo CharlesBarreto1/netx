@@ -46,6 +46,8 @@ export interface CreateUserInput {
   timezone?: string;
   roleIds: string[];
   menuAccess?: string[] | null;
+  /** Senha opcional. Se omitida, user nasce INVITED com senha temp. */
+  password?: string;
   sendInvite?: boolean;
 }
 
@@ -58,6 +60,8 @@ export interface UpdateUserInput {
   roleIds?: string[];
   menuAccess?: string[] | null;
   status?: UserStatus;
+  /** Reset de senha pelo admin. Quando informado, gera novo hash. */
+  password?: string;
 }
 
 export const usersApi = {

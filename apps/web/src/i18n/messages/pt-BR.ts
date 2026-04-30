@@ -269,10 +269,23 @@ const messages = {
       menuRestricted: 'Menu restrito',
       lastAccessNever: 'nunca',
       lastAccessLabel: 'Último acesso',
-      newSubtitle: 'Um email de convite (com senha temporária) será enviado pro novo usuário.',
+      newSubtitle: 'Defina uma senha agora ou deixe em branco para gerar um convite.',
       deleteTitle: 'Excluir usuário',
       deleteMessage:
         'Tem certeza que quer excluir "{name}"? O acesso é desabilitado imediatamente (soft-delete; histórico preservado).',
+      passwordLabel: 'Senha',
+      passwordHelp:
+        'Mínimo 8 caracteres. Se deixar em branco, o usuário fica como "Convidado" e você precisa enviar uma senha por outro canal.',
+      passwordOptional: 'Senha (opcional)',
+      passwordResetTitle: 'Resetar senha',
+      passwordResetCta: 'Resetar senha',
+      passwordResetSuccess: 'Senha atualizada',
+      passwordResetHelp:
+        'Defina uma senha nova. As sessões antigas continuam ativas até o usuário sair manualmente.',
+      passwordTooShort: 'Senha muito curta (mín. 8 caracteres)',
+      sendInvite: 'Enviar convite por email',
+      sendInviteHelp:
+        'Envia um link de boas-vindas para o email do usuário. Ainda em desenvolvimento — por enquanto use o campo de senha.',
     },
     roles: {
       superadmin: 'Superadministrador',

@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
-import { UserStatus } from '@prisma/client';
+import { Prisma, UserStatus } from '@prisma/client';
 
 import { hashPassword } from '@netx/auth';
 import { loadConfig } from '@netx/config';
@@ -31,10 +31,21 @@ export class UsersService {
     });
     if (existing) throw new ConflictException('User with this email already exists');
 
-    // If not sending an invite, generate a random initial password. The user
-    // should change it on first login. In production, prefer invite links.
-    const tempPassword = randomBytes(16).toString('base64url');
-    const passwordHash = await hashPassword(tempPassword, this.argon2Config);
+    // 3 caminhos de senha:
+    //   1) input.password informado → usa; user nasce ACTIVE.
+    //   2) sem password e sendInvite=true → gera tempPass; user fica INVITED
+    //      (até o módulo Notifications mandar email convite, o admin precisa
+    //      acionar reset manual).
+    //   3) sem password e sendInvite=false → gera tempPass; ACTIVE (admin
+    //      provavelmente vai resetar via UI).
+    const initialPassword =
+      input.password ?? randomBytes(16).toString('base64url');
+    const passwordHash = await hashPassword(initialPassword, this.argon2Config);
+    const initialStatus = input.password
+      ? UserStatus.ACTIVE
+      : input.sendInvite
+        ? UserStatus.INVITED
+        : UserStatus.ACTIVE;
 
     const user = await this.prisma.user.create({
       data: {
@@ -46,10 +57,12 @@ export class UsersService {
         locale: input.locale,
         timezone: input.timezone,
         passwordHash,
-        status: input.sendInvite ? UserStatus.INVITED : UserStatus.ACTIVE,
+        status: initialStatus,
         invitedById: actorUserId,
-        // null = sem override; array = lista permitida
-        menuAccess: input.menuAccess ?? null,
+        // Prisma exige Prisma.JsonNull (sentinel) pra setar JSON nulo no DB.
+        // Passar literal `null` quebra o tipo. Comportamento: undefined/null
+        // do input → coluna fica NULL (sem override de menus).
+        menuAccess: input.menuAccess ?? Prisma.JsonNull,
         userRoles: {
           create: input.roleIds.map((roleId) => ({ roleId })),
         },
@@ -63,7 +76,13 @@ export class UsersService {
       action: 'user.created',
       resource: 'users',
       resourceId: user.id,
-      afterState: { email: user.email, roles: input.roleIds },
+      // Audit registra QUE senha foi setada, nunca o valor.
+      afterState: {
+        email: user.email,
+        roles: input.roleIds,
+        passwordSet: !!input.password,
+        status: user.status,
+      },
     });
 
     // TODO: enqueue invite email via RabbitMQ (Notifications module)
@@ -125,6 +144,16 @@ export class UsersService {
     });
     if (!before) throw new NotFoundException('User not found');
 
+    // Reset de senha pelo admin: se input.password vier, hashea agora e
+    // atualiza passwordHash junto. Bons padrões cuidados aqui:
+    //   - exige min 8 chars (já validado no Zod)
+    //   - audit registra que senha foi resetada, sem o valor
+    //   - se a UI tiver políticas (ex.: forçar troca no próximo login), basta
+    //     mexer em `status` aqui também (nada de schema novo).
+    const passwordHash = input.password
+      ? await hashPassword(input.password, this.argon2Config)
+      : undefined;
+
     const updated = await this.prisma.user.update({
       where: { id },
       data: {
@@ -134,9 +163,14 @@ export class UsersService {
         locale: input.locale,
         timezone: input.timezone,
         status: input.status,
-        // input.menuAccess === null limpa override (sem restrição extra);
-        // === undefined deixa como está; array sobrescreve.
-        ...(input.menuAccess !== undefined ? { menuAccess: input.menuAccess } : {}),
+        ...(passwordHash ? { passwordHash } : {}),
+        // Mesma regra do create: Prisma.JsonNull pro caso "limpar override".
+        // input.menuAccess === undefined → não toca no campo.
+        // input.menuAccess === null → limpa override (NULL no DB).
+        // input.menuAccess === array → grava o array.
+        ...(input.menuAccess !== undefined
+          ? { menuAccess: input.menuAccess === null ? Prisma.JsonNull : input.menuAccess }
+          : {}),
         ...(input.roleIds
           ? {
               userRoles: {
@@ -152,11 +186,14 @@ export class UsersService {
     await this.audit.log({
       tenantId,
       userId: actorUserId,
-      action: 'user.updated',
+      action: input.password ? 'user.password_reset' : 'user.updated',
       resource: 'users',
       resourceId: id,
       beforeState: { status: before.status },
-      afterState: { status: updated.status },
+      afterState: {
+        status: updated.status,
+        ...(input.password ? { passwordReset: true } : {}),
+      },
     });
 
     return this.toResponse(updated);

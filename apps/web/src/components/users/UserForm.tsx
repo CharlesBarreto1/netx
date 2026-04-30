@@ -12,6 +12,7 @@ import {
   Label,
   Select,
 } from '@/components/ui/Input';
+import { toast } from '@/components/ui/sonner';
 import { ApiError } from '@/lib/api';
 import { MENU_CATALOG } from '@/lib/menus';
 import {
@@ -64,6 +65,14 @@ export function UserForm({ mode, initial, onSuccess, onCancel }: UserFormProps) 
   const [phone, setPhone] = useState(initial?.phone ?? '');
   const [status, setStatus] = useState<UserStatus>(initial?.status ?? 'INVITED');
   const [roleId, setRoleId] = useState<string>(initial?.roles?.[0]?.id ?? '');
+  // Senha:
+  //   - Em create: input opcional. Se preenchido (>= 8), o user nasce ACTIVE.
+  //   - Em edit: tem um bloco separado "Resetar senha" com seu próprio input
+  //     e botão (não compartilha com o submit principal — evita salvar senha
+  //     sem querer junto de outras edições).
+  const [password, setPassword] = useState('');
+  const [resetPassword, setResetPassword] = useState('');
+  const [resettingPassword, setResettingPassword] = useState(false);
   // Em create, default: tudo liberado. Em edit: o que o user já tem (null = todos).
   const [menuKeys, setMenuKeys] = useState<Set<string>>(() => {
     const all = new Set(MENU_CATALOG.map((m) => m.key));
@@ -151,6 +160,12 @@ export function UserForm({ mode, initial, onSuccess, onCancel }: UserFormProps) 
         };
         saved = await usersApi.update(initial.id, body);
       } else {
+        // Validação local de senha: o backend exige min 8 quando informada.
+        if (password && password.length < 8) {
+          setError(tForm('passwordTooShort'));
+          setSubmitting(false);
+          return;
+        }
         const body: CreateUserInput = {
           email: email.trim(),
           firstName: firstName.trim(),
@@ -158,7 +173,9 @@ export function UserForm({ mode, initial, onSuccess, onCancel }: UserFormProps) 
           phone: phone.trim() || undefined,
           roleIds: [roleId],
           menuAccess,
-          sendInvite: true,
+          // Se vier senha, manda; senão deixa undefined (backend gera temp).
+          ...(password ? { password } : {}),
+          sendInvite: !password, // só envia convite se NÃO definiu senha
         };
         saved = await usersApi.create(body);
       }
@@ -250,6 +267,21 @@ export function UserForm({ mode, initial, onSuccess, onCancel }: UserFormProps) 
             </Select>
           </div>
         )}
+        {!isEdit && (
+          <div className="md:col-span-2">
+            <Label htmlFor="u-password">{tForm('passwordOptional')}</Label>
+            <Input
+              id="u-password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
+              minLength={8}
+            />
+            <FieldError>{fieldErrors.password}</FieldError>
+            <FieldHelp>{tForm('passwordHelp')}</FieldHelp>
+          </div>
+        )}
       </section>
 
       {/* Papel */}
@@ -313,6 +345,59 @@ export function UserForm({ mode, initial, onSuccess, onCancel }: UserFormProps) 
           ))}
         </ul>
       </section>
+
+      {/* Bloco "Resetar senha" — só em modo edit. Disparado por botão próprio
+          (não pelo submit principal) pra evitar mandar senha sem querer. */}
+      {isEdit && initial && (
+        <section>
+          <h3 className="text-sm font-semibold text-text">
+            {tForm('passwordResetTitle')}
+          </h3>
+          <p className="text-xs text-text-muted">{tForm('passwordResetHelp')}</p>
+          <div className="mt-2 flex flex-wrap items-end gap-2">
+            <div className="flex-1 min-w-[240px]">
+              <Label htmlFor="u-reset-pass">{tForm('passwordLabel')}</Label>
+              <Input
+                id="u-reset-pass"
+                type="password"
+                value={resetPassword}
+                onChange={(e) => setResetPassword(e.target.value)}
+                autoComplete="new-password"
+                minLength={8}
+              />
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              loading={resettingPassword}
+              disabled={resetPassword.length < 8}
+              onClick={async () => {
+                setResettingPassword(true);
+                setError(null);
+                try {
+                  const saved = await usersApi.update(initial.id, {
+                    password: resetPassword,
+                  });
+                  setResetPassword('');
+                  toast.success(tForm('passwordResetSuccess'));
+                  onSuccess(saved);
+                } catch (err) {
+                  const msg =
+                    err instanceof ApiError
+                      ? err.friendlyMessage
+                      : (err as Error).message;
+                  setError(msg);
+                } finally {
+                  setResettingPassword(false);
+                }
+              }}
+            >
+              {tForm('passwordResetCta')}
+            </Button>
+          </div>
+          <FieldHelp>{tForm('passwordHelp')}</FieldHelp>
+        </section>
+      )}
 
       <footer className="flex items-center justify-end gap-2 border-t border-slate-200 pt-4 dark:border-slate-700">
         {onCancel && (

@@ -17,6 +17,12 @@ export const CreateUserRequestSchema = z.object({
    * (intersecção com permissões).
    */
   menuAccess: z.array(z.string().min(1).max(64)).max(64).nullish(),
+  /**
+   * Senha inicial. Quando informada, o user é criado com status ACTIVE e a
+   * senha é hasheada antes de salvar. Quando ausente, geramos uma senha
+   * temporária e marcamos como INVITED (fluxo legado de convite por email).
+   */
+  password: z.string().min(8).max(128).optional(),
   sendInvite: z.boolean().default(true),
 });
 export type CreateUserRequest = z.infer<typeof CreateUserRequestSchema>;

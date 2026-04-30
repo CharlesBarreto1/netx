@@ -261,10 +261,23 @@ const messages = {
       lastAccessNever: 'nunca',
       lastAccessLabel: 'Último acceso',
       newSubtitle:
-        'Se enviará un email de invitación (con contraseña temporal) al nuevo usuario.',
+        'Definí una contraseña ahora o dejá en blanco para generar una invitación.',
       deleteTitle: 'Eliminar usuario',
       deleteMessage:
         '¿Seguro que querés eliminar a "{name}"? El acceso se desactiva inmediatamente (soft-delete; historial preservado).',
+      passwordLabel: 'Contraseña',
+      passwordHelp:
+        'Mínimo 8 caracteres. Si dejás en blanco, el usuario queda como "Invitado" y tendrás que enviar la contraseña por otro canal.',
+      passwordOptional: 'Contraseña (opcional)',
+      passwordResetTitle: 'Restablecer contraseña',
+      passwordResetCta: 'Restablecer contraseña',
+      passwordResetSuccess: 'Contraseña actualizada',
+      passwordResetHelp:
+        'Definí una contraseña nueva. Las sesiones antiguas siguen activas hasta que el usuario cierre sesión.',
+      passwordTooShort: 'Contraseña muy corta (mín. 8 caracteres)',
+      sendInvite: 'Enviar invitación por email',
+      sendInviteHelp:
+        'Envía un enlace de bienvenida al email del usuario. Aún en desarrollo — por ahora usá el campo de contraseña.',
     },
     roles: {
       superadmin: 'Superadministrador',
