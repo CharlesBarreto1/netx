@@ -60,7 +60,11 @@ export default function ServiceOrderDetailPage() {
     os.status === 'OPEN' || os.status === 'SCHEDULED';
   const isInProgress = os.status === 'IN_PROGRESS';
 
+  // Os handlers podem ser chamados a qualquer momento; o TS não propaga o
+  // narrowing do `if (!os) return` lá em cima porque closures podem rodar
+  // depois do componente ser desmontado/re-renderizado. Guard explícita.
   async function handleStart() {
+    if (!os) return;
     setBusy(true);
     try {
       const updated = await serviceOrdersApi.start(os.id);
@@ -75,6 +79,7 @@ export default function ServiceOrderDetailPage() {
   }
 
   async function handleComplete() {
+    if (!os) return;
     if (closeDescription.trim().length < 1) return;
     setBusy(true);
     try {
@@ -94,6 +99,7 @@ export default function ServiceOrderDetailPage() {
   }
 
   async function handleCancel() {
+    if (!os) return;
     setBusy(true);
     try {
       const updated = await serviceOrdersApi.cancel(os.id, {
@@ -112,6 +118,7 @@ export default function ServiceOrderDetailPage() {
   }
 
   async function handleDelete() {
+    if (!os) return;
     setBusy(true);
     try {
       await serviceOrdersApi.remove(os.id);
