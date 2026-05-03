@@ -1106,10 +1106,8 @@ model ServiceOrder {
 // FINANCE — Caixas, métodos de pagamento e cobranças avulsas
 // =============================================================================
 
-/**
- * Tipo do caixa. CASH = dinheiro físico (gaveta), BANK = conta bancária do
- * provedor, PIX = chave PIX dedicada, CARD = maquininha. OTHER pra exceções.
- */
+// Tipo do caixa. CASH = dinheiro físico (gaveta), BANK = conta bancária do
+// provedor, PIX = chave PIX dedicada, CARD = maquininha. OTHER pra exceções.
 enum CashRegisterType {
   CASH
   BANK
@@ -1118,20 +1116,16 @@ enum CashRegisterType {
   OTHER
 }
 
-/**
- * Nível de acesso do usuário no caixa.
- *  - OPERATOR: pode dar baixa de pagamento neste caixa.
- *  - VIEWER:   só vê o saldo/histórico.
- */
+// Nível de acesso do usuário no caixa.
+//  - OPERATOR: pode dar baixa de pagamento neste caixa.
+//  - VIEWER:   só vê o saldo/histórico.
 enum CashRegisterRole {
   OPERATOR
   VIEWER
 }
 
-/**
- * Forma de pagamento informada na hora de dar baixa. Independe do caixa
- * (uma mesma maquininha pode ter PIX e CARD); preenchemos no Payment.
- */
+// Forma de pagamento informada na hora de dar baixa. Independe do caixa
+// (uma mesma maquininha pode ter PIX e CARD); preenchemos no Payment.
 enum PaymentMethod {
   CASH
   PIX
@@ -1146,12 +1140,10 @@ enum OneTimeChargeStatus {
   CANCELLED
 }
 
-/**
- * Caixa do tenant. Cada um carrega um cadastro próprio (ex.: "Caixa Loja
- * Central", "Banco Itaú PJ", "PIX Notebook"). Permissão de visibilidade é
- * via `CashRegisterMembership` — o user só vê os caixas em que tem entrada,
- * EXCETO se tiver `cash_registers.manage` (admins veem todos).
- */
+// Caixa do tenant. Cada um carrega um cadastro próprio (ex. "Caixa Loja
+// Central", "Banco Itaú PJ", "PIX Notebook"). Permissão de visibilidade é
+// via CashRegisterMembership — o user só vê os caixas em que tem entrada,
+// EXCETO se tiver cash_registers.manage (admins veem todos).
 model CashRegister {
   id             String           @id @default(uuid()) @db.Uuid
   tenantId       String           @map("tenant_id") @db.Uuid
@@ -1193,13 +1185,10 @@ model CashRegisterMembership {
   @@map("cash_register_memberships")
 }
 
-/**
- * Cobrança avulsa — não vinculada a uma fatura recorrente de mensalidade.
- * Casos: taxa de instalação, multa por dano, equipamento extra, taxa de
- * visita técnica. Pode opcionalmente referenciar um Contract pra rastreio.
- *
- * Quando paga, registramos o caixa, método e desconto aplicado.
- */
+// Cobrança avulsa — não vinculada a uma fatura recorrente de mensalidade.
+// Casos: taxa de instalação, multa por dano, equipamento extra, taxa de
+// visita técnica. Pode opcionalmente referenciar um Contract pra rastreio.
+// Quando paga, registramos o caixa, método e desconto aplicado.
 model OneTimeCharge {
   id             String              @id @default(uuid()) @db.Uuid
   tenantId       String              @map("tenant_id") @db.Uuid
