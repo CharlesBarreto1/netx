@@ -286,6 +286,7 @@ const messages = {
       actionStart: 'Start execution',
       actionComplete: 'Complete',
       actionCancel: 'Cancel order',
+      actionPrint: 'Print / PDF',
       startedToast: 'Order started',
       completedToast: 'Order completed',
       cancelledToast: 'Order cancelled',

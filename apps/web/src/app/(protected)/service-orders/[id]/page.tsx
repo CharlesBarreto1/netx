@@ -156,6 +156,15 @@ export default function ServiceOrderDetailPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {/* Imprimir / Salvar PDF — disponível em qualquer status. Abre em
+                nova aba pra não perder o estado da tela. */}
+            <Link
+              href={`/service-orders/${os.id}/print`}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Button variant="outline">{tDetail('actionPrint')}</Button>
+            </Link>
             {canWrite && isOpenLike && (
               <Button onClick={handleStart} loading={busy}>
                 {tDetail('actionStart')}

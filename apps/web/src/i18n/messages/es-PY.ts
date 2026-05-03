@@ -296,6 +296,7 @@ const messages = {
       actionStart: 'Iniciar ejecución',
       actionComplete: 'Finalizar',
       actionCancel: 'Cancelar O.S',
+      actionPrint: 'Imprimir / PDF',
       startedToast: 'O.S iniciada',
       completedToast: 'O.S finalizada',
       cancelledToast: 'O.S cancelada',
