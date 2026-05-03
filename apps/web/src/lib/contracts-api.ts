@@ -46,6 +46,12 @@ export interface ContractInvoice {
   status: InvoiceStatus;
   paidAt: string | null;
   paidAmount: number | null;
+  /** Desconto aplicado no pagamento (positivo). */
+  discountAmount: number | null;
+  /** Forma como o cliente pagou. */
+  paidVia: 'CASH' | 'PIX' | 'CARD' | 'BANK_TRANSFER' | 'OTHER' | null;
+  /** Caixa que recebeu o pagamento. */
+  cashRegisterId: string | null;
   paymentNote: string | null;
   reference: string | null;
   createdAt: string;
@@ -157,6 +163,12 @@ export interface PayInvoiceInput {
   paidAmount?: number;
   paidAt?: string;
   note?: string;
+  /** Caixa que recebeu (UUID). Validado contra membership do user. */
+  cashRegisterId?: string | null;
+  /** Forma de pagamento. */
+  paidVia?: 'CASH' | 'PIX' | 'CARD' | 'BANK_TRANSFER' | 'OTHER';
+  /** Desconto aplicado (positivo). Exige perm `finance.discount.apply`. */
+  discountAmount?: number;
 }
 
 export const contractInvoicesApi = {

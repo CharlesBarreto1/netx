@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuditModule } from '../audit/audit.module';
+import { FinanceModule } from '../finance/finance.module';
 
 import { ContractsController } from './contracts.controller';
 import { ContractsService } from './contracts.service';
@@ -24,7 +25,7 @@ import { RadiusSyncService } from './radius-sync.service';
  * Cron diário (06:00): gera próximas faturas e suspende contratos c/ fatura > 5 dias.
  */
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, FinanceModule],
   controllers: [ContractsController, ContractInvoicesController],
   providers: [
     ContractsService,

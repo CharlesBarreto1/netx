@@ -89,6 +89,20 @@ const serviceOrdersPermissions = [
   { code: 'service_order_reasons.manage', module: 'service_orders', resource: 'service_order_reasons', action: 'manage' },
 ];
 
+// -----------------------------------------------------------------------------
+// Permission catalog — Finance (caixas + cobranças avulsas + descontos)
+// -----------------------------------------------------------------------------
+const financePermissions = [
+  // Cadastro de caixas (admin).
+  { code: 'cash_registers.manage', module: 'finance', resource: 'cash_registers', action: 'manage' },
+  // Cobranças avulsas.
+  { code: 'finance.charges.read', module: 'finance', resource: 'charges', action: 'read' },
+  { code: 'finance.charges.write', module: 'finance', resource: 'charges', action: 'write' },
+  { code: 'finance.charges.delete', module: 'finance', resource: 'charges', action: 'delete' },
+  // Aplicar desconto em pagamento (sensível — não vai pro operator default).
+  { code: 'finance.discount.apply', module: 'finance', resource: 'payments', action: 'discount' },
+];
+
 // Role → permission mapping
 const systemRoles = [
   {
@@ -145,6 +159,12 @@ const systemRoles = [
       'service_orders.write',
       'service_orders.delete',
       'service_order_reasons.manage',
+      // Finance
+      'cash_registers.manage',
+      'finance.charges.read',
+      'finance.charges.write',
+      'finance.charges.delete',
+      'finance.discount.apply',
     ],
   },
   {
@@ -176,6 +196,10 @@ const systemRoles = [
       // Ordens de Serviço (operação — sem deletar nem mexer em motivos)
       'service_orders.read',
       'service_orders.write',
+      // Finance (operação — pode criar/baixar cobrança, sem mexer em caixa
+      // nem aplicar desconto)
+      'finance.charges.read',
+      'finance.charges.write',
     ],
   },
   {
@@ -191,6 +215,7 @@ const systemRoles = [
       'activities.read',
       'contracts.read',
       'service_orders.read',
+      'finance.charges.read',
     ],
   },
 ];
@@ -205,6 +230,7 @@ async function main() {
     ...crmPermissions,
     ...contractsPermissions,
     ...serviceOrdersPermissions,
+    ...financePermissions,
   ]) {
     await prisma.permission.upsert({
       where: { code: p.code },

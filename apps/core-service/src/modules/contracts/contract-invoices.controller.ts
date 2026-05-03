@@ -78,7 +78,16 @@ export class ContractInvoicesController {
     @Param('id', new ParseUUIDPipe()) id: string,
     @ZodBody(PayContractInvoiceRequestSchema) body: PayContractInvoiceRequest,
   ) {
-    return this.invoices.pay(user.tenantId, user.sub, id, body);
+    const isManager = user.permissions.includes('cash_registers.manage');
+    const canDiscount = user.permissions.includes('finance.discount.apply');
+    return this.invoices.pay(
+      user.tenantId,
+      user.sub,
+      isManager,
+      canDiscount,
+      id,
+      body,
+    );
   }
 
   @Post('contract-invoices/:id/cancel')

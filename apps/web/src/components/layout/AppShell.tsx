@@ -30,8 +30,10 @@ const MENU_ICON: Record<string, React.ReactNode> = {
   customers: <IconUsers />,
   contracts: <IconContract />,
   serviceOrders: <IconWrench />,
+  charges: <IconCash />,
   tags: <IconTag />,
   settings: <IconSettings />,
+  cashRegisters: <IconCash />,
   serviceOrderReasons: <IconList />,
   users: <IconUsers />,
 };
@@ -323,6 +325,16 @@ function IconList() {
       <line x1="3" y1="6" x2="3.01" y2="6" />
       <line x1="3" y1="12" x2="3.01" y2="12" />
       <line x1="3" y1="18" x2="3.01" y2="18" />
+    </svg>
+  );
+}
+
+function IconCash() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-full w-full">
+      <rect x="2" y="6" width="20" height="12" rx="2" />
+      <circle cx="12" cy="12" r="2" />
+      <path d="M6 10h.01M18 14h.01" />
     </svg>
   );
 }

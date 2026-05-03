@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+import { PaymentMethodSchema } from '../finance/payment.dto';
+import type { PaymentMethod } from '../finance/payment.dto';
+
 export const InvoiceStatusSchema = z.enum(['OPEN', 'PAID', 'OVERDUE', 'CANCELLED']);
 export type InvoiceStatus = z.infer<typeof InvoiceStatusSchema>;
 
@@ -20,6 +23,12 @@ export const PayContractInvoiceRequestSchema = z.object({
   paidAmount: z.coerce.number().positive().max(1_000_000).optional(),
   paidAt: z.string().datetime().optional(), // default = agora
   note: z.string().max(255).optional(),
+  /** Caixa que recebeu. Validado contra membership do user. */
+  cashRegisterId: z.string().uuid().nullish(),
+  /** Forma de pagamento. */
+  paidVia: PaymentMethodSchema.optional(),
+  /** Desconto aplicado (positivo). Exige perm `finance.discount.apply`. */
+  discountAmount: z.coerce.number().min(0).max(1_000_000).optional(),
 });
 export type PayContractInvoiceRequest = z.infer<typeof PayContractInvoiceRequestSchema>;
 
@@ -62,6 +71,9 @@ export interface ContractInvoiceResponse {
   status: InvoiceStatus;
   paidAt: string | null;
   paidAmount: number | null;
+  discountAmount: number | null;
+  paidVia: PaymentMethod | null;
+  cashRegisterId: string | null;
   paymentNote: string | null;
 
   reference: string | null;

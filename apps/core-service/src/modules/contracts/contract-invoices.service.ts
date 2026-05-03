@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -24,6 +25,7 @@ import {
 
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { CashRegistersService } from '../finance/cash-registers.service';
 import { ContractsService } from './contracts.service';
 
 type InvoiceWithContract = Prisma.ContractInvoiceGetPayload<{
@@ -42,6 +44,7 @@ export class ContractInvoicesService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly contracts: ContractsService,
+    private readonly registers: CashRegistersService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -157,6 +160,8 @@ export class ContractInvoicesService {
   async pay(
     tenantId: string,
     actorUserId: string,
+    isManager: boolean,
+    canDiscount: boolean,
     id: string,
     input: PayContractInvoiceRequest,
   ): Promise<ContractInvoiceResponse> {
@@ -172,8 +177,27 @@ export class ContractInvoicesService {
       throw new BadRequestException('Fatura cancelada não pode ser paga');
     }
 
+    // Validações financeiras novas:
+    if (input.discountAmount && input.discountAmount > 0 && !canDiscount) {
+      throw new ForbiddenException('Sem permissão para aplicar desconto');
+    }
+    if (input.cashRegisterId) {
+      await this.registers.assertOperator(
+        tenantId,
+        input.cashRegisterId,
+        actorUserId,
+        isManager,
+      );
+    }
+    const amount = Number(existing.amount);
+    const discount = input.discountAmount ?? 0;
+    if (discount > amount) {
+      throw new BadRequestException(
+        'Desconto não pode ser maior que o valor da fatura',
+      );
+    }
     const paidAt = input.paidAt ? new Date(input.paidAt) : new Date();
-    const paidAmount = input.paidAmount ?? Number(existing.amount);
+    const paidAmount = input.paidAmount ?? amount - discount;
 
     const updated = await this.prisma.contractInvoice.update({
       where: { id },
@@ -181,6 +205,9 @@ export class ContractInvoicesService {
         status: PrismaInvoiceStatus.PAID,
         paidAt,
         paidAmount: new Prisma.Decimal(paidAmount),
+        discountAmount: discount > 0 ? new Prisma.Decimal(discount) : null,
+        paidVia: input.paidVia,
+        cashRegisterId: input.cashRegisterId ?? null,
         paymentNote: input.note ?? null,
       },
       include: {
@@ -280,6 +307,10 @@ function toInvoiceResponse(i: InvoiceWithContract): ContractInvoiceResponse {
     status: i.status as InvoiceStatus,
     paidAt: i.paidAt?.toISOString() ?? null,
     paidAmount: i.paidAmount != null ? Number(i.paidAmount) : null,
+    discountAmount:
+      (i as any).discountAmount != null ? Number((i as any).discountAmount) : null,
+    paidVia: (i as any).paidVia ?? null,
+    cashRegisterId: (i as any).cashRegisterId ?? null,
     paymentNote: i.paymentNote,
     reference: i.reference,
     createdAt: i.createdAt.toISOString(),

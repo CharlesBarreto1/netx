@@ -6,9 +6,9 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import useSWR from 'swr';
 
+import { PaymentDialog } from '@/components/finance/PaymentDialog';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import { ConfirmDialog } from '@/components/ui/Modal';
 import { InlineLoader } from '@/components/ui/Spinner';
 import { ApiError } from '@/lib/api';
 import {
@@ -78,7 +78,6 @@ export function FinanceTab({ customerId }: { customerId: string }) {
 
   // Estado de "dar baixa"
   const [paying, setPaying] = useState<ContractInvoice | null>(null);
-  const [busy, setBusy] = useState(false);
 
   if (isLoading && !invoicesResp) {
     return <InlineLoader label="Carregando faturas…" />;
@@ -102,21 +101,8 @@ export function FinanceTab({ customerId }: { customerId: string }) {
     .filter((i) => i.status === 'PAID')
     .reduce((s, i) => s + (i.paidAmount ?? i.amount), 0);
 
-  async function handlePay() {
-    if (!paying) return;
-    setBusy(true);
-    try {
-      await contractInvoicesApi.pay(paying.id);
-      toast.success('Fatura baixada');
-      setPaying(null);
-      await mutate();
-    } catch (err) {
-      const msg = err instanceof ApiError ? err.friendlyMessage : 'Falha ao dar baixa';
-      toast.error(msg);
-    } finally {
-      setBusy(false);
-    }
-  }
+  // handlePay foi substituído pelo PaymentDialog (que recebe input
+  // estruturado com cashRegisterId/discount/method).
 
   return (
     <div className="flex flex-col gap-4">
@@ -223,21 +209,19 @@ export function FinanceTab({ customerId }: { customerId: string }) {
         </div>
       )}
 
-      <ConfirmDialog
-        open={paying !== null}
-        onClose={() => setPaying(null)}
-        onConfirm={handlePay}
-        title={tFinance('invoice.payConfirmTitle')}
-        message={
-          paying
-            ? `Confirmar pagamento de ${formatMoney(paying.amount)} (vencimento ${formatDate(
-                paying.dueDate,
-              )}). Se o contrato estava suspenso por inadimplência, será reativado automaticamente.`
-            : ''
-        }
-        confirmLabel={tCommon('confirm')}
-        loading={busy}
-      />
+      {paying && (
+        <PaymentDialog
+          open
+          onOpenChange={(v) => !v && setPaying(null)}
+          amount={paying.amount}
+          description={`${paying.reference ?? ''} · ${formatDate(paying.dueDate)}`}
+          onConfirm={async (input) => {
+            await contractInvoicesApi.pay(paying.id, input);
+            toast.success(tCommon('success'));
+            await mutate();
+          }}
+        />
+      )}
     </div>
   );
 }
