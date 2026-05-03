@@ -2,7 +2,8 @@
  * Cliente HTTP para o API Gateway do NetX.
  *
  * Convenções:
- *   - Token em sessionStorage (`netx.accessToken`) — mesma chave do fluxo de login.
+ *   - Token em localStorage (`netx.accessToken`) — compartilhado entre abas pra
+ *     que páginas de print abertas em nova aba mantenham sessão.
  *   - Base URL via NEXT_PUBLIC_API_URL (default `/api`, ou seja, same-origin —
  *     o Next proxia `/api/*` para o gateway via rewrite em next.config.mjs).
  *     Só sobrescreva se o frontend e o backend rodam em domínios diferentes.
@@ -78,13 +79,18 @@ function nestMessageToString(m: string | string[] | undefined): string | undefin
 
 function authHeaders(): HeadersInit {
   if (typeof window === 'undefined') return {};
-  const token = sessionStorage.getItem('netx.accessToken');
+  const token = localStorage.getItem('netx.accessToken');
   return token ? { authorization: `Bearer ${token}` } : {};
 }
 
 function handleUnauthorized(): void {
   if (typeof window === 'undefined') return;
-  sessionStorage.clear();
+  // Limpa só as chaves do NetX (não usa .clear()). Mantemos consistência com
+  // session.ts:clearSession.
+  localStorage.removeItem('netx.accessToken');
+  localStorage.removeItem('netx.refreshToken');
+  localStorage.removeItem('netx.user');
+  localStorage.removeItem('netx.tenant');
   // Evita loop se já estivermos na /login
   if (!window.location.pathname.startsWith('/login')) {
     window.location.href = '/login';

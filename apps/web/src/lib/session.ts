@@ -1,6 +1,16 @@
 /**
  * Helpers para ler/escrever a sessão do usuário no client.
- * Tudo mora em sessionStorage (limpo ao fechar a aba) — sem persistência cruzada.
+ *
+ * Por que localStorage e não sessionStorage:
+ *   sessionStorage é por-aba — uma aba nova aberta via target="_blank" ganha
+ *   storage VAZIO e o ProtectedLayout joga o user pra /login. Inviabiliza
+ *   abrir páginas de impressão (O.S, faturas) em nova aba. localStorage é
+ *   compartilhado entre todas as abas do mesmo origin.
+ *
+ *   Trade-off: o token persiste até logout/expiração explícita em vez de
+ *   limpar ao fechar a aba. Aceitável pra B2B SaaS — o backend valida o JWT
+ *   em todo request e o ApiError 401 chama `clearSession() + redirect` no
+ *   `handleUnauthorized`.
  */
 
 export interface SessionUser {
@@ -40,16 +50,23 @@ function safeJson<T>(raw: string | null): T | null {
 
 export function getSession(): Session | null {
   if (typeof window === 'undefined') return null;
-  const accessToken = sessionStorage.getItem('netx.accessToken');
-  const user = safeJson<SessionUser>(sessionStorage.getItem('netx.user'));
-  const tenant = safeJson<SessionTenant>(sessionStorage.getItem('netx.tenant'));
+  const accessToken = localStorage.getItem('netx.accessToken');
+  const user = safeJson<SessionUser>(localStorage.getItem('netx.user'));
+  const tenant = safeJson<SessionTenant>(localStorage.getItem('netx.tenant'));
   if (!accessToken || !user || !tenant) return null;
   return { accessToken, user, tenant };
 }
 
+/**
+ * Limpa só as chaves do NetX em localStorage (não usa `.clear()` pra evitar
+ * apagar coisas de outros apps/extensões eventuais no mesmo origin).
+ */
 export function clearSession(): void {
   if (typeof window === 'undefined') return;
-  sessionStorage.clear();
+  localStorage.removeItem('netx.accessToken');
+  localStorage.removeItem('netx.refreshToken');
+  localStorage.removeItem('netx.user');
+  localStorage.removeItem('netx.tenant');
 }
 
 export function hasPermission(perm: string): boolean {

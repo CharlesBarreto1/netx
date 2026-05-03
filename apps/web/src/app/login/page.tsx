@@ -19,10 +19,12 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const res = await apiLogin({ email, password, tenantSlug });
-      sessionStorage.setItem('netx.accessToken', res.accessToken);
-      sessionStorage.setItem('netx.refreshToken', res.refreshToken);
-      sessionStorage.setItem('netx.user', JSON.stringify(res.user));
-      sessionStorage.setItem('netx.tenant', JSON.stringify(res.tenant));
+      // localStorage compartilha entre abas — necessário pra abas de print
+      // (/service-orders/[id]/print, /invoices/[id]/print) abrirem com sessão.
+      localStorage.setItem('netx.accessToken', res.accessToken);
+      localStorage.setItem('netx.refreshToken', res.refreshToken);
+      localStorage.setItem('netx.user', JSON.stringify(res.user));
+      localStorage.setItem('netx.tenant', JSON.stringify(res.tenant));
       router.push('/dashboard');
     } catch (e: any) {
       setErr(e?.message ?? 'Falha ao autenticar');
