@@ -261,6 +261,34 @@ const messages = {
     subtitle:
       'Registers and accounts that receive payments. Configure who operates each.',
     new: 'New register',
+    movementType: {
+      INCOME: 'Income',
+      OUTCOME: 'Outcome',
+      TRANSFER_IN: 'Transfer in',
+      TRANSFER_OUT: 'Transfer out',
+      ADJUSTMENT: 'Adjustment',
+    },
+    movement: {
+      when: 'When',
+      type: 'Type',
+      description: 'Description',
+      amount: 'Amount',
+      manualTitle: 'Withdraw / Adjustment',
+    },
+    balance: {
+      opening: 'Opening',
+      income: 'Income',
+      outcome: 'Outcome',
+      current: 'Current',
+    },
+    transfer: {
+      cta: 'Transfer',
+      title: 'Transfer between registers',
+      from: 'From',
+      to: 'To',
+      help: 'You must operate both registers.',
+      confirm: 'Confirm transfer',
+    },
     typeLabel: {
       CASH: 'Physical cash',
       BANK: 'Bank account',

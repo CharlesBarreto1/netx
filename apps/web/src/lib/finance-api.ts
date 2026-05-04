@@ -144,7 +144,86 @@ export const cashRegistersApi = {
   removeMember(id: string, userId: string) {
     return api.delete(`/v1/cash-registers/${id}/members/${userId}`);
   },
+  // ---- movements / balance / transfer
+  balancePath: (id: string) => `/v1/cash-registers/${id}/balance`,
+  balance(id: string) {
+    return api.get<CashRegisterBalance>(this.balancePath(id));
+  },
+  movementsPath: (id: string, params: ListMovementsParams = {}) =>
+    `/v1/cash-registers/${id}/movements${qs(params)}`,
+  listMovements(id: string, params: ListMovementsParams = {}) {
+    return api.get<Paginated<CashMovement>>(this.movementsPath(id, params));
+  },
+  createMovement(
+    id: string,
+    input: { type: 'INCOME' | 'OUTCOME' | 'ADJUSTMENT'; amount: number; description?: string; occurredAt?: string },
+  ) {
+    return api.post<CashMovement>(`/v1/cash-registers/${id}/movements`, input);
+  },
+  transfer(
+    fromId: string,
+    input: { toCashRegisterId: string; amount: number; description?: string; occurredAt?: string },
+  ) {
+    return api.post<{ outId: string; inId: string; transferGroupId: string }>(
+      `/v1/cash-registers/${fromId}/transfer`,
+      input,
+    );
+  },
 };
+
+// =============================================================================
+// MOVEMENT TYPES
+// =============================================================================
+export type CashMovementType =
+  | 'INCOME'
+  | 'OUTCOME'
+  | 'TRANSFER_IN'
+  | 'TRANSFER_OUT'
+  | 'ADJUSTMENT';
+
+export type CashMovementSource = 'INVOICE' | 'CHARGE' | 'TRANSFER' | 'MANUAL';
+
+export interface CashMovement {
+  id: string;
+  tenantId: string;
+  cashRegisterId: string;
+  type: CashMovementType;
+  source: CashMovementSource;
+  amount: number;
+  description: string | null;
+  occurredAt: string;
+  sourceId: string | null;
+  transferGroupId: string | null;
+  createdById: string | null;
+  createdAt: string;
+  counterpart?: {
+    cashRegisterId: string;
+    cashRegisterName: string;
+  } | null;
+}
+
+export interface CashRegisterBalance {
+  cashRegisterId: string;
+  openingBalance: number;
+  movementsTotal: number;
+  currentBalance: number;
+  byType: {
+    income: number;
+    outcome: number;
+    transferIn: number;
+    transferOut: number;
+    adjustment: number;
+  };
+}
+
+export interface ListMovementsParams {
+  page?: number;
+  pageSize?: number;
+  type?: CashMovementType;
+  source?: CashMovementSource;
+  from?: string;
+  to?: string;
+}
 
 // =============================================================================
 // ONE-TIME CHARGES

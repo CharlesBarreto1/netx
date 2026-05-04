@@ -62,6 +62,7 @@ model Tenant {
   serviceOrderReasons  ServiceOrderReason[]
   cashRegisters        CashRegister[]
   oneTimeCharges       OneTimeCharge[]
+  cashMovements        CashMovement[]
 
   @@index([status])
   @@index([country])
@@ -168,6 +169,7 @@ model User {
   cashRegisterMemberships CashRegisterMembership[]
   chargesCreated   OneTimeCharge[] @relation("ChargeCreatedBy")
   chargesUpdated   OneTimeCharge[] @relation("ChargeUpdatedBy")
+  cashMovementsCreated CashMovement[] @relation("CashMovementCreatedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId, status])
@@ -1165,6 +1167,7 @@ model CashRegister {
   memberships    CashRegisterMembership[]
   contractInvoices ContractInvoice[]
   oneTimeCharges OneTimeCharge[]
+  movements      CashMovement[]
 
   @@unique([tenantId, name])
   @@index([tenantId, isActive])
@@ -1230,4 +1233,56 @@ model OneTimeCharge {
   @@index([tenantId, dueDate])
   @@index([tenantId, cashRegisterId])
   @@map("one_time_charges")
+}
+
+// Tipo do movimento financeiro num caixa.
+enum CashMovementType {
+  INCOME         // Entrada (pagamento recebido)
+  OUTCOME        // Saída (sangria, pagamento de fornecedor)
+  TRANSFER_IN    // Entrada vinda de transferência
+  TRANSFER_OUT   // Saída por transferência
+  ADJUSTMENT     // Ajuste manual de saldo
+}
+
+// Origem do movimento. INVOICE/CHARGE são automáticos (criados no /pay).
+// TRANSFER cria 2 movements numa transação. MANUAL é criado direto pelo
+// admin (sangria, ajuste).
+enum CashMovementSource {
+  INVOICE
+  CHARGE
+  TRANSFER
+  MANUAL
+}
+
+model CashMovement {
+  id              String              @id @default(uuid()) @db.Uuid
+  tenantId        String              @map("tenant_id") @db.Uuid
+  cashRegisterId  String              @map("cash_register_id") @db.Uuid
+
+  type            CashMovementType
+  source          CashMovementSource  @default(MANUAL)
+  // Valor sempre positivo. O `type` define se soma ou subtrai no balance.
+  amount          Decimal             @db.Decimal(14, 2)
+  description     String?             @db.VarChar(500)
+  occurredAt      DateTime            @default(now()) @map("occurred_at")
+
+  // FK polimórfica simples — não vincula via Prisma relation porque a tabela
+  // alvo varia (ContractInvoice ou OneTimeCharge). Indexada pra lookup.
+  sourceId        String?             @map("source_id") @db.Uuid
+
+  // Quando é uma transferência, os 2 movements (TRANSFER_OUT + TRANSFER_IN)
+  // compartilham o mesmo transferGroupId pra rastreio.
+  transferGroupId String?             @map("transfer_group_id") @db.Uuid
+
+  createdById     String?             @map("created_by_id") @db.Uuid
+  createdAt       DateTime            @default(now()) @map("created_at")
+
+  tenant          Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cashRegister    CashRegister @relation(fields: [cashRegisterId], references: [id], onDelete: Cascade)
+  createdBy       User?        @relation("CashMovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, cashRegisterId, occurredAt])
+  @@index([transferGroupId])
+  @@index([source, sourceId])
+  @@map("cash_movements")
 }

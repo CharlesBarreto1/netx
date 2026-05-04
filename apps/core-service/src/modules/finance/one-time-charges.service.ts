@@ -20,6 +20,7 @@ import {
 
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { CashMovementsService } from './cash-movements.service';
 import { CashRegistersService } from './cash-registers.service';
 
 /**
@@ -40,6 +41,7 @@ export class OneTimeChargesService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly registers: CashRegistersService,
+    private readonly movements: CashMovementsService,
   ) {}
 
   async create(
@@ -283,6 +285,20 @@ export class OneTimeChargesService {
         cashRegisterId: input.cashRegisterId ?? null,
       },
     });
+
+    // Registra movimento no caixa quando paga em algum caixa.
+    if (input.cashRegisterId) {
+      await this.movements.recordIncome({
+        tenantId,
+        cashRegisterId: input.cashRegisterId,
+        amount: paidAmount,
+        source: 'CHARGE',
+        sourceId: updated.id,
+        description: updated.description,
+        actorUserId,
+        occurredAt: input.paidAt ? new Date(input.paidAt) : new Date(),
+      });
+    }
     return toResponse(updated);
   }
 

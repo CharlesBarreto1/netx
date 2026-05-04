@@ -93,7 +93,14 @@ export default function CashRegistersPage() {
             ) : (
               data.map((r) => (
                 <tr key={r.id}>
-                  <td className="px-3 py-2 font-medium text-text">{r.name}</td>
+                  <td className="px-3 py-2 font-medium">
+                    <Link
+                      href={`/settings/cash-registers/${r.id}`}
+                      className="text-brand-600 hover:underline dark:text-brand-300"
+                    >
+                      {r.name}
+                    </Link>
+                  </td>
                   <td className="px-3 py-2 text-text-muted">
                     {tType(r.type)}
                   </td>

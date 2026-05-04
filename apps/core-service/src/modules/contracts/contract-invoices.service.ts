@@ -25,6 +25,7 @@ import {
 
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { CashMovementsService } from '../finance/cash-movements.service';
 import { CashRegistersService } from '../finance/cash-registers.service';
 import { ContractsService } from './contracts.service';
 
@@ -45,6 +46,7 @@ export class ContractInvoicesService {
     private readonly audit: AuditService,
     private readonly contracts: ContractsService,
     private readonly registers: CashRegistersService,
+    private readonly movements: CashMovementsService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -229,6 +231,20 @@ export class ContractInvoicesService {
         paidAt: paidAt.toISOString(),
       },
     });
+
+    // Registra movimento no caixa quando a fatura foi paga em algum caixa.
+    if (input.cashRegisterId) {
+      await this.movements.recordIncome({
+        tenantId,
+        cashRegisterId: input.cashRegisterId,
+        amount: paidAmount,
+        source: 'INVOICE',
+        sourceId: updated.id,
+        description: existing.reference ?? `Fatura ${updated.id.slice(0, 8)}`,
+        actorUserId,
+        occurredAt: paidAt,
+      });
+    }
 
     // Reativação automática (baixa é instantânea por requisito).
     if (

@@ -287,6 +287,34 @@ const messages = {
     subtitle:
       'Cadastro de caixas e contas que recebem pagamentos. Configure quem opera cada caixa.',
     new: 'Novo caixa',
+    movementType: {
+      INCOME: 'Entrada',
+      OUTCOME: 'Saída',
+      TRANSFER_IN: 'Transferência recebida',
+      TRANSFER_OUT: 'Transferência enviada',
+      ADJUSTMENT: 'Ajuste',
+    },
+    movement: {
+      when: 'Data',
+      type: 'Tipo',
+      description: 'Descrição',
+      amount: 'Valor',
+      manualTitle: 'Sangria / Ajuste',
+    },
+    balance: {
+      opening: 'Saldo inicial',
+      income: 'Entradas',
+      outcome: 'Saídas',
+      current: 'Saldo atual',
+    },
+    transfer: {
+      cta: 'Transferir',
+      title: 'Transferência entre caixas',
+      from: 'Origem',
+      to: 'Destino',
+      help: 'Você precisa operar ambos os caixas.',
+      confirm: 'Confirmar transferência',
+    },
     typeLabel: {
       CASH: 'Dinheiro físico',
       BANK: 'Conta bancária',

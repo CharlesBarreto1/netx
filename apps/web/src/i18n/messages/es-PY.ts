@@ -278,6 +278,34 @@ const messages = {
     subtitle:
       'Catálogo de cajas y cuentas que reciben pagos. Configurá quién opera cada caja.',
     new: 'Nueva caja',
+    movementType: {
+      INCOME: 'Entrada',
+      OUTCOME: 'Salida',
+      TRANSFER_IN: 'Transferencia recibida',
+      TRANSFER_OUT: 'Transferencia enviada',
+      ADJUSTMENT: 'Ajuste',
+    },
+    movement: {
+      when: 'Fecha',
+      type: 'Tipo',
+      description: 'Descripción',
+      amount: 'Valor',
+      manualTitle: 'Retiro / Ajuste',
+    },
+    balance: {
+      opening: 'Saldo inicial',
+      income: 'Entradas',
+      outcome: 'Salidas',
+      current: 'Saldo actual',
+    },
+    transfer: {
+      cta: 'Transferir',
+      title: 'Transferencia entre cajas',
+      from: 'Origen',
+      to: 'Destino',
+      help: 'Tenés que operar ambas cajas.',
+      confirm: 'Confirmar transferencia',
+    },
     typeLabel: {
       CASH: 'Efectivo físico',
       BANK: 'Cuenta bancaria',
