@@ -10,3 +10,4 @@ export * from './crm';
 export * from './contracts';
 export * from './service-orders';
 export * from './finance';
+export * from './reports';

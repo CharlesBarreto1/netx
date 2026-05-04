@@ -103,6 +103,13 @@ const financePermissions = [
   { code: 'finance.discount.apply', module: 'finance', resource: 'payments', action: 'discount' },
 ];
 
+// -----------------------------------------------------------------------------
+// Permission catalog — Reports
+// -----------------------------------------------------------------------------
+const reportsPermissions = [
+  { code: 'reports.read', module: 'reports', resource: 'reports', action: 'read' },
+];
+
 // Role → permission mapping
 const systemRoles = [
   {
@@ -165,6 +172,7 @@ const systemRoles = [
       'finance.charges.write',
       'finance.charges.delete',
       'finance.discount.apply',
+      'reports.read',
     ],
   },
   {
@@ -200,6 +208,8 @@ const systemRoles = [
       // nem aplicar desconto)
       'finance.charges.read',
       'finance.charges.write',
+      // Reports (operador também pode ver)
+      'reports.read',
     ],
   },
   {
@@ -216,6 +226,7 @@ const systemRoles = [
       'contracts.read',
       'service_orders.read',
       'finance.charges.read',
+      'reports.read',
     ],
   },
 ];
@@ -231,6 +242,7 @@ async function main() {
     ...contractsPermissions,
     ...serviceOrdersPermissions,
     ...financePermissions,
+    ...reportsPermissions,
   ]) {
     await prisma.permission.upsert({
       where: { code: p.code },

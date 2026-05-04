@@ -35,6 +35,7 @@ export const MENU_CATALOG: MenuDef[] = [
   { key: 'contracts', href: '/contracts', labelKey: 'contracts', permission: 'contracts.read' },
   { key: 'serviceOrders', href: '/service-orders', labelKey: 'serviceOrders', permission: 'service_orders.read' },
   { key: 'charges', href: '/finance/charges', labelKey: 'charges', permission: 'finance.charges.read' },
+  { key: 'reports', href: '/reports', labelKey: 'reports', permission: 'reports.read' },
   { key: 'tags', href: '/crm/tags', labelKey: 'tags', permission: 'customers.tags.manage' },
   { key: 'settings', href: '/settings/tenant', labelKey: 'settings', permission: 'tenants.update' },
   { key: 'cashRegisters', href: '/settings/cash-registers', labelKey: 'cashRegisters', permission: 'cash_registers.manage' },
