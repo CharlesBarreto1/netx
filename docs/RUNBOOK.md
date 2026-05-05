@@ -371,6 +371,35 @@ Todos os secrets vivem no Secret Manager (AWS/GCP/Azure). Rotação:
 3. `INSERT ... SELECT` filtrando por `tenant_id` para o schema público
 4. Validar integridade com o cliente antes do cutover
 
+### Backups manuais (módulo /settings/backups)
+
+O `BackupsService` chama `pg_dump -Fc`. **A versão do `pg_dump` precisa ser >= versão do servidor Postgres**, senão dispara:
+
+```
+pg_dump: error: aborting because of server version mismatch
+pg_dump: detail: server version: 16.x; pg_dump version: 15.y
+```
+
+Em VPS Debian 12 / Ubuntu 22.04 o `postgresql-client` default é 15. Setup correto:
+
+1. Rode `sudo bash scripts/install-vps.sh` — instala `postgresql-client-16` do PGDG e aponta `/usr/bin/pg_dump` pra ele via `update-alternatives`.
+2. O `ecosystem.config.js` já injeta `PG_DUMP_BIN=/usr/lib/postgresql/16/bin/pg_dump` no env do `netx-core` — o service usa esse caminho independente do que estiver no PATH.
+3. Se o Postgres do projeto subir de versão (ex.: 17), atualize **ambos**: `infra/docker/docker-compose.yml` (imagem `postgres:N-alpine`) e `ecosystem.config.js` (`PG_DUMP_BIN`).
+
+Verificar na VPS:
+
+```bash
+pg_dump --version                              # via alternatives (deve ser 16.x)
+/usr/lib/postgresql/16/bin/pg_dump --version   # caminho direto que o PM2 usa
+pm2 env netx-core | grep PG_DUMP_BIN           # confere que o env foi aplicado
+```
+
+Validar um backup gerado:
+
+```bash
+pg_restore -l /var/backups/netx/<arquivo>.dump | head    # lista TOC
+```
+
 ## Observabilidade
 
 - **Dashboards Grafana** (a criar): SLO por serviço, latência p99, error budget

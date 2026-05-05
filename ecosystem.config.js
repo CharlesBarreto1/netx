@@ -26,7 +26,16 @@ module.exports = {
       script: 'dist/main.js',
       instances: 1,
       exec_mode: 'fork',
-      env: { NODE_ENV: 'production' },
+      env: {
+        NODE_ENV: 'production',
+        // Aponta pro pg_dump 16, alinhado com o Postgres 16 do projeto.
+        // Em VPS Debian 12 o pg_dump default é 15 e dispara
+        // "server version mismatch". Se a versão do server mudar, ajusta aqui.
+        // Se não tiver postgresql-client-16 instalado, rode
+        // scripts/install-vps.sh primeiro.
+        PG_DUMP_BIN: '/usr/lib/postgresql/16/bin/pg_dump',
+        BACKUP_DIR: '/var/backups/netx',
+      },
       max_memory_restart: '1G',
       out_file: '/home/netx/.pm2/logs/netx-core.out.log',
       error_file: '/home/netx/.pm2/logs/netx-core.err.log',

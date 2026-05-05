@@ -192,9 +192,15 @@ export class BackupsService {
       PGDATABASE: u.pathname.replace(/^\//, ''),
     };
 
+    // Permite sobrescrever o caminho do binário (ex.:
+    // /usr/lib/postgresql/16/bin/pg_dump) quando o pg_dump default do sistema
+    // for de versão menor que a do servidor — caso contrário ele aborta com
+    // "server version mismatch".
+    const pgDumpBin = process.env.PG_DUMP_BIN || 'pg_dump';
+
     return new Promise((resolve, reject) => {
       const proc = spawn(
-        'pg_dump',
+        pgDumpBin,
         ['-Fc', '--no-owner', '--no-acl', '-f', filePath],
         { env, stdio: ['ignore', 'pipe', 'pipe'] },
       );
@@ -207,7 +213,23 @@ export class BackupsService {
       );
       proc.on('close', (code) => {
         if (code === 0) resolve();
-        else reject(new Error(`pg_dump exit ${code}: ${stderr.trim()}`));
+        else {
+          const detail = stderr.trim();
+          // Erro clássico: pg_dump < server. Devolve dica acionável em vez
+          // de só repetir o stderr cru.
+          if (/server version mismatch/i.test(detail)) {
+            reject(
+              new Error(
+                'pg_dump em versão menor que o servidor. Instale ' +
+                  'postgresql-client-16 e configure PG_DUMP_BIN=' +
+                  '/usr/lib/postgresql/16/bin/pg_dump no .env do core-service. ' +
+                  `Detalhe original: ${detail}`,
+              ),
+            );
+            return;
+          }
+          reject(new Error(`pg_dump exit ${code}: ${detail}`));
+        }
       });
     });
   }
