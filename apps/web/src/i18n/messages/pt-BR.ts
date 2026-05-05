@@ -82,6 +82,7 @@ const messages = {
     serviceOrderReasons: 'Motivos de O.S',
     cashRegisters: 'Caixas',
     users: 'Usuários',
+    backups: 'Backups',
     logout: 'Sair',
     language: 'Idioma',
     tenantDefault: 'Padrão da operação',
@@ -514,6 +515,16 @@ const messages = {
       legalNote:
         'Cada operação NetX é vinculada a um país e segue a regulação local. Você pode trocar o país, mas a sincronização fiscal e financeira pode exigir migração de dados.',
     },
+  },
+  backups: {
+    title: 'Backups',
+    subtitle: 'Snapshots manuais do banco. Gere antes de mudanças importantes e baixe pra um lugar seguro.',
+    create: 'Gerar backup agora',
+    createdToast: 'Backup gerado',
+    filename: 'Arquivo',
+    size: 'Tamanho',
+    deleteTitle: 'Excluir backup?',
+    deleteMessage: 'O arquivo será apagado do servidor. Faça download antes se quiser preservar.',
   },
   reports: {
     title: 'Relatórios',

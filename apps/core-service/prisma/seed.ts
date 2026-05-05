@@ -110,6 +110,13 @@ const reportsPermissions = [
   { code: 'reports.read', module: 'reports', resource: 'reports', action: 'read' },
 ];
 
+// -----------------------------------------------------------------------------
+// Permission catalog — Backups (admin-only)
+// -----------------------------------------------------------------------------
+const backupsPermissions = [
+  { code: 'backups.manage', module: 'core', resource: 'backups', action: 'manage' },
+];
+
 // Role → permission mapping
 const systemRoles = [
   {
@@ -173,6 +180,7 @@ const systemRoles = [
       'finance.charges.delete',
       'finance.discount.apply',
       'reports.read',
+      'backups.manage',
     ],
   },
   {
@@ -243,6 +251,7 @@ async function main() {
     ...serviceOrdersPermissions,
     ...financePermissions,
     ...reportsPermissions,
+    ...backupsPermissions,
   ]) {
     await prisma.permission.upsert({
       where: { code: p.code },

@@ -12,6 +12,7 @@ import { CrmModule } from './modules/crm/crm.module';
 import { ServiceOrdersModule } from './modules/service-orders/service-orders.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { ReportsModule } from './modules/reports/reports.module';
+import { BackupsModule } from './modules/backups/backups.module';
 import { HealthModule } from './modules/health/health.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { RadiusModule } from './modules/radius/radius.module';
@@ -68,6 +69,7 @@ import { UsersModule } from './modules/users/users.module';
     ServiceOrdersModule,
     FinanceModule,
     ReportsModule,
+    BackupsModule,
     RadiusModule,
   ],
 })

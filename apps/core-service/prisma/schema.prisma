@@ -63,6 +63,7 @@ model Tenant {
   cashRegisters        CashRegister[]
   oneTimeCharges       OneTimeCharge[]
   cashMovements        CashMovement[]
+  backups              Backup[]
 
   @@index([status])
   @@index([country])
@@ -170,6 +171,7 @@ model User {
   chargesCreated   OneTimeCharge[] @relation("ChargeCreatedBy")
   chargesUpdated   OneTimeCharge[] @relation("ChargeUpdatedBy")
   cashMovementsCreated CashMovement[] @relation("CashMovementCreatedBy")
+  backupsCreated       Backup[]       @relation("BackupCreatedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId, status])
@@ -1285,4 +1287,38 @@ model CashMovement {
   @@index([transferGroupId])
   @@index([source, sourceId])
   @@map("cash_movements")
+}
+
+// =============================================================================
+// BACKUPS — pg_dump on-demand (manual, sem criptografia ainda)
+// =============================================================================
+enum BackupStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+// Snapshot do banco inteiro (não por tenant — multi-tenant ainda baixo).
+// O arquivo fica em BACKUP_DIR no FS do core-service. Storage S3/offsite
+// é trabalho futuro.
+model Backup {
+  id            String       @id @default(uuid()) @db.Uuid
+  // tenantId apenas pra auditoria de quem disparou — backup é do BD inteiro.
+  tenantId      String       @map("tenant_id") @db.Uuid
+  filename      String       @db.VarChar(255)
+  status        BackupStatus @default(PENDING)
+  sizeBytes     BigInt?      @map("size_bytes")
+  durationMs    Int?         @map("duration_ms")
+  errorMessage  String?      @map("error_message") @db.Text
+  createdById   String?      @map("created_by_id") @db.Uuid
+  createdAt     DateTime     @default(now()) @map("created_at")
+  completedAt   DateTime?    @map("completed_at")
+
+  tenant        Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy     User?  @relation("BackupCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, createdAt])
+  @@index([status])
+  @@map("backups")
 }

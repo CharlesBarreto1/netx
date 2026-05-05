@@ -72,6 +72,7 @@ const messages = {
     serviceOrderReasons: 'S.O Reasons',
     cashRegisters: 'Cash Registers',
     users: 'Users',
+    backups: 'Backups',
     logout: 'Sign out',
     language: 'Language',
     tenantDefault: 'Tenant default',
@@ -486,6 +487,16 @@ const messages = {
       legalNote:
         'Each NetX operation is tied to a country and follows local regulation. You can change the country, but financial and tax sync may require data migration.',
     },
+  },
+  backups: {
+    title: 'Backups',
+    subtitle: 'Manual database snapshots. Run one before important changes and download it somewhere safe.',
+    create: 'Run backup now',
+    createdToast: 'Backup created',
+    filename: 'Filename',
+    size: 'Size',
+    deleteTitle: 'Delete backup?',
+    deleteMessage: 'The file will be removed from the server. Download it first if you want to keep it.',
   },
   reports: {
     title: 'Reports',

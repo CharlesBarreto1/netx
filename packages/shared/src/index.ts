@@ -11,3 +11,4 @@ export * from './contracts';
 export * from './service-orders';
 export * from './finance';
 export * from './reports';
+export * from './backups';

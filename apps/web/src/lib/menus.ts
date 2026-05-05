@@ -41,6 +41,7 @@ export const MENU_CATALOG: MenuDef[] = [
   { key: 'cashRegisters', href: '/settings/cash-registers', labelKey: 'cashRegisters', permission: 'cash_registers.manage' },
   { key: 'serviceOrderReasons', href: '/settings/service-order-reasons', labelKey: 'serviceOrderReasons', permission: 'service_order_reasons.manage' },
   { key: 'users', href: '/settings/users', labelKey: 'users', permission: 'users.read' },
+  { key: 'backups', href: '/settings/backups', labelKey: 'backups', permission: 'backups.manage' },
 ];
 
 /** Lookup por key, útil em validações server-side. */
