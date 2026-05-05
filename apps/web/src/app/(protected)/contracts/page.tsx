@@ -131,7 +131,14 @@ export default function ContractsPage() {
                     <div className="font-medium text-text">{c.customer?.displayName ?? '—'}</div>
                     {c.code && <div className="text-xs text-text-muted">{c.code}</div>}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs">{c.pppoeUsername}</td>
+                  <td className="px-3 py-2 font-mono text-xs">
+                    {c.authMethod === 'IPOE'
+                      ? c.circuitId ?? c.macAddress ?? '—'
+                      : c.pppoeUsername ?? '—'}
+                    <span className="ml-1 text-[10px] uppercase text-text-muted">
+                      {c.authMethod === 'IPOE' ? 'ipoe' : 'pppoe'}
+                    </span>
+                  </td>
                   <td className="px-3 py-2">{c.bandwidthMbps} Mbps</td>
                   <td className="px-3 py-2 text-right">{formatMoney(c.monthlyValue)}</td>
                   <td className="px-3 py-2 text-center">dia {c.dueDay}</td>

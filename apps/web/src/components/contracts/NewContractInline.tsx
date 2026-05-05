@@ -14,20 +14,26 @@ import {
 } from '@/components/ui/Input';
 import { toast } from '@/components/ui/sonner';
 import { ApiError } from '@/lib/api';
-import { contractsApi, type Contract } from '@/lib/contracts-api';
+import {
+  contractsApi,
+  type Contract,
+  type ContractAuthMethod,
+  type CreateContractInput,
+} from '@/lib/contracts-api';
 import type { Customer, Paginated } from '@/lib/crm-types';
 import { useTenantConfig } from '@/lib/tenant-config';
 
 /**
  * NewContractInline — formulário reusável de criação de contrato.
  *
- * Compartilhado entre `/contracts/new` (página dedicada) e os fluxos
- * "criar cliente + contrato" e "converter deal em cliente". Mantém a mesma
- * UX da página dedicada, mas:
- *   - permite travar/ocultar a seleção de cliente (`lockedCustomerId`);
- *   - permite pré-preencher mensalidade (a partir do `value` do deal, p.ex.);
- *   - aceita `onCancel` opcional p/ uso em modal/wizard;
- *   - notifica via `onCreated` em vez de redirecionar.
+ * Suporta os 2 métodos de autenticação: PPPoE (default) e IPoE.
+ *
+ *   PPPoE: usuário/senha (legado, default).
+ *   IPoE : circuit-id (DHCP option 82) e/ou MAC, com IP fixo opcional e
+ *          VLAN opcional. Pelo menos um identificador (circuit OU MAC).
+ *
+ * Compartilhado entre `/contracts/new`, fluxos de criar cliente + contrato e
+ * conversão de deal.
  */
 export interface NewContractInlineProps {
   /** Quando definido, esconde o seletor de cliente e usa esse customerId fixo. */
@@ -45,16 +51,10 @@ export interface NewContractInlineProps {
     pppoePassword: string;
     firstDueDate: string;
   }>;
-  /** Texto do CTA principal — default "Criar contrato". */
   submitLabel?: string;
-  /** Texto do botão secundário — default "Cancelar" (omitido se `onCancel` não for fornecido). */
   cancelLabel?: string;
   onCreated: (contract: Contract) => void;
   onCancel?: () => void;
-  /**
-   * Mostra também um botão "Pular" para fluxos opcionais (ex.: "criar cliente
-   * sem contrato"). Quando clicado, chama `onSkip`.
-   */
   onSkip?: () => void;
   skipLabel?: string;
 }
@@ -71,7 +71,7 @@ export function NewContractInline({
 }: NewContractInlineProps) {
   const { currency, currencySymbol } = useTenantConfig();
   const moneyLabel = `${currencySymbol ?? currency}`;
-  // Carrega clientes para o Select só quando precisamos (i.e., não está travado).
+
   const customersKey = lockedCustomerId ? null : '/v1/customers?pageSize=100';
   const { data: customersResp, isLoading: loadingCustomers } = useSWR<Paginated<Customer>>(
     customersKey,
@@ -83,16 +83,24 @@ export function NewContractInline({
         .sort((a, b) => a.displayName.localeCompare(b.displayName, 'pt-BR')),
     [customersResp],
   );
-
-  // Para mostrar o nome do cliente travado, busca o registro.
   const lockedKey = lockedCustomerId ? `/v1/customers/${lockedCustomerId}` : null;
   const { data: lockedCustomer } = useSWR<Customer>(lockedKey);
 
+  // Default sempre PPPoE pra preservar o fluxo histórico — IPoE é opt-in.
+  const [authMethod, setAuthMethod] = useState<ContractAuthMethod>('PPPOE');
   const [form, setForm] = useState({
     customerId: lockedCustomerId ?? '',
     code: initial?.code ?? '',
+    // PPPoE
     pppoeUsername: initial?.pppoeUsername ?? '',
     pppoePassword: initial?.pppoePassword ?? '',
+    // IPoE
+    circuitId: '',
+    remoteId: '',
+    macAddress: '',
+    framedIpAddress: '',
+    vlanId: '',
+    // Comuns
     installationAddress: initial?.installationAddress ?? '',
     installationMapsUrl: initial?.installationMapsUrl ?? '',
     monthlyValue:
@@ -106,7 +114,6 @@ export function NewContractInline({
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Mantém customerId sincronizado se o pai trocar (ex.: depois do step "criar cliente").
   useEffect(() => {
     if (lockedCustomerId) {
       setForm((s) => ({ ...s, customerId: lockedCustomerId }));
@@ -120,18 +127,42 @@ export function NewContractInline({
   function validate(): boolean {
     const e: Record<string, string> = {};
     if (!form.customerId) e.customerId = 'Selecione um cliente';
-    if (!form.pppoeUsername || form.pppoeUsername.length < 3)
-      e.pppoeUsername = 'Mínimo 3 caracteres';
-    if (form.pppoeUsername && !/^[A-Za-z0-9._-]+$/.test(form.pppoeUsername))
-      e.pppoeUsername = 'Use apenas letras, números, . _ -';
-    if (!form.pppoePassword || form.pppoePassword.length < 4)
-      e.pppoePassword = 'Mínimo 4 caracteres';
+
+    if (authMethod === 'PPPOE') {
+      if (!form.pppoeUsername || form.pppoeUsername.length < 3)
+        e.pppoeUsername = 'Mínimo 3 caracteres';
+      if (form.pppoeUsername && !/^[A-Za-z0-9._-]+$/.test(form.pppoeUsername))
+        e.pppoeUsername = 'Use apenas letras, números, . _ -';
+      if (!form.pppoePassword || form.pppoePassword.length < 4)
+        e.pppoePassword = 'Mínimo 4 caracteres';
+    } else {
+      // IPoE: pelo menos circuit OU MAC. MAC valida formato se preenchido.
+      if (!form.circuitId.trim() && !form.macAddress.trim()) {
+        e.circuitId = 'Informe circuit-id ou MAC';
+      }
+      if (form.macAddress.trim()) {
+        const cleaned = form.macAddress.replace(/[^0-9A-Fa-f]/gu, '');
+        if (cleaned.length !== 12) e.macAddress = 'MAC inválido (12 hex digits)';
+      }
+      if (form.framedIpAddress.trim()) {
+        // Validação leve — IPv4 ou IPv6 textual.
+        if (
+          !/^(\d{1,3}\.){3}\d{1,3}$/u.test(form.framedIpAddress.trim()) &&
+          !/^[0-9a-fA-F:]+$/u.test(form.framedIpAddress.trim())
+        ) {
+          e.framedIpAddress = 'IP inválido';
+        }
+      }
+      if (form.vlanId.trim()) {
+        const v = Number(form.vlanId);
+        if (!Number.isInteger(v) || v < 1 || v > 4094)
+          e.vlanId = 'VLAN entre 1 e 4094';
+      }
+    }
+
     if (!form.installationAddress || form.installationAddress.length < 5)
       e.installationAddress = 'Informe o endereço de instalação';
     if (form.installationMapsUrl) {
-      // Aceita URL com ou sem protocolo: se faltar, normalizamos pra https://
-      // antes de mandar pro backend (Zod `.url()` exige protocolo). Validamos
-      // o resultado aqui pra dar feedback inline em vez de receber 400.
       const normalized = normalizeMapsUrl(form.installationMapsUrl);
       try {
         const u = new URL(normalized);
@@ -154,22 +185,43 @@ export function NewContractInline({
     ev.preventDefault();
     if (!validate() || submitting) return;
     setSubmitting(true);
+
+    const common = {
+      customerId: form.customerId,
+      code: form.code || undefined,
+      installationAddress: form.installationAddress,
+      installationMapsUrl: form.installationMapsUrl.trim()
+        ? normalizeMapsUrl(form.installationMapsUrl)
+        : null,
+      monthlyValue: Number(String(form.monthlyValue).replace(',', '.')),
+      bandwidthMbps: Number(form.bandwidthMbps),
+      dueDay: Number(form.dueDay),
+      notes: form.notes || null,
+      firstDueDate: form.firstDueDate || undefined,
+    };
+
+    const payload: CreateContractInput =
+      authMethod === 'IPOE'
+        ? {
+            ...common,
+            authMethod: 'IPOE',
+            circuitId: form.circuitId.trim() || null,
+            remoteId: form.remoteId.trim() || null,
+            macAddress: form.macAddress.trim()
+              ? normalizeMac(form.macAddress)
+              : null,
+            framedIpAddress: form.framedIpAddress.trim() || null,
+            vlanId: form.vlanId.trim() ? Number(form.vlanId) : null,
+          }
+        : {
+            ...common,
+            authMethod: 'PPPOE',
+            pppoeUsername: form.pppoeUsername,
+            pppoePassword: form.pppoePassword,
+          };
+
     try {
-      const created = await contractsApi.create({
-        customerId: form.customerId,
-        code: form.code || undefined,
-        pppoeUsername: form.pppoeUsername,
-        pppoePassword: form.pppoePassword,
-        installationAddress: form.installationAddress,
-        installationMapsUrl: form.installationMapsUrl.trim()
-          ? normalizeMapsUrl(form.installationMapsUrl)
-          : null,
-        monthlyValue: Number(String(form.monthlyValue).replace(',', '.')),
-        bandwidthMbps: Number(form.bandwidthMbps),
-        dueDay: Number(form.dueDay),
-        notes: form.notes || null,
-        firstDueDate: form.firstDueDate || undefined,
-      });
+      const created = await contractsApi.create(payload);
       toast.success('Contrato criado');
       onCreated(created);
     } catch (err) {
@@ -219,32 +271,123 @@ export function NewContractInline({
         </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <div>
-          <Label htmlFor="contract-pppoeUsername" required>
-            Usuário PPPoE
-          </Label>
-          <Input
-            id="contract-pppoeUsername"
-            value={form.pppoeUsername}
-            onChange={(e) => update('pppoeUsername', e.target.value)}
-            placeholder="ex. joao.silva"
+      {/* ─── Tipo de autenticação ─────────────────────────────────────── */}
+      <div>
+        <Label>Tipo de autenticação</Label>
+        <div className="flex gap-2">
+          <AuthMethodTab
+            label="PPPoE"
+            description="Usuário/senha (legado, default)"
+            active={authMethod === 'PPPOE'}
+            onClick={() => setAuthMethod('PPPOE')}
           />
-          <FieldError>{errors.pppoeUsername}</FieldError>
-        </div>
-        <div>
-          <Label htmlFor="contract-pppoePassword" required>
-            Senha PPPoE
-          </Label>
-          <Input
-            id="contract-pppoePassword"
-            value={form.pppoePassword}
-            onChange={(e) => update('pppoePassword', e.target.value)}
-            placeholder="senha"
+          <AuthMethodTab
+            label="IPoE"
+            description="Circuit-ID / MAC (FTTH GPON)"
+            active={authMethod === 'IPOE'}
+            onClick={() => setAuthMethod('IPOE')}
           />
-          <FieldError>{errors.pppoePassword}</FieldError>
         </div>
       </div>
+
+      {authMethod === 'PPPOE' ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          <div>
+            <Label htmlFor="contract-pppoeUsername" required>
+              Usuário PPPoE
+            </Label>
+            <Input
+              id="contract-pppoeUsername"
+              value={form.pppoeUsername}
+              onChange={(e) => update('pppoeUsername', e.target.value)}
+              placeholder="ex. joao.silva"
+            />
+            <FieldError>{errors.pppoeUsername}</FieldError>
+          </div>
+          <div>
+            <Label htmlFor="contract-pppoePassword" required>
+              Senha PPPoE
+            </Label>
+            <Input
+              id="contract-pppoePassword"
+              value={form.pppoePassword}
+              onChange={(e) => update('pppoePassword', e.target.value)}
+              placeholder="senha"
+            />
+            <FieldError>{errors.pppoePassword}</FieldError>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4 rounded-md border border-dashed border-border p-3">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div>
+              <Label htmlFor="contract-circuitId">Circuit-ID</Label>
+              <Input
+                id="contract-circuitId"
+                value={form.circuitId}
+                onChange={(e) => update('circuitId', e.target.value)}
+                placeholder="ex. 0/1/2:1.1 (Huawei) ou OLT-A/PON1/ONU12"
+              />
+              <FieldError>{errors.circuitId}</FieldError>
+              <FieldHelp>
+                Identificador injetado pelo OLT/BNG em DHCP option 82. Formato livre — varia por fabricante.
+              </FieldHelp>
+            </div>
+            <div>
+              <Label htmlFor="contract-remoteId">Remote-ID (opcional)</Label>
+              <Input
+                id="contract-remoteId"
+                value={form.remoteId}
+                onChange={(e) => update('remoteId', e.target.value)}
+                placeholder="ex. OLT-A"
+              />
+              <FieldHelp>Sub-option 2 — geralmente identifica o switch/OLT.</FieldHelp>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <div>
+              <Label htmlFor="contract-macAddress">MAC do CPE (fallback)</Label>
+              <Input
+                id="contract-macAddress"
+                value={form.macAddress}
+                onChange={(e) => update('macAddress', e.target.value)}
+                placeholder="AA:BB:CC:DD:EE:FF"
+              />
+              <FieldError>{errors.macAddress}</FieldError>
+              <FieldHelp>Aceita 12 hex c/ ou sem separador.</FieldHelp>
+            </div>
+            <div>
+              <Label htmlFor="contract-framedIpAddress">IP fixo (opcional)</Label>
+              <Input
+                id="contract-framedIpAddress"
+                value={form.framedIpAddress}
+                onChange={(e) => update('framedIpAddress', e.target.value)}
+                placeholder="ex. 200.100.50.10"
+              />
+              <FieldError>{errors.framedIpAddress}</FieldError>
+              <FieldHelp>Vai como Framed-IP-Address; senão usa pool dinâmico.</FieldHelp>
+            </div>
+            <div>
+              <Label htmlFor="contract-vlanId">VLAN (opcional)</Label>
+              <Input
+                id="contract-vlanId"
+                type="number"
+                min="1"
+                max="4094"
+                value={form.vlanId}
+                onChange={(e) => update('vlanId', e.target.value)}
+                placeholder="100"
+              />
+              <FieldError>{errors.vlanId}</FieldError>
+            </div>
+          </div>
+
+          <p className="rounded bg-surface-muted px-2 py-1.5 text-xs text-text-muted">
+            <strong>Lembrete:</strong> ao menos circuit-id <em>ou</em> MAC é obrigatório. Sem credencial PPPoE.
+          </p>
+        </div>
+      )}
 
       <div>
         <Label htmlFor="contract-installationAddress" required>
@@ -375,12 +518,42 @@ export function NewContractInline({
   );
 }
 
-/**
- * Normaliza URL do Google Maps (ou qualquer link público): se o usuário colar
- * `maps.app.goo.gl/abc` sem protocolo, prepend `https://`. O backend usa
- * `z.string().url()`, que exige protocolo — sem essa normalização a UX fica
- * frustrante (erro 400 silencioso no submit).
- */
+/** Tab visual pra alternar PPPoE / IPoE — estilo segmented control. */
+function AuthMethodTab({
+  label,
+  description,
+  active,
+  onClick,
+}: {
+  label: string;
+  description: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={
+        'flex-1 rounded-md border px-3 py-2 text-left transition-colors ' +
+        (active
+          ? 'border-accent bg-accent-muted text-text'
+          : 'border-border bg-surface text-text-muted hover:bg-surface-hover')
+      }
+    >
+      <div className="text-sm font-semibold">{label}</div>
+      <div className="text-xs text-text-muted">{description}</div>
+    </button>
+  );
+}
+
+function normalizeMac(raw: string): string {
+  const cleaned = raw.replace(/[^0-9A-Fa-f]/gu, '').toUpperCase();
+  if (cleaned.length !== 12) return raw;
+  return cleaned.match(/.{2}/gu)!.join(':');
+}
+
 function normalizeMapsUrl(raw: string): string {
   const v = raw.trim();
   if (!v) return v;

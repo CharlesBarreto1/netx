@@ -858,9 +858,21 @@ model Activity {
 // =============================================================================
 
 enum ContractStatus {
-  ACTIVE      // libera PPPoE
+  ACTIVE      // libera PPPoE/IPoE
   SUSPENDED   // pool de IP "bloqueados"
   CANCELLED   // pool de IP "cancelados"
+}
+
+// Como o cliente autentica no RADIUS:
+//   PPPOE — usuário/senha em PPPoE (legado e default; cobre 100% das instalações
+//           de fibra com BNG Mikrotik usando concentrador PPPoE).
+//   IPOE  — sem PPPoE; o BNG/OLT injeta circuit-id (DHCP option 82) e/ou MAC
+//           no Access-Request, e o RADIUS aceita por identificação. Usado em
+//           FTTH GPON com OLT Huawei/ZTE/Fiberhome onde se quer dispensar
+//           o cliente PPPoE.
+enum ContractAuthMethod {
+  PPPOE
+  IPOE
 }
 
 enum InvoiceStatus {
@@ -884,9 +896,35 @@ model Contract {
   // Código humano ex. CTR-000123 (opcional, gerado pelo service)
   code                String?        @db.VarChar(32)
 
-  // Autenticação PPPoE
-  pppoeUsername       String         @map("pppoe_username") @db.VarChar(64)
-  pppoePassword       String         @map("pppoe_password") @db.VarChar(128)
+  // Método de autenticação no RADIUS. Default PPPOE pra preservar
+  // compatibilidade com contratos existentes.
+  authMethod          ContractAuthMethod @default(PPPOE) @map("auth_method")
+
+  // ── Autenticação PPPoE (preenchido só se authMethod = PPPOE) ─────────────
+  // Nullable porque IPoE não usa. Mantemos UNIQUE parcial via raw SQL.
+  pppoeUsername       String?        @map("pppoe_username") @db.VarChar(64)
+  pppoePassword       String?        @map("pppoe_password") @db.VarChar(128)
+
+  // ── Identificação IPoE (preenchido só se authMethod = IPOE) ──────────────
+  // circuitId (DHCP option 82, sub-option 1) é a chave primária quando o BNG
+  // suporta. Formato livre — varia por fabricante:
+  //   Huawei : "0/1/2:1.1"
+  //   ZTE    : "gpon-onu_1/1/1:1"
+  //   Mikrotik: "ether1/1/3" ou descritor custom
+  // Decisão: campo de string livre (até 128 chars). Cada provedor cadastra
+  // no formato que o NMS dele exporta.
+  circuitId           String?        @map("circuit_id") @db.VarChar(128)
+  // remoteId (option 82, sub-option 2) — opcional, complementa circuitId em
+  // algumas vendors (geralmente identifica o switch/OLT).
+  remoteId            String?        @map("remote_id") @db.VarChar(128)
+  // MAC address do CPE — usado como fallback de auth quando o BNG não
+  // consegue propagar circuit-id. Formato canonicalizado AA:BB:CC:DD:EE:FF.
+  macAddress          String?        @map("mac_address") @db.VarChar(17)
+  // IP fixo (opcional). Quando preenchido, vai como Framed-IP-Address no
+  // radreply em vez de pegar do pool dinâmico.
+  framedIpAddress     String?        @map("framed_ip_address") @db.VarChar(45)
+  // VLAN ID (opcional) — alguns ISPs isolam cada cliente em VLAN dedicada.
+  vlanId              Int?           @map("vlan_id")
 
   // Endereço de instalação (string simples agora; migrar depois para FK CustomerAddress)
   installationAddress String         @map("installation_address") @db.VarChar(500)
@@ -925,11 +963,17 @@ model Contract {
   serviceOrders       ServiceOrder[]
   oneTimeCharges      OneTimeCharge[]
 
+  // pppoeUsername é unique por tenant quando preenchido (Postgres trata
+  // múltiplos NULLs como distintos por padrão, então o unique normal funciona
+  // — não precisa de index parcial). Mesmo critério vale pra circuitId/MAC.
   @@unique([tenantId, pppoeUsername])
+  @@unique([tenantId, circuitId])
+  @@unique([tenantId, macAddress])
   @@unique([tenantId, code])
   @@index([tenantId, customerId])
   @@index([tenantId, status])
   @@index([tenantId, dueDay])
+  @@index([tenantId, authMethod])
   @@map("contracts")
 }
 
@@ -994,7 +1038,12 @@ model RadiusEvent {
   contractId   String             @map("contract_id") @db.Uuid
   action       RadiusAction
   status       RadiusEventStatus  @default(PENDING)
-  pppoeUsername String            @map("pppoe_username") @db.VarChar(64)
+  // Identificador efetivo do contrato no RADIUS:
+  //   PPPoE → username
+  //   IPoE  → circuitId (ou MAC de fallback)
+  // Mantemos o nome `pppoeUsername` por compat com radius-applier; novo
+  // contratos IPoE armazenam o circuitId aqui.
+  pppoeUsername String            @map("pppoe_username") @db.VarChar(128)
   targetPool   String?            @map("target_pool") @db.VarChar(64)
   note         String?            @db.VarChar(500)
   error        String?            @db.Text

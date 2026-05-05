@@ -214,7 +214,21 @@ export default function ContractDetailPage() {
           </div>
           <p className="mt-1 text-xs text-text-muted">
             {contract.code ? `Contrato ${contract.code} · ` : ''}
-            PPPoE <span className="font-mono">{contract.pppoeUsername}</span>
+            {contract.authMethod === 'IPOE' ? (
+              <>
+                IPoE{' '}
+                <span className="font-mono">
+                  {contract.circuitId ?? contract.macAddress ?? '—'}
+                </span>
+              </>
+            ) : (
+              <>
+                PPPoE{' '}
+                <span className="font-mono">
+                  {contract.pppoeUsername ?? '—'}
+                </span>
+              </>
+            )}
           </p>
         </div>
 
@@ -276,21 +290,84 @@ export default function ContractDetailPage() {
           )}
         </InfoCard>
 
-        <InfoCard title={tDetail('pppoeCard')}>
-          <DataRow
-            label={tDetail('pppoeUserLabel')}
-            value={<span className="font-mono text-xs">{contract.pppoeUsername}</span>}
-          />
-          <DataRow
-            label={tDetail('pppoePassLabel')}
-            value={
-              contract.pppoePassword ? (
-                <span className="font-mono text-xs">{contract.pppoePassword}</span>
-              ) : (
-                <span className="text-xs text-text-muted">{tDetail('pppoeHidden')}</span>
-              )
-            }
-          />
+        <InfoCard
+          title={
+            contract.authMethod === 'IPOE'
+              ? tDetail('ipoeCard')
+              : tDetail('pppoeCard')
+          }
+        >
+          {contract.authMethod === 'IPOE' ? (
+            <>
+              {contract.circuitId && (
+                <DataRow
+                  label={tDetail('circuitIdLabel')}
+                  value={
+                    <span className="font-mono text-xs">{contract.circuitId}</span>
+                  }
+                />
+              )}
+              {contract.remoteId && (
+                <DataRow
+                  label={tDetail('remoteIdLabel')}
+                  value={
+                    <span className="font-mono text-xs">{contract.remoteId}</span>
+                  }
+                />
+              )}
+              {contract.macAddress && (
+                <DataRow
+                  label={tDetail('macAddressLabel')}
+                  value={
+                    <span className="font-mono text-xs">{contract.macAddress}</span>
+                  }
+                />
+              )}
+              {contract.framedIpAddress && (
+                <DataRow
+                  label={tDetail('framedIpLabel')}
+                  value={
+                    <span className="font-mono text-xs">
+                      {contract.framedIpAddress}
+                    </span>
+                  }
+                />
+              )}
+              {contract.vlanId !== null && contract.vlanId !== undefined && (
+                <DataRow
+                  label={tDetail('vlanIdLabel')}
+                  value={
+                    <span className="font-mono text-xs">{contract.vlanId}</span>
+                  }
+                />
+              )}
+            </>
+          ) : (
+            <>
+              <DataRow
+                label={tDetail('pppoeUserLabel')}
+                value={
+                  <span className="font-mono text-xs">
+                    {contract.pppoeUsername ?? '—'}
+                  </span>
+                }
+              />
+              <DataRow
+                label={tDetail('pppoePassLabel')}
+                value={
+                  contract.pppoePassword ? (
+                    <span className="font-mono text-xs">
+                      {contract.pppoePassword}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-text-muted">
+                      {tDetail('pppoeHidden')}
+                    </span>
+                  )
+                }
+              />
+            </>
+          )}
           {contract.customer && (
             <DataRow
               label={tDetail('customer')}

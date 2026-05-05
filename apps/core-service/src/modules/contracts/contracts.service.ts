@@ -70,13 +70,37 @@ export class ContractsService {
     let created: ContractWithRelations;
     try {
       created = await this.prisma.$transaction(async (tx) => {
+        // Branch por authMethod — o DTO já garante coerência via discriminated
+        // union; aqui só copiamos os campos certos pro Prisma.
+        const authData =
+          input.authMethod === 'IPOE'
+            ? {
+                authMethod: 'IPOE' as const,
+                pppoeUsername: null,
+                pppoePassword: null,
+                circuitId: input.circuitId ?? null,
+                remoteId: input.remoteId ?? null,
+                macAddress: input.macAddress ?? null,
+                framedIpAddress: input.framedIpAddress ?? null,
+                vlanId: input.vlanId ?? null,
+              }
+            : {
+                authMethod: 'PPPOE' as const,
+                pppoeUsername: input.pppoeUsername,
+                pppoePassword: input.pppoePassword,
+                circuitId: null,
+                remoteId: null,
+                macAddress: null,
+                framedIpAddress: null,
+                vlanId: null,
+              };
+
         const contract = await tx.contract.create({
           data: {
             tenantId,
             customerId: input.customerId,
             code: input.code ?? null,
-            pppoeUsername: input.pppoeUsername,
-            pppoePassword: input.pppoePassword,
+            ...authData,
             installationAddress: input.installationAddress,
             installationMapsUrl: input.installationMapsUrl ?? null,
             monthlyValue: new Prisma.Decimal(input.monthlyValue),
@@ -97,7 +121,14 @@ export class ContractsService {
       });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        throw new ConflictException('PPPoE username já em uso neste tenant');
+        // O alvo do unique varia: pppoe_username, circuit_id ou mac_address.
+        const target = (err.meta?.target as string[] | string | undefined) ?? '';
+        const targetStr = Array.isArray(target) ? target.join(',') : String(target);
+        let field = 'identificador';
+        if (targetStr.includes('pppoe')) field = 'PPPoE username';
+        else if (targetStr.includes('circuit')) field = 'circuit-id';
+        else if (targetStr.includes('mac')) field = 'MAC address';
+        throw new ConflictException(`${field} já em uso neste tenant`);
       }
       throw err;
     }
@@ -109,7 +140,13 @@ export class ContractsService {
       resource: 'contracts',
       resourceId: created.id,
       afterState: {
-        pppoeUsername: created.pppoeUsername,
+        authMethod: created.authMethod,
+        // Identificador efetivo no RADIUS — útil pro audit trail tanto em
+        // PPPoE quanto em IPoE (circuit-id ou MAC).
+        radiusIdentifier:
+          created.authMethod === 'IPOE'
+            ? created.circuitId ?? created.macAddress
+            : created.pppoeUsername,
         monthlyValue: created.monthlyValue.toString(),
         dueDay: created.dueDay,
         bandwidthMbps: created.bandwidthMbps,
@@ -141,6 +178,8 @@ export class ContractsService {
         OR: [
           { code: { contains: q.search, mode: 'insensitive' } },
           { pppoeUsername: { contains: q.search, mode: 'insensitive' } },
+          { circuitId: { contains: q.search, mode: 'insensitive' } },
+          { macAddress: { contains: q.search, mode: 'insensitive' } },
           { installationAddress: { contains: q.search, mode: 'insensitive' } },
         ],
       }),
@@ -179,8 +218,17 @@ export class ContractsService {
     const data: Prisma.ContractUpdateInput = {
       updatedBy: { connect: { id: actorUserId } },
     };
+    // PPPoE
     if (input.pppoeUsername !== undefined) data.pppoeUsername = input.pppoeUsername;
     if (input.pppoePassword !== undefined) data.pppoePassword = input.pppoePassword;
+    // IPoE
+    if (input.authMethod !== undefined) data.authMethod = input.authMethod;
+    if (input.circuitId !== undefined) data.circuitId = input.circuitId ?? null;
+    if (input.remoteId !== undefined) data.remoteId = input.remoteId ?? null;
+    if (input.macAddress !== undefined) data.macAddress = input.macAddress ?? null;
+    if (input.framedIpAddress !== undefined) data.framedIpAddress = input.framedIpAddress ?? null;
+    if (input.vlanId !== undefined) data.vlanId = input.vlanId ?? null;
+    // Comuns
     if (input.installationAddress !== undefined) data.installationAddress = input.installationAddress;
     if (input.installationMapsUrl !== undefined)
       data.installationMapsUrl = input.installationMapsUrl ?? null;
@@ -188,6 +236,22 @@ export class ContractsService {
     if (input.bandwidthMbps !== undefined) data.bandwidthMbps = input.bandwidthMbps;
     if (input.dueDay !== undefined) data.dueDay = input.dueDay;
     if (input.notes !== undefined) data.notes = input.notes ?? null;
+
+    // Coerência: se trocar pra PPPOE, exige user+pass (existente ou novo).
+    // Se trocar pra IPOE, exige circuit OU mac (existente ou novo).
+    const targetMethod = input.authMethod ?? existing.authMethod;
+    const willHaveUser =
+      input.pppoeUsername ?? existing.pppoeUsername ?? null;
+    const willHavePass =
+      input.pppoePassword ?? existing.pppoePassword ?? null;
+    const willHaveCircuit = input.circuitId ?? existing.circuitId ?? null;
+    const willHaveMac = input.macAddress ?? existing.macAddress ?? null;
+    if (targetMethod === 'PPPOE' && (!willHaveUser || !willHavePass)) {
+      throw new BadRequestException('PPPoE exige usuário e senha.');
+    }
+    if (targetMethod === 'IPOE' && !willHaveCircuit && !willHaveMac) {
+      throw new BadRequestException('IPoE exige circuitId ou macAddress.');
+    }
 
     const updated = await this.prisma.contract.update({
       where: { id: existing.id },
@@ -417,8 +481,14 @@ function toContractResponse(
     tenantId: c.tenantId,
     customerId: c.customerId,
     code: c.code,
+    authMethod: c.authMethod as 'PPPOE' | 'IPOE',
     pppoeUsername: c.pppoeUsername,
     ...(opts.includePassword ? { pppoePassword: c.pppoePassword } : {}),
+    circuitId: c.circuitId,
+    remoteId: c.remoteId,
+    macAddress: c.macAddress,
+    framedIpAddress: c.framedIpAddress,
+    vlanId: c.vlanId,
     installationAddress: c.installationAddress,
     installationMapsUrl: c.installationMapsUrl,
     monthlyValue: Number(c.monthlyValue),

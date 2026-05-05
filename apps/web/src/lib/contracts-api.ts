@@ -12,14 +12,23 @@ import type { Paginated } from './crm-types';
 export type ContractStatus = 'ACTIVE' | 'SUSPENDED' | 'CANCELLED';
 export type ContractSuspendReason = 'MANUAL' | 'OVERDUE_PAYMENT' | 'OTHER';
 export type InvoiceStatus = 'OPEN' | 'PAID' | 'OVERDUE' | 'CANCELLED';
+export type ContractAuthMethod = 'PPPOE' | 'IPOE';
 
 export interface Contract {
   id: string;
   tenantId: string;
   customerId: string;
   code: string | null;
-  pppoeUsername: string;
-  pppoePassword?: string;
+  authMethod: ContractAuthMethod;
+  // PPPoE — preenchidos só quando authMethod === 'PPPOE'.
+  pppoeUsername: string | null;
+  pppoePassword?: string | null;
+  // IPoE — preenchidos só quando authMethod === 'IPOE'.
+  circuitId: string | null;
+  remoteId: string | null;
+  macAddress: string | null;
+  framedIpAddress: string | null;
+  vlanId: number | null;
   installationAddress: string;
   installationMapsUrl: string | null;
   monthlyValue: number;
@@ -59,7 +68,7 @@ export interface ContractInvoice {
   contract?: {
     id: string;
     code: string | null;
-    pppoeUsername: string;
+    pppoeUsername: string | null;
     customerId: string;
   };
 }
@@ -91,11 +100,9 @@ export interface ListContractsParams {
   sortDir?: 'asc' | 'desc';
 }
 
-export interface CreateContractInput {
+interface CommonContractInput {
   customerId: string;
   code?: string;
-  pppoeUsername: string;
-  pppoePassword: string;
   installationAddress: string;
   installationMapsUrl?: string | null;
   monthlyValue: number;
@@ -105,9 +112,30 @@ export interface CreateContractInput {
   firstDueDate?: string;
 }
 
+export type CreateContractInput =
+  | (CommonContractInput & {
+      authMethod: 'PPPOE';
+      pppoeUsername: string;
+      pppoePassword: string;
+    })
+  | (CommonContractInput & {
+      authMethod: 'IPOE';
+      circuitId?: string | null;
+      remoteId?: string | null;
+      macAddress?: string | null;
+      framedIpAddress?: string | null;
+      vlanId?: number | null;
+    });
+
 export interface UpdateContractInput {
+  authMethod?: ContractAuthMethod;
   pppoeUsername?: string;
   pppoePassword?: string;
+  circuitId?: string | null;
+  remoteId?: string | null;
+  macAddress?: string | null;
+  framedIpAddress?: string | null;
+  vlanId?: number | null;
   installationAddress?: string;
   installationMapsUrl?: string | null;
   monthlyValue?: number;
