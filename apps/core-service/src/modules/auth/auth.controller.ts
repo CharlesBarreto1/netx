@@ -10,18 +10,36 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import type { Request } from 'express';
 
-import { LoginRequestSchema, RefreshTokenRequestSchema, ChangePasswordRequestSchema } from '@netx/shared';
-import type { LoginRequest, RefreshTokenRequest, ChangePasswordRequest, AuthenticatedPrincipal, LoginResponse } from '@netx/shared';
+import {
+  ChangePasswordRequestSchema,
+  DisableMfaRequestSchema,
+  LoginRequestSchema,
+  RefreshTokenRequestSchema,
+  VerifyMfaRequestSchema,
+} from '@netx/shared';
+import type {
+  AuthenticatedPrincipal,
+  ChangePasswordRequest,
+  DisableMfaRequest,
+  LoginRequest,
+  LoginResponse,
+  RefreshTokenRequest,
+  VerifyMfaRequest,
+} from '@netx/shared';
 
 import { CurrentUser, Public } from '../../common/decorators';
 import { AuthService } from './auth.service';
+import { MfaService } from './mfa.service';
 import { ZodBody } from '../../common/zod.pipe';
 
 @ApiTags('auth')
 @Controller('auth')
 @UseGuards(ThrottlerGuard)
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly mfa: MfaService,
+  ) {}
 
   @Public()
   @Post('login')
@@ -55,5 +73,42 @@ export class AuthController {
     @ZodBody(ChangePasswordRequestSchema) body: ChangePasswordRequest,
   ) {
     await this.auth.changePassword(user.sub, body.currentPassword, body.newPassword);
+  }
+
+  // ---------------------------------------------------------------------------
+  // MFA
+  // ---------------------------------------------------------------------------
+  @ApiBearerAuth()
+  @Post('mfa/setup')
+  @HttpCode(200)
+  setupMfa(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.mfa.setup(user.sub);
+  }
+
+  @ApiBearerAuth()
+  @Post('mfa/verify')
+  @HttpCode(200)
+  verifyMfa(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @ZodBody(VerifyMfaRequestSchema) body: VerifyMfaRequest,
+  ) {
+    return this.mfa.verify(user.tenantId, user.sub, body.token);
+  }
+
+  @ApiBearerAuth()
+  @Post('mfa/disable')
+  @HttpCode(204)
+  async disableMfa(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @ZodBody(DisableMfaRequestSchema) body: DisableMfaRequest,
+  ) {
+    await this.mfa.disable(user.tenantId, user.sub, body.password);
+  }
+
+  @ApiBearerAuth()
+  @Post('mfa/regenerate-backup-codes')
+  @HttpCode(200)
+  regenerateBackupCodes(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.mfa.regenerateBackupCodes(user.tenantId, user.sub);
   }
 }

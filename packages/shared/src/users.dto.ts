@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { strongPasswordSchema } from './auth/password';
+
 export const UserStatusSchema = z.enum(['ACTIVE', 'INVITED', 'SUSPENDED', 'DISABLED']);
 export type UserStatus = z.infer<typeof UserStatusSchema>;
 
@@ -21,8 +23,9 @@ export const CreateUserRequestSchema = z.object({
    * Senha inicial. Quando informada, o user é criado com status ACTIVE e a
    * senha é hasheada antes de salvar. Quando ausente, geramos uma senha
    * temporária e marcamos como INVITED (fluxo legado de convite por email).
+   * Aplica a política de senha forte (8+, Aa1!).
    */
-  password: z.string().min(8).max(128).optional(),
+  password: strongPasswordSchema.optional(),
   sendInvite: z.boolean().default(true),
 });
 export type CreateUserRequest = z.infer<typeof CreateUserRequestSchema>;

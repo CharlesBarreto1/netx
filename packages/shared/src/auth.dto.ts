@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { strongPasswordSchema } from './auth/password';
+
 export const LoginRequestSchema = z.object({
   email: z.string().email().max(255),
   password: z.string().min(8).max(128),
@@ -43,6 +45,36 @@ export interface LoginResponse extends AuthTokens {
 
 export const ChangePasswordRequestSchema = z.object({
   currentPassword: z.string().min(8).max(128),
-  newPassword: z.string().min(12).max(128),
+  newPassword: strongPasswordSchema,
 });
 export type ChangePasswordRequest = z.infer<typeof ChangePasswordRequestSchema>;
+
+// =============================================================================
+// MFA / 2FA (TOTP)
+// =============================================================================
+export const VerifyMfaRequestSchema = z.object({
+  /** Código TOTP de 6 dígitos do app autenticador. */
+  token: z.string().length(6).regex(/^\d+$/u),
+});
+export type VerifyMfaRequest = z.infer<typeof VerifyMfaRequestSchema>;
+
+export const DisableMfaRequestSchema = z.object({
+  /** Senha atual pra confirmar identidade ao desativar 2FA. */
+  password: z.string().min(8).max(128),
+});
+export type DisableMfaRequest = z.infer<typeof DisableMfaRequestSchema>;
+
+/** Resposta do setup — frontend desenha o QR e mostra o secret pra quem
+ *  prefere digitar manualmente em apps tipo Authy/Google Authenticator. */
+export interface SetupMfaResponse {
+  secret: string;
+  /** otpauth://totp/... URL — pode ser virada em QR no front. */
+  otpauthUrl: string;
+  /** Data URL do QR (PNG base64) gerado no backend pra UI fácil. */
+  qrCodeDataUrl: string;
+}
+
+export interface MfaBackupCodesResponse {
+  /** Códigos de uso único, plain. Mostrar UMA VEZ na UI. */
+  codes: string[];
+}

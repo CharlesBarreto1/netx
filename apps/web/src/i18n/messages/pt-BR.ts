@@ -83,6 +83,7 @@ const messages = {
     cashRegisters: 'Caixas',
     users: 'Usuários',
     backups: 'Backups',
+    security: 'Minha segurança',
     logout: 'Sair',
     language: 'Idioma',
     tenantDefault: 'Padrão da operação',
@@ -525,6 +526,55 @@ const messages = {
     size: 'Tamanho',
     deleteTitle: 'Excluir backup?',
     deleteMessage: 'O arquivo será apagado do servidor. Faça download antes se quiser preservar.',
+  },
+  security: {
+    title: 'Minha segurança',
+    subtitle:
+      'Gerencie sua senha e a verificação em duas etapas (2FA). Mudanças aqui afetam só sua conta.',
+    password: {
+      title: 'Trocar senha',
+      subtitle:
+        'Use a senha atual pra confirmar e escolha uma nova que atenda à política.',
+      current: 'Senha atual',
+      new: 'Nova senha',
+      confirm: 'Confirmar nova senha',
+      mismatch: 'As senhas não coincidem.',
+      submit: 'Atualizar senha',
+      successToast: 'Senha atualizada',
+    },
+    mfa: {
+      title: 'Verificação em duas etapas (2FA)',
+      statusOn:
+        'Ativa. Cada login pede um código do seu app autenticador.',
+      statusOff:
+        'Desativada. Recomendamos ativar — protege contra senha comprometida.',
+      enable: 'Ativar 2FA',
+      disable: 'Desativar 2FA',
+      regenerate: 'Gerar novos backup codes',
+      scanInstructions:
+        'Abra seu app autenticador (Google Authenticator, Authy, 1Password) e leia o QR. Em seguida, digite o código gerado pra confirmar.',
+      manualSecret: 'Não pode escanear? Adicione esta chave manualmente:',
+      manualSecretHelp:
+        'Apps aceitam essa chave como alternativa ao QR.',
+      tokenLabel: 'Código de 6 dígitos',
+      confirm: 'Ativar 2FA',
+      activatedToast: '2FA ativado',
+      backupCodesTitle: 'Guarde estes backup codes',
+      backupCodesHelp:
+        'Cada código serve UMA vez pra entrar sem o app — útil se perder o celular. Salve em local seguro; eles NÃO aparecerão de novo.',
+      copy: 'Copiar',
+      copiedToast: 'Códigos copiados',
+      dismissCodes: 'Já guardei',
+      regenerateTitle: 'Gerar novos backup codes?',
+      regenerateMessage:
+        'Os códigos antigos serão invalidados. Use só se perdeu os anteriores.',
+      regeneratedToast: 'Novos códigos gerados',
+      disableTitle: 'Desativar 2FA',
+      disableMessage:
+        'Sua conta vai voltar a usar só email/senha pra entrar. Pra confirmar a operação, informe sua senha atual.',
+      disablePasswordLabel: 'Senha atual',
+      disabledToast: '2FA desativado',
+    },
   },
   reports: {
     title: 'Relatórios',

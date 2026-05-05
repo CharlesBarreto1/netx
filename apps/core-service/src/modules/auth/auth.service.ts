@@ -1,4 +1,10 @@
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import {
+  BadRequestException,
+  forwardRef,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { randomUUID, createHash } from 'crypto';
 import { UserStatus } from '@prisma/client';
 
@@ -13,6 +19,7 @@ import type { LoginRequest, LoginResponse } from '@netx/shared';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { MfaService } from './mfa.service';
 
 @Injectable()
 export class AuthService {
@@ -27,6 +34,8 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    @Inject(forwardRef(() => MfaService))
+    private readonly mfa: MfaService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -86,7 +95,26 @@ export class AuthService {
       });
     }
 
-    // TODO: If user.mfaEnabled and input.mfaToken missing/invalid, return MFA_REQUIRED.
+    // 2FA: se user tem MFA ativo, exige token válido (TOTP ou backup code).
+    // Quando ausente, devolve 401 com type 'urn:netx:error:mfa-required' pra
+    // o frontend saber que precisa pedir o token.
+    if (user.mfaEnabled) {
+      if (!input.mfaToken) {
+        throw new UnauthorizedException({
+          type: 'urn:netx:error:mfa-required',
+          title: 'MFA required',
+          detail: 'Informe o código do app autenticador.',
+        });
+      }
+      const mfaOk = await this.mfa.verifyTokenOrBackup(user.id, input.mfaToken);
+      if (!mfaOk) {
+        throw new UnauthorizedException({
+          type: 'urn:netx:error:mfa-invalid',
+          title: 'Invalid MFA token',
+          detail: 'Código inválido. Tente novamente.',
+        });
+      }
+    }
 
     // Build access/refresh tokens
     const sessionId = randomUUID();

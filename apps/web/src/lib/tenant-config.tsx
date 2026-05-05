@@ -45,6 +45,8 @@ export interface UserMe {
   lastName: string;
   locale: string | null;
   timezone: string | null;
+  /** 2FA TOTP ativo. Lido pela página /settings/security pra alternar UI. */
+  mfaEnabled?: boolean;
 }
 
 export interface TenantConfigValue {

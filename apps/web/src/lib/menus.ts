@@ -42,6 +42,8 @@ export const MENU_CATALOG: MenuDef[] = [
   { key: 'serviceOrderReasons', href: '/settings/service-order-reasons', labelKey: 'serviceOrderReasons', permission: 'service_order_reasons.manage' },
   { key: 'users', href: '/settings/users', labelKey: 'users', permission: 'users.read' },
   { key: 'backups', href: '/settings/backups', labelKey: 'backups', permission: 'backups.manage' },
+  // 'security' não tem permissão: cada user gerencia a própria senha/2FA.
+  { key: 'security', href: '/settings/security', labelKey: 'security' },
 ];
 
 /** Lookup por key, útil em validações server-side. */

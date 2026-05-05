@@ -17,6 +17,8 @@ export interface LoginInput {
   email: string;
   password: string;
   tenantSlug?: string;
+  /** Código TOTP (6 dígitos) ou backup code, quando o user tem 2FA. */
+  mfaToken?: string;
 }
 
 export interface ApiProblem {

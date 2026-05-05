@@ -1,4 +1,5 @@
 export * from './auth.dto';
+export * from './auth';
 export * from './users.dto';
 export * from './tenants.dto';
 export * from './pagination';

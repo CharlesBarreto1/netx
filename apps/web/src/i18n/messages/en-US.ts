@@ -73,6 +73,7 @@ const messages = {
     cashRegisters: 'Cash Registers',
     users: 'Users',
     backups: 'Backups',
+    security: 'My security',
     logout: 'Sign out',
     language: 'Language',
     tenantDefault: 'Tenant default',
@@ -497,6 +498,55 @@ const messages = {
     size: 'Size',
     deleteTitle: 'Delete backup?',
     deleteMessage: 'The file will be removed from the server. Download it first if you want to keep it.',
+  },
+  security: {
+    title: 'My security',
+    subtitle:
+      'Manage your password and two-factor authentication (2FA). Changes here only affect your account.',
+    password: {
+      title: 'Change password',
+      subtitle:
+        'Confirm your current password and choose a new one that meets the policy.',
+      current: 'Current password',
+      new: 'New password',
+      confirm: 'Confirm new password',
+      mismatch: 'Passwords do not match.',
+      submit: 'Update password',
+      successToast: 'Password updated',
+    },
+    mfa: {
+      title: 'Two-factor authentication (2FA)',
+      statusOn:
+        'Enabled. Each sign-in requires a code from your authenticator app.',
+      statusOff:
+        'Disabled. We recommend enabling it — protects against a compromised password.',
+      enable: 'Enable 2FA',
+      disable: 'Disable 2FA',
+      regenerate: 'Generate new backup codes',
+      scanInstructions:
+        'Open your authenticator app (Google Authenticator, Authy, 1Password) and scan the QR. Then enter the code it shows to confirm.',
+      manualSecret: 'Cannot scan? Add this key manually:',
+      manualSecretHelp:
+        'Apps accept this key as an alternative to the QR.',
+      tokenLabel: '6-digit code',
+      confirm: 'Enable 2FA',
+      activatedToast: '2FA enabled',
+      backupCodesTitle: 'Save these backup codes',
+      backupCodesHelp:
+        'Each code can be used ONCE to sign in without the app — useful if you lose your phone. Store them somewhere safe; they will NOT be shown again.',
+      copy: 'Copy',
+      copiedToast: 'Codes copied',
+      dismissCodes: 'I saved them',
+      regenerateTitle: 'Generate new backup codes?',
+      regenerateMessage:
+        'Previous codes will be invalidated. Use this only if you lost the previous ones.',
+      regeneratedToast: 'New codes generated',
+      disableTitle: 'Disable 2FA',
+      disableMessage:
+        'Your account will go back to email/password only. To confirm, enter your current password.',
+      disablePasswordLabel: 'Current password',
+      disabledToast: '2FA disabled',
+    },
   },
   reports: {
     title: 'Reports',

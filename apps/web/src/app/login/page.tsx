@@ -3,13 +3,20 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-import { apiLogin } from '@/lib/api';
+import { ApiError, apiLogin } from '@/lib/api';
 
+/**
+ * Tela de login. Quando o user tem 2FA ativo, o backend devolve 401 com
+ * `type: 'urn:netx:error:mfa-required'` e mostramos o campo de token TOTP.
+ * Próxima tentativa de submit reenvia email/senha + mfaToken.
+ */
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('admin@netx.local');
   const [password, setPassword] = useState('');
   const [tenantSlug, setTenantSlug] = useState('default');
+  const [mfaToken, setMfaToken] = useState('');
+  const [needsMfa, setNeedsMfa] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -18,16 +25,35 @@ export default function LoginPage() {
     setErr(null);
     setLoading(true);
     try {
-      const res = await apiLogin({ email, password, tenantSlug });
-      // localStorage compartilha entre abas — necessário pra abas de print
-      // (/service-orders/[id]/print, /invoices/[id]/print) abrirem com sessão.
+      const res = await apiLogin({
+        email,
+        password,
+        tenantSlug,
+        ...(needsMfa && mfaToken ? { mfaToken } : {}),
+      });
       localStorage.setItem('netx.accessToken', res.accessToken);
       localStorage.setItem('netx.refreshToken', res.refreshToken);
       localStorage.setItem('netx.user', JSON.stringify(res.user));
       localStorage.setItem('netx.tenant', JSON.stringify(res.tenant));
       router.push('/dashboard');
-    } catch (e: any) {
-      setErr(e?.message ?? 'Falha ao autenticar');
+    } catch (e) {
+      if (e instanceof ApiError) {
+        if (e.problem.type === 'urn:netx:error:mfa-required') {
+          // Primeiro 401 com MFA — esconde os erros de senha e mostra campo.
+          setNeedsMfa(true);
+          setErr(null);
+          setLoading(false);
+          return;
+        }
+        if (e.problem.type === 'urn:netx:error:mfa-invalid') {
+          setErr('Código MFA inválido. Tente de novo.');
+          setLoading(false);
+          return;
+        }
+        setErr(e.friendlyMessage);
+      } else {
+        setErr((e as Error)?.message ?? 'Falha ao autenticar');
+      }
     } finally {
       setLoading(false);
     }
@@ -48,6 +74,7 @@ export default function LoginPage() {
             value={tenantSlug}
             onChange={(e) => setTenantSlug(e.target.value)}
             required
+            disabled={needsMfa}
           />
         </div>
 
@@ -59,6 +86,7 @@ export default function LoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
+            disabled={needsMfa}
           />
         </div>
 
@@ -70,8 +98,31 @@ export default function LoginPage() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
+            disabled={needsMfa}
           />
         </div>
+
+        {needsMfa && (
+          <div>
+            <label className="block text-sm font-medium mb-1">
+              Código do app autenticador
+            </label>
+            <input
+              inputMode="numeric"
+              autoFocus
+              maxLength={8}
+              className="w-full px-3 py-2 rounded-md border border-slate-300 dark:border-slate-600 bg-transparent font-mono tracking-widest"
+              value={mfaToken}
+              onChange={(e) => setMfaToken(e.target.value.replace(/[\s-]/gu, ''))}
+              placeholder="000000"
+              required
+            />
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              6 dígitos do app (Google Authenticator/Authy) ou 8 caracteres de
+              um backup code.
+            </p>
+          </div>
+        )}
 
         {err && (
           <div className="text-sm text-red-600 bg-red-50 dark:bg-red-950/40 rounded-md px-3 py-2">
@@ -80,15 +131,25 @@ export default function LoginPage() {
         )}
 
         <button
-          disabled={loading}
+          disabled={loading || (needsMfa && mfaToken.length < 6)}
           className="w-full py-2.5 rounded-md bg-brand-600 text-white font-semibold hover:bg-brand-700 disabled:opacity-60"
         >
-          {loading ? 'Autenticando…' : 'Entrar'}
+          {loading ? 'Autenticando…' : needsMfa ? 'Confirmar código' : 'Entrar'}
         </button>
 
-        <p className="text-xs text-center text-slate-500 dark:text-slate-400 pt-2">
-          Login de desenvolvimento: <code className="font-mono">admin@netx.local / ChangeMe!2026</code>
-        </p>
+        {needsMfa && (
+          <button
+            type="button"
+            onClick={() => {
+              setNeedsMfa(false);
+              setMfaToken('');
+              setErr(null);
+            }}
+            className="w-full text-xs text-slate-500 hover:underline dark:text-slate-400"
+          >
+            ← voltar
+          </button>
+        )}
       </form>
     </main>
   );
