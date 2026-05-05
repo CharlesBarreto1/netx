@@ -29,6 +29,7 @@
     "db:migrate": "npm run -w apps/core-service db:migrate",
     "db:generate": "npm run -w apps/core-service db:generate",
     "db:seed": "npm run -w apps/core-service db:seed",
+    "db:seed:fake": "npm run -w apps/core-service db:seed:fake",
     "db:studio": "npm run -w apps/core-service db:studio",
     "preflight": "bash scripts/preflight.sh",
     "preflight:web": "bash scripts/preflight.sh web",
