@@ -81,39 +81,39 @@ const ipoeFields = {
   vlanId: z.coerce.number().int().min(1).max(4094).nullish(),
 };
 
-const ipoeRefinement = (
-  data: { circuitId?: string | null; macAddress?: string | null },
-  ctx: z.RefinementCtx,
-) => {
-  if (!data.circuitId && !data.macAddress) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'Em IPoE, informe pelo menos circuitId ou macAddress.',
-      path: ['circuitId'],
-    });
-  }
-};
-
-// CreateContract: discriminated union pra que o backend não precise validar à
-// mão a coerência entre authMethod e os campos de cada bloco.
-export const CreateContractRequestSchema = z.discriminatedUnion('authMethod', [
-  z.object({
-    customerId: z.string().uuid(),
-    code: z.string().max(32).optional(),
-    firstDueDate: z.string().date().optional(),
-    ...commonContractFields,
-    ...pppoeFields,
-  }),
-  z
-    .object({
+// CreateContract: discriminated union pra que o backend não precise validar
+// à mão a coerência entre authMethod e os campos de cada bloco.
+//
+// IMPORTANTE: cada branch tem que ser um `ZodObject` puro — `discriminatedUnion`
+// do Zod v3 não aceita `ZodEffects` (o que `superRefine` produz). Por isso a
+// regra "IPoE exige circuit OU mac" mora num `.superRefine` aplicado no
+// resultado da union, não dentro de uma branch.
+export const CreateContractRequestSchema = z
+  .discriminatedUnion('authMethod', [
+    z.object({
+      customerId: z.string().uuid(),
+      code: z.string().max(32).optional(),
+      firstDueDate: z.string().date().optional(),
+      ...commonContractFields,
+      ...pppoeFields,
+    }),
+    z.object({
       customerId: z.string().uuid(),
       code: z.string().max(32).optional(),
       firstDueDate: z.string().date().optional(),
       ...commonContractFields,
       ...ipoeFields,
-    })
-    .superRefine(ipoeRefinement),
-]);
+    }),
+  ])
+  .superRefine((data, ctx) => {
+    if (data.authMethod === 'IPOE' && !data.circuitId && !data.macAddress) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Em IPoE, informe pelo menos circuitId ou macAddress.',
+        path: ['circuitId'],
+      });
+    }
+  });
 export type CreateContractRequest = z.infer<typeof CreateContractRequestSchema>;
 
 // Update: tudo opcional. Não usa discriminated union porque PATCH parcial
