@@ -25,6 +25,8 @@ import { formatDate, formatDateTime } from '@/lib/format';
 import { useFormatMoney } from '@/lib/use-money';
 import { hasPermission } from '@/lib/session';
 
+import { EditContractDialog } from '@/components/contracts/EditContractDialog';
+
 import { StatusBadge } from '../_components/StatusBadge';
 
 /**
@@ -67,6 +69,7 @@ export default function ContractDetailPage() {
   const [reactivateOpen, setReactivateOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
   const [noteValue, setNoteValue] = useState('');
   const [busy, setBusy] = useState(false);
@@ -234,6 +237,11 @@ export default function ContractDetailPage() {
 
         {/* Ações de estado */}
         <div className="flex flex-wrap items-center gap-2">
+          {canWrite && !isCancelled && (
+            <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+              Editar
+            </Button>
+          )}
           {canWrite && isActive && (
             <Button variant="outline" size="sm" onClick={() => setSuspendOpen(true)}>
               Suspender
@@ -256,6 +264,18 @@ export default function ContractDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Modal de edição */}
+      {editOpen && (
+        <EditContractDialog
+          open={editOpen}
+          contract={contract}
+          onClose={() => setEditOpen(false)}
+          onUpdated={() => {
+            void refresh();
+          }}
+        />
+      )}
 
       {/* Info do contrato */}
       <div className="grid gap-4 md:grid-cols-2">
