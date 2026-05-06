@@ -196,6 +196,11 @@ export default function ContractDetailPage() {
             {contract.suspendReason === 'OVERDUE_PAYMENT' && isSuspended && (
               <Badge tone="danger">Inadimplência</Badge>
             )}
+            {contract.trustExtensionUntil && isActive && (
+              <Badge tone="warning">
+                Confianza hasta {contract.trustExtensionUntil.slice(0, 10)}
+              </Badge>
+            )}
           </div>
           <p className="mt-1 text-xs text-text-muted">
             {contract.code ? `Contrato ${contract.code} · ` : ''}
@@ -232,6 +237,26 @@ export default function ContractDetailPage() {
           {canWrite && isSuspended && (
             <Button variant="primary" size="sm" onClick={() => setReactivateOpen(true)}>
               {tDetail('reactivateContract')}
+            </Button>
+          )}
+          {canWrite && isSuspended && contract.suspendReason === 'OVERDUE_PAYMENT' && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={async () => {
+                const raw = window.prompt('Religue de confiança — días', '5');
+                if (!raw) return;
+                const days = Math.max(1, Math.min(30, Number(raw) || 5));
+                try {
+                  await contractsApi.trustExtend(contract.id, days);
+                  toast.success(`Reactivado por ${days} días`);
+                  await refresh();
+                } catch (err) {
+                  toast.error(err instanceof ApiError ? err.friendlyMessage : 'Error');
+                }
+              }}
+            >
+              Religue de confianza
             </Button>
           )}
           {canWrite && !isCancelled && (

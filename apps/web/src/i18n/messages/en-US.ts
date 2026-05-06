@@ -128,6 +128,7 @@ const messages = {
       contracts: 'Contracts',
       finance: 'Finance',
       tags: 'Tags',
+      serviceOrders: 'Service Orders',
       consents: 'Consents',
       notes: 'Notes',
       audit: 'Audit',

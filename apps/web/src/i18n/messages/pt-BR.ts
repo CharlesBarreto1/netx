@@ -137,6 +137,7 @@ const messages = {
       contacts: 'Contatos',
       contracts: 'Contratos',
       finance: 'Financeiro',
+      serviceOrders: 'O.S',
       tags: 'Tags',
       consents: 'Consentimentos',
       notes: 'Anotações',

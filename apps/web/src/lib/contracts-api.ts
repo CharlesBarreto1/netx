@@ -39,6 +39,7 @@ export interface Contract {
   activatedAt: string | null;
   suspendedAt: string | null;
   cancelledAt: string | null;
+  trustExtensionUntil: string | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -164,6 +165,13 @@ export const contractsApi = {
   reactivate(id: string, note?: string) {
     return api.post<Contract>(`/v1/contracts/${id}/reactivate`, { note });
   },
+  /**
+   * Religue de confiança — reativa por N dias (default 5). Cron diário
+   * re-suspende ao expirar se cliente não pagar.
+   */
+  trustExtend(id: string, days = 5, note?: string) {
+    return api.post<Contract>(`/v1/contracts/${id}/trust-extend`, { days, note });
+  },
   cancel(id: string, note?: string) {
     return api.post<Contract>(`/v1/contracts/${id}/cancel`, { note });
   },
@@ -213,5 +221,25 @@ export const contractInvoicesApi = {
   },
   cancel(id: string, note?: string) {
     return api.post<ContractInvoice>(`/v1/contract-invoices/${id}/cancel`, { note });
+  },
+  /**
+   * Define desconto antes do pagamento. Passar 0 zera. Exige
+   * permissão `finance.discount.apply`.
+   */
+  applyDiscount(id: string, discountAmount: number, note?: string) {
+    return api.post<ContractInvoice>(`/v1/contract-invoices/${id}/discount`, {
+      discountAmount,
+      note,
+    });
+  },
+  /**
+   * Prorroga vencimento (sem dar baixa). Reativa contrato suspenso por
+   * inadimplência se essa era a única fatura vencida.
+   */
+  postpone(id: string, newDueDate: string, note?: string) {
+    return api.post<ContractInvoice>(`/v1/contract-invoices/${id}/postpone`, {
+      newDueDate,
+      note,
+    });
   },
 };

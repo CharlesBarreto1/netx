@@ -6,7 +6,10 @@ import { useTranslations } from 'next-intl';
 import { toast } from 'sonner';
 import useSWR from 'swr';
 
+import { DiscountDialog } from '@/components/finance/DiscountDialog';
+import { NewChargeDialog } from '@/components/finance/NewChargeDialog';
 import { PaymentDialog } from '@/components/finance/PaymentDialog';
+import { PostponeDialog } from '@/components/finance/PostponeDialog';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { InlineLoader } from '@/components/ui/Spinner';
@@ -78,6 +81,11 @@ export function FinanceTab({ customerId }: { customerId: string }) {
 
   // Estado de "dar baixa"
   const [paying, setPaying] = useState<ContractInvoice | null>(null);
+  const [discounting, setDiscounting] = useState<ContractInvoice | null>(null);
+  const [postponing, setPostponing] = useState<ContractInvoice | null>(null);
+  const [newChargeOpen, setNewChargeOpen] = useState(false);
+  const canCreateCharge = hasPermission('finance.charges.write');
+  const canDiscount = hasPermission('finance.discount.apply');
 
   if (isLoading && !invoicesResp) {
     return <InlineLoader label="Carregando faturas…" />;
@@ -106,6 +114,19 @@ export function FinanceTab({ customerId }: { customerId: string }) {
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Header com ação rápida — princípio "hub do atendente": ação de
+          cobrança avulsa fica AQUI, sem precisar ir pra /finance/charges. */}
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-text">
+          {tFinance('summary.paidTotal') /* placeholder; melhor usar key dedicada se houver */}
+        </h3>
+        {canCreateCharge && (
+          <Button size="sm" onClick={() => setNewChargeOpen(true)}>
+            + Nueva cobranza
+          </Button>
+        )}
+      </div>
+
       {/* Totais */}
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <SummaryCard
@@ -168,6 +189,11 @@ export function FinanceTab({ customerId }: { customerId: string }) {
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       {formatMoney(inv.amount)}
+                      {inv.discountAmount != null && inv.discountAmount > 0 && inv.status !== 'PAID' && (
+                        <div className="text-2xs text-amber-700 dark:text-amber-400">
+                          desc: -{formatMoney(inv.discountAmount)}
+                        </div>
+                      )}
                       {inv.status === 'PAID' &&
                         inv.paidAmount != null &&
                         inv.paidAmount !== inv.amount && (
@@ -181,6 +207,26 @@ export function FinanceTab({ customerId }: { customerId: string }) {
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center justify-end gap-2">
+                        {canPay && canWrite && (
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            onClick={() => setPostponing(inv)}
+                            title="Prorrogar vencimiento"
+                          >
+                            Prorrogar
+                          </Button>
+                        )}
+                        {canPay && canDiscount && (
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            onClick={() => setDiscounting(inv)}
+                            title="Aplicar descuento previo"
+                          >
+                            % desc
+                          </Button>
+                        )}
                         {canPay && canWrite && (
                           <Button
                             variant="outline"
@@ -215,6 +261,7 @@ export function FinanceTab({ customerId }: { customerId: string }) {
           onOpenChange={(v) => !v && setPaying(null)}
           amount={paying.amount}
           description={`${paying.reference ?? ''} · ${formatDate(paying.dueDate)}`}
+          initialDiscount={paying.discountAmount ?? null}
           onConfirm={async (input) => {
             await contractInvoicesApi.pay(paying.id, input);
             toast.success(tCommon('success'));
@@ -222,6 +269,42 @@ export function FinanceTab({ customerId }: { customerId: string }) {
           }}
         />
       )}
+
+      {discounting && (
+        <DiscountDialog
+          open
+          onOpenChange={(v) => !v && setDiscounting(null)}
+          amount={discounting.amount}
+          currentDiscount={discounting.discountAmount ?? null}
+          description={`${discounting.reference ?? ''} · ${formatDate(discounting.dueDate)}`}
+          onConfirm={async (discount, note) => {
+            await contractInvoicesApi.applyDiscount(discounting.id, discount, note);
+            toast.success(tCommon('success'));
+            await mutate();
+          }}
+        />
+      )}
+
+      {postponing && (
+        <PostponeDialog
+          open
+          onOpenChange={(v) => !v && setPostponing(null)}
+          currentDueDate={postponing.dueDate}
+          description={`${postponing.reference ?? ''} · ${formatMoney(postponing.amount)}`}
+          onConfirm={async (newDate, note) => {
+            await contractInvoicesApi.postpone(postponing.id, newDate, note);
+            toast.success(tCommon('success'));
+            await mutate();
+          }}
+        />
+      )}
+
+      <NewChargeDialog
+        customerId={customerId}
+        open={newChargeOpen}
+        onClose={() => setNewChargeOpen(false)}
+        onCreated={() => void mutate()}
+      />
     </div>
   );
 }

@@ -9,6 +9,7 @@ import useSWR from 'swr';
 import { AuditTrail } from '@/components/audit/AuditTrail';
 import { PortalAccessButton } from '@/components/customers/PortalAccessButton';
 import { AddressesTab } from '@/components/crm/AddressesTab';
+import { ServiceOrdersTab } from '@/components/crm/ServiceOrdersTab';
 import { ConsentsTab } from '@/components/crm/ConsentsTab';
 import { ContactsTab } from '@/components/crm/ContactsTab';
 import { ContractsTab } from '@/components/crm/ContractsTab';
@@ -31,6 +32,7 @@ type TabKey =
   | 'contatos'
   | 'contratos'
   | 'financeiro'
+  | 'os'
   | 'tags'
   | 'consentimentos'
   | 'anotacoes'
@@ -45,6 +47,7 @@ function validTab(t: string | null): TabKey {
     'contatos',
     'contratos',
     'financeiro',
+    'os',
     'tags',
     'consentimentos',
     'anotacoes',
@@ -103,6 +106,7 @@ export default function CustomerDetailPage() {
     { value: 'contatos', label: tTabs('contacts') },
     { value: 'contratos', label: tTabs('contracts') },
     { value: 'financeiro', label: tTabs('finance') },
+    { value: 'os', label: tTabs('serviceOrders') },
     { value: 'tags', label: tTabs('tags'), badge: customer.tags?.length ?? 0 },
     { value: 'consentimentos', label: tTabs('consents') },
     { value: 'anotacoes', label: tTabs('notes') },
@@ -183,6 +187,7 @@ export default function CustomerDetailPage() {
         {activeTab === 'contatos' && <ContactsTab customerId={customer.id} />}
         {activeTab === 'contratos' && <ContractsTab customerId={customer.id} />}
         {activeTab === 'financeiro' && <FinanceTab customerId={customer.id} />}
+        {activeTab === 'os' && <ServiceOrdersTab customerId={customer.id} />}
         {activeTab === 'tags' && (
           <CustomerTagsTab
             customerId={customer.id}

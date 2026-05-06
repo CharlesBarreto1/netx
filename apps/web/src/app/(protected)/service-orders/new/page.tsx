@@ -38,18 +38,32 @@ export default function NewServiceOrderPage() {
   const tForm = useTranslations('serviceOrders.form');
 
   const prefilledContractId = params.get('contractId');
+  // Quando vem do hub do cliente (/customers/[id]), limita a busca de
+  // contratos àquele cliente. Se o cliente tem só 1 contrato, pré-seleciona.
+  const prefilledCustomerId = params.get('customerId');
 
   const { data: reasons } = useSWR<ServiceOrderReasonResponse[]>(
     serviceOrderReasonsApi.path(false),
   );
-  // Lista enxuta dos contratos. Para tenants grandes, vamos ter que substituir
-  // por busca (igual o `customer search` em NewDealDialog).
   const { data: contractsResp } = useSWR<Paginated<Contract>>(
-    contractsApi.listPath({ pageSize: 200 }),
+    contractsApi.listPath({
+      pageSize: 200,
+      ...(prefilledCustomerId ? { customerId: prefilledCustomerId } : {}),
+    }),
   );
   const contracts = contractsResp?.data ?? [];
 
   const [contractId, setContractId] = useState(prefilledContractId ?? '');
+
+  // Auto-select quando vier do hub do cliente e ele tem só 1 contrato.
+  if (
+    !prefilledContractId &&
+    prefilledCustomerId &&
+    contracts.length === 1 &&
+    contractId === ''
+  ) {
+    setContractId(contracts[0].id);
+  }
   const [reasonId, setReasonId] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
   const [openDescription, setOpenDescription] = useState('');

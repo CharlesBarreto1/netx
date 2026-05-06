@@ -396,6 +396,78 @@ export class ContractsService {
     return toContractResponse(updated, { includePassword: true });
   }
 
+  // ---------------------------------------------------------------------------
+  // RELIGUE DE CONFIANÇA
+  // ---------------------------------------------------------------------------
+  /**
+   * Reativa contrato suspenso por inadimplência sem que o cliente tenha
+   * pagado, concedendo um prazo de N dias. O `trustExtensionUntil` é o
+   * deadline; o OverdueScan diário verifica e re-suspende ao expirar.
+   *
+   * Não exige pagamento. Audit fica como SECURITY-relevant: operadores
+   * podem abusar disso pra esconder inadimplência.
+   */
+  async trustExtend(
+    tenantId: string,
+    actorUserId: string,
+    id: string,
+    opts: { days: number; note?: string },
+  ): Promise<ContractResponse> {
+    const days = Math.max(1, Math.min(30, Math.floor(opts.days)));
+    const existing = await this.prisma.contract.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Contrato não encontrado');
+    if (existing.status !== PrismaContractStatus.SUSPENDED) {
+      throw new BadRequestException(
+        'Religue de confiança só vale pra contratos suspensos',
+      );
+    }
+    if (existing.suspendReason !== 'OVERDUE_PAYMENT') {
+      throw new BadRequestException(
+        'Contrato suspenso manualmente — use Reativar normal',
+      );
+    }
+
+    const until = new Date();
+    until.setUTCHours(0, 0, 0, 0);
+    until.setUTCDate(until.getUTCDate() + days);
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const c = await tx.contract.update({
+        where: { id: existing.id },
+        data: {
+          status: PrismaContractStatus.ACTIVE,
+          suspendReason: null,
+          suspendedAt: null,
+          trustExtensionUntil: until,
+          updatedById: actorUserId,
+        },
+        include: DEFAULT_INCLUDE,
+      });
+      await this.radius.enqueueSync(c, `religue de confiança (${days}d)`, tx);
+      return c;
+    });
+
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'contracts.trust_extended',
+      // Reusa WARNING porque CRITICAL é o mais alto disponível e queremos
+      // diferenciar de erros de sistema.
+      level: 'WARNING',
+      resource: 'contracts',
+      resourceId: updated.id,
+      metadata: {
+        days,
+        until: until.toISOString().slice(0, 10),
+        note: opts.note ?? null,
+      },
+    });
+
+    return toContractResponse(updated, { includePassword: true });
+  }
+
   async cancel(
     tenantId: string,
     actorUserId: string,

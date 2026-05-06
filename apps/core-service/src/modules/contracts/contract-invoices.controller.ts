@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   Param,
@@ -98,5 +99,46 @@ export class ContractInvoicesController {
     @ZodBody(CancelContractInvoiceRequestSchema) body: CancelContractInvoiceRequest,
   ) {
     return this.invoices.cancel(user.tenantId, user.sub, id, body);
+  }
+
+  /**
+   * Aplicar/atualizar desconto ANTES do pagamento. Persiste em
+   * `discountAmount` mas NÃO marca como paga.
+   */
+  @Post('contract-invoices/:id/discount')
+  @RequirePermissions('finance.discount.apply')
+  applyDiscount(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: { discountAmount: number; note?: string },
+  ) {
+    return this.invoices.applyDiscount(
+      user.tenantId,
+      user.sub,
+      id,
+      Number(body.discountAmount) || 0,
+      body.note,
+    );
+  }
+
+  /**
+   * Prorrogar fatura — altera vencimento sem dar baixa. Útil quando
+   * cliente pede prazo extra. Reativa contrato suspenso por overdue se
+   * a fatura prorrogada era a "última inadimplência".
+   */
+  @Post('contract-invoices/:id/postpone')
+  @RequirePermissions('contracts.write')
+  postpone(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: { newDueDate: string; note?: string },
+  ) {
+    return this.invoices.postpone(
+      user.tenantId,
+      user.sub,
+      id,
+      body.newDueDate,
+      body.note,
+    );
   }
 }

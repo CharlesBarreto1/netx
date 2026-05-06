@@ -6,18 +6,11 @@ import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 
+import { NewChargeDialog } from '@/components/finance/NewChargeDialog';
 import { PaymentDialog } from '@/components/finance/PaymentDialog';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Input, Label, Select, Textarea } from '@/components/ui/Input';
+import { Input, Select } from '@/components/ui/Input';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { PageLoader } from '@/components/ui/Spinner';
 import { toast } from '@/components/ui/sonner';
@@ -32,7 +25,7 @@ import {
   type OneTimeCharge,
   type OneTimeChargeStatus,
 } from '@/lib/finance-api';
-import type { Customer, Paginated } from '@/lib/crm-types';
+import type { Paginated } from '@/lib/crm-types';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { useFormatMoney } from '@/lib/use-money';
 import { hasPermission } from '@/lib/session';
@@ -332,14 +325,11 @@ export default function ChargesListPage() {
         </table>
       </div>
 
-      {creating && (
-        <NewChargeDialog
-          onClose={async (created) => {
-            setCreating(false);
-            if (created) await refresh();
-          }}
-        />
-      )}
+      <NewChargeDialog
+        open={creating}
+        onClose={() => setCreating(false)}
+        onCreated={() => void refresh()}
+      />
 
       {paying && (
         <PaymentDialog
@@ -386,150 +376,3 @@ export default function ChargesListPage() {
   );
 }
 
-// =============================================================================
-// NEW CHARGE DIALOG (cobrança avulsa só)
-// =============================================================================
-function NewChargeDialog({
-  onClose,
-}: {
-  onClose: (created: boolean) => void;
-}) {
-  const tCharges = useTranslations('charges');
-  const tCommon = useTranslations('common');
-
-  const [customerSearch, setCustomerSearch] = useState('');
-  const [customerId, setCustomerId] = useState<string | null>(null);
-  const [description, setDescription] = useState('');
-  const [amount, setAmount] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const customerKey =
-    customerSearch.trim().length >= 2
-      ? `/v1/customers?search=${encodeURIComponent(customerSearch.trim())}&pageSize=8`
-      : null;
-  const { data: hits } = useSWR<Paginated<Customer>>(customerKey);
-  const options = hits?.data ?? [];
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!customerId || !description.trim() || !amount || !dueDate) {
-      setError('Preencha todos os campos obrigatórios.');
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await chargesApi.create({
-        customerId,
-        description: description.trim(),
-        amount: Number(amount.replace(',', '.')),
-        dueDate,
-      });
-      toast.success(tCommon('success'));
-      onClose(true);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <Dialog open onOpenChange={(v) => !v && onClose(false)}>
-      <DialogContent className="max-w-md">
-        <form onSubmit={handleSubmit}>
-          <DialogHeader>
-            <DialogTitle>{tCharges('new')}</DialogTitle>
-          </DialogHeader>
-          <DialogBody className="flex flex-col gap-3">
-            <div>
-              <Label required>{tCharges('fields.customer')}</Label>
-              <Input
-                value={customerSearch}
-                onChange={(e) => {
-                  setCustomerSearch(e.target.value);
-                  setCustomerId(null);
-                }}
-                placeholder="Buscar por nome…"
-              />
-              {customerSearch.trim().length >= 2 && (
-                <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-border bg-surface">
-                  {options.length === 0 ? (
-                    <div className="px-2 py-1.5 text-xs text-text-subtle">
-                      Nenhum
-                    </div>
-                  ) : (
-                    options.map((c) => (
-                      <button
-                        type="button"
-                        key={c.id}
-                        onClick={() => {
-                          setCustomerId(c.id);
-                          setCustomerSearch(c.displayName);
-                        }}
-                        className={
-                          'flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs hover:bg-surface-hover ' +
-                          (customerId === c.id ? 'bg-accent-muted text-accent' : '')
-                        }
-                      >
-                        <span className="truncate">{c.displayName}</span>
-                        <span className="text-2xs text-text-subtle">
-                          {c.primaryEmail ?? c.primaryPhone ?? ''}
-                        </span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
-            </div>
-            <div>
-              <Label required>{tCharges('fields.description')}</Label>
-              <Textarea
-                rows={2}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Ex.: Taxa de instalação"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label required>{tCharges('fields.amount')}</Label>
-                <Input
-                  inputMode="decimal"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="0,00"
-                />
-              </div>
-              <div>
-                <Label required>{tCharges('fields.dueDate')}</Label>
-                <Input
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                />
-              </div>
-            </div>
-            {error && (
-              <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
-            )}
-          </DialogBody>
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => onClose(false)}
-              disabled={submitting}
-            >
-              {tCommon('cancel')}
-            </Button>
-            <Button type="submit" loading={submitting}>
-              {tCommon('create')}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}

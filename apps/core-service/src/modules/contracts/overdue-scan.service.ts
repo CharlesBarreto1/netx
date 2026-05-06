@@ -43,14 +43,55 @@ export class OverdueScanService {
     generated: number;
     markedOverdue: number;
     suspended: number;
+    trustExpired: number;
   }> {
     const generated = await this.invoiceGen.generateUpcoming(now);
     const markedOverdue = await this.markOverdue(now);
+    // Religue de confiança expirou? Re-suspende ANTES do scan normal pra
+    // que o contrato volte ao pool inadimplente no mesmo ciclo.
+    const trustExpired = await this.expireTrustExtensions(now);
     const suspended = await this.suspendOverdueContracts(now);
     this.logger.log(
-      `Rotina diária concluída: generated=${generated}, overdue=${markedOverdue}, suspended=${suspended}`,
+      `Rotina diária concluída: generated=${generated}, overdue=${markedOverdue}, trustExpired=${trustExpired}, suspended=${suspended}`,
     );
-    return { generated, markedOverdue, suspended };
+    return { generated, markedOverdue, suspended, trustExpired };
+  }
+
+  /**
+   * Religue de confiança expirado: contratos ACTIVE com
+   * `trustExtensionUntil < hoje` voltam pra SUSPENDED (OVERDUE_PAYMENT).
+   * Limpa o `trustExtensionUntil` pra não loopar.
+   */
+  private async expireTrustExtensions(now: Date): Promise<number> {
+    const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const candidates = await this.prisma.contract.findMany({
+      where: {
+        status: PrismaContractStatus.ACTIVE,
+        trustExtensionUntil: { lt: today },
+        deletedAt: null,
+      },
+      select: { id: true, tenantId: true },
+    });
+    let count = 0;
+    for (const c of candidates) {
+      try {
+        await this.contracts.applySuspend(c.tenantId, c.id, 'OVERDUE_PAYMENT', {
+          manual: false,
+          note: 'Religue de confiança expirado',
+        });
+        // Limpa o flag — sem isso, o status vai oscilar.
+        await this.prisma.contract.update({
+          where: { id: c.id },
+          data: { trustExtensionUntil: null },
+        });
+        count++;
+      } catch (err) {
+        this.logger.error(
+          `Falha ao re-suspender contrato ${c.id}: ${(err as Error).message}`,
+        );
+      }
+    }
+    return count;
   }
 
   /** Passa faturas OPEN vencidas para OVERDUE. */

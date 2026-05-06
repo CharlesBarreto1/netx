@@ -67,6 +67,8 @@ export interface PaymentDialogProps {
   onConfirm: (input: PayPaymentInput) => Promise<void>;
   /** Default = "Confirmar pagamento". */
   confirmLabel?: string;
+  /** Desconto já persistido na fatura (POST /discount prévio). Pré-preenche. */
+  initialDiscount?: number | null;
 }
 
 export function PaymentDialog({
@@ -76,6 +78,7 @@ export function PaymentDialog({
   description,
   onConfirm,
   confirmLabel,
+  initialDiscount,
 }: PaymentDialogProps) {
   const tFinance = useTranslations('finance.payment');
   const tMethod = useTranslations('finance.paymentMethod');
@@ -97,17 +100,20 @@ export function PaymentDialog({
 
   // Reset quando abre. Auto-seleciona se há só 1 caixa — fluxo mais comum em
   // operações pequenas, evita 1 clique sem perda de visibilidade (o caixa
-  // continua mostrado no select).
+  // continua mostrado no select). Se a fatura tem desconto prévio gravado,
+  // pré-preenche pra que o atendente veja e possa ajustar.
   useEffect(() => {
     if (open) {
       setCashRegisterId('');
       setPaidVia('CASH');
-      setDiscountAmount('');
+      setDiscountAmount(
+        initialDiscount && initialDiscount > 0 ? String(initialDiscount) : '',
+      );
       setPaidAt('');
       setNote('');
       setError(null);
     }
-  }, [open]);
+  }, [open, initialDiscount]);
 
   useEffect(() => {
     if (open && registers && registers.length === 1 && !cashRegisterId) {

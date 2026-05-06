@@ -395,3 +395,66 @@ Antes de `git commit`:
 - [Next.js typedRoutes docs](https://nextjs.org/docs/app/api-reference/next-config-js/typedRoutes)
 - [TypeScript special rules for `() => void`](https://www.typescriptlang.org/docs/handbook/2/functions.html#return-type-void)
 - [SWR — useSWR](https://swr.vercel.app/docs/data-fetching)
+
+---
+
+## Princípio: `/customers/[id]` é o Hub do Atendente
+
+Toda informação **acionável** sobre um cliente vive em `/customers/[id]`. O
+atendente do ISP atende um cliente por telefone/WhatsApp e precisa, em UMA
+tela:
+
+- Ver contratos, plano, endereço de instalação
+- Ver financeiro: faturas em aberto, em atraso, recebidas, cobranças avulsas
+- Criar cobrança avulsa (multa, taxa, equipamento)
+- Dar baixa em fatura, prorrogar vencimento, aplicar desconto prévio
+- Ver O.S abertas e abrir nova
+- Conceder religue de confiança
+- Trocar dados de contato, ver histórico de auditoria
+- Gerar acesso ao Portal do Cliente
+
+**Regra de ouro:** se o atendente tiver que abrir outra aba/menu pra resolver
+algo do cliente que está atendendo, é fricção e a feature está no lugar
+errado. Toda ação cliente-específica deve ter representação no hub.
+
+### O que isso implica pra novas features
+
+Ao adicionar qualquer funcionalidade que toque o cliente, perguntar:
+
+1. **Existe um ponto de entrada no `/customers/[id]`?** Se a resposta for
+   "não, vai numa tela separada", reconsiderar. Talvez a página separada
+   deva existir como "lista global" mas a ação primária mora no hub.
+
+2. **Pré-preenchimentos via query param.** Páginas de criação (ex.:
+   `/contracts/new`, `/service-orders/new`) devem aceitar `?customerId=` e
+   pré-popular. Se o cliente tiver só 1 contrato, auto-selecionar.
+
+3. **Reuso de Dialogs.** Componentes como `NewChargeDialog`,
+   `PaymentDialog`, `DiscountDialog`, `PostponeDialog` aceitam
+   `customerId`/`contractId` opcionais. Quando vinculados, escondem busca
+   e atuam direto. Mesmo dialog é usado na lista global e no hub.
+
+4. **Tabs como módulos.** Cada aspecto do cliente vira uma tab dentro
+   `/customers/[id]`. Tab é stateless — recebe `customerId` e cuida do
+   próprio fetch via SWR. Adicionar uma nova tab é trivial.
+
+5. **Páginas globais ainda existem** — `/contracts`, `/finance/charges`,
+   `/service-orders` — pra visão consolidada/operacional. Mas SEMPRE têm
+   contraparte no hub pra a perspectiva por cliente.
+
+### Anti-padrões
+
+- "Pra criar uma cobrança você vai em /finance/charges" → ERRADO. Precisa
+  ter botão "Nova cobrança" na aba Financeiro do cliente.
+- "Pra ver as O.S do João você filtra na /service-orders por nome" →
+  ERRADO. Deve ter aba O.S no cliente.
+- "Esse fluxo só faz sentido na tela do contrato" → cuidado. Se for ação
+  rara (ex.: trocar PPPoE pra IPoE), tudo bem morar só lá. Se for ação
+  cotidiana (pagar, prorrogar), tem que estar no hub.
+
+### Tabs atuais do hub
+
+`Datos`, `Direcciones`, `Contactos`, `Contratos`, `Financiero`, `O.S`,
+`Tags`, `Consentimientos`, `Anotaciones`, `Auditoría`. Ações no header:
+`Editar`, `Acceso al portal`, `Excluir`.
+

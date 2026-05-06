@@ -953,6 +953,12 @@ model Contract {
   suspendedAt         DateTime?      @map("suspended_at")
   cancelledAt         DateTime?      @map("cancelled_at")
 
+  // Religue de confiança: ao reativar um contrato suspenso por inadimplência
+  // sem que o cliente tenha pago, o atendente concede um prazo. Cron diário
+  // (OverdueScan) verifica e re-suspende quando este timestamp passar.
+  // null = sem prazo de confiança ativo.
+  trustExtensionUntil DateTime?      @map("trust_extension_until")
+
   notes               String?        @db.Text
 
   createdById         String?        @map("created_by_id") @db.Uuid

@@ -100,6 +100,24 @@ export class ContractsController {
     return this.contracts.reactivate(user.tenantId, user.sub, id, body);
   }
 
+  /**
+   * Religue de confiança — reativa um contrato suspenso por overdue
+   * concedendo um prazo (default 5 dias). Cron de overdue verifica e
+   * re-suspende ao expirar.
+   */
+  @Post(':id/trust-extend')
+  @RequirePermissions('contracts.write')
+  trustExtend(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: { days?: number; note?: string },
+  ) {
+    return this.contracts.trustExtend(user.tenantId, user.sub, id, {
+      days: body.days ?? 5,
+      note: body.note,
+    });
+  }
+
   @Post(':id/cancel')
   @RequirePermissions('contracts.write')
   cancel(
