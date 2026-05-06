@@ -16,6 +16,15 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger));
 
+  // Trust proxy — sem isso, `req.ip` devolve sempre 127.0.0.1 porque o
+  // socket peer é o api-gateway/Nginx. Com trust proxy ligado, Express lê
+  // X-Forwarded-For (já populado pelo Nginx → gateway → core) e expõe o
+  // IP real do cliente. Crítico pra auditoria, rate limit e MFA.
+  // `true` = confia em todos os hops; OK porque core-service só recebe
+  // tráfego interno (atrás do gateway). Se um dia ficar exposto direto,
+  // trocar pra número de hops específico (ex.: 2).
+  app.set('trust proxy', true);
+
   // Security headers
   app.use(helmet());
 

@@ -35,6 +35,22 @@ export class ProxyService {
     if (req.headers['x-correlation-id']) {
       forwardedHeaders['x-correlation-id'] = req.headers['x-correlation-id'] as string;
     }
+    // Garantir IP real do cliente. Quando vem via Nginx, X-Forwarded-For já
+    // está populado e é só repassar. Quando o gateway recebe direto (dev,
+    // healthcheck), `req.ip` aqui já está correto graças ao trust proxy do
+    // gateway. Forçamos o header pra que o core-service NUNCA veja
+    // 127.0.0.1 (que era o caso antes — log de auditoria com IP do
+    // gateway ao invés do cliente).
+    const clientIp = req.ip;
+    if (clientIp) {
+      const existing = forwardedHeaders['x-forwarded-for'];
+      forwardedHeaders['x-forwarded-for'] = existing
+        ? `${existing}, ${clientIp}`
+        : clientIp;
+    }
+    if (!forwardedHeaders['x-real-ip'] && clientIp) {
+      forwardedHeaders['x-real-ip'] = clientIp;
+    }
 
     try {
       const res = await firstValueFrom(
