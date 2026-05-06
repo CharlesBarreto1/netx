@@ -166,15 +166,22 @@ export class CustomersService {
         ? { tagAssignments: { some: { tagId: q.tag } } }
         : {}),
       ...(q.search
-        ? {
-            OR: [
+        ? (() => {
+            // Strip não-dígitos pra match com taxId/phone (que armazenam o
+            // número limpo). Só inclui esses dois ramos do OR se sobrou
+            // algum dígito — caso contrário `contains: ""` casa com TUDO.
+            const digits = q.search.replace(/\D/g, '');
+            const orClauses: Array<Record<string, unknown>> = [
               { displayName: { contains: q.search, mode: 'insensitive' } },
               { primaryEmail: { contains: q.search, mode: 'insensitive' } },
-              { primaryPhone: { contains: q.search } },
-              { taxId: { contains: q.search.replace(/\D/g, '') } },
               { code: { contains: q.search, mode: 'insensitive' } },
-            ],
-          }
+            ];
+            if (digits.length > 0) {
+              orClauses.push({ taxId: { contains: digits } });
+              orClauses.push({ primaryPhone: { contains: digits } });
+            }
+            return { OR: orClauses };
+          })()
         : {}),
     };
 
