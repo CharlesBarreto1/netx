@@ -6,7 +6,7 @@ import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 
 import { Badge } from '@/components/ui/Badge';
-import { Spinner } from '@/components/ui/Spinner';
+import { InlineLoader } from '@/components/ui/Spinner';
 import { auditApi, type AuditLevel, type AuditLogEntry } from '@/lib/audit-api';
 import { formatDateTime } from '@/lib/format';
 
@@ -42,11 +42,7 @@ export function AuditTrail({ resource, resourceId, limit = 50 }: AuditTrailProps
   );
 
   if (isLoading) {
-    return (
-      <div className="flex items-center gap-2 text-xs text-text-muted">
-        <Spinner size="sm" />
-      </div>
-    );
+    return <InlineLoader />;
   }
 
   const entries = data?.data ?? [];

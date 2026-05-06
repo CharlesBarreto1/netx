@@ -189,7 +189,7 @@ export default function ServiceOrderPrintPage() {
           <Field label="Status do contrato" value={contract.status} />
           <Field
             label="PPPoE — usuário"
-            value={contract.pppoeUsername}
+            value={contract.pppoeUsername ?? '—'}
             mono
           />
           <Field

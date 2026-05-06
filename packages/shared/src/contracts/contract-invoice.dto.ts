@@ -82,10 +82,13 @@ export interface ContractInvoiceResponse {
   updatedAt: string;
 
   // Quando incluído em resposta agregada.
+  // pppoeUsername é nullable porque contratos IPoE não têm — autenticam por
+  // circuit-id/MAC. Pra mostrar o identificador efetivo na UI, prefira o
+  // campo `code` (humano) ou puxe o contrato completo via `/contracts/:id`.
   contract?: {
     id: string;
     code: string | null;
-    pppoeUsername: string;
+    pppoeUsername: string | null;
     customerId: string;
     customerName?: string;
   };

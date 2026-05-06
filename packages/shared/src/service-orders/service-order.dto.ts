@@ -175,7 +175,8 @@ export interface ServiceOrderResponse {
   contract?: {
     id: string;
     code: string | null;
-    pppoeUsername: string;
+    // null em contratos IPoE — autenticam via circuit-id/MAC.
+    pppoeUsername: string | null;
     customerId: string;
   } | null;
   customer?: { id: string; displayName: string } | null;

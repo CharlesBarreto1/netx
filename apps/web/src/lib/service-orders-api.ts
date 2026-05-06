@@ -49,7 +49,8 @@ export interface ServiceOrderResponse {
   contract?: {
     id: string;
     code: string | null;
-    pppoeUsername: string;
+    // null em contratos IPoE.
+    pppoeUsername: string | null;
     customerId: string;
   } | null;
   customer?: { id: string; displayName: string } | null;

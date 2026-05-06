@@ -141,7 +141,9 @@ export default function InvoicePrintPage() {
           <p className="mt-1 font-medium">
             {contract.code ?? `#${contract.id.slice(0, 8)}`}
           </p>
-          <p className="text-xs text-slate-600">PPPoE: {contract.pppoeUsername}</p>
+          {contract.pppoeUsername && (
+            <p className="text-xs text-slate-600">PPPoE: {contract.pppoeUsername}</p>
+          )}
           <p className="text-xs text-slate-600">
             Plano: {contract.bandwidthMbps} Mbps · {formatMoney(contract.monthlyValue)} /mês
           </p>
