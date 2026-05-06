@@ -25,6 +25,7 @@ import { formatDate, formatDateTime } from '@/lib/format';
 import { useFormatMoney } from '@/lib/use-money';
 import { hasPermission } from '@/lib/session';
 
+import { AuditTrail } from '@/components/audit/AuditTrail';
 import { EditContractDialog } from '@/components/contracts/EditContractDialog';
 import { PaymentDialog } from '@/components/finance/PaymentDialog';
 
@@ -420,6 +421,13 @@ export default function ContractDetailPage() {
           />
         )}
       </InfoCard>
+
+      {/* Trilha de auditoria — quem mexeu nesse contrato e quando */}
+      {hasPermission('audit.read') && contract.id && (
+        <InfoCard title="Auditoria">
+          <AuditTrail resource="contracts" resourceId={contract.id} />
+        </InfoCard>
+      )}
 
       {/* Faturas */}
       <div>

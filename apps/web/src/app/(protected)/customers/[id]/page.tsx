@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 
+import { AuditTrail } from '@/components/audit/AuditTrail';
 import { AddressesTab } from '@/components/crm/AddressesTab';
 import { ConsentsTab } from '@/components/crm/ConsentsTab';
 import { ContactsTab } from '@/components/crm/ContactsTab';
@@ -31,7 +32,8 @@ type TabKey =
   | 'financeiro'
   | 'tags'
   | 'consentimentos'
-  | 'anotacoes';
+  | 'anotacoes'
+  | 'auditoria';
 
 const DEFAULT_TAB: TabKey = 'dados';
 
@@ -45,6 +47,7 @@ function validTab(t: string | null): TabKey {
     'tags',
     'consentimentos',
     'anotacoes',
+    'auditoria',
   ];
   return (all as string[]).includes(t ?? '') ? (t as TabKey) : DEFAULT_TAB;
 }
@@ -102,6 +105,9 @@ export default function CustomerDetailPage() {
     { value: 'tags', label: tTabs('tags'), badge: customer.tags?.length ?? 0 },
     { value: 'consentimentos', label: tTabs('consents') },
     { value: 'anotacoes', label: tTabs('notes') },
+    ...(hasPermission('audit.read')
+      ? [{ value: 'auditoria' as const, label: tTabs('audit') }]
+      : []),
   ];
 
   return (
@@ -182,6 +188,9 @@ export default function CustomerDetailPage() {
         )}
         {activeTab === 'consentimentos' && <ConsentsTab customerId={customer.id} />}
         {activeTab === 'anotacoes' && <NotesTab customerId={customer.id} />}
+        {activeTab === 'auditoria' && (
+          <AuditTrail resource="customers" resourceId={customer.id} />
+        )}
       </div>
 
       <ConfirmDialog

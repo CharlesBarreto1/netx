@@ -41,9 +41,61 @@ export class AuditService {
     });
   }
 
-  async list(params: { tenantId: string; page: number; pageSize: number; action?: string }) {
-    const { tenantId, page, pageSize, action } = params;
-    const where = { tenantId, ...(action ? { action } : {}) };
+  async list(params: {
+    tenantId: string;
+    page: number;
+    pageSize: number;
+    action?: string;
+    userId?: string;
+    resource?: string;
+    resourceId?: string;
+    level?: AuditLevel;
+    dateFrom?: Date;
+    dateTo?: Date;
+    /**
+     * Texto livre — busca em `action` e em `metadata` (JSON cast text).
+     * Útil pra "encontrar logs do PPPoE 'joao.silva'" sem saber o resourceId.
+     */
+    search?: string;
+  }) {
+    const {
+      tenantId,
+      page,
+      pageSize,
+      action,
+      userId,
+      resource,
+      resourceId,
+      level,
+      dateFrom,
+      dateTo,
+      search,
+    } = params;
+
+    const where: Prisma.AuditLogWhereInput = {
+      tenantId,
+      ...(action ? { action: { contains: action, mode: 'insensitive' as const } } : {}),
+      ...(userId ? { userId } : {}),
+      ...(resource ? { resource } : {}),
+      ...(resourceId ? { resourceId } : {}),
+      ...(level ? { level } : {}),
+      ...(dateFrom || dateTo
+        ? {
+            createdAt: {
+              ...(dateFrom ? { gte: dateFrom } : {}),
+              ...(dateTo ? { lte: dateTo } : {}),
+            },
+          }
+        : {}),
+      ...(search
+        ? {
+            OR: [
+              { action: { contains: search, mode: 'insensitive' as const } },
+              { resourceId: { contains: search, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
 
     const [data, total] = await Promise.all([
       this.prisma.auditLog.findMany({
@@ -51,6 +103,17 @@ export class AuditService {
         orderBy: { createdAt: 'desc' },
         skip: (page - 1) * pageSize,
         take: pageSize,
+        // Inclui o ator pra renderizar nome/email no frontend sem N+1.
+        include: {
+          user: {
+            select: {
+              id: true,
+              email: true,
+              firstName: true,
+              lastName: true,
+            },
+          },
+        },
       }),
       this.prisma.auditLog.count({ where }),
     ]);
