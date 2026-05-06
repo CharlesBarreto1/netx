@@ -313,31 +313,62 @@ async function main() {
     },
   });
 
-  // Copy system admin role to this tenant
-  const systemAdmin = await prisma.role.findFirst({
-    where: { name: 'admin', tenantId: null },
-    include: { rolePermissions: true },
-  });
-  if (!systemAdmin) throw new Error('System admin role not found');
+  // ────────────────────────────────────────────────────────────────────────
+  // Sincroniza roles `admin`, `operator`, `viewer` em TODOS os tenants
+  // existentes com os templates do sistema. Sem isso, módulos novos
+  // (service-orders, finance, audit, etc.) ficam invisíveis pra usuários
+  // já cadastrados porque suas roles ainda têm o catálogo antigo.
+  //
+  // Idempotente: roda na seed e a cada release. Custom roles (não-system,
+  // criadas pelo admin do tenant manualmente) NÃO são tocadas.
+  // ────────────────────────────────────────────────────────────────────────
+  console.log('  → Sincronizando roles admin/operator/viewer em todos os tenants');
+  const allTenants = await prisma.tenant.findMany({ select: { id: true, slug: true } });
+  const SYSTEM_ROLE_NAMES = ['admin', 'operator', 'viewer'] as const;
 
-  const tenantAdmin = await prisma.role.upsert({
-    where: { tenantId_name: { tenantId: tenant.id, name: 'admin' } },
-    update: {},
-    create: {
-      tenantId: tenant.id,
-      name: 'admin',
-      description: 'Administrador do tenant',
-      priority: 10,
-      isSystem: false,
-    },
-  });
-  await prisma.rolePermission.deleteMany({ where: { roleId: tenantAdmin.id } });
-  await prisma.rolePermission.createMany({
-    data: systemAdmin.rolePermissions.map((rp) => ({
-      roleId: tenantAdmin.id,
-      permissionId: rp.permissionId,
-    })),
-    skipDuplicates: true,
+  for (const t of allTenants) {
+    for (const roleName of SYSTEM_ROLE_NAMES) {
+      const tpl = await prisma.role.findFirst({
+        where: { name: roleName, tenantId: null },
+        include: { rolePermissions: true },
+      });
+      if (!tpl) continue;
+
+      const tenantRole = await prisma.role.upsert({
+        where: { tenantId_name: { tenantId: t.id, name: roleName } },
+        update: {
+          // Atualiza descrição/prioridade pra alinhar com o template,
+          // mas preserva o flag `isSystem: false` (é uma cópia do tenant).
+          description: tpl.description,
+          priority: tpl.priority,
+        },
+        create: {
+          tenantId: t.id,
+          name: roleName,
+          description: tpl.description,
+          priority: tpl.priority,
+          isSystem: false,
+        },
+      });
+
+      // Sincroniza as permissões da role do tenant com o template:
+      // remove o que não está mais e adiciona o que faltava. Isso permite
+      // adicionar permissões novas sem quebrar customizações de UserRole.
+      await prisma.rolePermission.deleteMany({ where: { roleId: tenantRole.id } });
+      await prisma.rolePermission.createMany({
+        data: tpl.rolePermissions.map((rp) => ({
+          roleId: tenantRole.id,
+          permissionId: rp.permissionId,
+        })),
+        skipDuplicates: true,
+      });
+    }
+    console.log(`     · ${t.slug}: roles atualizadas`);
+  }
+
+  // Mantém referência ao admin do tenant default pra atribuir ao user admin
+  const tenantAdmin = await prisma.role.findFirstOrThrow({
+    where: { tenantId: tenant.id, name: 'admin' },
   });
 
   // 4. Admin user
