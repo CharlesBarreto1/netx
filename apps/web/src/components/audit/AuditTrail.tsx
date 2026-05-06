@@ -10,11 +10,10 @@ import { InlineLoader } from '@/components/ui/Spinner';
 import { auditApi, type AuditLevel, type AuditLogEntry } from '@/lib/audit-api';
 import { formatDateTime } from '@/lib/format';
 
-const LEVEL_TONE: Record<AuditLevel, 'info' | 'warning' | 'danger' | 'success'> = {
+const LEVEL_TONE: Record<AuditLevel, 'info' | 'warning' | 'danger'> = {
   INFO: 'info',
   WARNING: 'warning',
-  ERROR: 'danger',
-  SECURITY: 'success', // verde-azulado funciona como destaque pra eventos de segurança
+  CRITICAL: 'danger',
 };
 
 /**

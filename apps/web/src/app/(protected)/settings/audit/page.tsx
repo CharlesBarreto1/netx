@@ -17,11 +17,10 @@ import {
 } from '@/lib/audit-api';
 import { formatDateTime } from '@/lib/format';
 
-const LEVEL_TONE: Record<AuditLevel, 'info' | 'warning' | 'danger' | 'success'> = {
+const LEVEL_TONE: Record<AuditLevel, 'info' | 'warning' | 'danger'> = {
   INFO: 'info',
   WARNING: 'warning',
-  ERROR: 'danger',
-  SECURITY: 'success',
+  CRITICAL: 'danger',
 };
 
 const PAGE_SIZE = 50;
@@ -121,8 +120,7 @@ export default function AuditPage() {
             <option value="">{tCommon('all')}</option>
             <option value="INFO">{tLevel('INFO')}</option>
             <option value="WARNING">{tLevel('WARNING')}</option>
-            <option value="ERROR">{tLevel('ERROR')}</option>
-            <option value="SECURITY">{tLevel('SECURITY')}</option>
+            <option value="CRITICAL">{tLevel('CRITICAL')}</option>
           </Select>
         </div>
         <div>

@@ -599,8 +599,7 @@ const messages = {
     levels: {
       INFO: 'Info',
       WARNING: 'Aviso',
-      ERROR: 'Erro',
-      SECURITY: 'Segurança',
+      CRITICAL: 'Crítico',
     },
     diff: {
       before: 'Antes',

@@ -3,7 +3,7 @@
  */
 import { api } from './api';
 
-export type AuditLevel = 'INFO' | 'WARNING' | 'ERROR' | 'SECURITY';
+export type AuditLevel = 'INFO' | 'WARNING' | 'CRITICAL';
 
 export interface AuditLogEntry {
   id: string;

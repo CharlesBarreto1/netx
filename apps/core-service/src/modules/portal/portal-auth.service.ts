@@ -24,7 +24,7 @@ import {
 import {
   hashPassword,
   verifyPassword,
-  type Argon2Config,
+  type Argon2Options,
 } from '@netx/auth';
 import { loadConfig } from '@netx/config';
 import jwt from 'jsonwebtoken';
@@ -64,7 +64,7 @@ export interface PortalSession {
 @Injectable()
 export class PortalAuthService {
   private readonly logger = new Logger(PortalAuthService.name);
-  private readonly argon2: Argon2Config;
+  private readonly argon2: Argon2Options;
   private readonly jwtSecret: string;
   private readonly jwtTtlSeconds = 60 * 60 * 8; // 8h por sessão
 
@@ -110,7 +110,7 @@ export class PortalAuthService {
       action: 'portal.access.issued',
       resource: 'customers',
       resourceId: customerId,
-      level: 'SECURITY',
+      level: 'WARNING',
       metadata: { expiresAt: expiresAt.toISOString() },
     });
 
@@ -132,7 +132,7 @@ export class PortalAuthService {
       action: 'portal.access.revoked',
       resource: 'customers',
       resourceId: customerId,
-      level: 'SECURITY',
+      level: 'WARNING',
     });
   }
 
@@ -212,7 +212,7 @@ export class PortalAuthService {
     await this.audit.log({
       tenantId: tenant.id,
       action: 'portal.login.success',
-      level: 'SECURITY',
+      level: 'WARNING',
       ip,
       userAgent,
       resource: 'customers',

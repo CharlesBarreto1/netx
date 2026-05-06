@@ -9,8 +9,7 @@ import { AuditService } from './audit.service';
 const VALID_LEVELS: ReadonlySet<AuditLevel> = new Set([
   'INFO',
   'WARNING',
-  'ERROR',
-  'SECURITY',
+  'CRITICAL',
 ] as AuditLevel[]);
 
 @ApiTags('audit')
@@ -52,7 +51,7 @@ export class AuditController {
       const upper = level.toUpperCase() as AuditLevel;
       if (!VALID_LEVELS.has(upper)) {
         throw new BadRequestException(
-          `Level inválido: ${level}. Use INFO | WARNING | ERROR | SECURITY.`,
+          `Level inválido: ${level}. Use INFO | WARNING | CRITICAL.`,
         );
       }
       lvl = upper;
