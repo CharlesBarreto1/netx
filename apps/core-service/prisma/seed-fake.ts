@@ -161,19 +161,21 @@ const setDayOfMonth = (d: Date, day: number) => {
   const out = new Date(d); out.setDate(day); return out;
 };
 
-// MAC único — base no índice global pra evitar colisão.
-function macFromIndex(i: number): string {
-  const hex = (i * 0x9e3779b9).toString(16).padStart(12, '0').slice(-12).toUpperCase();
-  return hex.match(/.{2}/gu)!.join(':');
+// MAC único — embute (seq, c) no espaço locally-administered (02:CE:...).
+// (seq * 8 + c) cabe em 32 bits até ~536M clientes; mais que suficiente.
+function macFromSeq(seq: number, c: number): string {
+  const n = (seq * 8 + c) >>> 0;
+  const h = (b: number) => b.toString(16).padStart(2, '0');
+  return `02:CE:${h((n >> 24) & 0xff)}:${h((n >> 16) & 0xff)}:${h((n >> 8) & 0xff)}:${h(n & 0xff)}`.toUpperCase();
 }
 
-// Circuit-id Huawei-style: SLOT/PORT:VPI.VCI — usamos índice pra unicidade.
-function circuitIdFromIndex(i: number): string {
-  const olt = (i % 4) + 1;       // 4 OLTs distribuídos
-  const slot = ((i / 4) | 0) % 16 + 1;
-  const port = ((i / 64) | 0) % 16 + 1;
-  const onu = (i % 128) + 1;
-  return `OLT${olt}/${slot}/${port}:${onu}.1`;
+// Circuit-id estilo Huawei. seq é embutido literalmente → unicidade
+// trivial. Distribuímos OLTs e PON cards pra parecer realista.
+function circuitIdFromSeq(seq: number, c: number): string {
+  const olt = ((seq - 1) % 4) + 1;                 // OLT 1..4
+  const slot = (Math.floor((seq - 1) / 1000) % 8) + 1; // 8 cards/OLT
+  const pon = (Math.floor((seq - 1) / 100) % 16) + 1;  // 16 PONs/card
+  return `OLT${olt}/${slot}/${pon}:${seq}.${c + 1}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -389,9 +391,9 @@ async function main() {
       const ageMonths = randInt(1, 24);
       const activatedAt = daysAgo(ageMonths * 30 + randInt(0, 20));
       const contractCode = `CTR-${pad(seq, 6)}${c > 0 ? '-2' : ''}`;
-      // Índice global garante unicidade de circuit-id e MAC por tenant.
-      const globalIdx = seq * 4 + c;
 
+      const circuitId = circuitIdFromSeq(seq, c);
+      const macAddress = macFromSeq(seq, c);
       const contract = await prisma.contract.create({
         data: {
           tenantId: tenant.id,
@@ -401,9 +403,9 @@ async function main() {
           // Sem PPPoE — todos os contratos novos são IPoE.
           pppoeUsername: null,
           pppoePassword: null,
-          circuitId: circuitIdFromIndex(globalIdx),
-          remoteId: `OLT${(globalIdx % 4) + 1}`,
-          macAddress: macFromIndex(globalIdx),
+          circuitId,
+          remoteId: `OLT${((seq - 1) % 4) + 1}`,
+          macAddress,
           framedIpAddress: Math.random() < 0.15
             // 15% têm IP fixo na faixa 200.85.x.y (genérico)
             ? `200.85.${randInt(0, 255)}.${randInt(2, 254)}`
