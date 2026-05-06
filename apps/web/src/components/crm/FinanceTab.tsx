@@ -263,9 +263,13 @@ export function FinanceTab({ customerId }: { customerId: string }) {
           description={`${paying.reference ?? ''} · ${formatDate(paying.dueDate)}`}
           initialDiscount={paying.discountAmount ?? null}
           onConfirm={async (input) => {
-            await contractInvoicesApi.pay(paying.id, input);
+            const invId = paying.id;
+            await contractInvoicesApi.pay(invId, input);
             toast.success(tCommon('success'));
             await mutate();
+            // Abre recibo em nova aba — auto-print configurado lá dentro.
+            // Operador pode fechar a aba se não quiser imprimir.
+            window.open(`/receipts/invoice/${invId}`, '_blank');
           }}
         />
       )}

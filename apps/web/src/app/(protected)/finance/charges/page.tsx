@@ -338,13 +338,19 @@ export default function ChargesListPage() {
           amount={paying.amount}
           description={`${paying.code ?? ''} · ${paying.description}`}
           onConfirm={async (input) => {
-            if (paying.kind === 'INVOICE') {
-              await contractInvoicesApi.pay(paying.id, input);
+            const { kind, id: payId } = paying;
+            if (kind === 'INVOICE') {
+              await contractInvoicesApi.pay(payId, input);
             } else {
-              await chargesApi.pay(paying.id, input);
+              await chargesApi.pay(payId, input);
             }
             toast.success(tCommon('success'));
             await refresh();
+            // Abre recibo matricial em nova aba.
+            window.open(
+              `/receipts/${kind === 'INVOICE' ? 'invoice' : 'charge'}/${payId}`,
+              '_blank',
+            );
           }}
         />
       )}

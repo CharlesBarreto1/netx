@@ -534,9 +534,11 @@ export default function ContractDetailPage() {
               : `${formatMoney(payInvoice.amount)}`
           }
           onConfirm={async (input) => {
-            await contractInvoicesApi.pay(payInvoice.id, input);
+            const invId = payInvoice.id;
+            await contractInvoicesApi.pay(invId, input);
             toast.success(tDetail('paidToast'));
             await refresh();
+            window.open(`/receipts/invoice/${invId}`, '_blank');
           }}
         />
       )}
