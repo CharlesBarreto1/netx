@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ValidationPipe, VersioningType } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
@@ -13,7 +14,11 @@ import { GlobalExceptionFilter } from './common/global-exception.filter';
 async function bootstrap() {
   const config = loadConfig();
 
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  // Tipa como NestExpressApplication pra ter acesso ao `app.set()` do
+  // Express subjacente — necessário pra `trust proxy` abaixo.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bufferLogs: true,
+  });
   app.useLogger(app.get(Logger));
 
   // Trust proxy — sem isso, `req.ip` devolve sempre 127.0.0.1 porque o
