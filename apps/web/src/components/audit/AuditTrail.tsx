@@ -112,18 +112,20 @@ function AuditEntry({
 
       {open && hasDetails && (
         <div className="mt-2 grid gap-2 border-t border-border pt-2 md:grid-cols-2">
-          {entry.beforeState && (
+          {entry.beforeState != null && (
             <DiffPane label={t('diff.before')} value={entry.beforeState} />
           )}
-          {entry.afterState && (
+          {entry.afterState != null && (
             <DiffPane label={t('diff.after')} value={entry.afterState} />
           )}
-          {entry.metadata && (
+          {entry.metadata != null && (
             <DiffPane
               label={t('diff.metadata')}
               value={entry.metadata}
               className={
-                entry.beforeState || entry.afterState ? 'md:col-span-2' : ''
+                entry.beforeState != null || entry.afterState != null
+                  ? 'md:col-span-2'
+                  : ''
               }
             />
           )}
