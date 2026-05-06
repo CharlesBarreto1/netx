@@ -295,20 +295,20 @@ async function main() {
     });
   }
 
-  // 3. Default tenant (dev only)
-  console.log('  → Default tenant');
+  // 3. Default tenant (dev only) — Paraguai como mercado primário.
+  console.log('  → Default tenant (PY)');
   const tenant = await prisma.tenant.upsert({
     where: { slug: 'default' },
     update: {},
     create: {
       slug: 'default',
-      name: 'NetX Development ISP',
-      legalName: 'NetX Dev LTDA',
-      taxId: '00.000.000/0001-00',
-      country: 'BR',
-      locale: 'pt-BR',
-      timezone: 'America/Sao_Paulo',
-      currency: 'BRL',
+      name: 'NetX Paraguay ISP',
+      legalName: 'NetX Paraguay S.A.',
+      taxId: '80000000-0',
+      country: 'PY',
+      locale: 'es-PY',
+      timezone: 'America/Asuncion',
+      currency: 'PYG',
       status: TenantStatus.ACTIVE,
     },
   });

@@ -7,6 +7,7 @@ import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 
 import { AuditTrail } from '@/components/audit/AuditTrail';
+import { PortalAccessButton } from '@/components/customers/PortalAccessButton';
 import { AddressesTab } from '@/components/crm/AddressesTab';
 import { ConsentsTab } from '@/components/crm/ConsentsTab';
 import { ContactsTab } from '@/components/crm/ContactsTab';
@@ -154,6 +155,9 @@ export default function CustomerDetailPage() {
               <Link href={`/customers/${customer.id}/edit`}>
                 <Button variant="secondary">Editar</Button>
               </Link>
+            )}
+            {canUpdate && (
+              <PortalAccessButton customerId={customer.id} />
             )}
             {canDelete && (
               <Button variant="danger" onClick={() => setConfirmDelete(true)}>

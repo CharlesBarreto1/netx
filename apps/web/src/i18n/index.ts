@@ -39,8 +39,12 @@ export function isAppLocale(s: string | null | undefined): s is AppLocale {
   return !!s && (APP_LOCALES as string[]).includes(s);
 }
 
+// Default global do app — Paraguai é o mercado primário. Quando user/tenant
+// não definem locale, caímos em es-PY.
+export const DEFAULT_APP_LOCALE: AppLocale = 'es-PY';
+
 export function resolveAppLocale(s: string | null | undefined): AppLocale {
-  return isAppLocale(s) ? s : 'pt-BR';
+  return isAppLocale(s) ? s : DEFAULT_APP_LOCALE;
 }
 
 export function getMessages(locale: AppLocale): Messages {

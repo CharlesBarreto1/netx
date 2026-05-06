@@ -68,8 +68,8 @@ function defaultValues(
     return {
       type: 'INDIVIDUAL',
       status: 'LEAD',
-      taxIdCountry: presetDefaults?.taxIdCountry ?? 'BR',
-      taxIdType: presetDefaults?.taxIdType ?? 'CPF',
+      taxIdCountry: presetDefaults?.taxIdCountry ?? 'PY',
+      taxIdType: presetDefaults?.taxIdType ?? 'CI',
     };
   }
   return {

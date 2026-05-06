@@ -42,10 +42,10 @@ export default function TenantSettingsPage() {
     taxId: string;
     applyCountryDefaults: boolean;
   }>({
-    country: 'BR',
-    locale: 'pt-BR',
-    currency: 'BRL',
-    timezone: 'America/Sao_Paulo',
+    country: 'PY',
+    locale: 'es-PY',
+    currency: 'PYG',
+    timezone: 'America/Asuncion',
     name: '',
     legalName: '',
     taxId: '',

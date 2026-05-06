@@ -236,16 +236,16 @@ export function EditContractDialog({
           <Label>Tipo de autenticação</Label>
           <div className="flex gap-2">
             <AuthTab
-              label="PPPoE"
-              description="Usuário/senha"
-              active={authMethod === 'PPPOE'}
-              onClick={() => setAuthMethod('PPPOE')}
-            />
-            <AuthTab
               label="IPoE"
               description="Circuit-ID / MAC"
               active={authMethod === 'IPOE'}
               onClick={() => setAuthMethod('IPOE')}
+            />
+            <AuthTab
+              label="PPPoE"
+              description="Usuário/senha"
+              active={authMethod === 'PPPOE'}
+              onClick={() => setAuthMethod('PPPOE')}
             />
           </div>
           {willChangeMethod && (

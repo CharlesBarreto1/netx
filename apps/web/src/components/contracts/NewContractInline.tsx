@@ -86,8 +86,9 @@ export function NewContractInline({
   const lockedKey = lockedCustomerId ? `/v1/customers/${lockedCustomerId}` : null;
   const { data: lockedCustomer } = useSWR<Customer>(lockedKey);
 
-  // Default sempre PPPoE pra preservar o fluxo histórico — IPoE é opt-in.
-  const [authMethod, setAuthMethod] = useState<ContractAuthMethod>('PPPOE');
+  // Default IPoE — padrão moderno (FTTH GPON com circuit-id/MAC). PPPoE
+  // fica disponível como opt-in pra cenários com BNG legado.
+  const [authMethod, setAuthMethod] = useState<ContractAuthMethod>('IPOE');
   const [form, setForm] = useState({
     customerId: lockedCustomerId ?? '',
     code: initial?.code ?? '',
@@ -276,16 +277,16 @@ export function NewContractInline({
         <Label>Tipo de autenticação</Label>
         <div className="flex gap-2">
           <AuthMethodTab
-            label="PPPoE"
-            description="Usuário/senha (legado, default)"
-            active={authMethod === 'PPPOE'}
-            onClick={() => setAuthMethod('PPPOE')}
-          />
-          <AuthMethodTab
             label="IPoE"
-            description="Circuit-ID / MAC (FTTH GPON)"
+            description="Circuit-ID / MAC (FTTH GPON — padrão)"
             active={authMethod === 'IPOE'}
             onClick={() => setAuthMethod('IPOE')}
+          />
+          <AuthMethodTab
+            label="PPPoE"
+            description="Usuário/senha (legado)"
+            active={authMethod === 'PPPOE'}
+            onClick={() => setAuthMethod('PPPOE')}
           />
         </div>
       </div>

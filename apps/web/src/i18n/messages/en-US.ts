@@ -58,6 +58,8 @@ const messages = {
     nothingHere: 'Nothing here',
     noResults: 'No results',
     rowsPerPage: 'Rows per page',
+    failure: 'Failure',
+    failureLoading: 'Failed to load',
   },
   nav: {
     dashboard: 'Dashboard',
@@ -198,6 +200,29 @@ const messages = {
       suspendContract: 'Suspend',
       reactivateContract: 'Reactivate',
       cancelContract: 'Cancel contract',
+      suspendModal: {
+        title: 'Suspend contract',
+        desc: 'RADIUS gets a block order — customer stays authenticated but in a restricted pool.',
+        noteLabel: 'Reason / note',
+      },
+      reactivateModal: {
+        title: 'Reactivate contract',
+        desc: 'RADIUS will authorize the customer again in the normal pool.',
+        noteLabel: 'Note (optional)',
+      },
+      cancelModal: {
+        title: 'Cancel contract',
+        desc: 'Ends the service. Open invoices are cancelled and the customer goes to the cancelled pool in RADIUS. Cannot be undone.',
+        noteLabel: 'Reason',
+        notePlaceholder: 'E.g. customer switched provider',
+        back: 'Back',
+      },
+      deleteModal: {
+        title: 'Delete contract',
+        desc: 'The contract is removed (soft-delete). Only cancelled contracts can be deleted.',
+      },
+      paidToast: 'Invoice recorded',
+      deletedToast: 'Contract deleted',
     },
     fields: {
       pppoeUsername: 'PPPoE username',

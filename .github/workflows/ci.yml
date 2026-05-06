@@ -1,0 +1,74 @@
+# =============================================================================
+# CI — NetX
+#
+# Roda em PR e em push pra main. Bloqueia merge se algo quebrar.
+# Cobre: install, build (Nx run-many), lint. Adicionar testes quando virem.
+#
+# Por que não usa Nx Cloud / cache distribuído ainda:
+#   - Repositório privado, projeto cedo. Cache do Actions já dá ~3-5x speedup
+#     vs cold install. Migrar pra Nx Cloud quando o monorepo dobrar de tamanho.
+# =============================================================================
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Cancela CIs antigos em commits superados — economiza minutos de runner em
+# pushes rápidos (rebase, force-push de PR).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Necessário pro Prisma generate funcionar em ambiente sem rede de DB —
+  # gera só os tipos, não conecta. URL fictícia.
+  DATABASE_URL: postgresql://ci:ci@localhost:5432/ci?schema=public
+
+jobs:
+  build:
+    name: Build & Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Nx pode usar `git diff base..head` pra rodar só projetos afetados;
+          # precisa de fetch-depth: 0 pra ter histórico completo.
+          fetch-depth: 0
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Prisma generate
+        # O build do core-service depende dos types do @prisma/client.
+        # `db push` não roda em CI (sem banco) — só generate.
+        run: npx prisma generate --schema apps/core-service/prisma/schema.prisma
+
+      - name: Cache Nx
+        uses: actions/cache@v4
+        with:
+          path: .nx/cache
+          key: nx-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}-${{ github.sha }}
+          restore-keys: |
+            nx-${{ runner.os }}-${{ hashFiles('**/package-lock.json') }}-
+            nx-${{ runner.os }}-
+
+      - name: Build all
+        run: npx nx run-many -t build
+
+      - name: Lint
+        # `continue-on-error` enquanto linting tá com legado pra resolver. Tira
+        # quando estiver verde.
+        continue-on-error: true
+        run: npx nx run-many -t lint

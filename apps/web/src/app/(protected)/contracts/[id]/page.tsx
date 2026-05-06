@@ -49,6 +49,7 @@ export default function ContractDetailPage() {
   const tCommon = useTranslations('common');
   const tContracts = useTranslations('contracts');
   const tDetail = useTranslations('contracts.detail');
+  const tAudit = useTranslations('audit');
 
   const contractKey = id ? `/v1/contracts/${id}` : null;
   const invoicesKey = id ? contractInvoicesApi.byContractPath(id) : null;
@@ -82,10 +83,10 @@ export default function ContractDetailPage() {
       contractError instanceof ApiError ? contractError.friendlyMessage : (contractError as Error).message;
     return (
       <div className="rounded-md border border-border bg-surface p-6 text-sm text-text">
-        <p className="font-medium">Erro ao carregar contrato</p>
+        <p className="font-medium">{tCommon('failureLoading')}</p>
         <p className="mt-1 text-xs text-text-muted">{msg}</p>
         <Link href="/contracts" className="mt-3 inline-block text-xs text-brand-500 hover:underline">
-          ← Voltar para contratos
+          ← {tContracts('title')}
         </Link>
       </div>
     );
@@ -107,11 +108,10 @@ export default function ContractDetailPage() {
     if (!confirm(`Cancelar a fatura de ${formatMoney(inv.amount)}?`)) return;
     try {
       await contractInvoicesApi.cancel(inv.id);
-      toast.success('Fatura cancelada');
+      toast.success(tCommon('success'));
       await refresh();
     } catch (err) {
-      const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
-      toast.error(`Falha ao cancelar fatura: ${msg}`);
+      toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
     }
   }
 
@@ -120,13 +120,12 @@ export default function ContractDetailPage() {
     setBusy(true);
     try {
       await contractsApi.suspend(id, 'MANUAL', noteValue || undefined);
-      toast.success('Contrato suspenso');
+      toast.success(tCommon('success'));
       setSuspendOpen(false);
       setNoteValue('');
       await refresh();
     } catch (err) {
-      const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
-      toast.error(`Falha ao suspender: ${msg}`);
+      toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
     } finally {
       setBusy(false);
     }
@@ -137,13 +136,12 @@ export default function ContractDetailPage() {
     setBusy(true);
     try {
       await contractsApi.reactivate(id, noteValue || undefined);
-      toast.success('Contrato reativado');
+      toast.success(tCommon('success'));
       setReactivateOpen(false);
       setNoteValue('');
       await refresh();
     } catch (err) {
-      const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
-      toast.error(`Falha ao reativar: ${msg}`);
+      toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
     } finally {
       setBusy(false);
     }
@@ -154,13 +152,12 @@ export default function ContractDetailPage() {
     setBusy(true);
     try {
       await contractsApi.cancel(id, noteValue || undefined);
-      toast.success('Contrato cancelado');
+      toast.success(tCommon('success'));
       setCancelOpen(false);
       setNoteValue('');
       await refresh();
     } catch (err) {
-      const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
-      toast.error(`Falha ao cancelar: ${msg}`);
+      toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
     } finally {
       setBusy(false);
     }
@@ -171,11 +168,10 @@ export default function ContractDetailPage() {
     setBusy(true);
     try {
       await contractsApi.remove(id);
-      toast.success('Contrato excluído');
+      toast.success(tDetail('deletedToast'));
       router.push('/contracts');
     } catch (err) {
-      const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
-      toast.error(`Falha ao excluir: ${msg}`);
+      toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
       setBusy(false);
     }
   }
@@ -225,27 +221,27 @@ export default function ContractDetailPage() {
         <div className="flex flex-wrap items-center gap-2">
           {canWrite && !isCancelled && (
             <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-              Editar
+              {tCommon('edit')}
             </Button>
           )}
           {canWrite && isActive && (
             <Button variant="outline" size="sm" onClick={() => setSuspendOpen(true)}>
-              Suspender
+              {tDetail('suspendContract')}
             </Button>
           )}
           {canWrite && isSuspended && (
             <Button variant="primary" size="sm" onClick={() => setReactivateOpen(true)}>
-              Reativar
+              {tDetail('reactivateContract')}
             </Button>
           )}
           {canWrite && !isCancelled && (
             <Button variant="danger" size="sm" onClick={() => setCancelOpen(true)}>
-              Cancelar contrato
+              {tDetail('cancelContract')}
             </Button>
           )}
           {canDelete && isCancelled && (
             <Button variant="ghost" size="sm" onClick={() => setDeleteOpen(true)}>
-              Excluir
+              {tCommon('delete')}
             </Button>
           )}
         </div>
@@ -424,7 +420,7 @@ export default function ContractDetailPage() {
 
       {/* Trilha de auditoria — quem mexeu nesse contrato e quando */}
       {hasPermission('audit.read') && contract.id && (
-        <InfoCard title="Auditoria">
+        <InfoCard title={tAudit('title')}>
           <AuditTrail resource="contracts" resourceId={contract.id} />
         </InfoCard>
       )}
@@ -514,7 +510,7 @@ export default function ContractDetailPage() {
           }
           onConfirm={async (input) => {
             await contractInvoicesApi.pay(payInvoice.id, input);
-            toast.success('Fatura baixada com sucesso');
+            toast.success(tDetail('paidToast'));
             await refresh();
           }}
         />
@@ -529,25 +525,25 @@ export default function ContractDetailPage() {
             setNoteValue('');
           }
         }}
-        title="Suspender contrato"
-        description="O RADIUS recebe ordem de bloqueio — o cliente permanece autenticado, mas em pool restrito."
+        title={tDetail('suspendModal.title')}
+        description={tDetail('suspendModal.desc')}
         footer={
           <>
             <Button variant="ghost" onClick={() => setSuspendOpen(false)} disabled={busy}>
-              Cancelar
+              {tCommon('cancel')}
             </Button>
             <Button variant="primary" onClick={() => void doSuspend()} loading={busy}>
-              Suspender
+              {tDetail('suspendContract')}
             </Button>
           </>
         }
       >
-        <Label htmlFor="suspendNote">Motivo / observação</Label>
+        <Label htmlFor="suspendNote">{tDetail('suspendModal.noteLabel')}</Label>
         <Input
           id="suspendNote"
           value={noteValue}
           onChange={(e) => setNoteValue(e.target.value)}
-          placeholder="Opcional"
+          placeholder={tCommon('optional')}
         />
       </Modal>
 
@@ -560,20 +556,20 @@ export default function ContractDetailPage() {
             setNoteValue('');
           }
         }}
-        title="Reativar contrato"
-        description="O RADIUS volta a autorizar o cliente no pool normal."
+        title={tDetail('reactivateModal.title')}
+        description={tDetail('reactivateModal.desc')}
         footer={
           <>
             <Button variant="ghost" onClick={() => setReactivateOpen(false)} disabled={busy}>
-              Cancelar
+              {tCommon('cancel')}
             </Button>
             <Button onClick={() => void doReactivate()} loading={busy}>
-              Reativar
+              {tDetail('reactivateContract')}
             </Button>
           </>
         }
       >
-        <Label htmlFor="reactivateNote">Observação (opcional)</Label>
+        <Label htmlFor="reactivateNote">{tDetail('reactivateModal.noteLabel')}</Label>
         <Input
           id="reactivateNote"
           value={noteValue}
@@ -590,26 +586,26 @@ export default function ContractDetailPage() {
             setNoteValue('');
           }
         }}
-        title="Cancelar contrato"
-        description="Encerra o serviço. Faturas em aberto serão canceladas e o cliente vai para o pool de cancelados no RADIUS. Esta ação não pode ser desfeita."
+        title={tDetail('cancelModal.title')}
+        description={tDetail('cancelModal.desc')}
         footer={
           <>
             <Button variant="ghost" onClick={() => setCancelOpen(false)} disabled={busy}>
-              Voltar
+              {tDetail('cancelModal.back')}
             </Button>
             <Button variant="danger" onClick={() => void doCancel()} loading={busy}>
-              Cancelar contrato
+              {tDetail('cancelContract')}
             </Button>
           </>
         }
       >
-        <Label htmlFor="cancelNote">Motivo</Label>
+        <Label htmlFor="cancelNote">{tDetail('cancelModal.noteLabel')}</Label>
         <Textarea
           id="cancelNote"
           rows={2}
           value={noteValue}
           onChange={(e) => setNoteValue(e.target.value)}
-          placeholder="Ex.: cliente mudou de provedor"
+          placeholder={tDetail('cancelModal.notePlaceholder')}
         />
       </Modal>
 
@@ -618,9 +614,9 @@ export default function ContractDetailPage() {
         open={deleteOpen}
         onClose={() => setDeleteOpen(false)}
         onConfirm={() => void doDelete()}
-        title="Excluir contrato"
-        message="O contrato será removido (soft-delete). Só é possível excluir contratos já cancelados."
-        confirmLabel="Excluir"
+        title={tDetail('deleteModal.title')}
+        message={tDetail('deleteModal.desc')}
+        confirmLabel={tCommon('delete')}
         variant="danger"
         loading={busy}
       />

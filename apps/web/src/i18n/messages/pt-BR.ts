@@ -68,6 +68,8 @@ const messages = {
     nothingHere: 'Nada por aqui',
     noResults: 'Sem resultados',
     rowsPerPage: 'Linhas por página',
+    failure: 'Falha',
+    failureLoading: 'Erro ao carregar',
   },
   nav: {
     dashboard: 'Dashboard',
@@ -227,6 +229,29 @@ const messages = {
       suspendContract: 'Suspender',
       reactivateContract: 'Reativar',
       cancelContract: 'Cancelar contrato',
+      suspendModal: {
+        title: 'Suspender contrato',
+        desc: 'O RADIUS recebe ordem de bloqueio — o cliente permanece autenticado, mas em pool restrito.',
+        noteLabel: 'Motivo / observação',
+      },
+      reactivateModal: {
+        title: 'Reativar contrato',
+        desc: 'O RADIUS volta a autorizar o cliente no pool normal.',
+        noteLabel: 'Observação (opcional)',
+      },
+      cancelModal: {
+        title: 'Cancelar contrato',
+        desc: 'Encerra o serviço. Faturas em aberto serão canceladas e o cliente vai para o pool de cancelados no RADIUS. Esta ação não pode ser desfeita.',
+        noteLabel: 'Motivo',
+        notePlaceholder: 'Ex.: cliente mudou de provedor',
+        back: 'Voltar',
+      },
+      deleteModal: {
+        title: 'Excluir contrato',
+        desc: 'O contrato será removido (soft-delete). Só é possível excluir contratos já cancelados.',
+      },
+      paidToast: 'Fatura baixada com sucesso',
+      deletedToast: 'Contrato excluído',
     },
   },
   finance: {

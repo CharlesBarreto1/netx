@@ -453,6 +453,14 @@ model Customer {
   shortNote       String?        @map("short_note") @db.VarChar(500)   // nota rápida (ex. "cliente VIP")
   metadata        Json?          // campo livre por tenant
 
+  // Portal do cliente — acesso self-service.
+  // Operador gera um código de 8 caracteres no detalhe do cliente; nós só
+  // guardamos o hash Argon2id. O cliente entra com (taxId, código). Token
+  // tem TTL configurável; após expirar, operador gera novo código.
+  portalAccessHash      String?   @map("portal_access_hash") @db.VarChar(255)
+  portalAccessExpiresAt DateTime? @map("portal_access_expires_at")
+  portalLastLoginAt     DateTime? @map("portal_last_login_at")
+
   createdById     String?        @map("created_by_id") @db.Uuid
   updatedById     String?        @map("updated_by_id") @db.Uuid
 
@@ -896,9 +904,10 @@ model Contract {
   // Código humano ex. CTR-000123 (opcional, gerado pelo service)
   code                String?        @db.VarChar(32)
 
-  // Método de autenticação no RADIUS. Default PPPOE pra preservar
-  // compatibilidade com contratos existentes.
-  authMethod          ContractAuthMethod @default(PPPOE) @map("auth_method")
+  // Método de autenticação no RADIUS. Default IPOE — padrão moderno em
+  // FTTH GPON (99% das instalações). PPPoE fica como opt-in pra ISPs com
+  // BNG legado.
+  authMethod          ContractAuthMethod @default(IPOE) @map("auth_method")
 
   // ── Autenticação PPPoE (preenchido só se authMethod = PPPOE) ─────────────
   // Nullable porque IPoE não usa. Mantemos UNIQUE parcial via raw SQL.
