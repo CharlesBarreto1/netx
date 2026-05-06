@@ -241,7 +241,11 @@ const messages = {
       discount: 'Descuento',
       netAmount: 'Total a recibir',
       cashRegister: 'Caja que recibió',
+      cashRegisterPlaceholder: 'Seleccioná la caja…',
       cashRegisterHelp: 'Solo aparecen las cajas que vos operás.',
+      cashRegisterRequired: 'Seleccioná una caja para registrar el pago.',
+      noRegistersAvailable:
+        'No hay cajas disponibles. Creá una en Configuración → Cajas y dale acceso a tu usuario.',
       noCashRegister: 'Sin caja específica',
       paidVia: 'Forma de pago',
       paidAt: 'Fecha y hora',
@@ -261,13 +265,21 @@ const messages = {
     },
   },
   charges: {
-    title: 'Cargos puntuales',
+    title: 'Cobros',
     new: 'Nuevo cargo',
     subtitle:
-      'Cargos únicos (tasa de instalación, multa, equipamiento) — no recurrentes.',
+      'Mensualidades de contratos y cargos puntuales (tasas, multas). Usá el filtro para alternar.',
+    typeFilterAll: 'Todos',
+    typeFilterInvoice: 'Mensualidades',
+    typeFilterCharge: 'Puntuales',
+    typeBadge: {
+      INVOICE: 'Mensualidad',
+      CHARGE: 'Puntual',
+    },
     statusLabel: {
       OPEN: 'Pendiente',
       PAID: 'Pagado',
+      OVERDUE: 'Vencido',
       CANCELLED: 'Cancelado',
     },
     fields: {

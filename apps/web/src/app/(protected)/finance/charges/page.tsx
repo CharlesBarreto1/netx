@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { Plus } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 
@@ -17,11 +17,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { FieldHelp, Input, Label, Select, Textarea } from '@/components/ui/Input';
+import { Input, Label, Select, Textarea } from '@/components/ui/Input';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { PageLoader } from '@/components/ui/Spinner';
 import { toast } from '@/components/ui/sonner';
 import { ApiError } from '@/lib/api';
+import {
+  contractInvoicesApi,
+  type ContractInvoice,
+  type InvoiceStatus,
+} from '@/lib/contracts-api';
 import {
   chargesApi,
   type OneTimeCharge,
@@ -32,55 +37,173 @@ import { formatDate, formatDateTime } from '@/lib/format';
 import { useFormatMoney } from '@/lib/use-money';
 import { hasPermission } from '@/lib/session';
 
-const STATUS_TONE: Record<OneTimeChargeStatus, 'info' | 'success' | 'warning'> = {
+// =============================================================================
+// Tipo unificado
+// =============================================================================
+// Mensalidades (ContractInvoice) e cobranças avulsas (OneTimeCharge) têm
+// shapes parecidos mas não idênticos. Normalizamos pra UnifiedCharge pra um
+// fluxo único de listagem/filtro/pagamento. O `kind` discrimina pra rotear o
+// pay() pro endpoint certo.
+type UnifiedStatus = InvoiceStatus | OneTimeChargeStatus; // OPEN, PAID, OVERDUE, CANCELLED
+interface UnifiedCharge {
+  id: string;
+  kind: 'INVOICE' | 'CHARGE';
+  code: string | null;
+  description: string;
+  amount: number;
+  dueDate: string;
+  status: UnifiedStatus;
+  paidAt: string | null;
+  customer: { id: string; displayName: string } | null;
+  contractId?: string;
+  raw: ContractInvoice | OneTimeCharge;
+}
+
+const STATUS_TONE: Record<UnifiedStatus, 'info' | 'success' | 'warning' | 'danger'> = {
   OPEN: 'info',
   PAID: 'success',
+  OVERDUE: 'danger',
   CANCELLED: 'warning',
 };
 
+type TypeFilter = 'ALL' | 'INVOICE' | 'CHARGE';
+
 /**
- * /finance/charges — cobranças avulsas (não-recorrentes).
- * Filtros: customer, status, dueDate range, search.
+ * /finance/charges — listagem unificada do financeiro a receber.
+ *
+ * Junta:
+ *   - Mensalidades de contratos (ContractInvoice) — recorrentes.
+ *   - Cobranças avulsas (OneTimeCharge)            — pontuais.
+ *
+ * Pagamento usa o PaymentDialog (caixa obrigatório, método, desconto). Cada
+ * tipo encaminha pro endpoint certo (`/contract-invoices/:id/pay` vs
+ * `/charges/:id/pay`) — backend cria CashMovement automático em ambos.
  */
 export default function ChargesListPage() {
-  const tCharges = useTranslations('charges');
+  const t = useTranslations('charges');
   const tStatus = useTranslations('charges.statusLabel');
+  const tType = useTranslations('charges.typeBadge');
   const tCommon = useTranslations('common');
   const formatMoney = useFormatMoney();
-  const canCreate = hasPermission('finance.charges.write');
+  const canCreateCharge = hasPermission('finance.charges.write');
 
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<OneTimeChargeStatus | ''>('');
-  const [page, setPage] = useState(1);
-  const pageSize = 50;
+  const [status, setStatus] = useState<UnifiedStatus | ''>('');
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL');
 
-  const key = chargesApi.listPath({
-    page,
-    pageSize,
-    search: search || undefined,
-    status: status || undefined,
-  });
-  const { data, isLoading, mutate } = useSWR<Paginated<OneTimeCharge>>(key);
+  // Buscamos as duas fontes em paralelo. pageSize alto pra simplificar — a
+  // paginação real (cliente) acontece no array unificado abaixo. Quando a
+  // base crescer, vale levar a paginação pro backend num endpoint /finance/
+  // unificado, mas hoje 200 + 200 cobre até alguns milhares de contratos.
+  const invoicesKey =
+    typeFilter !== 'CHARGE'
+      ? contractInvoicesApi.listPath({
+          pageSize: 200,
+          ...(status && status !== 'OVERDUE' ? { status: status as InvoiceStatus } : {}),
+          // OVERDUE é status próprio do invoice, mas o backend lista direto.
+          ...(status === 'OVERDUE' ? { status: 'OVERDUE' } : {}),
+          sortBy: 'dueDate',
+          sortDir: 'desc',
+        })
+      : null;
+  const chargesKey =
+    typeFilter !== 'INVOICE'
+      ? chargesApi.listPath({
+          pageSize: 200,
+          search: search || undefined,
+          // OneTimeCharge não tem OVERDUE — só OPEN/PAID/CANCELLED. Filtramos
+          // depois do merge pra deixar a UI consistente.
+          ...(status && status !== 'OVERDUE'
+            ? { status: status as OneTimeChargeStatus }
+            : {}),
+        })
+      : null;
+
+  const { data: invoicesResp, isLoading: loadingInv, mutate: mutateInv } =
+    useSWR<Paginated<ContractInvoice>>(invoicesKey);
+  const { data: chargesResp, isLoading: loadingCh, mutate: mutateCh } =
+    useSWR<Paginated<OneTimeCharge>>(chargesKey);
+
+  const isLoading =
+    (typeFilter !== 'CHARGE' && loadingInv && !invoicesResp) ||
+    (typeFilter !== 'INVOICE' && loadingCh && !chargesResp);
+
+  const rows = useMemo<UnifiedCharge[]>(() => {
+    const list: UnifiedCharge[] = [];
+    if (typeFilter !== 'CHARGE' && invoicesResp) {
+      for (const inv of invoicesResp.data) {
+        list.push({
+          id: inv.id,
+          kind: 'INVOICE',
+          code: inv.contract?.code ?? null,
+          description: inv.reference ?? 'Mensalidade',
+          amount: inv.amount,
+          dueDate: inv.dueDate,
+          status: inv.status,
+          paidAt: inv.paidAt,
+          customer: inv.contract?.customerId
+            ? { id: inv.contract.customerId, displayName: '' }
+            : null,
+          contractId: inv.contractId,
+          raw: inv,
+        });
+      }
+    }
+    if (typeFilter !== 'INVOICE' && chargesResp) {
+      for (const ch of chargesResp.data) {
+        list.push({
+          id: ch.id,
+          kind: 'CHARGE',
+          code: ch.code,
+          description: ch.description,
+          amount: ch.amount,
+          dueDate: ch.dueDate,
+          status: ch.status,
+          paidAt: ch.paidAt,
+          customer: ch.customer
+            ? { id: ch.customer.id, displayName: ch.customer.displayName }
+            : null,
+          contractId: ch.contractId ?? undefined,
+          raw: ch,
+        });
+      }
+    }
+    // Filtro de status pós-merge (cobre o caso OneTimeCharge sem OVERDUE).
+    let filtered = status ? list.filter((r) => r.status === status) : list;
+    // Filtro de busca client-side (textual em descrição/código). O backend de
+    // invoices ainda não tem search; faz sentido filtrar aqui pra UX uniforme.
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      filtered = filtered.filter(
+        (r) =>
+          r.description.toLowerCase().includes(q) ||
+          (r.code ?? '').toLowerCase().includes(q),
+      );
+    }
+    return filtered.sort((a, b) => (a.dueDate < b.dueDate ? 1 : -1));
+  }, [invoicesResp, chargesResp, typeFilter, status, search]);
 
   const [creating, setCreating] = useState(false);
-  const [paying, setPaying] = useState<OneTimeCharge | null>(null);
-  const [cancelling, setCancelling] = useState<OneTimeCharge | null>(null);
+  const [paying, setPaying] = useState<UnifiedCharge | null>(null);
+  const [cancelling, setCancelling] = useState<UnifiedCharge | null>(null);
 
-  if (isLoading && !data) return <PageLoader label={tCommon('loading')} />;
+  async function refresh() {
+    await Promise.all([mutateInv?.(), mutateCh?.()]);
+  }
 
-  const rows = data?.data ?? [];
+  if (isLoading) return <PageLoader label={tCommon('loading')} />;
 
   return (
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">{tCharges('title')}</h1>
-          <p className="text-sm text-text-muted">{tCharges('subtitle')}</p>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+          <p className="text-sm text-text-muted">{t('subtitle')}</p>
         </div>
-        {canCreate && (
+        {canCreateCharge && (
           <Button onClick={() => setCreating(true)}>
             <Plus className="h-3.5 w-3.5" />
-            {tCharges('new')}
+            {t('new')}
           </Button>
         )}
       </header>
@@ -89,23 +212,27 @@ export default function ChargesListPage() {
         <Input
           placeholder={tCommon('search')}
           value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
+          onChange={(e) => setSearch(e.target.value)}
           className="max-w-sm"
         />
         <Select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
+          className="w-44"
+        >
+          <option value="ALL">{t('typeFilterAll')}</option>
+          <option value="INVOICE">{t('typeFilterInvoice')}</option>
+          <option value="CHARGE">{t('typeFilterCharge')}</option>
+        </Select>
+        <Select
           value={status}
-          onChange={(e) => {
-            setStatus(e.target.value as OneTimeChargeStatus | '');
-            setPage(1);
-          }}
+          onChange={(e) => setStatus(e.target.value as UnifiedStatus | '')}
           className="w-40"
         >
           <option value="">{tCommon('all')}</option>
           <option value="OPEN">{tStatus('OPEN')}</option>
           <option value="PAID">{tStatus('PAID')}</option>
+          <option value="OVERDUE">{tStatus('OVERDUE')}</option>
           <option value="CANCELLED">{tStatus('CANCELLED')}</option>
         </Select>
       </div>
@@ -114,11 +241,12 @@ export default function ChargesListPage() {
         <table className="min-w-full text-sm">
           <thead className="bg-surface-muted text-left text-[11px] font-semibold uppercase tracking-wider text-text-muted">
             <tr>
+              <th className="px-3 py-2">{tCommon('type')}</th>
               <th className="px-3 py-2">{tCommon('code')}</th>
-              <th className="px-3 py-2">{tCharges('fields.customer')}</th>
-              <th className="px-3 py-2">{tCharges('fields.description')}</th>
-              <th className="px-3 py-2 text-right">{tCharges('fields.amount')}</th>
-              <th className="px-3 py-2">{tCharges('fields.dueDate')}</th>
+              <th className="px-3 py-2">{t('fields.customer')}</th>
+              <th className="px-3 py-2">{t('fields.description')}</th>
+              <th className="px-3 py-2 text-right">{t('fields.amount')}</th>
+              <th className="px-3 py-2">{t('fields.dueDate')}</th>
               <th className="px-3 py-2">{tCommon('status')}</th>
               <th className="px-3 py-2"></th>
             </tr>
@@ -126,61 +254,74 @@ export default function ChargesListPage() {
           <tbody className="divide-y divide-border">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-text-muted">
+                <td colSpan={8} className="px-3 py-6 text-center text-text-muted">
                   {tCommon('nothingHere')}
                 </td>
               </tr>
             ) : (
-              rows.map((c) => (
-                <tr key={c.id} className="hover:bg-surface-hover">
+              rows.map((r) => (
+                <tr key={`${r.kind}-${r.id}`} className="hover:bg-surface-hover">
+                  <td className="px-3 py-2">
+                    <Badge tone={r.kind === 'INVOICE' ? 'info' : 'warning'}>
+                      {tType(r.kind)}
+                    </Badge>
+                  </td>
                   <td className="px-3 py-2 font-medium text-text">
-                    {c.code ?? `#${c.id.slice(0, 8)}`}
+                    {r.code ?? `#${r.id.slice(0, 8)}`}
                   </td>
                   <td className="px-3 py-2 text-text-muted">
-                    {c.customer ? (
+                    {r.kind === 'INVOICE' ? (
+                      r.contractId ? (
+                        <Link
+                          href={`/contracts/${r.contractId}`}
+                          className="text-brand-500 hover:underline"
+                        >
+                          Ver contrato
+                        </Link>
+                      ) : (
+                        '—'
+                      )
+                    ) : r.customer ? (
                       <Link
-                        href={`/customers/${c.customer.id}`}
+                        href={`/customers/${r.customer.id}`}
                         className="text-brand-500 hover:underline"
                       >
-                        {c.customer.displayName}
+                        {r.customer.displayName}
                       </Link>
                     ) : (
                       '—'
                     )}
                   </td>
-                  <td className="px-3 py-2 text-text-muted">{c.description}</td>
+                  <td className="px-3 py-2 text-text-muted">{r.description}</td>
                   <td className="px-3 py-2 text-right tabular-nums">
-                    {formatMoney(c.amount)}
-                    {c.discountAmount && c.discountAmount > 0 && (
-                      <div className="text-2xs text-text-subtle">
-                        -{formatMoney(c.discountAmount)}
-                      </div>
-                    )}
+                    {formatMoney(r.amount)}
                   </td>
                   <td className="px-3 py-2 text-text-muted">
-                    {formatDate(c.dueDate)}
+                    {formatDate(r.dueDate)}
                   </td>
                   <td className="px-3 py-2">
-                    <Badge tone={STATUS_TONE[c.status]}>{tStatus(c.status)}</Badge>
+                    <Badge tone={STATUS_TONE[r.status]}>{tStatus(r.status)}</Badge>
                   </td>
                   <td className="px-3 py-2 text-right">
-                    {c.status === 'OPEN' && canCreate && (
+                    {(r.status === 'OPEN' || r.status === 'OVERDUE') && (
                       <div className="flex justify-end gap-1">
-                        <Button size="sm" onClick={() => setPaying(c)}>
-                          {tCharges('actions.pay')}
+                        <Button size="sm" onClick={() => setPaying(r)}>
+                          {t('actions.pay')}
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setCancelling(c)}
-                        >
-                          {tCommon('cancel')}
-                        </Button>
+                        {r.kind === 'CHARGE' && canCreateCharge && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setCancelling(r)}
+                          >
+                            {tCommon('cancel')}
+                          </Button>
+                        )}
                       </div>
                     )}
-                    {c.status === 'PAID' && c.paidAt && (
+                    {r.status === 'PAID' && r.paidAt && (
                       <span className="text-2xs text-text-muted">
-                        {formatDateTime(c.paidAt)}
+                        {formatDateTime(r.paidAt)}
                       </span>
                     )}
                   </td>
@@ -191,35 +332,11 @@ export default function ChargesListPage() {
         </table>
       </div>
 
-      {data && data.pagination.totalPages > 1 && (
-        <div className="flex items-center justify-end gap-2 text-xs text-text-muted">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-          >
-            {tCommon('previous')}
-          </Button>
-          <span>
-            {data.pagination.page} / {data.pagination.totalPages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page >= data.pagination.totalPages}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            {tCommon('next')}
-          </Button>
-        </div>
-      )}
-
       {creating && (
         <NewChargeDialog
           onClose={async (created) => {
             setCreating(false);
-            if (created) await mutate();
+            if (created) await refresh();
           }}
         />
       )}
@@ -231,9 +348,13 @@ export default function ChargesListPage() {
           amount={paying.amount}
           description={`${paying.code ?? ''} · ${paying.description}`}
           onConfirm={async (input) => {
-            await chargesApi.pay(paying.id, input);
+            if (paying.kind === 'INVOICE') {
+              await contractInvoicesApi.pay(paying.id, input);
+            } else {
+              await chargesApi.pay(paying.id, input);
+            }
             toast.success(tCommon('success'));
-            await mutate();
+            await refresh();
           }}
         />
       )}
@@ -244,15 +365,19 @@ export default function ChargesListPage() {
         onConfirm={async () => {
           if (!cancelling) return;
           try {
-            await chargesApi.cancel(cancelling.id);
+            if (cancelling.kind === 'INVOICE') {
+              await contractInvoicesApi.cancel(cancelling.id);
+            } else {
+              await chargesApi.cancel(cancelling.id);
+            }
             toast.success(tCommon('success'));
             setCancelling(null);
-            await mutate();
+            await refresh();
           } catch (err) {
             toast.error(err instanceof ApiError ? err.friendlyMessage : 'Erro');
           }
         }}
-        title={tCharges('actions.cancel')}
+        title={t('actions.cancel')}
         message="A cobrança ficará marcada como cancelada e não pode ser reaberta."
         confirmLabel={tCommon('confirm')}
         variant="danger"
@@ -262,7 +387,7 @@ export default function ChargesListPage() {
 }
 
 // =============================================================================
-// NEW CHARGE DIALOG
+// NEW CHARGE DIALOG (cobrança avulsa só)
 // =============================================================================
 function NewChargeDialog({
   onClose,
@@ -272,7 +397,6 @@ function NewChargeDialog({
   const tCharges = useTranslations('charges');
   const tCommon = useTranslations('common');
 
-  // Lista de clientes — busca incremental.
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [description, setDescription] = useState('');

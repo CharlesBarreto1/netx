@@ -95,7 +95,9 @@ export function PaymentDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Reset quando abre.
+  // Reset quando abre. Auto-seleciona se há só 1 caixa — fluxo mais comum em
+  // operações pequenas, evita 1 clique sem perda de visibilidade (o caixa
+  // continua mostrado no select).
   useEffect(() => {
     if (open) {
       setCashRegisterId('');
@@ -106,6 +108,12 @@ export function PaymentDialog({
       setError(null);
     }
   }, [open]);
+
+  useEffect(() => {
+    if (open && registers && registers.length === 1 && !cashRegisterId) {
+      setCashRegisterId(registers[0].id);
+    }
+  }, [open, registers, cashRegisterId]);
 
   const discountNum = useMemo(() => {
     const n = Number(discountAmount.replace(',', '.'));
@@ -121,10 +129,14 @@ export function PaymentDialog({
       setError(tFinance('discountTooHigh'));
       return;
     }
+    if (!cashRegisterId) {
+      setError(tFinance('cashRegisterRequired'));
+      return;
+    }
     setSubmitting(true);
     try {
       const body: PayPaymentInput = {
-        cashRegisterId: cashRegisterId || null,
+        cashRegisterId,
         paidVia,
         ...(discountNum > 0 ? { discountAmount: discountNum } : {}),
         ...(paidAt
@@ -172,20 +184,27 @@ export function PaymentDialog({
             </div>
 
             <div>
-              <Label htmlFor="pay-cash">{tFinance('cashRegister')}</Label>
+              <Label htmlFor="pay-cash" required>
+                {tFinance('cashRegister')}
+              </Label>
               <Select
                 id="pay-cash"
                 value={cashRegisterId}
                 onChange={(e) => setCashRegisterId(e.target.value)}
+                required
               >
-                <option value="">{tFinance('noCashRegister')}</option>
+                <option value="">{tFinance('cashRegisterPlaceholder')}</option>
                 {(registers ?? []).map((r) => (
                   <option key={r.id} value={r.id}>
                     {r.name}
                   </option>
                 ))}
               </Select>
-              <FieldHelp>{tFinance('cashRegisterHelp')}</FieldHelp>
+              <FieldHelp>
+                {(registers ?? []).length === 0
+                  ? tFinance('noRegistersAvailable')
+                  : tFinance('cashRegisterHelp')}
+              </FieldHelp>
             </div>
 
             <div>
@@ -249,7 +268,11 @@ export function PaymentDialog({
             >
               {tCommon('cancel')}
             </Button>
-            <Button type="submit" loading={submitting}>
+            <Button
+              type="submit"
+              loading={submitting}
+              disabled={!cashRegisterId}
+            >
               {confirmLabel ?? tFinance('confirm')}
             </Button>
           </DialogFooter>

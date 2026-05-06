@@ -250,7 +250,11 @@ const messages = {
       discount: 'Desconto',
       netAmount: 'Total a receber',
       cashRegister: 'Caixa que recebeu',
+      cashRegisterPlaceholder: 'Selecione o caixa…',
       cashRegisterHelp: 'Só aparecem os caixas que você opera.',
+      cashRegisterRequired: 'Selecione um caixa pra dar baixa.',
+      noRegistersAvailable:
+        'Nenhum caixa disponível. Cadastre em Configurações → Caixas e libere acesso pro seu usuário.',
       noCashRegister: 'Sem caixa específico',
       paidVia: 'Forma de pagamento',
       paidAt: 'Data e hora',
@@ -270,13 +274,21 @@ const messages = {
     },
   },
   charges: {
-    title: 'Cobranças avulsas',
+    title: 'Cobranças',
     new: 'Nova cobrança',
     subtitle:
-      'Cobranças únicas (taxa de instalação, multa, equipamento) — não recorrentes.',
+      'Mensalidades de contratos e cobranças avulsas (taxas, multas). Use o filtro pra alternar.',
+    typeFilterAll: 'Todas',
+    typeFilterInvoice: 'Mensalidades',
+    typeFilterCharge: 'Avulsas',
+    typeBadge: {
+      INVOICE: 'Mensalidade',
+      CHARGE: 'Avulsa',
+    },
     statusLabel: {
       OPEN: 'Em aberto',
       PAID: 'Paga',
+      OVERDUE: 'Em atraso',
       CANCELLED: 'Cancelada',
     },
     fields: {

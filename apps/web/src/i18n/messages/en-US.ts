@@ -231,7 +231,11 @@ const messages = {
       discount: 'Discount',
       netAmount: 'Net to receive',
       cashRegister: 'Cash register',
+      cashRegisterPlaceholder: 'Select a register…',
       cashRegisterHelp: 'Only registers you operate are listed.',
+      cashRegisterRequired: 'Pick a cash register to record this payment.',
+      noRegistersAvailable:
+        'No registers available. Create one in Settings → Cash registers and grant access to your user.',
       noCashRegister: 'No specific register',
       paidVia: 'Payment method',
       paidAt: 'Date and time',
@@ -251,11 +255,23 @@ const messages = {
     },
   },
   charges: {
-    title: 'Ad-hoc charges',
+    title: 'Billing',
     new: 'New charge',
     subtitle:
-      'One-off charges (installation fee, fines, equipment) — not recurring.',
-    statusLabel: { OPEN: 'Open', PAID: 'Paid', CANCELLED: 'Cancelled' },
+      'Contract invoices (monthly) and one-off charges. Use the filter to switch.',
+    typeFilterAll: 'All',
+    typeFilterInvoice: 'Invoices',
+    typeFilterCharge: 'One-off',
+    typeBadge: {
+      INVOICE: 'Invoice',
+      CHARGE: 'One-off',
+    },
+    statusLabel: {
+      OPEN: 'Open',
+      PAID: 'Paid',
+      OVERDUE: 'Overdue',
+      CANCELLED: 'Cancelled',
+    },
     fields: {
       customer: 'Customer',
       contract: 'Contract (optional)',

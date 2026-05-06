@@ -26,6 +26,7 @@ import { useFormatMoney } from '@/lib/use-money';
 import { hasPermission } from '@/lib/session';
 
 import { EditContractDialog } from '@/components/contracts/EditContractDialog';
+import { PaymentDialog } from '@/components/finance/PaymentDialog';
 
 import { StatusBadge } from '../_components/StatusBadge';
 
@@ -98,24 +99,8 @@ export default function ContractDetailPage() {
   // -------------------------------------------------------------------------
   // Handlers de ações
   // -------------------------------------------------------------------------
-  async function doPay() {
-    if (!payInvoice) return;
-    setBusy(true);
-    try {
-      await contractInvoicesApi.pay(payInvoice.id, {
-        note: noteValue || undefined,
-      });
-      toast.success('Fatura baixada com sucesso');
-      setPayInvoice(null);
-      setNoteValue('');
-      await refresh();
-    } catch (err) {
-      const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
-      toast.error(`Falha ao dar baixa: ${msg}`);
-    } finally {
-      setBusy(false);
-    }
-  }
+  // O pagamento real fica no <PaymentDialog />. Aqui só fechamos e refrescamos
+  // ao final — o dialog cuida de mostrar e validar caixa, método, desconto.
 
   async function doCancelInvoice(inv: ContractInvoice) {
     if (!confirm(`Cancelar a fatura de ${formatMoney(inv.amount)}?`)) return;
@@ -506,56 +491,26 @@ export default function ContractDetailPage() {
         )}
       </div>
 
-      {/* -------------------- Modal: Dar baixa -------------------- */}
-      <Modal
-        open={!!payInvoice}
-        onClose={() => {
-          if (!busy) {
-            setPayInvoice(null);
-            setNoteValue('');
+      {/* -------------------- Pagamento -------------------- */}
+      {payInvoice && (
+        <PaymentDialog
+          open={!!payInvoice}
+          onOpenChange={(v) => {
+            if (!v) setPayInvoice(null);
+          }}
+          amount={payInvoice.amount}
+          description={
+            payInvoice.reference
+              ? `${payInvoice.reference} · ${formatMoney(payInvoice.amount)}`
+              : `${formatMoney(payInvoice.amount)}`
           }
-        }}
-        title="Dar baixa em fatura"
-        description={
-          payInvoice
-            ? `Marca a fatura ${payInvoice.reference ?? ''} (${formatMoney(payInvoice.amount)}) como paga.`
-            : undefined
-        }
-        footer={
-          <>
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setPayInvoice(null);
-                setNoteValue('');
-              }}
-              disabled={busy}
-            >
-              Cancelar
-            </Button>
-            <Button onClick={() => void doPay()} loading={busy}>
-              Confirmar baixa
-            </Button>
-          </>
-        }
-      >
-        <div className="flex flex-col gap-3">
-          <p className="text-xs text-text-muted">
-            Se o contrato estava suspenso por inadimplência e esta era a última fatura vencida, o
-            contrato é reativado automaticamente.
-          </p>
-          <div>
-            <Label htmlFor="payNote">Observação (opcional)</Label>
-            <Textarea
-              id="payNote"
-              rows={2}
-              value={noteValue}
-              onChange={(e) => setNoteValue(e.target.value)}
-              placeholder="Ex.: pago em dinheiro / PIX"
-            />
-          </div>
-        </div>
-      </Modal>
+          onConfirm={async (input) => {
+            await contractInvoicesApi.pay(payInvoice.id, input);
+            toast.success('Fatura baixada com sucesso');
+            await refresh();
+          }}
+        />
+      )}
 
       {/* -------------------- Modal: Suspender -------------------- */}
       <Modal
