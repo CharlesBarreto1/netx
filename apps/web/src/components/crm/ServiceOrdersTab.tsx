@@ -9,8 +9,8 @@ import { Button } from '@/components/ui/Button';
 import { InlineLoader } from '@/components/ui/Spinner';
 import {
   serviceOrdersApi,
+  type ServiceOrderDisplayStatus,
   type ServiceOrderResponse,
-  type ServiceOrderStatus,
 } from '@/lib/service-orders-api';
 import type { Paginated } from '@/lib/crm-types';
 import { formatDateTime } from '@/lib/format';
@@ -23,7 +23,7 @@ import { hasPermission } from '@/lib/session';
  * "Nova O.S" abre /service-orders/new já vinculado ao cliente (vai pré-
  * selecionar o contrato se houver só um ativo).
  */
-const STATUS_TONE: Record<ServiceOrderStatus, 'info' | 'success' | 'warning' | 'danger' | 'neutral'> = {
+const STATUS_TONE: Record<ServiceOrderDisplayStatus, 'info' | 'success' | 'warning' | 'danger' | 'neutral'> = {
   OPEN: 'info',
   SCHEDULED: 'info',
   IN_PROGRESS: 'warning',
@@ -32,7 +32,7 @@ const STATUS_TONE: Record<ServiceOrderStatus, 'info' | 'success' | 'warning' | '
   CANCELLED: 'neutral',
 };
 
-const STATUS_LABEL: Record<ServiceOrderStatus, string> = {
+const STATUS_LABEL: Record<ServiceOrderDisplayStatus, string> = {
   OPEN: 'Abierta',
   SCHEDULED: 'Agendada',
   IN_PROGRESS: 'En ejecución',

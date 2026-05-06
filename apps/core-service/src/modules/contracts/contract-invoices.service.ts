@@ -418,7 +418,7 @@ export class ContractInvoicesService {
     // Se a nova data ainda é futura, fatura volta a OPEN. Se já passou,
     // mantém OVERDUE (improvável, mas defensivo).
     const newStatus =
-      newDate >= today ? InvoiceStatus.OPEN : InvoiceStatus.OVERDUE;
+      newDate >= today ? PrismaInvoiceStatus.OPEN : PrismaInvoiceStatus.OVERDUE;
 
     const updated = await this.prisma.contractInvoice.update({
       where: { id: inv.id },
