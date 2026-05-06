@@ -99,22 +99,87 @@ function handleUnauthorized(): void {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Auto-refresh em 401
+// ─────────────────────────────────────────────────────────────────────────────
+// Quando o access token expira, ao invés de mandar o user pra /login direto:
+//   1. Tenta trocar o refresh token por um novo par via POST /auth/refresh.
+//   2. Se rolar, reexecuta o request original com o novo access.
+//   3. Se falhar, aí sim limpa sessão e redireciona.
+//
+// Singleton promise: se 5 requests dispararem 401 simultaneamente, todos
+// esperam o MESMO refresh — sem flood no backend nem race condition.
+
+let refreshInFlight: Promise<string | null> | null = null;
+
+async function tryRefresh(): Promise<string | null> {
+  if (typeof window === 'undefined') return null;
+  if (refreshInFlight) return refreshInFlight;
+
+  const refreshToken = localStorage.getItem('netx.refreshToken');
+  if (!refreshToken) return null;
+
+  refreshInFlight = (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/v1/auth/refresh`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ refreshToken }),
+      });
+      if (!res.ok) return null;
+      const text = await res.text();
+      const parsed = text ? safeParse(text) : null;
+      if (!parsed || typeof parsed !== 'object') return null;
+      const next = parsed as { accessToken?: string; refreshToken?: string };
+      if (!next.accessToken) return null;
+      localStorage.setItem('netx.accessToken', next.accessToken);
+      if (next.refreshToken) {
+        localStorage.setItem('netx.refreshToken', next.refreshToken);
+      }
+      return next.accessToken;
+    } catch {
+      return null;
+    } finally {
+      // Libera o slot — próximo 401 dispara um novo refresh se necessário.
+      refreshInFlight = null;
+    }
+  })();
+
+  return refreshInFlight;
+}
+
 async function request<T>(
   method: string,
   path: string,
   body?: unknown,
   init: RequestInit = {},
 ): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers: {
-      'content-type': 'application/json',
-      ...authHeaders(),
-      ...(init.headers ?? {}),
-    },
-    body: body == null ? undefined : JSON.stringify(body),
-    ...init,
-  });
+  // Endpoints de refresh/login NÃO devem entrar no ciclo de auto-refresh —
+  // se /auth/refresh devolve 401, a única coisa a fazer é deslogar.
+  const isRefreshCall = path.startsWith('/v1/auth/refresh') || path.startsWith('/v1/auth/login');
+
+  const doFetch = () =>
+    fetch(`${API_BASE}${path}`, {
+      method,
+      headers: {
+        'content-type': 'application/json',
+        ...authHeaders(),
+        ...(init.headers ?? {}),
+      },
+      body: body == null ? undefined : JSON.stringify(body),
+      ...init,
+    });
+
+  let res = await doFetch();
+
+  if (res.status === 401 && !isRefreshCall) {
+    const newToken = await tryRefresh();
+    if (newToken) {
+      // Reexecuta o request original com o novo token. authHeaders() lê do
+      // localStorage atualizado automaticamente.
+      res = await doFetch();
+    }
+  }
 
   // 204 No Content
   if (res.status === 204) return undefined as T;

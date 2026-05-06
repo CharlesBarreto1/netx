@@ -37,8 +37,13 @@ const baseSchema = z.object({
   // JWT
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
-  JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
-  JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
+  // TTLs longos pra UX "login permanente". Frontend faz auto-refresh
+  // transparente em 401 antes de cair pra /login. Operadores de ISP
+  // tipicamente trabalham em estações fixas, baixo risco de roubo de token.
+  // Pra ambientes com requisitos rígidos (ex.: tenant cliente bancário),
+  // sobrescreva via env: JWT_ACCESS_EXPIRES_IN=15m JWT_REFRESH_EXPIRES_IN=7d.
+  JWT_ACCESS_EXPIRES_IN: z.string().default('12h'),
+  JWT_REFRESH_EXPIRES_IN: z.string().default('90d'),
 
   // Argon2
   ARGON2_MEMORY_COST: z.coerce.number().int().positive().default(19_456),
