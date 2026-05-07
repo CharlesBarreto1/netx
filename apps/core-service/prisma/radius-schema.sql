@@ -173,3 +173,48 @@ BEGIN
   RAISE NOTICE 'radius schema pronto. Grupos: %',
     (SELECT string_agg(DISTINCT groupname, ', ') FROM radius.radgroupreply);
 END $$;
+
+-- -----------------------------------------------------------------------------
+-- nas — clients RADIUS dinâmicos (BNGs cadastrados via NetX).
+--
+-- O FreeRADIUS lê esta tabela quando configurado com `read_clients = yes`
+-- no módulo SQL. Cada linha vira um `client { ... }` em runtime sem
+-- precisar editar `clients.conf`.
+--
+-- O NetX (NetworkModule) faz INSERT/UPDATE/DELETE aqui automaticamente
+-- quando admin cadastra um Equipamento type=BNG.
+--
+-- Schema padrão FreeRADIUS 3.x — não mude colunas ou dialup.conf quebra.
+-- -----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS radius.nas (
+    id          BIGSERIAL PRIMARY KEY,
+    nasname     VARCHAR(128) NOT NULL,           -- IP ou hostname do BNG
+    shortname   VARCHAR(32),                     -- alias curto
+    type        VARCHAR(30) DEFAULT 'other',     -- mikrotik, cisco, juniper, other
+    ports       INTEGER,
+    secret      VARCHAR(60) NOT NULL DEFAULT 'secret',
+    server      VARCHAR(64),
+    community   VARCHAR(50),
+    description VARCHAR(200) DEFAULT 'NetX-managed'
+);
+CREATE UNIQUE INDEX IF NOT EXISTS nas_nasname_uidx ON radius.nas (nasname);
+
+-- =============================================================================
+-- Configuração FreeRADIUS necessária pra ler clientes desta tabela:
+--
+--   /etc/freeradius/3.0/mods-available/sql:
+--     read_clients = yes
+--     client_table = "nas"
+--
+--   /etc/freeradius/3.0/clients.conf:
+--     # No fim do arquivo, libera leitura via SQL:
+--     #   $INCLUDE sql.conf  (se já existe)
+--     # OU adicione manualmente:
+--     #   client sql {}      (vazio — força ler do SQL)
+--
+--   Após editar: sudo systemctl restart freeradius
+--
+-- Pra que o FreeRADIUS pegue mudanças sem restart, configure:
+--   /etc/freeradius/3.0/mods-config/sql/main/postgresql/queries.conf
+--   client_query = "SELECT id, nasname, shortname, type, secret, server, community, description FROM radius.nas"
+-- =============================================================================

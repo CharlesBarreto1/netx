@@ -14,6 +14,7 @@ import { FinanceModule } from './modules/finance/finance.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { BackupsModule } from './modules/backups/backups.module';
 import { HealthModule } from './modules/health/health.module';
+import { NetworkModule } from './modules/network/network.module';
 import { PortalModule } from './modules/portal/portal.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { RadiusModule } from './modules/radius/radius.module';
@@ -71,6 +72,7 @@ import { UsersModule } from './modules/users/users.module';
     FinanceModule,
     ReportsModule,
     BackupsModule,
+    NetworkModule,
     PortalModule,
     RadiusModule,
   ],

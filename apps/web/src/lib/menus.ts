@@ -73,14 +73,15 @@ export const MENU_GROUPS: MenuGroup[] = [
     ],
   },
 
-  // Operações — campo (O.S) + infraestrutura (concentradores)
+  // Operações — campo (O.S) + infraestrutura de rede (POPs + equipamentos)
   {
     key: 'operations',
     labelKey: 'group.operations',
     items: [
       { key: 'serviceOrders', href: '/service-orders', labelKey: 'serviceOrders', permission: 'service_orders.read' },
       { key: 'serviceOrderReasons', href: '/settings/service-order-reasons', labelKey: 'serviceOrderReasons', permission: 'service_order_reasons.manage' },
-      { key: 'concentrators', href: '/network/concentrators', labelKey: 'concentrators' },
+      { key: 'pops', href: '/network/pops', labelKey: 'pops', permission: 'network.read' },
+      { key: 'equipment', href: '/network/equipment', labelKey: 'equipment', permission: 'network.read' },
     ],
   },
 

@@ -117,6 +117,15 @@ const backupsPermissions = [
   { code: 'backups.manage', module: 'core', resource: 'backups', action: 'manage' },
 ];
 
+// -----------------------------------------------------------------------------
+// Permission catalog — Network (POPs + Equipamentos)
+// -----------------------------------------------------------------------------
+const networkPermissions = [
+  { code: 'network.read', module: 'network', resource: 'network', action: 'read' },
+  { code: 'network.write', module: 'network', resource: 'network', action: 'write' },
+  { code: 'network.delete', module: 'network', resource: 'network', action: 'delete' },
+];
+
 // Role → permission mapping
 const systemRoles = [
   {
@@ -181,6 +190,10 @@ const systemRoles = [
       'finance.discount.apply',
       'reports.read',
       'backups.manage',
+      // Rede
+      'network.read',
+      'network.write',
+      'network.delete',
     ],
   },
   {
@@ -218,6 +231,8 @@ const systemRoles = [
       'finance.charges.write',
       // Reports (operador também pode ver)
       'reports.read',
+      // Rede — só leitura pra operador
+      'network.read',
     ],
   },
   {
@@ -235,6 +250,7 @@ const systemRoles = [
       'service_orders.read',
       'finance.charges.read',
       'reports.read',
+      'network.read',
     ],
   },
 ];
@@ -252,6 +268,7 @@ async function main() {
     ...financePermissions,
     ...reportsPermissions,
     ...backupsPermissions,
+    ...networkPermissions,
   ]) {
     await prisma.permission.upsert({
       where: { code: p.code },

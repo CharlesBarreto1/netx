@@ -64,6 +64,8 @@ model Tenant {
   oneTimeCharges       OneTimeCharge[]
   cashMovements        CashMovement[]
   backups              Backup[]
+  networkPops          NetworkPop[]
+  networkEquipment     NetworkEquipment[]
 
   @@index([status])
   @@index([country])
@@ -172,6 +174,10 @@ model User {
   chargesUpdated   OneTimeCharge[] @relation("ChargeUpdatedBy")
   cashMovementsCreated CashMovement[] @relation("CashMovementCreatedBy")
   backupsCreated       Backup[]       @relation("BackupCreatedBy")
+  networkPopsCreated   NetworkPop[]   @relation("NetworkPopCreatedBy")
+  networkPopsUpdated   NetworkPop[]   @relation("NetworkPopUpdatedBy")
+  networkEqCreated     NetworkEquipment[] @relation("NetworkEquipmentCreatedBy")
+  networkEqUpdated     NetworkEquipment[] @relation("NetworkEquipmentUpdatedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId, status])
@@ -1385,4 +1391,107 @@ model Backup {
   @@index([tenantId, createdAt])
   @@index([status])
   @@map("backups")
+}
+
+// =============================================================================
+// MODULE — NETWORK (POPs + Equipamentos)
+// =============================================================================
+//
+// POP (Point of Presence): site físico/lógico onde fica equipamento.
+//   ex.: "POP Centro Asunción", "Datacenter Lambaré", "Torre CDE-1"
+//
+// Equipamento: BNG/OLT/Router/Switch que vive num POP.
+//   - BNG: integra com RADIUS (radius.nas) automaticamente
+//   - OLT: futuramente integra via SNMP/TR-069 pra autoconfig
+//   - Router/Switch: cadastro só (CMDB enxuto)
+// =============================================================================
+
+model NetworkPop {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  name        String   @db.VarChar(120)
+  code        String?  @db.VarChar(32)
+  city        String?  @db.VarChar(120)
+  state       String?  @db.VarChar(120)
+  address     String?  @db.VarChar(500)
+  notes       String?  @db.Text
+
+  isActive    Boolean  @default(true) @map("is_active")
+
+  createdById String?  @map("created_by_id") @db.Uuid
+  updatedById String?  @map("updated_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy   User?  @relation("NetworkPopCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy   User?  @relation("NetworkPopUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  equipment   NetworkEquipment[]
+
+  @@unique([tenantId, name])
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive])
+  @@map("network_pops")
+}
+
+enum NetworkEquipmentType {
+  BNG
+  OLT
+  ROUTER
+  SWITCH
+  OTHER
+}
+
+enum NetworkEquipmentVendor {
+  MIKROTIK
+  HUAWEI
+  ZTE
+  FIBERHOME
+  CISCO
+  JUNIPER
+  OTHER
+}
+
+model NetworkEquipment {
+  id          String                  @id @default(uuid()) @db.Uuid
+  tenantId    String                  @map("tenant_id") @db.Uuid
+  popId       String?                 @map("pop_id") @db.Uuid
+
+  type        NetworkEquipmentType
+  vendor      NetworkEquipmentVendor  @default(OTHER)
+
+  name        String                  @db.VarChar(120)
+  hostname    String?                 @db.VarChar(255)
+  ipAddress   String                  @map("ip_address") @db.VarChar(45)
+
+  // Específico de BNG (RADIUS) — quando preenchidos, sincronizamos com
+  // radius.nas. nasType usa o vocabulário do FreeRADIUS (mikrotik, cisco,
+  // juniper, other). secret é compartilhado com o equipamento.
+  radiusSecret  String? @map("radius_secret") @db.VarChar(64)
+  radiusNasType String? @map("radius_nas_type") @db.VarChar(30)
+
+  // Específico de OLT/Router (SNMP futuro):
+  snmpCommunity String? @map("snmp_community") @db.VarChar(64)
+  snmpVersion   String? @map("snmp_version") @db.VarChar(10)
+
+  notes       String?  @db.Text
+  isActive    Boolean  @default(true) @map("is_active")
+
+  createdById String?  @map("created_by_id") @db.Uuid
+  updatedById String?  @map("updated_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  pop         NetworkPop? @relation(fields: [popId], references: [id], onDelete: SetNull)
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy   User?       @relation("NetworkEquipmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy   User?       @relation("NetworkEquipmentUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, name])
+  @@unique([tenantId, ipAddress])
+  @@index([tenantId, type])
+  @@index([popId])
+  @@map("network_equipment")
 }
