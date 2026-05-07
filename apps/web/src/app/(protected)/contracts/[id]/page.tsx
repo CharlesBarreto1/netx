@@ -26,6 +26,8 @@ import { useFormatMoney } from '@/lib/use-money';
 import { hasPermission } from '@/lib/session';
 
 import { AuditTrail } from '@/components/audit/AuditTrail';
+import { ContractSessionCard } from '@/components/contracts/ContractSessionCard';
+import { ContractUsageChart } from '@/components/contracts/ContractUsageChart';
 import { EditContractDialog } from '@/components/contracts/EditContractDialog';
 import { PaymentDialog } from '@/components/finance/PaymentDialog';
 
@@ -416,6 +418,16 @@ export default function ContractDetailPage() {
           <p className="whitespace-pre-wrap text-sm text-text">{contract.notes}</p>
         </InfoCard>
       )}
+
+      {/* Status técnico em tempo real (RADIUS accounting) */}
+      <InfoCard title="Estado técnico">
+        <ContractSessionCard contractId={contract.id} />
+      </InfoCard>
+
+      {/* Consumo de banda */}
+      <InfoCard title="Consumo de banda">
+        <ContractUsageChart contractId={contract.id} />
+      </InfoCard>
 
       {/* Timeline resumida */}
       <InfoCard title={tDetail('historyTitle')}>
