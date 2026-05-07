@@ -94,11 +94,12 @@ export const MENU_GROUPS: MenuGroup[] = [
     ],
   },
 
-  // Configurações — admin do tenant
+  // Configurações — admin da operação (= empresa/ISP inteira nesta instância)
   {
     key: 'settings',
     labelKey: 'group.settings',
     items: [
+      // /settings/tenant: configuração da empresa (país/locale/moeda/CNPJ)
       { key: 'settings', href: '/settings/tenant', labelKey: 'settings', permission: 'tenants.update' },
       { key: 'users', href: '/settings/users', labelKey: 'users', permission: 'users.read' },
       { key: 'backups', href: '/settings/backups', labelKey: 'backups', permission: 'backups.manage' },

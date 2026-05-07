@@ -18,13 +18,18 @@ import {
 import { hasPermission } from '@/lib/session';
 
 /**
- * /settings/tenant — parametrização da operação.
+ * /settings/tenant — parametrização da operação (= a empresa/ISP inteira).
+ *
+ * Conceito: cada instância NetX atende **uma única ISP**. O `Tenant` no
+ * banco representa essa empresa (não é multi-tenant SaaS-style — esse
+ * modelo foi descartado por exigências do RADIUS, ver
+ * `docs/architecture/tenancy.md`).
  *
  * Quem decide o país também decide locale, moeda e fuso default — mas pode
  * sobrescrever cada um individualmente. O check "Aplicar padrões do país"
  * pré-preenche os 3 campos derivados ao trocar o país.
  *
- * Permissão: `tenants.update` (admin do tenant).
+ * Permissão: `tenants.update` (admin da operação).
  */
 export default function TenantSettingsPage() {
   const t = useTranslations('settings');
@@ -144,7 +149,10 @@ export default function TenantSettingsPage() {
             {tCommon('back')}
           </Link>
         </nav>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight">{t('title')}</h1>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight">{t('tenant.title')}</h1>
+        <p className="mt-1 max-w-2xl text-sm text-text-muted">
+          {t('tenant.subtitle')}
+        </p>
       </header>
 
       <form

@@ -563,6 +563,8 @@ const messages = {
     title: 'Configurações',
     tenant: {
       title: 'Operação',
+      subtitle:
+        'Esta é a configuração da sua empresa nesta instância NetX. Cada instalação atende um único provedor — os dados aqui se aplicam a toda a operação.',
       country: 'País da operação',
       locale: 'Idioma padrão',
       currency: 'Moeda',

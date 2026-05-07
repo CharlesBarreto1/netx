@@ -24,6 +24,24 @@ enum TenantStatus {
   CHURNED
 }
 
+/// O `Tenant` representa **a empresa (ISP) inteira** atendida por esta
+/// instância NetX. Cada instalação atende **exatamente um Tenant**.
+///
+/// Por que existe a abstração mesmo sendo singleton na prática?
+///   1. Isolamento futuro: se um dia oferecermos NetX hosted (multi-ISP em
+///      um VPS gerenciado pela NetX), o código já está pronto.
+///   2. Cooperativas/revenda: pequenos ISPs em coop podem compartilhar
+///      hardware mantendo dados separados (caso real no Brasil).
+///   3. RBAC limpo: todas as queries já carregam tenantId, evita bugs de
+///      vazamento entre dados de um futuro segundo tenant.
+///
+/// O modelo SaaS multi-tenant compartilhado **foi descartado** como
+/// produto principal porque:
+///   - RADIUS exige baixa latência (Mikrotik time-out 200ms)
+///   - LGPD/soberania de dados (ISP não compartilha DB com concorrente)
+///   - Blast radius (1 bug afeta 1 ISP, não todas)
+///
+/// Veja `docs/architecture/tenancy.md` pra contexto completo.
 model Tenant {
   id          String       @id @default(uuid()) @db.Uuid
   slug        String       @unique @db.VarChar(63) // used in subdomain

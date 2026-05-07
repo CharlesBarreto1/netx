@@ -24,8 +24,10 @@ O wizard pergunta:
 1. **Domínio** — onde o NetX vai responder (deixe vazio pra usar IP)
 2. **E-mail do admin**
 3. **Senha do admin** — gerada aleatória ou definida por você
-4. **Nome do tenant inicial**
+4. **Nome da empresa (ISP)** — esta instância atende **uma única empresa**
 5. **País** — PY / BR / AR / outro
+
+> **Sobre "tenant"**: o NetX foi pensado pra ser instalado **um por ISP**, em VPS própria do provedor (motivos: latência RADIUS, soberania de dados, blast radius). Internamente, cada instalação tem 1 `Tenant` que representa a empresa inteira. Não é um SaaS multi-tenant compartilhado. Veja `docs/architecture/tenancy.md` no repo pra detalhes.
 
 No fim, mostra a URL e a senha do admin.
 
@@ -110,7 +112,7 @@ Isso faz `git fetch + reset --hard`, re-builda, aplica novas migrações Prisma 
 | `NETX_DOMAIN` | _(vazio = IP)_ | server_name no nginx |
 | `NETX_ADMIN_EMAIL` | _(prompt)_ | login do admin |
 | `NETX_ADMIN_PASSWORD` | _(gerada)_ | senha do admin |
-| `NETX_TENANT_NAME` | "NetX Default" | nome do tenant inicial |
+| `NETX_TENANT_NAME` | "NetX Default" | nome da empresa (ISP) — esta instância atende uma única |
 | `NETX_TENANT_COUNTRY` | `PY` | PY/BR/AR |
 | `NETX_SKIP_WIZARD` | `0` | `1` = pula prompts |
 | `NETX_FORCE` | `0` | `1` = re-roda tudo |

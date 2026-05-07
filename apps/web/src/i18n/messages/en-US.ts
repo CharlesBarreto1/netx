@@ -539,6 +539,8 @@ const messages = {
     title: 'Settings',
     tenant: {
       title: 'Operation',
+      subtitle:
+        'Settings for your company on this NetX instance. Each install serves a single ISP — these settings apply to the whole operation.',
       country: 'Operation country',
       locale: 'Default language',
       currency: 'Currency',

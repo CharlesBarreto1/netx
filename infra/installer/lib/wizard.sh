@@ -67,11 +67,11 @@ wizard_run() {
   fi
   export NETX_ADMIN_PASSWORD
 
-  # Tenant
+  # Operação (= empresa/ISP). Cada instância NetX atende UMA empresa.
   if [[ "${NETX_TENANT_NAME}" == "NetX Default" ]]; then
     NETX_TENANT_NAME=$(whiptail --inputbox \
-      "Nome do tenant inicial (sua ISP):" \
-      10 70 "Minha ISP" --title "Tenant" 3>&1 1>&2 2>&3) || NETX_TENANT_NAME="Minha ISP"
+      "Nome da sua empresa (ISP) — ex: 'NET Telecom Asunción':" \
+      10 70 "Minha ISP" --title "Operação" 3>&1 1>&2 2>&3) || NETX_TENANT_NAME="Minha ISP"
   fi
   export NETX_TENANT_NAME
 
@@ -96,9 +96,9 @@ wizard_run() {
   # Confirmação
   whiptail --yesno "Configuração:
 
-Domínio:   ${NETX_DOMAIN:-(IP do servidor)}
-Admin:     ${NETX_ADMIN_EMAIL}
-Tenant:    ${NETX_TENANT_NAME} (${NETX_TENANT_COUNTRY}/${NETX_TENANT_LOCALE}/${NETX_TENANT_CURRENCY})
+Domínio:    ${NETX_DOMAIN:-(IP do servidor)}
+Admin:      ${NETX_ADMIN_EMAIL}
+Empresa:    ${NETX_TENANT_NAME} (${NETX_TENANT_COUNTRY}/${NETX_TENANT_LOCALE}/${NETX_TENANT_CURRENCY})
 
 Confirma e inicia instalação?" 14 70 --title "Confirmar"
 
