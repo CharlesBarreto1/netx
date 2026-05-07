@@ -1,59 +1,132 @@
 /**
- * Catálogo central de menus (sidebar).
+ * Catálogo central de menus (sidebar) — agora hierárquico.
  *
- * Cada item tem:
- *   - `key`         — string estável usada em `User.menuAccess` para
- *     liberar/ocultar individualmente (NÃO renomear sem migrar valores no DB).
+ * Estrutura:
+ *   - `MENU_GROUPS`   — definição de grupos (CRM, Financeiro, etc.)
+ *   - `MENU_CATALOG`  — flatten dos itens (mantido por compat: UserForm,
+ *                      validação server-side, menuAccess).
+ *
+ * Cada **item** tem:
+ *   - `key`         — string estável usada em `User.menuAccess` (NÃO renomear
+ *     sem migrar valores no DB).
  *   - `href`        — rota Next.js.
  *   - `labelKey`    — chave em `messages/<locale>.ts` namespace `nav`.
  *   - `permission`  — código de permissão exigido (RBAC). Sem perm → não vê.
  *
- * Ordem do array = ordem na sidebar.
+ * Cada **grupo** tem:
+ *   - `key`         — id estável (não muda label nem rota).
+ *   - `labelKey`    — em `nav.group.<key>` (ex.: 'group.crm').
+ *   - `items`       — array de MenuDef.
  *
- * Como o checklist na tela de Usuários funciona:
- *   1. Admin abre o user em /settings/users/[id].
- *   2. Marca/desmarca menus.
- *   3. Salvamos `menuAccess: string[]` ou `null`.
- *      - `null`  → sem override (sidebar mostra todos os menus que o user
- *        tem permissão pra acessar).
- *      - `[]`    → array vazio = nenhum menu visível (login só, sem nav).
- *      - `[...]` → intersecção: menu só aparece se a `key` está no array E
- *        o user tem a permissão.
+ * Como `menuAccess` continua funcionando:
+ *   - É controlado por `key` do **item**, não do grupo.
+ *   - Se TODOS os itens de um grupo estão escondidos, o grupo inteiro some
+ *     (cabeçalho não aparece).
  */
 
 export interface MenuDef {
   key: string;
   href: string;
-  labelKey: string; // ex.: 'dashboard', 'sales', resolvido em namespace 'nav'
+  labelKey: string;
   permission?: string;
 }
 
-export const MENU_CATALOG: MenuDef[] = [
-  { key: 'dashboard', href: '/dashboard', labelKey: 'dashboard' },
-  { key: 'sales', href: '/deals', labelKey: 'sales', permission: 'deals.read' },
-  { key: 'customers', href: '/customers', labelKey: 'customers', permission: 'customers.read' },
-  { key: 'contracts', href: '/contracts', labelKey: 'contracts', permission: 'contracts.read' },
-  { key: 'serviceOrders', href: '/service-orders', labelKey: 'serviceOrders', permission: 'service_orders.read' },
-  { key: 'charges', href: '/finance/charges', labelKey: 'charges', permission: 'finance.charges.read' },
-  { key: 'reports', href: '/reports', labelKey: 'reports', permission: 'reports.read' },
-  { key: 'tags', href: '/crm/tags', labelKey: 'tags', permission: 'customers.tags.manage' },
-  { key: 'settings', href: '/settings/tenant', labelKey: 'settings', permission: 'tenants.update' },
-  { key: 'cashRegisters', href: '/settings/cash-registers', labelKey: 'cashRegisters', permission: 'cash_registers.manage' },
-  { key: 'serviceOrderReasons', href: '/settings/service-order-reasons', labelKey: 'serviceOrderReasons', permission: 'service_order_reasons.manage' },
-  { key: 'users', href: '/settings/users', labelKey: 'users', permission: 'users.read' },
-  { key: 'backups', href: '/settings/backups', labelKey: 'backups', permission: 'backups.manage' },
-  { key: 'audit', href: '/settings/audit', labelKey: 'audit', permission: 'audit.read' },
-  // 'security' não tem permissão: cada user gerencia a própria senha/2FA.
-  { key: 'security', href: '/settings/security', labelKey: 'security' },
+export interface MenuGroup {
+  key: string;
+  /** Sem labelKey = item solto (top-level), não renderiza header. */
+  labelKey?: string;
+  items: MenuDef[];
+}
+
+// -----------------------------------------------------------------------------
+// Estrutura visual da sidebar.
+// Ordem aqui = ordem renderizada de cima pra baixo.
+// -----------------------------------------------------------------------------
+export const MENU_GROUPS: MenuGroup[] = [
+  // Top-level isolado — Dashboard sempre primeiro.
+  {
+    key: 'home',
+    items: [
+      { key: 'dashboard', href: '/dashboard', labelKey: 'dashboard' },
+    ],
+  },
+
+  // CRM — base de clientes + relacionamento + vendas
+  {
+    key: 'crm',
+    labelKey: 'group.crm',
+    items: [
+      { key: 'customers', href: '/customers', labelKey: 'customers', permission: 'customers.read' },
+      { key: 'contracts', href: '/contracts', labelKey: 'contracts', permission: 'contracts.read' },
+      { key: 'sales', href: '/deals', labelKey: 'sales', permission: 'deals.read' },
+      { key: 'tags', href: '/crm/tags', labelKey: 'tags', permission: 'customers.tags.manage' },
+    ],
+  },
+
+  // Financeiro — cobranças e movimentação
+  {
+    key: 'finance',
+    labelKey: 'group.finance',
+    items: [
+      { key: 'charges', href: '/finance/charges', labelKey: 'charges', permission: 'finance.charges.read' },
+      { key: 'cashRegisters', href: '/settings/cash-registers', labelKey: 'cashRegisters', permission: 'cash_registers.manage' },
+    ],
+  },
+
+  // Operações — campo (O.S) + infraestrutura (concentradores)
+  {
+    key: 'operations',
+    labelKey: 'group.operations',
+    items: [
+      { key: 'serviceOrders', href: '/service-orders', labelKey: 'serviceOrders', permission: 'service_orders.read' },
+      { key: 'serviceOrderReasons', href: '/settings/service-order-reasons', labelKey: 'serviceOrderReasons', permission: 'service_order_reasons.manage' },
+      { key: 'concentrators', href: '/network/concentrators', labelKey: 'concentrators' },
+    ],
+  },
+
+  // Relatórios — solto, sem subgrupo
+  {
+    key: 'reports-group',
+    items: [
+      { key: 'reports', href: '/reports', labelKey: 'reports', permission: 'reports.read' },
+    ],
+  },
+
+  // Configurações — admin do tenant
+  {
+    key: 'settings',
+    labelKey: 'group.settings',
+    items: [
+      { key: 'settings', href: '/settings/tenant', labelKey: 'settings', permission: 'tenants.update' },
+      { key: 'users', href: '/settings/users', labelKey: 'users', permission: 'users.read' },
+      { key: 'backups', href: '/settings/backups', labelKey: 'backups', permission: 'backups.manage' },
+      { key: 'audit', href: '/settings/audit', labelKey: 'audit', permission: 'audit.read' },
+    ],
+  },
+
+  // Conta pessoal — sempre visível, fica isolado no fim
+  {
+    key: 'me',
+    items: [
+      // 'security' não tem permissão: cada user gerencia a própria senha/2FA.
+      { key: 'security', href: '/settings/security', labelKey: 'security' },
+    ],
+  },
 ];
 
-/** Lookup por key, útil em validações server-side. */
+// -----------------------------------------------------------------------------
+// Catálogo flat — derivado dos grupos. Mantido por compat com:
+//   - UserForm (checklist de menus)
+//   - validação `MENU_KEYS` em outros lugares
+//   - `visibleMenus()` antigo
+// -----------------------------------------------------------------------------
+export const MENU_CATALOG: MenuDef[] = MENU_GROUPS.flatMap((g) => g.items);
+
 export const MENU_KEYS = MENU_CATALOG.map((m) => m.key);
 
 /**
- * Resolve quais menus o user pode efetivamente ver.
- *  - filtra por permissão
- *  - se `menuAccess` for array, intersecta
+ * Resolve quais menus o user pode efetivamente ver (modo flat — usado
+ * em validações que não se importam com agrupamento).
  */
 export function visibleMenus(
   permissions: string[],
@@ -64,4 +137,22 @@ export function visibleMenus(
     if (Array.isArray(menuAccess) && !menuAccess.includes(m.key)) return false;
     return true;
   });
+}
+
+/**
+ * Variante hierárquica: devolve grupos com items já filtrados. Grupos sem
+ * nenhum item visível são excluídos automaticamente.
+ */
+export function visibleMenuGroups(
+  permissions: string[],
+  menuAccess: string[] | null | undefined,
+): MenuGroup[] {
+  return MENU_GROUPS.map((g) => ({
+    ...g,
+    items: g.items.filter((m) => {
+      if (m.permission && !permissions.includes(m.permission)) return false;
+      if (Array.isArray(menuAccess) && !menuAccess.includes(m.key)) return false;
+      return true;
+    }),
+  })).filter((g) => g.items.length > 0);
 }

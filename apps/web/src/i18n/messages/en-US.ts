@@ -77,9 +77,16 @@ const messages = {
     backups: 'Backups',
     audit: 'Audit log',
     security: 'My security',
+    concentrators: 'Concentrators',
     logout: 'Sign out',
     language: 'Language',
     tenantDefault: 'Tenant default',
+    group: {
+      crm: 'CRM',
+      finance: 'Finance',
+      operations: 'Operations',
+      settings: 'Settings',
+    },
   },
   customers: {
     title: 'Customers',

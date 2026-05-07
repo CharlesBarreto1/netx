@@ -8,7 +8,7 @@ import { useTranslations } from 'next-intl';
 import { Toaster } from '@/components/ui/sonner';
 import { LocaleSwitcher } from '@/components/layout/LocaleSwitcher';
 import { cn } from '@/lib/cn';
-import { visibleMenus, type MenuDef } from '@/lib/menus';
+import { visibleMenuGroups, type MenuDef, type MenuGroup } from '@/lib/menus';
 import { clearSession, displayName, type Session } from '@/lib/session';
 
 export interface NavItem {
@@ -38,6 +38,9 @@ const MENU_ICON: Record<string, React.ReactNode> = {
   serviceOrderReasons: <IconList />,
   users: <IconUsers />,
   backups: <IconDatabase />,
+  audit: <IconList />,
+  security: <IconSettings />,
+  concentrators: <IconWrench />,
 };
 
 export function AppShell({
@@ -57,20 +60,31 @@ export function AppShell({
     setOpen(false);
   }, [pathname]);
 
-  // Resolve os menus via catálogo central:
+  // Resolve grupos de menu hierárquicos:
   //   1. filtra por permissão do role
   //   2. intersecta com `menuAccess` se for array (override por usuário)
-  //   3. resolve label do dicionário i18n
-  const allowed = useMemo<NavItem[]>(
+  //   3. drop grupos sem itens visíveis
+  //   4. resolve label do dicionário i18n
+  interface NavGroup {
+    key: string;
+    label?: string;
+    items: NavItem[];
+  }
+  const allowedGroups = useMemo<NavGroup[]>(
     () =>
-      visibleMenus(session.user.permissions, session.user.menuAccess ?? null).map(
-        (m: MenuDef) => ({
+      visibleMenuGroups(
+        session.user.permissions,
+        session.user.menuAccess ?? null,
+      ).map((g: MenuGroup) => ({
+        key: g.key,
+        label: g.labelKey ? tNav(g.labelKey as 'dashboard') : undefined,
+        items: g.items.map((m: MenuDef) => ({
           href: m.href as Route,
           label: tNav(m.labelKey as 'dashboard'),
           icon: MENU_ICON[m.key],
           permission: m.permission,
-        }),
-      ),
+        })),
+      })),
     [session.user.permissions, session.user.menuAccess, tNav],
   );
 
@@ -115,7 +129,7 @@ export function AppShell({
       <div className="flex">
         {/* Sidebar desktop */}
         <aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-60 shrink-0 border-r border-slate-200 bg-white md:block dark:border-slate-700 dark:bg-slate-900">
-          <SidebarNav items={allowed} pathname={pathname} />
+          <SidebarNav groups={allowedGroups} pathname={pathname} />
         </aside>
 
         {/* Sidebar mobile (drawer) */}
@@ -139,7 +153,7 @@ export function AppShell({
                   ×
                 </button>
               </div>
-              <SidebarNav items={allowed} pathname={pathname} />
+              <SidebarNav groups={allowedGroups} pathname={pathname} />
             </aside>
           </div>
         )}
@@ -154,30 +168,50 @@ export function AppShell({
   );
 }
 
-function SidebarNav({ items, pathname }: { items: NavItem[]; pathname: string }) {
+function SidebarNav({
+  groups,
+  pathname,
+}: {
+  groups: { key: string; label?: string; items: NavItem[] }[];
+  pathname: string;
+}) {
   return (
-    <nav className="flex flex-col gap-0.5 p-3">
-      {items.map((it) => {
-        const active = pathname === it.href || pathname.startsWith(it.href + '/');
-        return (
-          <Link
-            key={it.href}
-            href={it.href}
-            className={cn(
-              'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
-              active
-                ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200'
-                : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800',
-            )}
-          >
-            {it.icon && <span className="h-4 w-4 shrink-0">{it.icon}</span>}
-            <span className="truncate">{it.label}</span>
-            {it.badge !== undefined && (
-              <span className="ml-auto text-xs text-slate-500 dark:text-slate-400">{it.badge}</span>
-            )}
-          </Link>
-        );
-      })}
+    <nav className="flex flex-col gap-1 p-3">
+      {groups.map((g, idx) => (
+        <div key={g.key} className={idx === 0 ? '' : 'mt-2'}>
+          {g.label && (
+            <div className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              {g.label}
+            </div>
+          )}
+          <div className="flex flex-col gap-0.5">
+            {g.items.map((it) => {
+              const active =
+                pathname === it.href || pathname.startsWith(it.href + '/');
+              return (
+                <Link
+                  key={it.href}
+                  href={it.href}
+                  className={cn(
+                    'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                    active
+                      ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-200'
+                      : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800',
+                  )}
+                >
+                  {it.icon && <span className="h-4 w-4 shrink-0">{it.icon}</span>}
+                  <span className="truncate">{it.label}</span>
+                  {it.badge !== undefined && (
+                    <span className="ml-auto text-xs text-slate-500 dark:text-slate-400">
+                      {it.badge}
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </nav>
   );
 }
