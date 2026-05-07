@@ -21,6 +21,7 @@ import { RadiusModule } from './modules/radius/radius.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { UsersModule } from './modules/users/users.module';
+import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 
 @Module({
   imports: [
@@ -75,6 +76,7 @@ import { UsersModule } from './modules/users/users.module';
     NetworkModule,
     PortalModule,
     RadiusModule,
+    WhatsappModule,
   ],
 })
 export class AppModule {}

@@ -126,6 +126,19 @@ const networkPermissions = [
   { code: 'network.delete', module: 'network', resource: 'network', action: 'delete' },
 ];
 
+// -----------------------------------------------------------------------------
+// Permission catalog — Chat / Atendimento (WhatsApp via Evolution API)
+// -----------------------------------------------------------------------------
+const chatPermissions = [
+  { code: 'chat.read',   module: 'chat', resource: 'chat', action: 'read'   },
+  { code: 'chat.send',   module: 'chat', resource: 'chat', action: 'send'   },
+  { code: 'chat.assign', module: 'chat', resource: 'chat', action: 'assign' },
+  // chat.audit = ver conversas atribuídas a OUTROS operadores (rastreado em audit log)
+  { code: 'chat.audit',  module: 'chat', resource: 'chat', action: 'audit'  },
+  // chat.admin = gerenciar instâncias Evolution + conexão WhatsApp
+  { code: 'chat.admin',  module: 'chat', resource: 'chat', action: 'admin'  },
+];
+
 // Role → permission mapping
 const systemRoles = [
   {
@@ -194,6 +207,12 @@ const systemRoles = [
       'network.read',
       'network.write',
       'network.delete',
+      // Chat / Atendimento (admin tem tudo, inclusive auditoria)
+      'chat.read',
+      'chat.send',
+      'chat.assign',
+      'chat.audit',
+      'chat.admin',
     ],
   },
   {
@@ -233,6 +252,10 @@ const systemRoles = [
       'reports.read',
       // Rede — só leitura pra operador
       'network.read',
+      // Chat (operador atende: lê, envia, atribui — sem auditar terceiros nem admin)
+      'chat.read',
+      'chat.send',
+      'chat.assign',
     ],
   },
   {
@@ -269,6 +292,7 @@ async function main() {
     ...reportsPermissions,
     ...backupsPermissions,
     ...networkPermissions,
+    ...chatPermissions,
   ]) {
     await prisma.permission.upsert({
       where: { code: p.code },

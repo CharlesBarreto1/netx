@@ -8,6 +8,15 @@ smoke_test() {
   smoke_http_endpoints
   smoke_postgres_radius
   smoke_freeradius_test
+  smoke_evolution
+}
+
+smoke_evolution() {
+  if curl -fsS "http://127.0.0.1:8080/" >/dev/null 2>&1; then
+    log_ok "Evolution API responde em :8080"
+  else
+    log_warn "Evolution API não respondeu (admin pode subir manualmente: cd /opt/netx-evolution && docker compose up -d)"
+  fi
 }
 
 smoke_services_active() {

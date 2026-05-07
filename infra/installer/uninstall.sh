@@ -34,6 +34,11 @@ echo "==> Parando serviços NetX"
 systemctl stop netx-web netx-api-gateway netx-core-service 2>/dev/null || true
 systemctl disable netx-web netx-api-gateway netx-core-service 2>/dev/null || true
 
+echo "==> Parando Evolution API (Docker)"
+if [ -d /opt/netx-evolution ]; then
+  (cd /opt/netx-evolution && docker compose down -v 2>/dev/null) || true
+fi
+
 echo "==> Removendo unidades systemd"
 rm -f /etc/systemd/system/netx-{web,api-gateway,core-service}.service
 systemctl daemon-reload
@@ -60,12 +65,14 @@ rm -rf /var/log/netx
 if (( PURGE == 1 )); then
   echo "==> --purge: removendo DB e segredos"
   sudo -u postgres psql -c "DROP DATABASE IF EXISTS netx" || true
+  sudo -u postgres psql -c "DROP DATABASE IF EXISTS evolution" || true
   sudo -u postgres psql -c "DROP ROLE IF EXISTS netx" || true
+  sudo -u postgres psql -c "DROP ROLE IF EXISTS evolution" || true
 
   rabbitmqctl delete_user netx 2>/dev/null || true
   rabbitmqctl delete_vhost netx 2>/dev/null || true
 
-  rm -rf /etc/netx /var/lib/netx
+  rm -rf /etc/netx /var/lib/netx /opt/netx-evolution
   userdel -r netx 2>/dev/null || true
 
   echo "==> Tudo removido."

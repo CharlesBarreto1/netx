@@ -67,11 +67,19 @@ netx_app_render_env() {
   export NETX_REDIS_URL="${NETX_REDIS_URL:-redis://localhost:6379}"
   export NETX_RABBITMQ_URL="${NETX_RABBITMQ_URL:-amqp://${NETX_RABBIT_USER}:${NETX_RABBIT_PASSWORD}@localhost:5672/${NETX_RABBIT_VHOST}}"
 
+  # Apikey do Evolution já criada (ou ainda vazia se evolution_setup ainda
+  # não rodou). Se vazia agora, vai ser preenchida na próxima execução —
+  # o installer é idempotente, render_env roda de novo após evolution_setup
+  # se necessário.
+  export EVOLUTION_API_KEY
+  EVOLUTION_API_KEY=$(secret_get_or_create EVOLUTION_API_KEY 48)
+
   log_info "Renderizando ${env}"
   render_template "${tmpl}" "${env}" \
     NETX_DATABASE_URL NETX_REDIS_URL NETX_RABBITMQ_URL \
     NETX_JWT_ACCESS_SECRET NETX_JWT_REFRESH_SECRET \
-    NETX_PORT_API_GATEWAY NETX_PORT_CORE_SERVICE NETX_PORT_WEB
+    NETX_PORT_API_GATEWAY NETX_PORT_CORE_SERVICE NETX_PORT_WEB \
+    EVOLUTION_API_KEY
 
   chown root:"${NETX_USER}" "${env}"
   chmod 640 "${env}"

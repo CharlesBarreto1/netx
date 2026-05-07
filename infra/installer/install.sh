@@ -127,6 +127,8 @@ source "${INSTALLER_DIR}/lib/redis.sh"
 source "${INSTALLER_DIR}/lib/rabbitmq.sh"
 # shellcheck source=lib/freeradius.sh
 source "${INSTALLER_DIR}/lib/freeradius.sh"
+# shellcheck source=lib/evolution.sh
+source "${INSTALLER_DIR}/lib/evolution.sh"
 # shellcheck source=lib/netx_app.sh
 source "${INSTALLER_DIR}/lib/netx_app.sh"
 # shellcheck source=lib/systemd.sh
@@ -165,6 +167,7 @@ main() {
   step "rabbitmq"            rabbitmq_setup
   step "netx_app"            netx_app_setup
   step "freeradius"          freeradius_setup
+  step "evolution"           evolution_setup
   step "systemd"             systemd_setup
   step "nginx"               nginx_setup
   step "smoke"               smoke_test

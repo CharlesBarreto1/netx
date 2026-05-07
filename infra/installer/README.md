@@ -53,6 +53,7 @@ sudo NETX_SKIP_WIZARD=1 \
 | FreeRADIUS | 3.x | apt + módulo postgresql + clients via SQL |
 | Node.js | 20 LTS | NodeSource |
 | Nginx | sistema | reverse proxy 80 → web/:3200 + /api → api-gateway/:3000 |
+| Evolution API | v2.1.x (Docker) | WhatsApp/Baileys em `localhost:8080`, dados em `/var/lib/netx/evolution` |
 | NetX | branch `main` | clone + build em `/opt/netx` |
 
 ## Layout no sistema

@@ -85,6 +85,11 @@ model Tenant {
   networkPops          NetworkPop[]
   networkEquipment     NetworkEquipment[]
 
+  // WhatsApp / Atendimento
+  whatsappInstances    WhatsappInstance[]
+  whatsappContacts     WhatsappContact[]
+  whatsappConversations WhatsappConversation[]
+
   @@index([status])
   @@index([country])
   @@map("tenants")
@@ -196,6 +201,11 @@ model User {
   networkPopsUpdated   NetworkPop[]   @relation("NetworkPopUpdatedBy")
   networkEqCreated     NetworkEquipment[] @relation("NetworkEquipmentCreatedBy")
   networkEqUpdated     NetworkEquipment[] @relation("NetworkEquipmentUpdatedBy")
+
+  // WhatsApp / Atendimento
+  whatsappConversationsAssigned WhatsappConversation[] @relation("WaConversationAssignee")
+  whatsappMessagesSent          WhatsappMessage[]      @relation("WaMessageFromUser")
+  whatsappConversationViews     WhatsappConversationView[]
 
   @@unique([tenantId, email])
   @@index([tenantId, status])
@@ -504,6 +514,7 @@ model Customer {
   activities      Activity[]
   contracts       Contract[]
   oneTimeCharges  OneTimeCharge[]
+  whatsappContacts WhatsappContact[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, taxId, taxIdType])
@@ -1512,4 +1523,194 @@ model NetworkEquipment {
   @@index([tenantId, type])
   @@index([popId])
   @@map("network_equipment")
+}
+
+// =============================================================================
+// WhatsApp / Atendimento (Evolution API integration)
+// =============================================================================
+// Módulo de chat MVP: WhatsApp via Evolution API com multi-operador, sem URA,
+// sem fluxos automáticos, sem templates. Apenas inbox compartilhada com
+// atribuição manual e auditoria realtime.
+//
+// Webhook receiver em /v1/webhooks/evolution; SSE em /v1/whatsapp/stream.
+// Mídia armazenada localmente em /var/lib/netx/whatsapp/media/.
+// =============================================================================
+
+enum WaInstanceStatus {
+  DISCONNECTED
+  CONNECTING
+  CONNECTED
+  ERROR
+}
+
+enum WaConversationStatus {
+  OPEN
+  RESOLVED
+  ARCHIVED
+}
+
+enum WaMsgDirection {
+  IN
+  OUT
+}
+
+enum WaMsgType {
+  TEXT
+  IMAGE
+  AUDIO
+  VIDEO
+  DOCUMENT
+  LOCATION
+  STICKER
+  CONTACT
+  UNKNOWN
+}
+
+enum WaMsgStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  FAILED
+}
+
+/// Representa uma instância (sessão WhatsApp) gerenciada pelo Evolution API.
+/// O MVP suporta múltiplas instâncias por tenant, mas a UI v1 mostra só a
+/// primeira ativa — manter o `@@unique([tenantId, instanceName])` permite
+/// crescer pra multi-instância depois sem schema migration.
+model WhatsappInstance {
+  id            String  @id @default(uuid()) @db.Uuid
+  tenantId      String  @map("tenant_id") @db.Uuid
+
+  name          String  @db.VarChar(120)                   // "Atendimento Principal"
+  evolutionUrl  String  @map("evolution_url") @db.VarChar(255) @default("http://localhost:8080")
+  apiKey        String  @map("api_key") @db.VarChar(255)   // criptografado at-rest
+  instanceName  String  @map("instance_name") @db.VarChar(120) // nome no Evolution
+  webhookSecret String  @map("webhook_secret") @db.VarChar(64)  // valida POST /webhooks/evolution
+
+  phoneE164     String?  @map("phone_e164") @db.VarChar(20)  // número conectado
+  status        WaInstanceStatus @default(DISCONNECTED)
+  qrCode        String?  @map("qr_code") @db.Text             // base64 PNG quando aguardando scan
+  lastError     String?  @map("last_error") @db.Text
+  connectedAt   DateTime? @map("connected_at")
+
+  active        Boolean @default(true)
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tenant        Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  conversations WhatsappConversation[]
+
+  @@unique([tenantId, instanceName])
+  @@index([tenantId, status])
+  @@map("whatsapp_instances")
+}
+
+/// Contato com quem trocamos mensagens. Único por (tenant, número), não cresce
+/// proporcional ao volume de mensagens. `customerId` é null até alguém linkar
+/// (auto pelo `Customer.primaryPhone` ou manual no painel).
+model WhatsappContact {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @map("tenant_id") @db.Uuid
+
+  phoneE164   String  @map("phone_e164") @db.VarChar(20)   // +595981234567
+  pushName    String? @map("push_name") @db.VarChar(255)   // como aparece no WhatsApp
+  customerId  String? @map("customer_id") @db.Uuid          // se reconhecido
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer    Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  conversations WhatsappConversation[]
+
+  @@unique([tenantId, phoneE164])
+  @@index([tenantId, customerId])
+  @@map("whatsapp_contacts")
+}
+
+/// Thread de conversa entre uma instância e um contato. Status OPEN é o
+/// inbox; RESOLVED some do inbox principal; ARCHIVED some de tudo. Apenas
+/// uma conversa OPEN por (instance, contact) — re-abre a existente se nova
+/// mensagem chegar de contato com conversa RESOLVED.
+model WhatsappConversation {
+  id             String  @id @default(uuid()) @db.Uuid
+  tenantId       String  @map("tenant_id") @db.Uuid
+  instanceId     String  @map("instance_id") @db.Uuid
+  contactId      String  @map("contact_id") @db.Uuid
+
+  status         WaConversationStatus @default(OPEN)
+  assignedUserId String?  @map("assigned_user_id") @db.Uuid
+  assignedAt     DateTime? @map("assigned_at")
+  resolvedAt     DateTime? @map("resolved_at")
+  resolvedById   String?  @map("resolved_by_id") @db.Uuid
+
+  lastMessageAt  DateTime  @map("last_message_at")
+  lastInboundAt  DateTime? @map("last_inbound_at")           // p/ "tem nova msg?"
+  unreadCount    Int       @default(0) @map("unread_count")
+
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  tenant         Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  instance       WhatsappInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  contact        WhatsappContact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  assignedUser   User?  @relation("WaConversationAssignee", fields: [assignedUserId], references: [id], onDelete: SetNull)
+
+  messages       WhatsappMessage[]
+  views          WhatsappConversationView[]
+
+  @@index([tenantId, status, lastMessageAt])
+  @@index([tenantId, assignedUserId])
+  @@index([instanceId, contactId])
+  @@map("whatsapp_conversations")
+}
+
+/// Mensagem individual. Direction IN = recebida do cliente; OUT = enviada
+/// pelo NetX (com `fromUserId` apontando pro operador). `evolutionMsgId`
+/// é único pra dedup quando o webhook do Evolution reentrega.
+model WhatsappMessage {
+  id              String  @id @default(uuid()) @db.Uuid
+  conversationId  String  @map("conversation_id") @db.Uuid
+
+  direction       WaMsgDirection
+  type            WaMsgType
+  body            String? @db.Text                         // texto ou caption
+  mediaUrl        String? @map("media_url") @db.VarChar(500) // path local ou URL
+  mediaMimeType   String? @map("media_mime_type") @db.VarChar(100)
+  mediaSize       Int?    @map("media_size")               // bytes
+
+  evolutionMsgId  String?  @unique @map("evolution_msg_id") @db.VarChar(120)
+  fromUserId      String?  @map("from_user_id") @db.Uuid    // null se IN
+  status          WaMsgStatus @default(SENT)
+  errorReason     String?  @map("error_reason") @db.Text
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  conversation    WhatsappConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  fromUser        User? @relation("WaMessageFromUser", fields: [fromUserId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, createdAt])
+  @@map("whatsapp_messages")
+}
+
+/// Auditoria realtime: registra cada vez que um usuário abre uma conversa
+/// que NÃO está atribuída a ele. Permite "espionar" mas deixa rastro.
+/// Combinado com AuditLog (action=whatsapp.conversation.viewed) pra trail
+/// completa em compliance LGPD.
+model WhatsappConversationView {
+  id             String   @id @default(uuid()) @db.Uuid
+  conversationId String   @map("conversation_id") @db.Uuid
+  viewerUserId   String   @map("viewer_user_id") @db.Uuid
+
+  viewedAt       DateTime @default(now()) @map("viewed_at")
+
+  conversation   WhatsappConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  viewer         User @relation(fields: [viewerUserId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, viewedAt])
+  @@index([viewerUserId, viewedAt])
+  @@map("whatsapp_conversation_views")
 }
