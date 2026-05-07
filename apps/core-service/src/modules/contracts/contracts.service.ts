@@ -527,9 +527,32 @@ export class ContractsService {
     if (existing.status !== PrismaContractStatus.CANCELLED) {
       throw new BadRequestException('Cancele o contrato antes de excluí-lo');
     }
+
+    // Libera os uniques (pppoe_username, circuit_id, mac_address, code) pra
+    // que um novo contrato com o mesmo identificador possa ser criado. O
+    // unique constraint do Postgres conta linhas soft-deletadas, então sem
+    // esse sufixo o re-cadastro do mesmo PPPoE/MAC dá P2002.
+    // Convenção: `<original>__deleted_<timestamp>` — preserva legibilidade
+    // pra debug/auditoria, e o `__` é improvável colidir com username real.
+    const stamp = Date.now().toString(36);
+    const suffix = `__del_${stamp}`;
+    const sufx = (v: string | null) => (v ? `${v}${suffix}`.slice(0, 64) : null);
+
     await this.prisma.contract.update({
       where: { id },
-      data: { deletedAt: new Date(), updatedById: actorUserId },
+      data: {
+        deletedAt: new Date(),
+        updatedById: actorUserId,
+        // null fica null; só sufixa quando havia valor.
+        pppoeUsername: sufx(existing.pppoeUsername),
+        circuitId: existing.circuitId
+          ? `${existing.circuitId}${suffix}`.slice(0, 128)
+          : null,
+        macAddress: existing.macAddress
+          ? `${existing.macAddress}${suffix}`.slice(0, 32)
+          : null,
+        code: existing.code ? `${existing.code}${suffix}`.slice(0, 32) : null,
+      },
     });
     await this.audit.log({
       tenantId,
@@ -537,6 +560,13 @@ export class ContractsService {
       action: 'contracts.deleted',
       resource: 'contracts',
       resourceId: id,
+      // Audit guarda o original pra rastreio.
+      beforeState: {
+        pppoeUsername: existing.pppoeUsername,
+        circuitId: existing.circuitId,
+        macAddress: existing.macAddress,
+        code: existing.code,
+      },
     });
   }
 }
