@@ -79,16 +79,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS radusergroup_username_priority_uidx
 -- -----------------------------------------------------------------------------
 -- radacct — accounting (sessões). O FreeRADIUS popula automaticamente.
 -- -----------------------------------------------------------------------------
+-- IMPORTANTE: nullability segue o schema oficial do FreeRADIUS 3.x
+-- (raddb/mods-config/sql/main/postgresql/schema.sql). Não acrescentar
+-- NOT NULL/DEFAULT em colunas que o FreeRADIUS envia como NULL no
+-- Accounting-Start — o INSERT padrão passa NULL explícito e o Postgres
+-- rejeita antes de aplicar DEFAULT.
 CREATE TABLE IF NOT EXISTS radius.radacct (
     radacctid           BIGSERIAL PRIMARY KEY,
-    acctsessionid       VARCHAR(64)  NOT NULL DEFAULT '',
+    acctsessionid       VARCHAR(64)  NOT NULL,
     acctuniqueid        VARCHAR(32)  NOT NULL UNIQUE,
-    username            VARCHAR(64)  NOT NULL DEFAULT '',
-    groupname           VARCHAR(64)  NOT NULL DEFAULT '',
-    realm               VARCHAR(64)           DEFAULT '',
+    username            VARCHAR(64)  NOT NULL,
+    groupname           VARCHAR(64),
+    realm               VARCHAR(64),
     nasipaddress        INET         NOT NULL,
-    nasportid           VARCHAR(32)           DEFAULT NULL,
-    nasporttype         VARCHAR(32)           DEFAULT NULL,
+    nasportid           VARCHAR(32),
+    nasporttype         VARCHAR(32),
     acctstarttime       TIMESTAMP WITH TIME ZONE,
     acctupdatetime      TIMESTAMP WITH TIME ZONE,
     acctstoptime        TIMESTAMP WITH TIME ZONE,
@@ -99,9 +104,9 @@ CREATE TABLE IF NOT EXISTS radius.radacct (
     connectinfo_stop    VARCHAR(50),
     acctinputoctets     BIGINT,
     acctoutputoctets    BIGINT,
-    calledstationid     VARCHAR(50)  NOT NULL DEFAULT '',
-    callingstationid    VARCHAR(50)  NOT NULL DEFAULT '',
-    acctterminatecause  VARCHAR(32)  NOT NULL DEFAULT '',
+    calledstationid     VARCHAR(50),
+    callingstationid    VARCHAR(50),
+    acctterminatecause  VARCHAR(32),
     servicetype         VARCHAR(32),
     framedprotocol      VARCHAR(32),
     framedipaddress     INET,
@@ -174,47 +179,17 @@ BEGIN
     (SELECT string_agg(DISTINCT groupname, ', ') FROM radius.radgroupreply);
 END $$;
 
--- -----------------------------------------------------------------------------
--- nas — clients RADIUS dinâmicos (BNGs cadastrados via NetX).
---
--- O FreeRADIUS lê esta tabela quando configurado com `read_clients = yes`
--- no módulo SQL. Cada linha vira um `client { ... }` em runtime sem
--- precisar editar `clients.conf`.
---
--- O NetX (NetworkModule) faz INSERT/UPDATE/DELETE aqui automaticamente
--- quando admin cadastra um Equipamento type=BNG.
---
--- Schema padrão FreeRADIUS 3.x — não mude colunas ou dialup.conf quebra.
--- -----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS radius.nas (
-    id          BIGSERIAL PRIMARY KEY,
-    nasname     VARCHAR(128) NOT NULL,           -- IP ou hostname do BNG
-    shortname   VARCHAR(32),                     -- alias curto
-    type        VARCHAR(30) DEFAULT 'other',     -- mikrotik, cisco, juniper, other
-    ports       INTEGER,
-    secret      VARCHAR(60) NOT NULL DEFAULT 'secret',
-    server      VARCHAR(64),
-    community   VARCHAR(50),
-    description VARCHAR(200) DEFAULT 'NetX-managed'
-);
-CREATE UNIQUE INDEX IF NOT EXISTS nas_nasname_uidx ON radius.nas (nasname);
-
 -- =============================================================================
--- Configuração FreeRADIUS necessária pra ler clientes desta tabela:
+-- Configuração FreeRADIUS necessária pra ler clientes da tabela radius.nas
+-- (definida acima). NetworkModule do NetX faz INSERT/UPDATE/DELETE
+-- automaticamente quando admin cadastra um Equipamento type=BNG.
 --
 --   /etc/freeradius/3.0/mods-available/sql:
 --     read_clients = yes
 --     client_table = "nas"
+--     client_query = "SELECT id, nasname, shortname, type, secret, server FROM radius.nas"
 --
---   /etc/freeradius/3.0/clients.conf:
---     # No fim do arquivo, libera leitura via SQL:
---     #   $INCLUDE sql.conf  (se já existe)
---     # OU adicione manualmente:
---     #   client sql {}      (vazio — força ler do SQL)
+--   ALTER ROLE netx SET search_path TO radius, public;
 --
 --   Após editar: sudo systemctl restart freeradius
---
--- Pra que o FreeRADIUS pegue mudanças sem restart, configure:
---   /etc/freeradius/3.0/mods-config/sql/main/postgresql/queries.conf
---   client_query = "SELECT id, nasname, shortname, type, secret, server, community, description FROM radius.nas"
 -- =============================================================================
