@@ -1,0 +1,39 @@
+[Unit]
+Description=NetX API Gateway (NestJS)
+Documentation=https://github.com/charlesbarreto/netx
+After=network-online.target netx-core-service.service
+Wants=network-online.target
+Requires=netx-core-service.service
+
+[Service]
+Type=simple
+User=netx
+Group=netx
+WorkingDirectory=/opt/netx/apps/api-gateway
+EnvironmentFile=/etc/netx/.env
+ExecStart=/usr/bin/node dist/main.js
+
+Restart=on-failure
+RestartSec=5s
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=netx-gateway
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/netx /var/log/netx /opt/netx/apps/api-gateway/dist
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

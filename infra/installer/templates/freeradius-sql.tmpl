@@ -1,0 +1,61 @@
+# =============================================================================
+# NetX — FreeRADIUS mods-available/sql (gerado pelo installer)
+# =============================================================================
+# Conecta no Postgres do NetX, usa search_path radius,public via ALTER ROLE.
+# Lê clients dinamicamente da tabela radius.nas (managed pelo NetworkModule).
+#
+# NÃO editar manualmente — re-rode o installer pra regenerar.
+# =============================================================================
+
+sql {
+    driver  = "rlm_sql_postgresql"
+    dialect = "postgresql"
+
+    # Conexão
+    server   = "${NETX_DB_HOST}"
+    port     = ${NETX_DB_PORT}
+    login    = "${NETX_DB_USER}"
+    password = "${NETX_DB_PASSWORD}"
+    radius_db = "${NETX_DB_NAME}"
+
+    # Tabelas (nomes default — search_path da role já aponta pra radius)
+    acct_table1     = "radacct"
+    acct_table2     = "radacct"
+    postauth_table  = "radpostauth"
+    authcheck_table = "radcheck"
+    authreply_table = "radreply"
+    groupcheck_table = "radgroupcheck"
+    groupreply_table = "radgroupreply"
+    usergroup_table  = "radusergroup"
+
+    # Atributo de grupo
+    group_attribute = "SQL-Group"
+
+    # Lê clients (NAS) da tabela radius.nas — managed pelo NetX.
+    # Updates sem precisar reiniciar o FreeRADIUS: quando criar/editar
+    # equipamento BNG, o NetX faz UPSERT em radius.nas; FreeRADIUS relê
+    # clients no próximo SIGHUP ou restart.
+    read_clients = yes
+    client_table = "nas"
+
+    # Limpa sessões "stale" quando NAS reiniciar
+    delete_stale_sessions = yes
+
+    # Connection pool
+    pool {
+        start            = 5
+        min              = 4
+        max              = 32
+        spare            = 3
+        uses             = 0
+        retry_delay      = 30
+        lifetime         = 0
+        idle_timeout     = 60
+    }
+
+    read_groups   = yes
+    read_profiles = yes
+
+    # Carrega queries default do dialect (já vem com Debian)
+    $INCLUDE ${modconfdir}/${.:name}/main/${dialect}/queries.conf
+}

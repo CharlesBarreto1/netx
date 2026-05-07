@@ -1,0 +1,40 @@
+[Unit]
+Description=NetX Web Frontend (Next.js)
+Documentation=https://github.com/charlesbarreto/netx
+After=network-online.target netx-api-gateway.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=netx
+Group=netx
+WorkingDirectory=/opt/netx/apps/web
+EnvironmentFile=/etc/netx/.env
+Environment=PORT=3200
+Environment=HOSTNAME=127.0.0.1
+ExecStart=/usr/bin/npm run start
+
+Restart=on-failure
+RestartSec=5s
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=netx-web
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/netx /var/log/netx /opt/netx/apps/web/.next /opt/netx/node_modules
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
