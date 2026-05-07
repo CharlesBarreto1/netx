@@ -42,6 +42,7 @@ const MENU_ICON: Record<string, React.ReactNode> = {
   security: <IconSettings />,
   pops: <IconDatabase />,
   equipment: <IconWrench />,
+  radiusLog: <IconList />,
 };
 
 export function AppShell({

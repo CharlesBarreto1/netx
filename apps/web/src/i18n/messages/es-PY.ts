@@ -79,6 +79,7 @@ const messages = {
     security: 'Mi seguridad',
     pops: 'POPs',
     equipment: 'Equipamientos',
+    radiusLog: 'Log RADIUS',
     logout: 'Salir',
     language: 'Idioma',
     tenantDefault: 'Idioma de la operación',
