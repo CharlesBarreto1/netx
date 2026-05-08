@@ -101,13 +101,14 @@ async function main() {
         tenantId: tenant.id,
         email: adminEmail,
         passwordHash,
-        fullName: 'Administrator',
-        active: true,
+        firstName: 'Admin',
+        lastName: 'NetX',
+        status: 'ACTIVE',
         locale: tenantLocale,
       },
       update: {
         passwordHash,
-        active: true,
+        status: 'ACTIVE',
       },
     });
 

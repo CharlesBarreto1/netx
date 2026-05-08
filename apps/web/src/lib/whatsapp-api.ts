@@ -68,7 +68,7 @@ export interface WaConversationListItem {
   unreadCount: number;
   contact: WaContact;
   instance: { id: string; name: string; phoneE164: string | null; status: WaInstanceStatus };
-  assignedUser: { id: string; fullName: string; email: string } | null;
+  assignedUser: { id: string; firstName: string; lastName: string; email: string } | null;
   messages: Array<{
     id: string;
     body: string | null;
@@ -89,7 +89,7 @@ export interface WaMessage {
   errorReason: string | null;
   createdAt: string;
   fromUserId: string | null;
-  fromUser?: { id: string; fullName: string } | null;
+  fromUser?: { id: string; firstName: string; lastName: string } | null;
 }
 
 export interface WaConversationDetail extends WaConversationListItem {

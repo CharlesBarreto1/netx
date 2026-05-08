@@ -370,7 +370,7 @@ function ChatThread({
           )}
           {conversation.assignedUser && (
             <span className="text-xs text-text-muted">
-              {t('thread.assignedTo', { name: conversation.assignedUser.fullName })}
+              {t('thread.assignedTo', { name: `${conversation.assignedUser.firstName} ${conversation.assignedUser.lastName}` })}
             </span>
           )}
           {isUnassigned && canAssign && (

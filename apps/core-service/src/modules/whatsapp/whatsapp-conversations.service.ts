@@ -54,7 +54,7 @@ export class WhatsappConversationsService {
           },
         },
         instance: { select: { id: true, name: true, phoneE164: true, status: true } },
-        assignedUser: { select: { id: true, fullName: true, email: true } },
+        assignedUser: { select: { id: true, firstName: true, lastName: true, email: true } },
         messages: {
           orderBy: { createdAt: 'desc' },
           take: 1,
@@ -95,7 +95,7 @@ export class WhatsappConversationsService {
           },
         },
         instance: { select: { id: true, name: true, phoneE164: true, status: true } },
-        assignedUser: { select: { id: true, fullName: true, email: true } },
+        assignedUser: { select: { id: true, firstName: true, lastName: true, email: true } },
       },
     });
     if (!conv) throw new NotFoundException('Conversa não encontrada');
@@ -144,7 +144,7 @@ export class WhatsappConversationsService {
       orderBy: { createdAt: 'asc' },
       take: 200,
       include: {
-        fromUser: { select: { id: true, fullName: true } },
+        fromUser: { select: { id: true, firstName: true, lastName: true } },
       },
     });
 
