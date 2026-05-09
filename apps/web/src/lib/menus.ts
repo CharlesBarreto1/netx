@@ -73,14 +73,17 @@ export const MENU_GROUPS: MenuGroup[] = [
     ],
   },
 
-  // Atendimento — chat WhatsApp via Evolution API
-  {
-    key: 'chat',
-    labelKey: 'group.chat',
-    items: [
-      { key: 'chat', href: '/chat', labelKey: 'chat', permission: 'chat.read' },
-    ],
-  },
+  // [DESATIVADO] Atendimento — Evolution API teve problemas; reativar quando
+  // trocarmos pra Whaticket/WhatsApp Web JS/Meta oficial. Veja docs/architecture/
+  // ou memória "whatsapp_evolution_pendente". Backend/schema/i18n/pages
+  // continuam no código, apenas escondemos do menu.
+  // {
+  //   key: 'chat',
+  //   labelKey: 'group.chat',
+  //   items: [
+  //     { key: 'chat', href: '/chat', labelKey: 'chat', permission: 'chat.read' },
+  //   ],
+  // },
 
   // Operações — campo (O.S) + infraestrutura de rede (POPs + equipamentos)
   {
@@ -111,8 +114,8 @@ export const MENU_GROUPS: MenuGroup[] = [
       // /settings/tenant: configuração da empresa (país/locale/moeda/CNPJ)
       { key: 'settings', href: '/settings/tenant', labelKey: 'settings', permission: 'tenants.update' },
       { key: 'users', href: '/settings/users', labelKey: 'users', permission: 'users.read' },
-      // /settings/whatsapp: gerenciar instâncias Evolution (QR, conexão)
-      { key: 'whatsapp', href: '/settings/whatsapp', labelKey: 'whatsappAdmin', permission: 'chat.admin' },
+      // [DESATIVADO] WhatsApp admin — descomenta quando módulo Chat voltar
+      // { key: 'whatsapp', href: '/settings/whatsapp', labelKey: 'whatsappAdmin', permission: 'chat.admin' },
       { key: 'backups', href: '/settings/backups', labelKey: 'backups', permission: 'backups.manage' },
       { key: 'audit', href: '/settings/audit', labelKey: 'audit', permission: 'audit.read' },
     ],
