@@ -14,7 +14,9 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('admin@netx.local');
   const [password, setPassword] = useState('');
-  const [tenantSlug, setTenantSlug] = useState('default');
+  // Vazio por padrão — o backend cai no DEFAULT_TENANT_SLUG do .env quando
+  // tenantSlug não é enviado. Cada instância NetX = um ISP = um tenant.
+  const [tenantSlug, setTenantSlug] = useState('');
   const [mfaToken, setMfaToken] = useState('');
   const [needsMfa, setNeedsMfa] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -28,7 +30,11 @@ export default function LoginPage() {
       const res = await apiLogin({
         email,
         password,
-        tenantSlug,
+        // Só envia tenantSlug se o user digitou explicitamente — assim o
+        // backend usa o DEFAULT_TENANT_SLUG do .env, evitando descasamento
+        // entre o slug literal "default" e o slug real do tenant criado
+        // pelo installer.
+        ...(tenantSlug.trim() ? { tenantSlug: tenantSlug.trim() } : {}),
         ...(needsMfa && mfaToken ? { mfaToken } : {}),
       });
       localStorage.setItem('netx.accessToken', res.accessToken);
@@ -75,12 +81,14 @@ export default function LoginPage() {
         <h1 className="text-2xl font-bold text-center mb-2">Entrar no NetX</h1>
 
         <div>
-          <label className="block text-sm font-medium mb-1">Tenant</label>
+          <label className="block text-sm font-medium mb-1">
+            Tenant <span className="text-slate-400">(opcional)</span>
+          </label>
           <input
             className="w-full px-3 py-2 rounded-md border border-slate-300 dark:border-slate-600 bg-transparent"
             value={tenantSlug}
             onChange={(e) => setTenantSlug(e.target.value)}
-            required
+            placeholder="deixe em branco — usa o desta instância"
             disabled={needsMfa}
           />
         </div>

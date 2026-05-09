@@ -42,8 +42,19 @@ async function bootstrap() {
   // trocar pra número de hops específico (ex.: 2).
   app.set('trust proxy', true);
 
-  // Security headers
-  app.use(helmet());
+  // Security headers — defesa em profundidade. Core-service só recebe
+  // tráfego interno (atrás do gateway/Nginx) mas mantemos os headers caso
+  // alguém exponha o port 3101 sem querer.
+  app.use(
+    helmet({
+      contentSecurityPolicy: config.env === 'production' ? undefined : false,
+      hsts:
+        config.env === 'production'
+          ? { maxAge: 31_536_000, includeSubDomains: true, preload: false }
+          : false,
+      referrerPolicy: { policy: 'no-referrer' },
+    }),
+  );
 
   // CORS (Core Service is normally private — only API Gateway talks to it)
   app.enableCors({ origin: false });

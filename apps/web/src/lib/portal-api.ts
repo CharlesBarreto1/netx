@@ -175,11 +175,16 @@ function safeParse(t: string): unknown {
 
 export const portalApi = {
   async login(input: { tenantSlug?: string; taxId: string; code: string }) {
-    const session = await request<PortalSession>('POST', '/v1/portal/login', {
-      tenantSlug: input.tenantSlug ?? 'default',
+    // Omite tenantSlug quando vazio pra que o backend use o
+    // DEFAULT_TENANT_SLUG da instância (uma URL = uma operação).
+    const body: Record<string, string> = {
       taxId: input.taxId,
       code: input.code,
-    });
+    };
+    if (input.tenantSlug && input.tenantSlug.trim()) {
+      body.tenantSlug = input.tenantSlug.trim();
+    }
+    const session = await request<PortalSession>('POST', '/v1/portal/login', body);
     persistSession(session);
     return session;
   },

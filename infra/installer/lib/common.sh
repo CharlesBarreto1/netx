@@ -68,6 +68,27 @@ gen_secret() {
   echo
 }
 
+# Slugify — converte "Minha ISP, Ltda" → "minha-isp-ltda".
+# Bate com a `slugify()` em scripts/seed-admin.ts pra que o slug do tenant
+# criado pelo seed seja o mesmo gravado em DEFAULT_TENANT_SLUG.
+slugify() {
+  local input=$1
+  # 1) lowercase
+  # 2) strip diacríticos via iconv (ASCII//TRANSLIT)
+  # 3) sanitiza: tudo fora de [a-z0-9] vira '-'
+  # 4) compacta '-' duplos e remove dos extremos
+  # 5) limita a 50 chars
+  local out
+  out=$(printf '%s' "${input}" | iconv -f UTF-8 -t ASCII//TRANSLIT 2>/dev/null \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' \
+    | head -c 50)
+  if [[ -z "${out}" ]]; then
+    out='tenant'
+  fi
+  printf '%s' "${out}"
+}
+
 # Substitui ${VAR} no template por env vars (envsubst). Usa variáveis listadas
 # explicitamente pra não vazar nada inesperado.
 render_template() {

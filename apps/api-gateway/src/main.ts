@@ -34,13 +34,36 @@ async function bootstrap() {
     'trust proxy',
     1,
   );
-  app.use(helmet());
+  // Helmet — em produção habilita HSTS por 1 ano e CSP estrita.
+  // Em dev desliga CSP pra Swagger funcionar sem CDNs allowlistadas.
+  app.use(
+    helmet({
+      contentSecurityPolicy: config.env === 'production' ? undefined : false,
+      hsts:
+        config.env === 'production'
+          ? { maxAge: 31_536_000, includeSubDomains: true, preload: false }
+          : false,
+      crossOriginOpenerPolicy: { policy: 'same-origin' },
+      crossOriginResourcePolicy: { policy: 'same-site' },
+      referrerPolicy: { policy: 'no-referrer' },
+    }),
+  );
 
+  // CORS — em produção exigimos origins explícitos. Aceitar wildcard '*'
+  // junto com credentials=true permitiria qualquer site externo fazer request
+  // autenticado em nome de um user logado (cenário CSRF clássico). Recusamos
+  // boot pra evitar configuração frágil.
+  const isWildcard =
+    config.apiGateway.corsOrigins.length === 0 ||
+    config.apiGateway.corsOrigins[0] === '*';
+  if (config.env === 'production' && isWildcard) {
+    throw new Error(
+      'API_GATEWAY_CORS_ORIGINS=* é proibido em produção. ' +
+        'Defina os origins exatos do frontend (ex.: https://netx.exemplo.com,https://app.exemplo.com).',
+    );
+  }
   app.enableCors({
-    origin:
-      config.apiGateway.corsOrigins.length === 0 || config.apiGateway.corsOrigins[0] === '*'
-        ? true
-        : config.apiGateway.corsOrigins,
+    origin: isWildcard ? true : config.apiGateway.corsOrigins,
     credentials: true,
   });
 

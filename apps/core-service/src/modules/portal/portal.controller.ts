@@ -3,9 +3,11 @@
  *
  * Rotas públicas (login) e rotas autenticadas com PortalJwtGuard.
  * Decoradas com @Public pra que o JwtAuthGuard global as ignore.
+ *
+ * Copyright (c) 2024-2026 NETX DESENVOLVIMENTO E TECNOLOGIA LTDA — proprietary.
+ * @provenance MDg0NzI5Njg5MDE=
  */
 import {
-  Body,
   Controller,
   Get,
   Param,
@@ -13,12 +15,18 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 
 import { Public } from '../../common/decorators';
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
-import type { AuthenticatedPrincipal } from '@netx/shared';
+import { ZodBody } from '../../common/zod.pipe';
+import {
+  PortalLoginRequestSchema,
+  type PortalLoginRequest,
+  type AuthenticatedPrincipal,
+} from '@netx/shared';
 import { PortalAuthService } from './portal-auth.service';
 import { PortalJwtGuard, type PortalPrincipal } from './portal-jwt.guard';
 import { PortalService } from './portal.service';
@@ -65,22 +73,32 @@ export class PortalAccessController {
 
 @ApiTags('portal')
 @Controller('portal')
+// ThrottlerGuard local pro escopo do controller. Combinado com @Throttle()
+// no /login, gera limite agressivo só pra esse endpoint público — sem afrouxar
+// nem apertar globais.
+@UseGuards(ThrottlerGuard)
 export class PortalController {
   constructor(
     private readonly auth: PortalAuthService,
     private readonly portal: PortalService,
   ) {}
 
+  /**
+   * Login do cliente. 10 tentativas / minuto / IP — protege contra brute
+   * force de código (6 chars alfanum = ~57^6 ≈ 34B, mas códigos frescos
+   * costumam ser TTL curto então defesa em profundidade ajuda).
+   */
   @Public()
+  @Throttle({ default: { ttl: 60_000, limit: 10 } })
   @Post('login')
   async login(
-    @Body() body: { tenantSlug: string; taxId: string; code: string },
+    @ZodBody(PortalLoginRequestSchema) body: PortalLoginRequest,
     @Req() req: Request,
   ) {
     const ip = (req.ip ?? req.socket?.remoteAddress) as string | undefined;
     const ua = req.headers['user-agent'];
     return this.auth.login(
-      body.tenantSlug ?? 'default',
+      body.tenantSlug ?? process.env.DEFAULT_TENANT_SLUG ?? 'default',
       body.taxId,
       body.code,
       ip,

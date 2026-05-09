@@ -67,6 +67,26 @@ netx_app_render_env() {
   export NETX_REDIS_URL="${NETX_REDIS_URL:-redis://localhost:6379}"
   export NETX_RABBITMQ_URL="${NETX_RABBITMQ_URL:-amqp://${NETX_RABBIT_USER}:${NETX_RABBIT_PASSWORD}@localhost:5672/${NETX_RABBIT_VHOST}}"
 
+  # Slug do tenant — bate com a slugify() do seed-admin.ts. Sai pro
+  # DEFAULT_TENANT_SLUG do .env pra que o backend resolva o tenant correto
+  # quando o frontend não envia tenantSlug no /auth/login (caso comum em
+  # uma única instância por ISP).
+  export NETX_TENANT_SLUG
+  NETX_TENANT_SLUG=$(slugify "${NETX_TENANT_NAME}")
+
+  # CORS origins. Em produção precisamos de origins explícitos — wildcard
+  # com credentials=true é vetor de CSRF (gateway recusa boot se vier '*').
+  # Se NETX_DOMAIN setado, usamos https://${dominio}; se não, caímos pro
+  # IP público em http://. Operador pode sobrescrever via env.
+  export NETX_CORS_ORIGINS
+  if [[ -n "${NETX_DOMAIN:-}" ]]; then
+    NETX_CORS_ORIGINS="https://${NETX_DOMAIN},http://${NETX_DOMAIN}"
+  else
+    local _ip
+    _ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    NETX_CORS_ORIGINS="http://${_ip:-localhost}"
+  fi
+
   # Apikey do Evolution já criada (ou ainda vazia se evolution_setup ainda
   # não rodou). Se vazia agora, vai ser preenchida na próxima execução —
   # o installer é idempotente, render_env roda de novo após evolution_setup
@@ -79,6 +99,7 @@ netx_app_render_env() {
     NETX_DATABASE_URL NETX_REDIS_URL NETX_RABBITMQ_URL \
     NETX_JWT_ACCESS_SECRET NETX_JWT_REFRESH_SECRET \
     NETX_PORT_API_GATEWAY NETX_PORT_CORE_SERVICE NETX_PORT_WEB \
+    NETX_TENANT_SLUG NETX_CORS_ORIGINS \
     EVOLUTION_API_KEY
 
   chown root:"${NETX_USER}" "${env}"
