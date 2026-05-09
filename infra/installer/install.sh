@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # =============================================================================
 # NetX — Installer (Debian 13 Trixie)
+#
+# Copyright (c) 2024-2026 NETX DESENVOLVIMENTO E TECNOLOGIA LTDA
+# CNPJ 57.118.236/0001-44 — São Paulo / SP — Brazil
+# Proprietary software — see /LICENSE.
+#
+# Provenance: Y2hhcmxlc2JhcnJldG86MDg0NzI5Njg5MDE=
 # =============================================================================
 # Uso (em um Debian 13 fresh, como root):
 #

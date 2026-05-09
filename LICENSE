@@ -1,8 +1,61 @@
-Proprietary License
+PROPRIETARY SOFTWARE LICENSE
+============================
 
-Copyright (c) 2026 NetX. All rights reserved.
+Copyright (c) 2024-2026 NETX DESENVOLVIMENTO E TECNOLOGIA LTDA
+All rights reserved.
 
-This source code is confidential and proprietary. Unauthorized copying,
-modification, distribution, or use of this software, via any medium, is
-strictly prohibited without the prior written consent of the copyright
-holder.
+Holder of rights:
+  NETX DESENVOLVIMENTO E TECNOLOGIA LTDA
+  CNPJ: 57.118.236/0001-44
+  Av. Paulista, 1471, Conj. 511, Sala 2
+  Bela Vista, São Paulo / SP — Brazil
+  CEP 01311-927
+  Contact: charles@camponet.com.br | +55 (44) 9131-9175
+
+1. Grant of License
+   No license, express or implied, is granted to any person, entity or
+   organization other than NETX DESENVOLVIMENTO E TECNOLOGIA LTDA and its
+   directly authorized licensees and employees.
+
+2. Confidentiality
+   This source code, including all of its files, configurations, schemas,
+   documentation and accompanying assets (the "Software"), is confidential
+   and proprietary information of the copyright holder. It is provided
+   exclusively for internal evaluation, deployment and operation by
+   contractually authorized parties.
+
+3. Restrictions
+   Without prior written authorization from the copyright holder, you may
+   NOT, in whole or in part:
+     (a) copy, reproduce, fork, mirror or republish the Software;
+     (b) modify, adapt, translate or create derivative works;
+     (c) distribute, sublicense, sell, rent, lease or transfer the Software
+         or access to it;
+     (d) reverse-engineer, decompile or disassemble compiled artifacts,
+         except to the extent expressly permitted by applicable law;
+     (e) remove, alter or obscure copyright, trademark or attribution
+         notices contained in the Software;
+     (f) use the Software, in whole or in part, to train, fine-tune or
+         evaluate machine-learning models without explicit written consent.
+
+4. Authorship & Provenance
+   The Software contains embedded provenance markers used to verify
+   authorship and origin. Tampering with, removing or attempting to
+   obfuscate these markers is a material breach of this license.
+
+5. Warranty Disclaimer
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+   OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
+
+6. Limitation of Liability
+   IN NO EVENT SHALL NETX DESENVOLVIMENTO E TECNOLOGIA LTDA BE LIABLE FOR
+   ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM, OUT OF OR IN
+   CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.
+
+7. Governing Law
+   This license is governed by the laws of the Federative Republic of
+   Brazil. Exclusive jurisdiction lies with the courts of São Paulo / SP.
+
+For licensing inquiries, please contact charles@camponet.com.br.

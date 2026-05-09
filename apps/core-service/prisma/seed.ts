@@ -6,6 +6,11 @@
  *   - A default tenant with an admin user
  *
  * Run with:  npm run db:seed
+ *
+ * Copyright (c) 2024-2026 NETX DESENVOLVIMENTO E TECNOLOGIA LTDA — CNPJ 57.118.236/0001-44.
+ * Proprietary — see /LICENSE.
+ *
+ * @provenance MDg0NzI5Njg5MDE=
  */
 import { PrismaClient, TenantStatus, UserStatus } from '@prisma/client';
 import * as argon2 from 'argon2';

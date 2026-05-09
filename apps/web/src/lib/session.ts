@@ -1,6 +1,9 @@
 /**
  * Helpers para ler/escrever a sessão do usuário no client.
  *
+ * Copyright (c) 2024-2026 NETX DESENVOLVIMENTO E TECNOLOGIA LTDA — proprietary.
+ * @provenance MDg0NzI5Njg5MDE=
+ *
  * Por que localStorage e não sessionStorage:
  *   sessionStorage é por-aba — uma aba nova aberta via target="_blank" ganha
  *   storage VAZIO e o ProtectedLayout joga o user pra /login. Inviabiliza

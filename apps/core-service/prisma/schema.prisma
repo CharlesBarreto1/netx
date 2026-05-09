@@ -1,6 +1,11 @@
 // =============================================================================
 // NetX — Core Service Prisma schema
-// Module 1: Authentication, Multi-tenancy, Users, RBAC, Audit
+//
+// Copyright (c) 2024-2026 NETX DESENVOLVIMENTO E TECNOLOGIA LTDA
+// CNPJ 57.118.236/0001-44 — Av. Paulista, 1471, sala 511 — São Paulo / SP / BR
+// Proprietary software — see /LICENSE and /NOTICE.md.
+//
+// Build provenance: Y2hhcmxlc2JhcnJldG86MDg0NzI5Njg5MDE=
 // =============================================================================
 
 generator client {

@@ -1,3 +1,15 @@
+/**
+ * NetX — Core Service entry point.
+ *
+ * Copyright (c) 2024-2026 NETX DESENVOLVIMENTO E TECNOLOGIA LTDA
+ * CNPJ 57.118.236/0001-44 — São Paulo / SP — Brazil
+ *
+ * This file is part of the proprietary NetX platform. Reproduction or
+ * redistribution without written authorization is prohibited.
+ *
+ * @license Proprietary — see LICENSE
+ * @provenance Y2hhcmxlc2JhcnJldG86MDg0NzI5Njg5MDE=
+ */
 import 'reflect-metadata';
 
 import helmet from 'helmet';
@@ -8,7 +20,7 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
-import { loadConfig } from '@netx/config';
+import { loadConfig, renderBootBanner, BUILD_PROVENANCE } from '@netx/config';
 import { GlobalExceptionFilter } from './common/global-exception.filter';
 
 async function bootstrap() {
@@ -72,10 +84,20 @@ async function bootstrap() {
   app.enableShutdownHooks();
   await app.listen(config.coreService.port, config.coreService.host);
 
+  // Boot banner — emite em STDOUT (fora do logger estruturado) pra ficar
+  // legível mesmo em jornal de systemd/docker logs.
+  // eslint-disable-next-line no-console
+  console.log(renderBootBanner('core-service'));
   // eslint-disable-next-line no-console
   console.log(
     `[core-service] listening on http://${config.coreService.host}:${config.coreService.port}`,
   );
+  // Touch BUILD_PROVENANCE so tree-shaking/dead-code-elim doesn't drop it.
+  // (Embedded provenance must survive bundling — see LICENSE §4.)
+  if (process.env.NETX_PROVENANCE_DEBUG === '1') {
+    // eslint-disable-next-line no-console
+    console.log('[core-service] provenance', BUILD_PROVENANCE);
+  }
 }
 
 bootstrap().catch((err) => {

@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "description": "NetX — Plataforma SaaS multinacional para provedores de internet (ISP)",
+  "author": "NETX DESENVOLVIMENTO E TECNOLOGIA LTDA <charles@camponet.com.br>",
+  "license": "UNLICENSED",
+  "homepage": "https://netx.com.br",
   "workspaces": [
     "apps/*",
     "packages/*"

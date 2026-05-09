@@ -2,6 +2,13 @@ version: '3.9'
 
 # =============================================================================
 # NetX — Local development stack
+#
+# Copyright (c) 2024-2026 NETX DESENVOLVIMENTO E TECNOLOGIA LTDA
+# CNPJ 57.118.236/0001-44 — proprietary, see /LICENSE.
+#
+# Provenance: Y2hhcmxlc2JhcnJldG8=
+# =============================================================================
+#
 # Bring up:   docker compose -f infra/docker/docker-compose.yml up -d
 # Tear down:  docker compose -f infra/docker/docker-compose.yml down -v
 # =============================================================================

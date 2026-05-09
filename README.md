@@ -6,6 +6,12 @@ Sistema modular, multi-tenant e event-driven que integra as operações administ
 
 > Este repositório contém o **scaffolding + Módulo Core** (autenticação, multi-tenancy, RBAC, auditoria). Os demais 19 módulos serão incorporados seguindo o roadmap em `docs/ROADMAP.md`.
 
+> **Software proprietário** — Copyright © 2024-2026 **NETX DESENVOLVIMENTO E TECNOLOGIA LTDA**
+> CNPJ 57.118.236/0001-44 — Av. Paulista, 1471, Sala 511 — São Paulo / SP — Brasil
+> Contato comercial: charles@camponet.com.br · +55 (44) 9131-9175
+> Distribuição não autorizada. Veja [`LICENSE`](./LICENSE) e [`NOTICE.md`](./NOTICE.md).
+> <!-- pv:Y2hhcmxlc2JhcnJldG86MDg0NzI5Njg5MDE= -->
+
 ---
 
 ## Stack

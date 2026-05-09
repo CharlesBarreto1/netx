@@ -1,3 +1,10 @@
+/**
+ * GlobalExceptionFilter — RFC 7807 ProblemDetails normalizer.
+ *
+ * Copyright (c) 2024-2026 NETX DESENVOLVIMENTO E TECNOLOGIA LTDA — proprietary.
+ *
+ * @provenance Y2hhcmxlc2JhcnJldG8=
+ */
 import {
   ArgumentsHost,
   Catch,

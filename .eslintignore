@@ -1,0 +1,21 @@
+# Build outputs & caches
+**/node_modules/**
+**/dist/**
+**/.next/**
+**/.nx/**
+**/build/**
+**/coverage/**
+**/generated/**
+
+# Generated artifacts
+**/*.d.ts
+**/prisma/migrations/**
+
+# Tooling configs
+**/*.config.js
+**/*.config.cjs
+**/*.config.mjs
+**/jest.config.*
+
+# Skip lockfile / package metadata
+package-lock.json

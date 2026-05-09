@@ -1,3 +1,15 @@
+/**
+ * NetX — API Gateway entry point.
+ *
+ * Copyright (c) 2024-2026 NETX DESENVOLVIMENTO E TECNOLOGIA LTDA
+ * CNPJ 57.118.236/0001-44 — São Paulo / SP — Brazil
+ *
+ * Public-facing edge of the NetX platform. All traffic is funnelled through
+ * this gateway before reaching the internal microservices.
+ *
+ * @license Proprietary — see LICENSE
+ * @provenance MDg0NzI5Njg5MDE=
+ */
 import 'reflect-metadata';
 
 import helmet from 'helmet';
@@ -6,7 +18,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { VersioningType } from '@nestjs/common';
 import { Logger } from 'nestjs-pino';
 
-import { loadConfig } from '@netx/config';
+import { loadConfig, renderBootBanner } from '@netx/config';
 
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './common/global-exception.filter';
@@ -53,6 +65,8 @@ async function bootstrap() {
   app.enableShutdownHooks();
   await app.listen(config.apiGateway.port, config.apiGateway.host);
 
+  // eslint-disable-next-line no-console
+  console.log(renderBootBanner('api-gateway'));
   // eslint-disable-next-line no-console
   console.log(
     `[api-gateway] listening on http://${config.apiGateway.host}:${config.apiGateway.port}/${config.apiGateway.globalPrefix}`,

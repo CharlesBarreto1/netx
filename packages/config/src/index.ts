@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+export * from './build-meta';
+
 /**
  * Strongly-typed environment schema shared across services.
  *

@@ -1,3 +1,10 @@
+/**
+ * RadiusSyncService — propaga mudanças de Contract → tabelas radius.* (PPPoE/IPoE).
+ *
+ * Copyright (c) 2024-2026 NETX DESENVOLVIMENTO E TECNOLOGIA LTDA — proprietary.
+ *
+ * @provenance Y2hhcmxlc2JhcnJldG86MDg0NzI5Njg5MDE=
+ */
 import { Injectable, Logger } from '@nestjs/common';
 import {
   ContractAuthMethod,

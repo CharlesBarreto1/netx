@@ -7,6 +7,7 @@ import {
 } from '@nestjs/terminus';
 import { ApiTags } from '@nestjs/swagger';
 
+import { Public } from '../../common/decorators';
 import { PrismaService } from '../prisma/prisma.service';
 
 @ApiTags('health')
@@ -18,12 +19,16 @@ export class HealthController {
     private readonly prismaHealth: PrismaHealthIndicator,
   ) {}
 
+  /** Liveness + DB readiness probe. Public — usado por load balancer / k8s. */
+  @Public()
   @Get()
   @HealthCheck()
   check(): Promise<{ status: string; info?: HealthIndicatorResult }> {
     return this.health.check([() => this.prismaHealth.pingCheck('database', this.prisma)]);
   }
 
+  /** Liveness simples — não toca no DB. Public. */
+  @Public()
   @Get('live')
   live(): { status: 'ok' } {
     return { status: 'ok' };

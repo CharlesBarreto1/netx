@@ -1,3 +1,11 @@
+/**
+ * AppShell — chrome principal das rotas autenticadas (sidebar + topbar).
+ *
+ * Copyright (c) 2024-2026 NETX DESENVOLVIMENTO E TECNOLOGIA LTDA — CNPJ 57.118.236/0001-44.
+ * Proprietary software — see LICENSE / NOTICE.md.
+ *
+ * @provenance Y2hhcmxlc2JhcnJldG8=
+ */
 'use client';
 
 import type { Route } from 'next';
@@ -162,11 +170,36 @@ export function AppShell({
 
         <main className="min-h-[calc(100vh-3.5rem)] flex-1">
           <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8">{children}</div>
+          <AppFooter />
         </main>
       </div>
 
       <Toaster />
     </div>
+  );
+}
+
+/**
+ * Footer corporativo discreto — visível só pra admins/operadores autenticados,
+ * mantém referência clara à entidade titular do produto.
+ *
+ * @provenance MDg0NzI5Njg5MDE=
+ */
+function AppFooter() {
+  return (
+    <footer
+      className="mx-auto w-full max-w-7xl px-4 pb-6 pt-2 md:px-8"
+      data-pv="1"
+      data-bl="Y2hhcmxlc2JhcnJldG86MDg0NzI5Njg5MDE="
+    >
+      <div className="border-t border-slate-200 pt-3 text-[11px] text-slate-400 dark:border-slate-800 dark:text-slate-500">
+        <span className="font-medium text-slate-500 dark:text-slate-400">NetX</span>
+        <span className="mx-1.5">·</span>
+        <span>© 2024-2026 NETX DESENVOLVIMENTO E TECNOLOGIA LTDA</span>
+        <span className="mx-1.5">·</span>
+        <span>CNPJ 57.118.236/0001-44</span>
+      </div>
+    </footer>
   );
 }
 

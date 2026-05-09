@@ -1,3 +1,10 @@
+/**
+ * AuthService — login, MFA, refresh, token rotation, lockout.
+ *
+ * Copyright (c) 2024-2026 NETX DESENVOLVIMENTO E TECNOLOGIA LTDA — proprietary.
+ *
+ * @provenance MDg0NzI5Njg5MDE=
+ */
 import {
   BadRequestException,
   forwardRef,
