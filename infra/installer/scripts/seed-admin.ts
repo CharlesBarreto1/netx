@@ -93,6 +93,9 @@ async function main() {
     });
 
     // 4) User (upsert por email + tenantId composto único)
+    //    Admin recém-criado é forçado a trocar senha no primeiro login.
+    //    Em re-runs (update), também religamos a flag pra garantir que o ISP
+    //    receba a credencial inicial gerada pelo installer e troque depois.
     const user = await prisma.user.upsert({
       where: {
         tenantId_email: { tenantId: tenant.id, email: adminEmail },
@@ -105,10 +108,12 @@ async function main() {
         lastName: 'NetX',
         status: 'ACTIVE',
         locale: tenantLocale,
+        mustChangePassword: true,
       },
       update: {
         passwordHash,
         status: 'ACTIVE',
+        mustChangePassword: true,
       },
     });
 

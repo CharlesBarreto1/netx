@@ -32,6 +32,13 @@ export interface LoginResponse extends AuthTokens {
     permissions: string[];
     /** Override de visibilidade de menus. null = usa só permissões. */
     menuAccess: string[] | null;
+    /**
+     * Quando true, o frontend DEVE redirecionar pra /first-login antes de
+     * mostrar qualquer tela protegida. Setado pelo backend quando o user
+     * tem `users.must_change_password = true` (ex.: admin recém-seedado,
+     * usuário cuja senha foi resetada por outro admin).
+     */
+    mustChangePassword: boolean;
   };
   tenant: {
     id: string;

@@ -1,4 +1,13 @@
 -- =============================================================================
+-- DEPRECATED: este script foi promovido para migration formal Prisma em
+--   prisma/migrations/20260509120000_radacct_nullability/migration.sql
+--
+-- Mantido como hotfix manual para servidores que ainda não adotaram a
+-- baseline (`db:adopt`). Após adoção, rode `npm run db:migrate:deploy` e a
+-- migration formal toma conta. Não há razão pra rodar este SQL diretamente
+-- num ambiente novo.
+-- =============================================================================
+--
 -- Migração: corrigir colunas radacct que estavam NOT NULL erroneamente.
 --
 -- Bug: o schema original (radius-schema.sql v1) criou várias colunas como

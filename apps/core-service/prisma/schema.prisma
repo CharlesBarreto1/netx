@@ -157,6 +157,11 @@ model User {
   mfaEnabled     Boolean    @default(false) @map("mfa_enabled")
   mfaSecret      String?    @map("mfa_secret")
   mfaBackupCodes String[]   @default([]) @map("mfa_backup_codes")
+  /// Quando true, força redirect pra /first-login no próximo login bem-sucedido.
+  /// Setado pelo seed (admin default), pelo installer (admin do tenant), e
+  /// quando admin reseta a senha de outro user. Limpado pelo POST
+  /// /v1/users/me/change-password ao fim do flow.
+  mustChangePassword Boolean @default(false) @map("must_change_password")
   // Override de visibilidade de menus por usuário. Quando null (default), o
   // sidebar usa só permissões. Quando array (ex. ["dashboard","customers"]),
   // o sidebar intersecta com essa lista — útil pra esconder menus que o user

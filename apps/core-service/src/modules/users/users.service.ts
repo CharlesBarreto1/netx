@@ -63,6 +63,10 @@ export class UsersService {
         // Passar literal `null` quebra o tipo. Comportamento: undefined/null
         // do input → coluna fica NULL (sem override de menus).
         menuAccess: input.menuAccess ?? Prisma.JsonNull,
+        // Senha foi escolhida pelo admin (input.password) OU é temporária
+        // (gerada pelo backend). Em qualquer dos dois casos, força troca no
+        // primeiro login do dono da conta.
+        mustChangePassword: true,
         userRoles: {
           create: input.roleIds.map((roleId) => ({ roleId })),
         },
@@ -163,7 +167,14 @@ export class UsersService {
         locale: input.locale,
         timezone: input.timezone,
         status: input.status,
-        ...(passwordHash ? { passwordHash } : {}),
+        ...(passwordHash
+          ? {
+              passwordHash,
+              // Admin resetou senha → o dono da conta é forçado a definir
+              // a própria no próximo login.
+              mustChangePassword: true,
+            }
+          : {}),
         // Mesma regra do create: Prisma.JsonNull pro caso "limpar override".
         // input.menuAccess === undefined → não toca no campo.
         // input.menuAccess === null → limpa override (NULL no DB).

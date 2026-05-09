@@ -436,6 +436,8 @@ async function main() {
       firstName: 'NetX',
       lastName: 'Admin',
       status: UserStatus.ACTIVE,
+      // Senha default 'ChangeMe!2026' precisa ser trocada no primeiro login.
+      mustChangePassword: true,
     },
   });
 

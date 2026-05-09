@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { SWRConfig } from 'swr';
 
 import { AppShell } from '@/components/layout/AppShell';
@@ -22,6 +22,7 @@ import { TenantConfigProvider } from '@/lib/tenant-config';
  */
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [session, setSession] = useState<Session | null>(null);
   const [checked, setChecked] = useState(false);
 
@@ -31,9 +32,16 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
       router.replace('/login');
       return;
     }
+    // Senha temporária — bloqueia acesso a qualquer rota até trocar.
+    // /first-login está fora do grupo (protected), então o usuário lá
+    // continua autenticado (lê o token) mas não passa por aqui.
+    if (s.user.mustChangePassword && pathname !== '/first-login') {
+      router.replace('/first-login');
+      return;
+    }
     setSession(s);
     setChecked(true);
-  }, [router]);
+  }, [router, pathname]);
 
   if (!checked || !session) {
     return <PageLoader label="Verificando sessão…" />;

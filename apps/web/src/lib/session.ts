@@ -25,6 +25,12 @@ export interface SessionUser {
   permissions: string[];
   /** Override de visibilidade de menus. null/undefined = sem restrição extra. */
   menuAccess?: string[] | null;
+  /**
+   * Se true, o ProtectedLayout redireciona pra /first-login. Setado pelo
+   * backend quando admin seedou senha temporária ou resetou senha de outro
+   * user. Limpado pelo POST /v1/auth/change-password ao final do flow.
+   */
+  mustChangePassword?: boolean;
 }
 
 export interface SessionTenant {

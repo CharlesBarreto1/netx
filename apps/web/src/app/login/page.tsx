@@ -35,6 +35,13 @@ export default function LoginPage() {
       localStorage.setItem('netx.refreshToken', res.refreshToken);
       localStorage.setItem('netx.user', JSON.stringify(res.user));
       localStorage.setItem('netx.tenant', JSON.stringify(res.tenant));
+      // Senha temporária (admin recém-seedado, reset por outro admin) →
+      // empurra direto pra tela de troca obrigatória. ProtectedLayout faz
+      // de novo se o user tentar acessar qualquer rota antes de trocar.
+      if (res.user.mustChangePassword) {
+        router.replace('/first-login');
+        return;
+      }
       router.push('/dashboard');
     } catch (e) {
       if (e instanceof ApiError) {

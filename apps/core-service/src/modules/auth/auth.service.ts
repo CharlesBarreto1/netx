@@ -193,6 +193,7 @@ export class AuthService {
               (x): x is string => typeof x === 'string',
             )
           : null,
+        mustChangePassword: user.mustChangePassword,
       },
       tenant: {
         id: tenant.id,
@@ -301,7 +302,12 @@ export class AuthService {
     const newHash = await hashPassword(next, this.config.argon2);
     await this.prisma.user.update({
       where: { id: userId },
-      data: { passwordHash: newHash },
+      data: {
+        passwordHash: newHash,
+        // Limpa flag de troca obrigatória — usuário acabou de definir sua
+        // própria senha e o flow de /first-login está concluído.
+        mustChangePassword: false,
+      },
     });
 
     // Revoke all other sessions of this user
