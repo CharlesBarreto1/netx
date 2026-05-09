@@ -35,16 +35,22 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        # @v5: roda em Node 24 (Node 20 será removido dos runners em set/2026).
+        uses: actions/checkout@v5
         with:
           # Nx pode usar `git diff base..head` pra rodar só projetos afetados;
           # precisa de fetch-depth: 0 pra ter histórico completo.
           fetch-depth: 0
 
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
+      - name: Setup Node
+        # @v5: roda em Node 24. `node-version` continua sendo o Node usado pelo
+        # workflow (não pela própria action). 22 = LTS atual; package.json
+        # exige >=20 então 22 é compatível.
+        uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 22
+          # Cache do npm — exige package-lock.json no repo. Sem o lockfile,
+          # remova essa linha (ou commite o lockfile, recomendado).
           cache: npm
 
       - name: Install dependencies
@@ -56,6 +62,7 @@ jobs:
         run: npx prisma generate --schema apps/core-service/prisma/schema.prisma
 
       - name: Cache Nx
+        # @v4 ainda é o stable; v5 é beta. Bumpar quando sair stable.
         uses: actions/cache@v4
         with:
           path: .nx/cache
