@@ -44,11 +44,13 @@ jobs:
 
       - name: Setup Node
         # @v5: roda em Node 24. `node-version` continua sendo o Node usado pelo
-        # workflow (não pela própria action). 22 = LTS atual; package.json
-        # exige >=20 então 22 é compatível.
+        # workflow (não pela própria action). 24 = Active LTS atual (até out/2026).
+        # Pra bumpar pra Node 26 quando virar LTS em out/2026: troque aqui, em
+        # package.json (engines.node), em apps/*/package.json (@types/node) e em
+        # infra/installer/lib/packages.sh (NETX_NODE_MAJOR). Lista em STACK-REFRESH.md.
         uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           # Cache do npm — exige package-lock.json no repo. Sem o lockfile,
           # remova essa linha (ou commite o lockfile, recomendado).
           cache: npm

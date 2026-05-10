@@ -18,11 +18,12 @@ Sistema modular, multi-tenant e event-driven que integra as operações administ
 
 | Camada | Tecnologia |
 |--------|-----------|
-| Backend | Node.js 22 + NestJS 11 + TypeScript 5.7 |
-| Frontend Web | Next.js 14 (App Router, typedRoutes) + React 18 + TailwindCSS + primitivos caseiros + SWR |
+| Backend | Node.js 24 + NestJS 11 + TypeScript 5.9 |
+| Frontend Web | Next.js 16 (App Router, typedRoutes) + React 19 + Tailwind CSS 4 + primitivos caseiros + SWR |
+| Validação | Zod 4 |
 | ORM | Prisma 6 (PostgreSQL 16) |
 | Cache / Fila | Redis 7 + RabbitMQ |
-| Monorepo | Nx 21 |
+| Monorepo | Nx 22 |
 | Qualidade | ESLint 9 (flat config) + Prettier + Husky + Conventional Commits |
 | CI/CD | GitHub Actions (actions @v5, Node 24 runtime) |
 

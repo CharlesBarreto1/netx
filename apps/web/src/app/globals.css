@@ -1,6 +1,14 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind 4: single @import substitui as 3 diretivas @tailwind. O
+ * `@config` aponta pro tailwind.config.ts legado pra preservar nossos
+ * design tokens existentes (preço de migração CSS-first é alto demais
+ * pra fazer junto com Next 16 + React 19).
+ * `tw-animate-css` substitui `tailwindcss-animate` (deprecado em TW4).
+ */
+@import 'tailwindcss';
+@config '../../tailwind.config.ts';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:where(.dark, .dark *));
 
 /* =============================================================================
  * NetX — design tokens (estilo "Linear")

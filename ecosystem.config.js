@@ -1,5 +1,6 @@
 /**
- * PM2 ecosystem config — NetX (produção VPS Debian 12)
+ * PM2 ecosystem config — NetX (VPS de DEV; produção é gerenciada por systemd
+ * via installer em /opt/netx). Requer Node 22+ (engines.node do package.json).
  *
  * Uso na VPS (como usuário `netx`):
  *

@@ -1,5 +1,7 @@
+// Tailwind 4 config (compat layer — apontado por @config em globals.css).
+// `tailwindcss-animate` foi substituído por `tw-animate-css` importado direto
+// no CSS. Nossos design tokens e fontSize escala continuam aqui.
 import type { Config } from 'tailwindcss';
-import animate from 'tailwindcss-animate';
 
 /**
  * Design tokens — estilo "Linear" (denso, sóbrio, teclado-first).
@@ -146,7 +148,7 @@ const config: Config = {
       },
     },
   },
-  plugins: [animate],
+  plugins: [],
 };
 
 export default config;

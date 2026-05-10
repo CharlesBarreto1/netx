@@ -43,28 +43,42 @@ packages_pgdg_repo() {
   apt-get update -qq
 }
 
-# Node 20 LTS via NodeSource (Debian 13 ainda pode shipar Node 18)
+# Node LTS via NodeSource.
+#
+# UPGRADE POINT: pra bumpar a versão do Node (ex.: 24 → 26 quando virar LTS
+# em out/2026), troque APENAS `NETX_NODE_MAJOR` abaixo. Todo o resto (apt
+# repo, comparação de versão atual, log) é derivado dessa constante.
+# Lembrar também de bumpar `engines.node` no package.json raiz, o
+# `node-version` no .github/workflows/ci.yml e `@types/node` em todos os
+# apps/* package.json. Lista completa em docs/STACK-REFRESH.md.
+#
+# Hoje: Node 24 (Active LTS desde out/2025, Maintenance out/2026, EOL abr/2028).
+NETX_NODE_MAJOR="${NETX_NODE_MAJOR:-24}"
+
 packages_nodesource_repo() {
   if command -v node >/dev/null 2>&1; then
     local current
     current=$(node -v | sed 's/^v//' | cut -d. -f1)
-    if (( current >= 20 )); then
-      log_dim "Node ${current} já instalado"
+    if (( current >= NETX_NODE_MAJOR )); then
+      log_dim "Node ${current} já instalado (>= ${NETX_NODE_MAJOR})"
       return 0
     fi
-    log_warn "Node ${current} encontrado — substituindo por Node 20 (NodeSource)"
+    log_warn "Node ${current} encontrado — substituindo por Node ${NETX_NODE_MAJOR} (NodeSource)"
   fi
 
   local list=/etc/apt/sources.list.d/nodesource.list
   if [[ ! -f "${list}" ]]; then
-    log_info "Adicionando repositório NodeSource (Node 20)"
+    log_info "Adicionando repositório NodeSource (Node ${NETX_NODE_MAJOR})"
     install -d -m 0755 /etc/apt/keyrings
     curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
       | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
-    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NETX_NODE_MAJOR}.x nodistro main" \
       > "${list}"
     apt-get update -qq
   fi
+  # Garante que apt já tenha o que precisa pro argon2 nativo compilar
+  # (caso prebuild falhe). build-essential + python3 = node-gyp toolkit.
+  apt-get install -y -qq build-essential python3 >/dev/null 2>&1 || true
 }
 
 packages_apt_install() {
