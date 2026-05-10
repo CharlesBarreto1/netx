@@ -11,6 +11,6 @@
     "test": "jest --passWithNoTests"
   },
   "dependencies": {
-    "@prisma/client": "^5.15.0"
+    "@prisma/client": "^6.2.1"
   }
 }

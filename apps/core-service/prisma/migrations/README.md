@@ -1,6 +1,8 @@
 # Prisma migrations — NetX core-service
 
 > Copyright (c) 2024-2026 NETX DESENVOLVIMENTO E TECNOLOGIA LTDA — proprietary.
+> **Versão Prisma:** 6.x (bump de 5.x feito antes de v1.0). Re-gere a baseline
+> com Prisma 6 antes do primeiro deploy: `rm -rf prisma/migrations/0_init && npm run db:baseline`.
 
 ## Estrutura
 
