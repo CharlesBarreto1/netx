@@ -11,6 +11,8 @@
  *   - Erros devolvidos pelo backend no formato RFC 7807-like são expostos via ApiError.
  */
 
+import type { LoginResponse } from '@netx/shared';
+
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? '/api').replace(/\/$/, '');
 
 export interface LoginInput {
@@ -226,7 +228,7 @@ export const swrFetcher = <T>(path: string) => api.get<T>(path);
 // Auth — mantém compatível com login/page.tsx existente
 // -----------------------------------------------------------------------------
 
-export async function apiLogin(input: LoginInput) {
+export async function apiLogin(input: LoginInput): Promise<LoginResponse> {
   // Não pode usar `api.post` porque não queremos interceptar 401 aqui (o 401
   // nesse fluxo é o feedback legítimo de credenciais inválidas).
   const res = await fetch(`${API_BASE}/v1/auth/login`, {
@@ -243,12 +245,9 @@ export async function apiLogin(input: LoginInput) {
         : { title: res.statusText, status: res.status };
     throw new ApiError(res.status, problem);
   }
-  return parsed as {
-    accessToken: string;
-    refreshToken: string;
-    user: unknown;
-    tenant: unknown;
-  };
+  // Trust the shared LoginResponse contract — backend serialize com o mesmo
+  // shape (auth.service.ts ↔ packages/shared/src/auth.dto.ts).
+  return parsed as LoginResponse;
 }
 
 /** Compat com o código antigo — delega pro api.get. */
