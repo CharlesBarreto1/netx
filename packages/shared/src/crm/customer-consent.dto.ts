@@ -36,7 +36,10 @@ export const RecordConsentRequestSchema = z.object({
   policyVersion: z.string().max(32).nullish(),
   evidenceUrl: z.string().url().max(2048).nullish(),
   notes: z.string().max(500).nullish(),
-  metadata: z.record(z.unknown()).nullish(),
+  // Zod 4: z.record exige (keyType, valueType). Antes (z.record(value)) só
+  // funcionava em Zod 3. Para "qualquer string-keyed object", usar z.string()
+  // como keyType. Comportamento JSON-runtime idêntico.
+  metadata: z.record(z.string(), z.unknown()).nullish(),
 });
 export type RecordConsentRequest = z.infer<typeof RecordConsentRequestSchema>;
 

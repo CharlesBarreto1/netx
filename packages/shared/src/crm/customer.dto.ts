@@ -58,7 +58,8 @@ const baseCustomerFields = {
   timezone: z.string().max(64).nullish(),
 
   shortNote: z.string().max(500).nullish(),
-  metadata: z.record(z.unknown()).nullish(),
+  // Zod 4: z.record exige (keyType, valueType).
+  metadata: z.record(z.string(), z.unknown()).nullish(),
 };
 
 const individualFields = {
