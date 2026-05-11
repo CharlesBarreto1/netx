@@ -68,11 +68,22 @@ ter cliente real.
 
 ## Migrações de código aplicadas
 
-### Tailwind 4 (CSS-first opcional)
+### Tailwind 4
 - `apps/web/src/app/globals.css`: troca `@tailwind base/components/utilities` por `@import 'tailwindcss'` + `@config '../../tailwind.config.ts'` (compat layer) + `@import 'tw-animate-css'` + `@custom-variant dark`.
 - `apps/web/postcss.config.js`: agora usa `@tailwindcss/postcss` (autoprefixer não é mais necessário).
 - `apps/web/tailwind.config.ts`: removido plugin `tailwindcss-animate` (substituído por import CSS).
 - Design tokens existentes (`bg`, `surface`, `border`, ...) ficam no `tailwind.config.ts` — Tailwind 4 lê via `@config`. Migrar pra `@theme` puro pode esperar até v1.2.
+
+**Mudanças de classes aplicadas** (Tailwind 4 renomeou semântica):
+- **`outline-none` → `outline-hidden`** em 8 arquivos (12 ocorrências total): chat/page, Tabs, dialog, Button, dropdown-menu, Input, DealCard, DealColumn. Em TW4 `outline-none` agora significa `outline-style: none` (semântica diferente); `outline-hidden` mantém o visual antigo (outline-width: 0 mas preserva estilo).
+- **`border` sem cor** em `receipts/[type]/[id]/page.tsx` → adicionado `border-border` (TW4 default mudou).
+- **`shadow-sm`, `rounded`, `rounded-sm`**: NÃO precisaram mudar — nosso `tailwind.config.ts` customiza ambos (`borderRadius.DEFAULT='6px'`, `boxShadow.sm/md/lg/...`), então o tema custom prevalece sobre as escalas renomeadas do TW4.
+- **`ring-*`**: 7 usos, todos com prefixo numérico explícito (`ring-1`, `ring-2`, `ring-brand-500`). Default `ring` (sem prefixo) mudou de 3px → 1px no TW4, mas não usamos.
+
+Pontos que vale conferir visualmente após `npm run dev`:
+1. Focus state em inputs/dialogs (ring + outline-hidden).
+2. Bordas em receipts/prints (border-border).
+3. Animations via `tw-animate-css` (kanban, dropdowns).
 
 ### Next 16 + React 19 (requer ajustes pós-instalação)
 - `npx @next/codemod@canary upgrade latest` resolve a maioria automaticamente.
@@ -84,6 +95,81 @@ ter cliente real.
 - `.parse`, `.safeParse`, `.optional()`, `.string()`, `.array()` — tudo igual.
 - `errorMap` API mudou: agora aceita `{ error: ... }` em vez de função única. Se nenhum `.refine` usa errorMap custom no nosso código, sem mudança.
 - `z.infer<typeof schema>` continua igual.
+
+---
+
+## Refresh UI C — polish visual completo (pré-v1.0)
+
+Migrou de "modesto operacional" pra "produto B2B moderno tipo Linear/Stripe".
+
+### Fundação Tailwind 4 (CSS-first)
+- `apps/web/src/app/globals.css` reescrito do zero — todos os tokens vivem em `@theme` (cores semânticas, fontes, radii, shadows, animations, font sizes). `tailwind.config.ts` virou stub deprecated (mantido só pra não quebrar ferramentas).
+- Custom variants: `dark`, `compact`, `cozy`, `comfortable` — todos via `@custom-variant`.
+- Inter Variable + JetBrains Mono Variable carregados via `next/font/google` em `apps/web/src/app/layout.tsx`, injetando `--font-sans` e `--font-mono`.
+- Tokens novos: `surface-elevated`, `accent-strong`, `severity-online/warn/offline/error`, `--shadow-glow`, `--shadow-pop`, `--radius-2xl`.
+- Animations novas: `fade-in-up`, `slide-right`, `bounce-in`, `pulse-soft`, `ping-soft`.
+- Utilities novas: `.glass`, `.glass-strong`, `.card-interactive`, `.dot-status[data-status]`, `.lift-3d`, `.mask-fade-b`, `.mask-fade-r`, `.surface-aurora`, `.grid-dense-16`.
+
+### Componentes reusáveis novos
+- `components/ui/Skeleton.tsx` — `<Skeleton>`, `<SkeletonText>`, `<SkeletonRow>`, `<SkeletonCard>`, `<SkeletonAvatar>`.
+- `components/ui/EmptyState.tsx` — placeholder unificado com ícone Lucide + título + descrição + CTA.
+- `components/ui/Breadcrumb.tsx` — trilho com truncate, tooltip em items longos, `ChevronRight` Lucide.
+- `components/ui/StatusBadge.tsx` — pill `online/warn/offline/error` com pulse na bolinha online.
+- `components/ui/DataTable.tsx` — wrapper genérico de tabela com `columns` + `data`, integra skeleton/empty/density/container query nativamente.
+- `lib/notify.ts` — wrapper sonner com presets `success/error/warning/info/apiError/promise` + ícones Lucide.
+- `lib/density.tsx` — `DensityProvider` + `useDensity()` com `cycle()`, persiste em localStorage.
+
+### Navegação
+- `components/layout/CommandPalette.tsx` — Cmd+K (Ctrl+K) palette completo: search global (clientes via SWR debounced), navegação rápida, ações ("Novo cliente"), troca de density, toggle dark/light. Trigger global via `window.dispatchEvent('netx:open-command-palette')`.
+- `components/layout/AppShell.tsx` reescrito:
+  - Topbar **glassmorphism** (`.glass`) com `backdrop-blur`.
+  - Botão "Buscar..." com kbd `⌘K` na topbar (md+).
+  - **Sidebar collapsible** com toggle `⌘\\` (atalho global) + botão `ChevronsLeft/Right`. Persiste em localStorage. Quando colapsada, tooltips Radix nos items.
+  - Ícones **Lucide** (LayoutDashboard, Users, FileText, KanbanSquare, Wrench, etc) substituem SVG inline antigos.
+  - UserMenu redesenhado com glass-strong + Lucide.
+  - Density variants aplicadas nos items do sidebar (`compact:py-1.5 cozy:py-2 comfortable:py-2.5`).
+
+### Páginas-chave refinadas
+- **Dashboard** (`/dashboard/page.tsx`): hero com greeting dinâmico + surface-aurora; 3 KPIs em cards animados (`animate-fade-in-up` com `animationDelay` staggered); 3 shortcut cards; dica do dia mencionando ⌘K. Cards com `card-interactive` (hover lift + shadow).
+- **Hub do cliente** (`/customers/[id]/page.tsx`):
+  - Breadcrumb no topo (Clientes → Nome).
+  - Header card com avatar de iniciais 14×14 em accent-muted, nome 2xl, badges PF/PJ + status, código pill, tax id tabular.
+  - InfoChips com ícones Lucide (Mail, Phone, Calendar, Clock) e tokens semânticos.
+- **DealCard kanban**: hover lift sutil (`hover:-translate-y-px`), animação `fade-in-up` na entrada, drag overlay com `scale-[1.03]` + perspective.
+
+### Padrão pra migrar outras listagens
+As 7+ listagens restantes (`/contracts`, `/finance/charges`, `/service-orders`, `/network/equipment`, `/network/pops`, `/settings/users`, `/settings/audit`, `/settings/cash-registers`, `/settings/backups`) podem ser migradas pro `<DataTable />` em ~15 min cada. Padrão:
+
+```tsx
+import { DataTable } from '@/components/ui/DataTable';
+import { Users } from 'lucide-react';
+
+<DataTable
+  columns={[
+    { key: 'name', label: 'Nome', cell: (c) => <Link href={...}>{c.displayName}</Link> },
+    { key: 'email', label: 'Email', cell: (c) => c.primaryEmail, hideOnNarrow: true },
+    { key: 'status', label: 'Status', cell: (c) => <Badge tone={...}>{...}</Badge> },
+    { key: 'actions', label: '', cell: (c) => <Link>Abrir</Link>, align: 'right' },
+  ]}
+  data={data?.data}
+  isLoading={isLoading}
+  empty={{
+    icon: Users,
+    title: 'Nenhum cliente ainda',
+    description: 'Cadastre o primeiro pra começar.',
+    action: { label: 'Novo cliente', href: '/customers/new' },
+  }}
+/>
+```
+
+Density (`compact:py-1.5 cozy:py-2.5 comfortable:py-3 py-2.5`) e container queries (`hideOnNarrow` usa `hidden @md/datatable:table-cell`) já vêm de graça.
+
+### O que sobrou pra v1.1 ou depois
+- Migrar as 7 listagens restantes pro `DataTable` (mecânico).
+- Aplicar `notify.success/error` no lugar de `alert()` / `toast.error()` solto.
+- `globals.css`: dois ou três blocos de cor ainda em hex direto (paletas brand-* legadas) podem ser removidos quando todo código usar tokens semânticos.
+- White-label: cada tenant injeta `style="--accent: ...;"` no `<html>` via TenantConfigProvider. Foundation pronta.
+- @starting-style nativo (sem JS) substituindo data-state dos dialogs Radix em v1.2.
 
 ## O que precisa rodar localmente
 

@@ -45,7 +45,7 @@ export function Tabs<T extends string>({
             onClick={() => !it.disabled && onChange(it.value)}
             className={cn(
               'inline-flex items-center gap-2 border-b-2 px-3 py-2 text-sm font-medium transition-colors',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 rounded-t-md',
+              'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500 rounded-t-md',
               active
                 ? 'border-brand-600 text-brand-700 dark:text-brand-300'
                 : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100',

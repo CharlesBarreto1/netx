@@ -1,43 +1,58 @@
-/* Tailwind 4: single @import substitui as 3 diretivas @tailwind. O
- * `@config` aponta pro tailwind.config.ts legado pra preservar nossos
- * design tokens existentes (preço de migração CSS-first é alto demais
- * pra fazer junto com Next 16 + React 19).
- * `tw-animate-css` substitui `tailwindcss-animate` (deprecado em TW4).
- */
-@import 'tailwindcss';
-@config '../../tailwind.config.ts';
-@import 'tw-animate-css';
-
-@custom-variant dark (&:where(.dark, .dark *));
-
 /* =============================================================================
- * NetX — design tokens (estilo "Linear")
+ * NetX — design system v1 (Tailwind 4, CSS-first).
  *
- * Tudo é HSL + CSS var para permitir troca instantânea light/dark e posterior
- * white-label sem rebuild. Use sempre os tokens semânticos (bg, surface,
- * border, text...) em vez das paletas cruas.
+ * Copyright (c) 2024-2026 NETX DESENVOLVIMENTO E TECNOLOGIA LTDA — proprietary.
+ *
+ * Arquitetura:
+ *   • Tokens crus (raw HSL/sizes) em `:root` e `.dark`.
+ *   • `@theme` traduz tokens em variáveis Tailwind (color-*, font-*, ...) que
+ *     o compiler usa pra gerar classes (`bg-surface`, `text-text-muted`, ...).
+ *   • Variantes custom: `dark`, `compact`, `cozy`, `comfortable`.
+ *   • Glassmorphism, focus rings densos, scrollbar discreta — utilities globais.
+ *
+ * Toda mudança de tema (light/dark/density) é instantânea (sem rebuild).
+ * Pra white-label futuro: cada tenant injeta sua palette via `style="--accent: ...;"` no <html>.
  * ============================================================================= */
 
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+/* ---------------------------------------------------------------------------
+ * Custom variants — composáveis em qualquer classe
+ * --------------------------------------------------------------------------- */
+@custom-variant dark         (&:where(.dark, .dark *));
+@custom-variant compact      (&:where([data-density='compact'], [data-density='compact'] *));
+@custom-variant cozy         (&:where([data-density='cozy'], [data-density='cozy'] *));
+@custom-variant comfortable  (&:where([data-density='comfortable'], [data-density='comfortable'] *));
+
+/* ---------------------------------------------------------------------------
+ * Tokens crus — light (default) e dark (.dark class no <html>)
+ * Formato HSL "H S% L%" sem hsl() pra permitir alpha modifier do Tailwind 4
+ * (ex.: `bg-accent/50` vira `hsl(var(--accent) / 50%)`).
+ * --------------------------------------------------------------------------- */
 :root {
-  /* Superfícies (light) */
+  /* Surfaces (light) */
   --bg: 220 14% 98%;
   --surface: 0 0% 100%;
   --surface-muted: 220 14% 96%;
   --surface-hover: 220 14% 94%;
+  --surface-elevated: 0 0% 100%;
 
   --border: 220 13% 91%;
   --border-strong: 220 13% 82%;
 
-  /* Texto */
+  /* Text */
   --text: 222 47% 11%;
   --text-muted: 222 14% 36%;
   --text-subtle: 222 10% 54%;
 
-  /* Accent (azul sóbrio — único tom vivo; tudo mais é neutro) */
+  /* Accent (azul sóbrio Linear-like — único tom vivo, resto neutro) */
   --accent: 217 91% 60%;
   --accent-foreground: 0 0% 100%;
   --accent-muted: 217 91% 96%;
+  --accent-strong: 217 91% 52%;
 
+  /* Status semânticos */
   --danger: 0 72% 51%;
   --danger-foreground: 0 0% 100%;
   --danger-muted: 0 93% 97%;
@@ -54,13 +69,25 @@
   --info-foreground: 0 0% 100%;
   --info-muted: 200 100% 96%;
 
-  /* Outros */
+  /* Severity (network status, RADIUS) */
+  --severity-online: 142 70% 45%;
+  --severity-warn:   38 92% 50%;
+  --severity-offline: 220 9% 65%;
+  --severity-error: 0 72% 51%;
+
+  /* Ring & shadow */
   --ring: 217 91% 60%;
   --shadow: 222 47% 11%;
+  --shadow-accent: 217 91% 60%;
 
-  /* Fontes */
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'Helvetica Neue', sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  /* Density rows (refletido em utilities de tabela) */
+  --row-h-compact: 28px;
+  --row-h-cozy: 36px;
+  --row-h-comfortable: 44px;
+
+  /* Fonts (next/font injeta via variável CSS) */
+  --font-sans-stack: var(--font-sans), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', 'Helvetica Neue', sans-serif;
+  --font-mono-stack: var(--font-mono), ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
 }
 
 .dark {
@@ -68,6 +95,7 @@
   --surface: 220 18% 10%;
   --surface-muted: 220 16% 13%;
   --surface-hover: 220 14% 17%;
+  --surface-elevated: 220 17% 12%;
 
   --border: 220 13% 18%;
   --border-strong: 220 13% 28%;
@@ -79,6 +107,7 @@
   --accent: 217 91% 63%;
   --accent-foreground: 220 20% 7%;
   --accent-muted: 217 60% 18%;
+  --accent-strong: 217 91% 70%;
 
   --danger: 0 74% 60%;
   --danger-foreground: 0 0% 100%;
@@ -96,13 +125,16 @@
   --info-foreground: 220 20% 7%;
   --info-muted: 199 40% 16%;
 
+  --severity-online: 142 65% 50%;
+  --severity-warn:   38 92% 58%;
+  --severity-offline: 220 9% 45%;
+  --severity-error: 0 74% 60%;
+
   --ring: 217 91% 63%;
   --shadow: 0 0% 0%;
+  --shadow-accent: 217 91% 60%;
 }
 
-/* Dark mode via prefers-color-scheme quando a classe não estiver setada.
-   Fica desligado por padrão para não competir com o toggle manual; é ligado
-   via `document.documentElement.classList.add('dark')` no AppShell. */
 @media (prefers-color-scheme: dark) {
   :root:not(.light) {
     color-scheme: dark;
@@ -110,7 +142,160 @@
 }
 
 /* ---------------------------------------------------------------------------
- * Base
+ * @theme — onde Tailwind lê os tokens. Cada `--color-foo` vira `bg-foo`,
+ *          `text-foo`, `border-foo`, `--font-foo` vira `font-foo`, etc.
+ * --------------------------------------------------------------------------- */
+@theme {
+  /* ===== colors ===== */
+  --color-bg: hsl(var(--bg));
+  --color-surface: hsl(var(--surface));
+  --color-surface-muted: hsl(var(--surface-muted));
+  --color-surface-hover: hsl(var(--surface-hover));
+  --color-surface-elevated: hsl(var(--surface-elevated));
+
+  --color-border: hsl(var(--border));
+  --color-border-strong: hsl(var(--border-strong));
+
+  --color-text: hsl(var(--text));
+  --color-text-muted: hsl(var(--text-muted));
+  --color-text-subtle: hsl(var(--text-subtle));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-accent-muted: hsl(var(--accent-muted));
+  --color-accent-strong: hsl(var(--accent-strong));
+
+  --color-danger: hsl(var(--danger));
+  --color-danger-foreground: hsl(var(--danger-foreground));
+  --color-danger-muted: hsl(var(--danger-muted));
+
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+  --color-success-muted: hsl(var(--success-muted));
+
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+  --color-warning-muted: hsl(var(--warning-muted));
+
+  --color-info: hsl(var(--info));
+  --color-info-foreground: hsl(var(--info-foreground));
+  --color-info-muted: hsl(var(--info-muted));
+
+  --color-severity-online: hsl(var(--severity-online));
+  --color-severity-warn: hsl(var(--severity-warn));
+  --color-severity-offline: hsl(var(--severity-offline));
+  --color-severity-error: hsl(var(--severity-error));
+
+  --color-ring: hsl(var(--ring));
+
+  /* Brand palette legada (deprecated em código novo — prefira accent) */
+  --color-brand-50:  hsl(210 100% 97%);
+  --color-brand-100: hsl(210 100% 94%);
+  --color-brand-200: hsl(210 100% 88%);
+  --color-brand-300: hsl(210 96% 75%);
+  --color-brand-400: hsl(212 95% 63%);
+  --color-brand-500: hsl(214 95% 53%);
+  --color-brand-600: hsl(216 90% 46%);
+  --color-brand-700: hsl(218 88% 40%);
+  --color-brand-800: hsl(220 83% 34%);
+  --color-brand-900: hsl(224 76% 27%);
+
+  /* ===== fonts ===== */
+  --font-sans: var(--font-sans-stack);
+  --font-mono: var(--font-mono-stack);
+
+  /* ===== font sizes (escala densa Linear-like) ===== */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.125rem;
+  --text-base: 0.875rem;
+  --text-base--line-height: 1.25rem;
+  --text-md: 0.9375rem;
+  --text-md--line-height: 1.375rem;
+  --text-lg: 1rem;
+  --text-lg--line-height: 1.5rem;
+  --text-xl: 1.125rem;
+  --text-xl--line-height: 1.625rem;
+  --text-2xl: 1.375rem;
+  --text-2xl--line-height: 1.75rem;
+  --text-3xl: 1.625rem;
+  --text-3xl--line-height: 2rem;
+
+  /* ===== radii ===== */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 20px;
+  --radius: var(--radius-sm);
+
+  /* ===== shadows (densas, com cor temada) ===== */
+  --shadow-xs: 0 1px 2px 0 hsl(var(--shadow) / 0.08);
+  --shadow-sm: 0 1px 3px 0 hsl(var(--shadow) / 0.10), 0 1px 2px -1px hsl(var(--shadow) / 0.06);
+  --shadow-md: 0 4px 12px -2px hsl(var(--shadow) / 0.12), 0 2px 4px -2px hsl(var(--shadow) / 0.08);
+  --shadow-lg: 0 12px 32px -6px hsl(var(--shadow) / 0.18), 0 4px 8px -4px hsl(var(--shadow) / 0.10);
+  --shadow-pop: 0 0 0 1px hsl(var(--border) / 0.8), 0 8px 24px -4px hsl(var(--shadow) / 0.18);
+  --shadow-glow: 0 0 0 4px hsl(var(--shadow-accent) / 0.12);
+  --shadow-inset: inset 0 1px 0 0 hsl(var(--surface) / 0.5);
+
+  /* ===== container width override ===== */
+  --container-2xl: 1440px;
+
+  /* ===== animations (TW4 native) ===== */
+  --animate-fade-in: fade-in 120ms ease-out;
+  --animate-fade-in-up: fade-in-up 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-slide-up: slide-up 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-slide-down: slide-down 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-slide-right: slide-right 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-pulse-soft: pulse-soft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-ping-soft: ping-soft 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
+  --animate-bounce-in: bounce-in 240ms cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  @keyframes fade-in {
+    0%   { opacity: 0; }
+    100% { opacity: 1; }
+  }
+  @keyframes fade-in-up {
+    0%   { opacity: 0; transform: translateY(8px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes slide-up {
+    0%   { opacity: 0; transform: translateY(4px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes slide-down {
+    0%   { opacity: 0; transform: translateY(-4px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes slide-right {
+    0%   { opacity: 0; transform: translateX(-12px); }
+    100% { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes shimmer {
+    0%   { background-position: -200% 0; }
+    100% { background-position:  200% 0; }
+  }
+  @keyframes pulse-soft {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.5; }
+  }
+  @keyframes ping-soft {
+    75%, 100% { transform: scale(2); opacity: 0; }
+  }
+  @keyframes bounce-in {
+    0%   { opacity: 0; transform: scale(0.92); }
+    60%  { opacity: 1; transform: scale(1.02); }
+    100% { transform: scale(1); }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Base reset
  * --------------------------------------------------------------------------- */
 @layer base {
   * {
@@ -124,11 +309,10 @@
   body {
     color: hsl(var(--text));
     background: hsl(var(--bg));
-    font-family: var(--font-sans);
+    font-family: var(--font-sans-stack);
     font-feature-settings: 'cv11', 'ss01', 'ss03', 'cv02', 'cv05';
     font-variant-ligatures: common-ligatures;
   }
-  /* Selection — leve tint accent */
   ::selection {
     background: hsl(var(--accent) / 0.3);
     color: hsl(var(--text));
@@ -152,35 +336,63 @@
   *::-webkit-scrollbar-track {
     background: transparent;
   }
-  /* Focus ring denso, uniforme */
+  /* Focus ring uniforme */
   :focus-visible {
     outline: 2px solid hsl(var(--ring));
     outline-offset: 2px;
     border-radius: 4px;
   }
+  /* Default tabular nums em todos os elementos numéricos comuns */
+  td, th, .num, [data-numeric] {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
 /* ---------------------------------------------------------------------------
- * Components — utilitários visuais Linear-style
+ * Components
  * --------------------------------------------------------------------------- */
 @layer components {
-  /* Atalho de teclado inline (⌘K, ↵, esc...) */
+  /* Atalho de teclado inline */
   .kbd {
-    @apply inline-flex h-[18px] min-w-[18px] items-center justify-center rounded
-      border border-border-strong bg-surface-muted px-1 text-2xs font-medium
-      text-text-muted shadow-xs;
-    font-family: var(--font-mono);
+    display: inline-flex;
+    height: 18px;
+    min-width: 18px;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-xs);
+    border: 1px solid hsl(var(--border-strong));
+    background: hsl(var(--surface-muted));
+    padding: 0 4px;
+    font-size: var(--text-2xs);
+    font-weight: 500;
+    color: hsl(var(--text-muted));
+    box-shadow: var(--shadow-xs);
+    font-family: var(--font-mono-stack);
     font-variant-numeric: tabular-nums;
   }
 
-  /* Card base */
+  /* Card padrão */
   .card {
-    @apply rounded-lg border border-border bg-surface shadow-xs;
+    border-radius: var(--radius-lg);
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--surface));
+    box-shadow: var(--shadow-xs);
+  }
+  .card-interactive {
+    transition: box-shadow 160ms ease, transform 160ms ease, border-color 160ms ease;
+  }
+  .card-interactive:hover {
+    box-shadow: var(--shadow-md);
+    border-color: hsl(var(--border-strong));
+    transform: translateY(-1px);
   }
 
-  /* Skeleton shimmer */
+  /* Skeleton com shimmer animado */
   .skeleton {
-    @apply relative overflow-hidden rounded-md bg-surface-muted;
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--radius-sm);
+    background: hsl(var(--surface-muted));
   }
   .skeleton::after {
     content: '';
@@ -196,12 +408,46 @@
     animation: shimmer 1.6s linear infinite;
   }
 
-  /* Gradient sutil tipo "aurora" para vazios criativos */
+  /* Surface aurora — pra empty states criativos */
   .surface-aurora {
     background:
       radial-gradient(1200px 400px at 10% -10%, hsl(var(--accent) / 0.08), transparent),
       radial-gradient(800px 400px at 100% 0%, hsl(var(--info) / 0.06), transparent),
       hsl(var(--bg));
+  }
+
+  /* Glassmorphism — topbar, comand palette, dialogs sutilmente vidro */
+  .glass {
+    background: hsl(var(--surface) / 0.72);
+    backdrop-filter: saturate(180%) blur(12px);
+    -webkit-backdrop-filter: saturate(180%) blur(12px);
+    border-color: hsl(var(--border) / 0.6);
+  }
+  .glass-strong {
+    background: hsl(var(--surface) / 0.85);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+  }
+
+  /* Dot online/offline com pulse */
+  .dot-status {
+    position: relative;
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+  }
+  .dot-status[data-status='online']  { background: hsl(var(--severity-online)); }
+  .dot-status[data-status='warn']    { background: hsl(var(--severity-warn)); }
+  .dot-status[data-status='offline'] { background: hsl(var(--severity-offline)); }
+  .dot-status[data-status='error']   { background: hsl(var(--severity-error)); }
+  .dot-status[data-status='online']::after {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    border-radius: 999px;
+    background: hsl(var(--severity-online) / 0.4);
+    animation: ping-soft 1.8s cubic-bezier(0, 0, 0.2, 1) infinite;
   }
 }
 
@@ -212,10 +458,32 @@
   .tabular {
     font-variant-numeric: tabular-nums;
   }
+  /* Grid sutil tipo blueprint — pra empty states de mapas/relatórios */
   .grid-dense-16 {
     background-image:
       linear-gradient(to right, hsl(var(--border) / 0.4) 1px, transparent 1px),
       linear-gradient(to bottom, hsl(var(--border) / 0.4) 1px, transparent 1px);
     background-size: 16px 16px;
   }
+  /* Fade-out de scroll em listas longas */
+  .mask-fade-b {
+    mask-image: linear-gradient(to bottom, black 80%, transparent);
+    -webkit-mask-image: linear-gradient(to bottom, black 80%, transparent);
+  }
+  .mask-fade-r {
+    mask-image: linear-gradient(to right, black 90%, transparent);
+    -webkit-mask-image: linear-gradient(to right, black 90%, transparent);
+  }
+  /* Hover lift 3D sutil — pra cards interativos */
+  .lift-3d {
+    perspective: 800px;
+    transition: transform 220ms ease;
+  }
+  .lift-3d:hover {
+    transform: translateY(-2px) translateZ(0) rotateX(1.5deg);
+  }
+  /* Row heights densos via data-density no <html> */
+  [data-density='compact']     .row-h { height: var(--row-h-compact); }
+  [data-density='cozy']        .row-h { height: var(--row-h-cozy); }
+  [data-density='comfortable'] .row-h { height: var(--row-h-comfortable); }
 }

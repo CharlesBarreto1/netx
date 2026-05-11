@@ -253,13 +253,13 @@ export default function ReceiptPage() {
       <div className="actions">
         <button
           onClick={() => window.print()}
-          className="rounded border px-4 py-2 text-sm"
+          className="rounded border border-border px-4 py-2 text-sm"
         >
           Imprimir
         </button>{' '}
         <button
           onClick={() => window.close()}
-          className="rounded border px-4 py-2 text-sm"
+          className="rounded border border-border px-4 py-2 text-sm"
         >
           Cerrar
         </button>

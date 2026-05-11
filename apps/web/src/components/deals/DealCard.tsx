@@ -65,11 +65,13 @@ export function DealCard({
       tabIndex={onClick ? 0 : undefined}
       className={cn(
         'group relative flex flex-col gap-2 rounded-md border border-border bg-surface p-3 text-left',
-        'shadow-xs transition-[box-shadow,border-color,transform] will-change-transform',
-        'hover:border-border-strong hover:shadow-sm',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        'shadow-xs transition-[box-shadow,border-color,transform] duration-200 will-change-transform',
+        'hover:-translate-y-px hover:border-border-strong hover:shadow-md',
+        'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring',
+        'animate-fade-in-up',
         ghost && 'pointer-events-none opacity-40',
-        isOverlay && 'rotate-[0.5deg] scale-[1.02] shadow-lg ring-1 ring-border-strong',
+        isOverlay &&
+          'rotate-[0.5deg] scale-[1.03] shadow-lg ring-1 ring-border-strong [perspective:600px]',
         isDragging && !isOverlay && 'shadow-md',
       )}
     >

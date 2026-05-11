@@ -106,7 +106,7 @@ export function DealColumn({
               'mt-1 flex min-h-[72px] items-center justify-center rounded-md',
               'border border-dashed border-border text-2xs text-text-subtle',
               'transition-colors hover:border-border-strong hover:text-text-muted',
-              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+              'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring',
             )}
           >
             Arraste um deal aqui ou clique para criar

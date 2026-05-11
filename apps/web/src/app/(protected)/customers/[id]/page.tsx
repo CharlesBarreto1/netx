@@ -6,7 +6,10 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 
+import { Mail, Phone, Calendar, Clock } from 'lucide-react';
+
 import { AuditTrail } from '@/components/audit/AuditTrail';
+import { Breadcrumb } from '@/components/ui/Breadcrumb';
 import { PortalAccessButton } from '@/components/customers/PortalAccessButton';
 import { AddressesTab } from '@/components/crm/AddressesTab';
 import { ServiceOrdersTab } from '@/components/crm/ServiceOrdersTab';
@@ -115,44 +118,59 @@ export default function CustomerDetailPage() {
       : []),
   ];
 
+  const initials = customer.displayName
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('') || '?';
+
   return (
-    <div className="space-y-5">
-      <header className="space-y-2">
-        <nav className="text-xs text-slate-500 dark:text-slate-400">
-          <Link href="/customers" className="hover:underline">
-            Clientes
-          </Link>{' '}
-          › {customer.displayName}
-        </nav>
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-bold tracking-tight">{customer.displayName}</h1>
-              <Badge tone={customer.type === 'INDIVIDUAL' ? 'info' : 'brand'}>
-                {customer.type === 'INDIVIDUAL' ? 'PF' : 'PJ'}
-              </Badge>
-              <Badge tone={statusTone(customer.status)}>
-                {STATUS_LABEL[customer.status] ?? customer.status}
-              </Badge>
-              {customer.code && (
-                <span className="text-xs text-slate-500 dark:text-slate-400">
-                  Código: {customer.code}
-                </span>
+    <div className="animate-fade-in-up space-y-5">
+      <Breadcrumb
+        items={[
+          { label: 'Clientes', href: '/customers' },
+          { label: customer.displayName },
+        ]}
+      />
+
+      <header className="card p-5">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+          <div className="flex items-start gap-4">
+            <div
+              className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-accent-muted text-lg font-semibold text-accent-strong"
+              aria-hidden
+            >
+              {initials}
+            </div>
+            <div className="min-w-0 space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-2xl font-bold tracking-tight text-text">{customer.displayName}</h1>
+                <Badge tone={customer.type === 'INDIVIDUAL' ? 'info' : 'brand'}>
+                  {customer.type === 'INDIVIDUAL' ? 'PF' : 'PJ'}
+                </Badge>
+                <Badge tone={statusTone(customer.status)}>
+                  {STATUS_LABEL[customer.status] ?? customer.status}
+                </Badge>
+                {customer.code && (
+                  <span className="rounded-md bg-surface-muted px-1.5 py-0.5 text-2xs font-medium text-text-muted">
+                    #{customer.code}
+                  </span>
+                )}
+              </div>
+              <p className="text-sm tabular text-text-muted">
+                {formatTaxId(customer.taxIdType, customer.taxId)}
+                {customer.taxIdCountry ? ` · ${customer.taxIdType} · ${customer.taxIdCountry}` : ''}
+              </p>
+              {customer.tags && customer.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {customer.tags.map((t) => (
+                    <Badge key={t.id} tone="neutral" dot={t.color ?? undefined}>
+                      {t.name}
+                    </Badge>
+                  ))}
+                </div>
               )}
             </div>
-            <p className="text-sm text-slate-500 dark:text-slate-400">
-              {formatTaxId(customer.taxIdType, customer.taxId)}
-              {customer.taxIdCountry ? ` · ${customer.taxIdType} · ${customer.taxIdCountry}` : ''}
-            </p>
-            {customer.tags && customer.tags.length > 0 && (
-              <div className="flex flex-wrap gap-1 pt-1">
-                {customer.tags.map((t) => (
-                  <Badge key={t.id} tone="neutral" dot={t.color ?? undefined}>
-                    {t.name}
-                  </Badge>
-                ))}
-              </div>
-            )}
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {canUpdate && (
@@ -160,9 +178,7 @@ export default function CustomerDetailPage() {
                 <Button variant="secondary">Editar</Button>
               </Link>
             )}
-            {canUpdate && (
-              <PortalAccessButton customerId={customer.id} />
-            )}
+            {canUpdate && <PortalAccessButton customerId={customer.id} />}
             {canDelete && (
               <Button variant="danger" onClick={() => setConfirmDelete(true)}>
                 Excluir
@@ -170,14 +186,18 @@ export default function CustomerDetailPage() {
             )}
           </div>
         </div>
-      </header>
 
-      <section className="grid grid-cols-1 gap-4 md:grid-cols-4">
-        <InfoChip label="Email" value={customer.primaryEmail ?? '—'} />
-        <InfoChip label="Telefone" value={customer.primaryPhone ? formatPhone(customer.primaryPhone) : '—'} />
-        <InfoChip label="Criado" value={formatDateTime(customer.createdAt)} />
-        <InfoChip label="Atualizado" value={formatDateTime(customer.updatedAt)} />
-      </section>
+        <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-4 md:grid-cols-4">
+          <InfoChip icon={Mail} label="Email" value={customer.primaryEmail ?? '—'} />
+          <InfoChip
+            icon={Phone}
+            label="Telefone"
+            value={customer.primaryPhone ? formatPhone(customer.primaryPhone) : '—'}
+          />
+          <InfoChip icon={Calendar} label="Criado" value={formatDateTime(customer.createdAt)} />
+          <InfoChip icon={Clock} label="Atualizado" value={formatDateTime(customer.updatedAt)} />
+        </div>
+      </header>
 
       <Tabs value={activeTab} onChange={switchTab} items={items} />
 
@@ -216,13 +236,22 @@ export default function CustomerDetailPage() {
   );
 }
 
-function InfoChip({ label, value }: { label: string; value: React.ReactNode }) {
+function InfoChip({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon?: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: React.ReactNode;
+}) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800">
-      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+    <div className="min-w-0">
+      <div className="flex items-center gap-1.5 text-2xs font-semibold uppercase tracking-wider text-text-subtle">
+        {Icon && <Icon className="h-3 w-3" />}
         {label}
       </div>
-      <div className="mt-0.5 truncate text-sm text-slate-800 dark:text-slate-100">{value}</div>
+      <div className="mt-0.5 truncate text-sm text-text">{value}</div>
     </div>
   );
 }

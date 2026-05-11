@@ -33,7 +33,7 @@ export const DropdownMenuSubTrigger = forwardRef<
       ref={ref}
       className={cn(
         'flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm',
-        'outline-none data-[state=open]:bg-surface-hover data-[state=open]:text-text',
+        'outline-hidden data-[state=open]:bg-surface-hover data-[state=open]:text-text',
         'focus:bg-surface-hover focus:text-text',
         inset && 'pl-8',
         className,
@@ -97,7 +97,7 @@ export const DropdownMenuItem = forwardRef<
     <DropdownMenuPrimitive.Item
       ref={ref}
       className={cn(
-        'relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none',
+        'relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden',
         'transition-colors focus:bg-surface-hover focus:text-text',
         'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
         variant === 'danger' &&
@@ -119,7 +119,7 @@ export const DropdownMenuCheckboxItem = forwardRef<
       ref={ref}
       checked={checked}
       className={cn(
-        'relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none',
+        'relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-hidden',
         'transition-colors focus:bg-surface-hover focus:text-text',
         'data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
         className,
@@ -144,7 +144,7 @@ export const DropdownMenuRadioItem = forwardRef<
     <DropdownMenuPrimitive.RadioItem
       ref={ref}
       className={cn(
-        'relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none',
+        'relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-hidden',
         'focus:bg-surface-hover focus:text-text data-[disabled]:pointer-events-none data-[disabled]:opacity-50',
         className,
       )}

@@ -421,7 +421,7 @@ function ChatThread({
             }}
             placeholder={t('thread.placeholder')}
             rows={2}
-            className="flex-1 resize-none rounded-md border border-slate-300 p-2 text-sm focus:border-brand-500 focus:outline-none disabled:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
+            className="flex-1 resize-none rounded-md border border-slate-300 p-2 text-sm focus:border-brand-500 focus:outline-hidden disabled:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
           />
           <Button onClick={doSend} disabled={!canType || !text.trim() || busy} size="sm">
             <Send className="h-4 w-4" />

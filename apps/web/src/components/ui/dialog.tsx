@@ -53,7 +53,7 @@ export const DialogContent = forwardRef<
           'data-[state=open]:animate-in data-[state=closed]:animate-out',
           'data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0',
           'data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95',
-          'focus:outline-none',
+          'focus:outline-hidden',
           className,
         )}
         {...props}
@@ -64,7 +64,7 @@ export const DialogContent = forwardRef<
             'absolute right-3 top-3 inline-flex h-7 w-7 items-center justify-center',
             'rounded-md text-text-muted transition-colors',
             'hover:bg-surface-hover hover:text-text',
-            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+            'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring',
           )}
           aria-label="Fechar"
         >
