@@ -19,11 +19,16 @@
 
 /* ---------------------------------------------------------------------------
  * Custom variants — composáveis em qualquer classe
+ *
+ * Tailwind 4 stable usa a forma `@custom-variant <name> (<selector>);` com
+ * `&` representando o seletor base. Sintaxes com `:where()` complexo às
+ * vezes confundem o parser do @tailwindcss/postcss em versões mais recentes
+ * — usamos a forma mais simples (`.dark &`) que é equivalente.
  * --------------------------------------------------------------------------- */
-@custom-variant dark         (&:where(.dark, .dark *));
-@custom-variant compact      (&:where([data-density='compact'], [data-density='compact'] *));
-@custom-variant cozy         (&:where([data-density='cozy'], [data-density='cozy'] *));
-@custom-variant comfortable  (&:where([data-density='comfortable'], [data-density='comfortable'] *));
+@custom-variant dark         (.dark &);
+@custom-variant compact      ([data-density='compact'] &);
+@custom-variant cozy         ([data-density='cozy'] &);
+@custom-variant comfortable  ([data-density='comfortable'] &);
 
 /* ---------------------------------------------------------------------------
  * Tokens crus — light (default) e dark (.dark class no <html>)

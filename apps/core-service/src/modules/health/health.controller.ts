@@ -1,9 +1,9 @@
 import { Controller, Get } from '@nestjs/common';
 import {
   HealthCheck,
+  HealthCheckResult,
   HealthCheckService,
   PrismaHealthIndicator,
-  HealthIndicatorResult,
 } from '@nestjs/terminus';
 import { ApiTags } from '@nestjs/swagger';
 
@@ -19,11 +19,17 @@ export class HealthController {
     private readonly prismaHealth: PrismaHealthIndicator,
   ) {}
 
-  /** Liveness + DB readiness probe. Public — usado por load balancer / k8s. */
+  /**
+   * Liveness + DB readiness probe. Public — usado por load balancer / k8s.
+   *
+   * Em `@nestjs/terminus` 11 o tipo de retorno é `HealthCheckResult` (que já
+   * carrega status + info + details). Não criamos mais a anotação manual
+   * `{ status; info? }` — gerava conflito de strict type em TS 5.9.
+   */
   @Public()
   @Get()
   @HealthCheck()
-  check(): Promise<{ status: string; info?: HealthIndicatorResult }> {
+  check(): Promise<HealthCheckResult> {
     return this.health.check([() => this.prismaHealth.pingCheck('database', this.prisma)]);
   }
 
