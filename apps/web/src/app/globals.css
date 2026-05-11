@@ -18,17 +18,18 @@
 @import 'tw-animate-css';
 
 /* ---------------------------------------------------------------------------
- * Custom variants — composáveis em qualquer classe
+ * Custom variants — composáveis em qualquer classe.
  *
- * Tailwind 4 stable usa a forma `@custom-variant <name> (<selector>);` com
- * `&` representando o seletor base. Sintaxes com `:where()` complexo às
- * vezes confundem o parser do @tailwindcss/postcss em versões mais recentes
- * — usamos a forma mais simples (`.dark &`) que é equivalente.
+ * Sintaxe canonical do Tailwind 4 (4.1+) usando `&:where(SELECTOR *)` com
+ * aspas duplas no data-attribute. Não usamos `:where(A, A *)` porque a
+ * vírgula dentro do `:where()` em combinação com os parênteses externos
+ * confunde o parser do @tailwindcss/postcss em algumas versões. Como
+ * `data-density` e `dark` ficam em <html>, todos os descendentes pegam.
  * --------------------------------------------------------------------------- */
-@custom-variant dark         (.dark &);
-@custom-variant compact      ([data-density='compact'] &);
-@custom-variant cozy         ([data-density='cozy'] &);
-@custom-variant comfortable  ([data-density='comfortable'] &);
+@custom-variant dark         (&:where(.dark *));
+@custom-variant compact      (&:where([data-density="compact"] *));
+@custom-variant cozy         (&:where([data-density="cozy"] *));
+@custom-variant comfortable  (&:where([data-density="comfortable"] *));
 
 /* ---------------------------------------------------------------------------
  * Tokens crus — light (default) e dark (.dark class no <html>)
