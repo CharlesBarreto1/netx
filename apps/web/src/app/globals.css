@@ -18,18 +18,14 @@
 @import 'tw-animate-css';
 
 /* ---------------------------------------------------------------------------
- * Custom variants — composáveis em qualquer classe.
+ * Config híbrida: tokens via @theme abaixo, mas variantes (`dark:`, `compact:`,
+ * `cozy:`, `comfortable:`) vivem em `tailwind.config.ts` via plugin JS.
  *
- * Sintaxe canonical do Tailwind 4 (4.1+) usando `&:where(SELECTOR *)` com
- * aspas duplas no data-attribute. Não usamos `:where(A, A *)` porque a
- * vírgula dentro do `:where()` em combinação com os parênteses externos
- * confunde o parser do @tailwindcss/postcss em algumas versões. Como
- * `data-density` e `dark` ficam em <html>, todos os descendentes pegam.
+ * Por que: `@custom-variant` em alguns builds do `@tailwindcss/postcss 4.1.x`
+ * tem bug que dispara "has no selector or body" mesmo com sintaxe canonical.
+ * A API JS `addVariant()` é estável desde TW v3 — escolha pragmática.
  * --------------------------------------------------------------------------- */
-@custom-variant dark         (&:where(.dark *));
-@custom-variant compact      (&:where([data-density="compact"] *));
-@custom-variant cozy         (&:where([data-density="cozy"] *));
-@custom-variant comfortable  (&:where([data-density="comfortable"] *));
+@config '../../tailwind.config.ts';
 
 /* ---------------------------------------------------------------------------
  * Tokens crus — light (default) e dark (.dark class no <html>)
