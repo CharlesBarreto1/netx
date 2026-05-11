@@ -61,10 +61,24 @@ step() {
   : > "${marker}"
 }
 
-# Gera string aleatória [0-9a-zA-Z], default 32 chars
+# Gera string aleatória [0-9a-zA-Z], default 32 chars.
+#
+# A versão antiga era `tr -dc 'A-Za-z0-9' </dev/urandom | head -c LEN`. Em
+# Debian 13 com bash 5.2 + pipefail ativo, o `head -c` lê N bytes e fecha o
+# pipe — o `tr` lendo `/dev/urandom` infinito recebe SIGPIPE (exit 141) e
+# o script morre no `set -e`. Em Debian 12 funcionava por timing.
+#
+# Solução: usar `openssl rand` que produz output finito (não é stream
+# infinito), gerando ~1.5× mais bytes que precisamos (base64 perde alguns
+# chars não-alfanuméricos como '+', '/', '=') e cortando no tamanho exato.
 gen_secret() {
   local len=${1:-32}
-  tr -dc 'A-Za-z0-9' </dev/urandom | head -c "${len}"
+  # openssl rand sempre disponível (instalado por padrão em Debian).
+  # base64 produz [A-Za-z0-9+/=]; filtramos pros alfanuméricos.
+  local need=$((len * 2))
+  openssl rand -base64 "${need}" 2>/dev/null \
+    | tr -d '\n+/=' \
+    | head -c "${len}"
   echo
 }
 
