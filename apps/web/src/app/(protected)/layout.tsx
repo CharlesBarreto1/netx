@@ -19,7 +19,15 @@ import { TenantConfigProvider } from '@/lib/tenant-config';
  *   - I18nProvider (NextIntlClientProvider com locale efetivo)
  *
  * Ordem importa: SWR → TenantConfig (usa SWR) → I18n (usa TenantConfig).
+ *
+ * Por que `dynamic = 'force-dynamic'`: Next 16 + React 19 tenta prerender páginas
+ * client durante build, mas providers (TenantConfig, I18n) dependem de session que
+ * só existe em runtime. Sem isso, `/contracts/new` e outras quebram com
+ * "Cannot read properties of null (reading 'useContext')" no prerender. Como
+ * tudo aqui é gated por session, prerender estático não faz sentido.
  */
+export const dynamic = 'force-dynamic';
+
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();

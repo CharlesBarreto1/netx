@@ -1,8 +1,12 @@
+// Por que sem `rootDir`: imports de `@netx/shared` e `@netx/config` resolvem para
+// `packages/*/src`, que ficam fora de `apps/core-service/src`. Com `rootDir: src`
+// o `tsc --noEmit` standalone reclama (TS6059) — falso-positivo, já que o build
+// real via Nx/swc passa. Também `prisma/seed.ts` está fora de `src/`. Removendo
+// `rootDir`, o TS calcula o common parent automaticamente e o typecheck passa.
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
     "declaration": false,
     "removeComments": true
   },

@@ -1,8 +1,11 @@
+// Por que sem `rootDir`: imports de `@netx/shared` e `@netx/config` resolvem para
+// `packages/*/src`, fora de `apps/api-gateway/src`. Com `rootDir: src` o
+// `tsc --noEmit` standalone reclama (TS6059) — falso-positivo, já que o Nx
+// build via swc passa. Sem `rootDir`, o TS calcula o common parent automaticamente.
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
     "declaration": false,
     "removeComments": true
   },
