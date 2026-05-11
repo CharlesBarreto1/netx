@@ -18,7 +18,49 @@
  *   pm2 restart ecosystem.config.js --update-env
  *
  * Caminhos absolutos foram usados de propósito — PM2 sob systemd não herda CWD.
+ *
+ * IMPORTANTE — env vars: o `.env` da raiz é carregado AQUI mesmo via dotenv,
+ * pra que TODOS os apps recebam as mesmas vars (DATABASE_URL, JWT_*, REDIS_URL,
+ * RABBITMQ_URL, etc). Sem isso, PM2 sob systemd inicia os procs com env mínima
+ * (só PATH, HOME, NODE_ENV) e o `loadConfig()` valida zod e falha em produção.
  */
+const path = require('path');
+const ENV_PATH = path.join(__dirname, '.env');
+
+// Carrega .env e mescla nas vars globais (process.env). Cada app abaixo pega
+// via spread; pra não correr risco de "vars vazias" se o .env não existir,
+// usamos suppress: silently ignore.
+try {
+  // dotenv pode não estar instalado no momento em que o ecosystem.config.js
+  // é parseado pelo PM2 (ex.: deploy inicial sem node_modules). Tentamos o
+  // require dentro do try pra não travar.
+  require('dotenv').config({ path: ENV_PATH });
+} catch {
+  // sem dotenv — confia que NODE_ENV e demais vars já estão no shell parent
+}
+
+// Snapshot das vars do `.env` que cada app recebe (não copiamos tudo do
+// process.env pra evitar leak de variáveis aleatórias do shell).
+function appEnv(extra = {}) {
+  const keys = [
+    'NODE_ENV', 'LOG_LEVEL',
+    'API_GATEWAY_PORT', 'API_GATEWAY_HOST', 'API_GATEWAY_CORS_ORIGINS', 'API_GATEWAY_GLOBAL_PREFIX',
+    'CORE_SERVICE_PORT', 'CORE_SERVICE_HOST',
+    'WEB_PORT', 'NEXT_PUBLIC_API_URL', 'INTERNAL_API_URL',
+    'DATABASE_URL', 'REDIS_URL', 'RABBITMQ_URL',
+    'JWT_ACCESS_SECRET', 'JWT_REFRESH_SECRET', 'JWT_ACCESS_EXPIRES_IN', 'JWT_REFRESH_EXPIRES_IN',
+    'ARGON2_MEMORY_COST', 'ARGON2_TIME_COST', 'ARGON2_PARALLELISM',
+    'TENANT_RESOLUTION_STRATEGY', 'TENANT_HEADER_NAME', 'DEFAULT_TENANT_SLUG',
+    'EVOLUTION_URL', 'EVOLUTION_API_KEY', 'WEBHOOK_BASE_URL', 'WHATSAPP_MEDIA_ROOT',
+    'OTEL_EXPORTER_OTLP_ENDPOINT', 'OTEL_SERVICE_NAME',
+  ];
+  const env = {};
+  for (const k of keys) {
+    if (process.env[k] !== undefined) env[k] = process.env[k];
+  }
+  return { ...env, ...extra };
+}
+
 module.exports = {
   apps: [
     {
@@ -27,16 +69,13 @@ module.exports = {
       script: 'dist/main.js',
       instances: 1,
       exec_mode: 'fork',
-      env: {
-        NODE_ENV: 'production',
+      env: appEnv({
         // Aponta pro pg_dump 16, alinhado com o Postgres 16 do projeto.
         // Em VPS Debian 12 o pg_dump default é 15 e dispara
         // "server version mismatch". Se a versão do server mudar, ajusta aqui.
-        // Se não tiver postgresql-client-16 instalado, rode
-        // scripts/install-vps.sh primeiro.
         PG_DUMP_BIN: '/usr/lib/postgresql/16/bin/pg_dump',
         BACKUP_DIR: '/var/backups/netx',
-      },
+      }),
       max_memory_restart: '1G',
       out_file: '/home/netx/.pm2/logs/netx-core.out.log',
       error_file: '/home/netx/.pm2/logs/netx-core.err.log',
@@ -49,7 +88,7 @@ module.exports = {
       script: 'dist/main.js',
       instances: 1,
       exec_mode: 'fork',
-      env: { NODE_ENV: 'production' },
+      env: appEnv(),
       max_memory_restart: '512M',
       out_file: '/home/netx/.pm2/logs/netx-gateway.out.log',
       error_file: '/home/netx/.pm2/logs/netx-gateway.err.log',
@@ -63,7 +102,7 @@ module.exports = {
       args: 'start -p 3200',
       instances: 1,
       exec_mode: 'fork',
-      env: { NODE_ENV: 'production', PORT: '3200' },
+      env: appEnv({ PORT: '3200' }),
       max_memory_restart: '512M',
       out_file: '/home/netx/.pm2/logs/netx-web.out.log',
       error_file: '/home/netx/.pm2/logs/netx-web.err.log',
