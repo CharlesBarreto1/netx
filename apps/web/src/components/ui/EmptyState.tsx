@@ -18,6 +18,7 @@
  *   />
  */
 import type { LucideIcon } from 'lucide-react';
+import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 import { Button } from './Button';
@@ -67,9 +68,12 @@ export function EmptyState({
       {action && (
         <div className="mt-5">
           {action.href ? (
-            <Button asChild>
-              <a href={action.href}>{action.label}</a>
-            </Button>
+            // Button NetX não suporta `asChild` (não usa Radix Slot). Envolvendo
+            // o Button num <Link> mantém navegação client-side do Next sem
+            // perder o estilo do Button.
+            <Link href={action.href}>
+              <Button>{action.label}</Button>
+            </Link>
           ) : (
             <Button onClick={action.onClick}>{action.label}</Button>
           )}
