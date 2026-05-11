@@ -17,7 +17,11 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  experimental: { typedRoutes: true },
+  // Next 16 promoveu typedRoutes de experimental pra top-level.
+  typedRoutes: true,
+  // Em monorepo, o Next 16 procura por múltiplos package-lock.json e fica em
+  // dúvida sobre qual diretório é o root. Apontamos explicitamente pro repo.
+  outputFileTracingRoot: new URL('../../', import.meta.url).pathname,
   async rewrites() {
     return [
       {
