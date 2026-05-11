@@ -34,6 +34,12 @@ netx_app_dirs() {
 }
 
 netx_app_clone_or_update() {
+  # Git 2.35+ recusa repos com "dubious ownership" (UID do dono != UID do
+  # processo). Aqui o diretório é do user `netx` mas o installer roda como
+  # root, então temos que marcá-lo como safe ANTES de qualquer comando git.
+  # Idempotente: `--add` não duplica se já existe.
+  git config --global --add safe.directory "${NETX_HOME}" 2>/dev/null || true
+
   if [[ -d "${NETX_HOME}/.git" ]]; then
     log_info "Atualizando repo (${NETX_REPO_BRANCH})"
     git -C "${NETX_HOME}" fetch --depth=1 origin "${NETX_REPO_BRANCH}"
@@ -112,7 +118,16 @@ netx_app_render_env() {
 
 netx_app_install() {
   log_info "npm install (esto pode demorar 2-5 min)"
-  as_netx "cd ${NETX_HOME} && npm ci --prefer-offline --no-audit --no-fund"
+  # Usa `npm ci` se tiver lockfile (mais reprodutível) — senão cai pra
+  # `npm install --legacy-peer-deps` que gera o lockfile. Em monorepos novos
+  # ou após bump pesado (TW4, Next 16, etc), peer-deps em transição justificam
+  # --legacy-peer-deps.
+  if [[ -f "${NETX_HOME}/package-lock.json" ]]; then
+    as_netx "cd ${NETX_HOME} && npm ci --legacy-peer-deps --prefer-offline --no-audit --no-fund"
+  else
+    log_warn "package-lock.json ausente — usando 'npm install' (mais lento, gera lockfile)"
+    as_netx "cd ${NETX_HOME} && npm install --legacy-peer-deps --no-audit --no-fund"
+  fi
   log_ok "Dependências instaladas"
 }
 
