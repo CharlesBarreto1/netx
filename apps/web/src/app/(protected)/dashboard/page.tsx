@@ -247,7 +247,7 @@ function MetricCard({
   );
 
   if (disabled) return Body;
-  return <Link href={href as never}>{Body}</Link>;
+  return <Link href={href}>{Body}</Link>;
 }
 
 function ShortcutCard({
@@ -265,7 +265,7 @@ function ShortcutCard({
 }) {
   if (!show) return null;
   return (
-    <Link href={href as never}>
+    <Link href={href}>
       <div className="card card-interactive group flex flex-col gap-2 p-4">
         <div className="flex items-center gap-2">
           <Icon className="h-4 w-4 text-text-subtle transition-colors group-hover:text-accent" />

@@ -94,7 +94,7 @@ export function CommandPalette() {
   const go = useCallback(
     (href: string) => {
       setOpen(false);
-      router.push(href as never);
+      router.push(href);
     },
     [router],
   );

@@ -17,8 +17,11 @@
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
-  // Next 16 promoveu typedRoutes de experimental pra top-level.
-  typedRoutes: true,
+  // typedRoutes DESLIGADO por enquanto: Next 16 com type-checking estrito quebra
+  // qualquer <Link href={`/customers/${id}`}> dinâmico — custo alto pra ganho
+  // marginal em projeto que monta href em runtime constantemente. Reativar
+  // numa janela dedicada de v1.1 com `as Route` cast em ~10 lugares.
+  typedRoutes: false,
   // Em monorepo, o Next 16 procura por múltiplos package-lock.json e fica em
   // dúvida sobre qual diretório é o root. Apontamos explicitamente pro repo.
   outputFileTracingRoot: new URL('../../', import.meta.url).pathname,
