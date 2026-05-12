@@ -122,11 +122,16 @@ netx_app_install() {
   # `npm install --legacy-peer-deps` que gera o lockfile. Em monorepos novos
   # ou após bump pesado (TW4, Next 16, etc), peer-deps em transição justificam
   # --legacy-peer-deps.
+  #
+  # `npm_config_yes=true`: defesa em profundidade contra prompts interativos
+  # de `npx` (ex.: o script `preinstall` usa `npx only-allow npm` e versões
+  # antigas do npx prompts "Ok to proceed?"). Mesmo com `npx --yes` no script,
+  # garantimos via env que NENHUM npx aqui pausa esperando stdin.
   if [[ -f "${NETX_HOME}/package-lock.json" ]]; then
-    as_netx "cd ${NETX_HOME} && npm ci --legacy-peer-deps --prefer-offline --no-audit --no-fund"
+    as_netx "cd ${NETX_HOME} && npm_config_yes=true npm ci --legacy-peer-deps --prefer-offline --no-audit --no-fund"
   else
     log_warn "package-lock.json ausente — usando 'npm install' (mais lento, gera lockfile)"
-    as_netx "cd ${NETX_HOME} && npm install --legacy-peer-deps --no-audit --no-fund"
+    as_netx "cd ${NETX_HOME} && npm_config_yes=true npm install --legacy-peer-deps --no-audit --no-fund"
   fi
   log_ok "Dependências instaladas"
 }

@@ -15,7 +15,7 @@
     "npm": ">=10.0.0"
   },
   "scripts": {
-    "preinstall": "npx only-allow npm",
+    "preinstall": "npx --yes only-allow npm",
     "build": "nx run-many -t build",
     "test": "nx run-many -t test",
     "lint": "nx run-many -t lint",
