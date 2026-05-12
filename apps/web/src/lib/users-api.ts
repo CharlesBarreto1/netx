@@ -25,6 +25,12 @@ export interface UserResponse {
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Senha temporária GERADA pelo backend (admin criou sem informar).
+   * Vem SÓ na resposta de POST /v1/users — em listagens é undefined.
+   * Espelho do campo em @netx/shared `users.dto.ts`.
+   */
+  temporaryPassword?: string;
 }
 
 export interface RoleResponse {
