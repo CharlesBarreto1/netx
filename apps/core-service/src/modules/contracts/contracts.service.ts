@@ -332,13 +332,22 @@ export class ContractsService {
       return c;
     });
 
+    // CoA real DEPOIS do commit — radcheck/radreply já refletem o novo estado.
+    // Não-bloqueante: se cliente já estava offline, retorna 0 NAS e segue.
+    const coaResults = await this.fireCoADisconnect(updated, `suspensão (${reason})`);
+
     await this.audit.log({
       tenantId,
       userId: opts.actorUserId ?? null,
       action: 'contracts.suspended',
       resource: 'contracts',
       resourceId: updated.id,
-      metadata: { reason, manual: opts.manual ?? false, note: opts.note ?? null },
+      metadata: {
+        reason,
+        manual: opts.manual ?? false,
+        note: opts.note ?? null,
+        coaKicked: coaResults.kicked,
+      },
     });
     return toContractResponse(updated, { includePassword: true });
   }
@@ -507,15 +516,78 @@ export class ContractsService {
       return c;
     });
 
+    // CoA real após commit — mesma lógica do applySuspend.
+    const coaResults = await this.fireCoADisconnect(updated, 'cancelamento');
+
     await this.audit.log({
       tenantId,
       userId: actorUserId,
       action: 'contracts.cancelled',
       resource: 'contracts',
       resourceId: updated.id,
-      metadata: { note: input.note ?? null },
+      metadata: { note: input.note ?? null, coaKicked: coaResults.kicked },
     });
     return toContractResponse(updated, { includePassword: true });
+  }
+
+  // ---------------------------------------------------------------------------
+  // CoA — Disconnect-Request automático após suspend/cancel
+  // ---------------------------------------------------------------------------
+  /**
+   * Manda Disconnect-Request pro CoA e nunca lança. Atualiza o evento
+   * RadiusEvent (último PENDING DISCONNECT pra esse contrato) pra APPLIED/FAILED
+   * com o resultado consolidado. Chamado em fluxos automáticos (suspend,
+   * cancel) — não é o caminho do botão manual, que é `kick()`.
+   *
+   * IMPORTANTE: chame DEPOIS de comitar o update do contrato + radcheck/
+   * radreply. Senão o cliente reconecta na mesma sessão e fica autorizado
+   * com as credenciais antigas. Aqui assumimos que `radius.enqueueSync`
+   * já rodou na transação.
+   */
+  private async fireCoADisconnect(
+    contract: ContractWithRelations,
+    reason: string,
+  ): Promise<{ kicked: number; total: number }> {
+    if (!contract.pppoeUsername) return { kicked: 0, total: 0 };
+
+    try {
+      const results = await this.radiusCoa.disconnect(contract.pppoeUsername);
+      const kicked = results.filter((r) => r.ok).length;
+
+      // Atualiza o último evento DISCONNECT PENDING desse contrato pra APPLIED
+      // ou FAILED — assim a tela de eventos RADIUS mostra o resultado real.
+      const lastEvent = await this.prisma.radiusEvent.findFirst({
+        where: {
+          contractId: contract.id,
+          action: 'DISCONNECT',
+          status: 'PENDING',
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (lastEvent) {
+        await this.prisma.radiusEvent.update({
+          where: { id: lastEvent.id },
+          data: {
+            status: kicked > 0 ? 'APPLIED' : 'FAILED',
+            appliedAt: new Date(),
+            error:
+              kicked === 0 && results.length > 0
+                ? results.find((r) => !r.ok)?.error ?? 'No NAS responded'
+                : null,
+          },
+        });
+      }
+      this.logger.log(
+        `[CoA] disconnect contract=${contract.id} reason="${reason}" kicked=${kicked}/${results.length}`,
+      );
+      return { kicked, total: results.length };
+    } catch (err) {
+      // Nunca derruba o fluxo principal — só loga
+      this.logger.warn(
+        `[CoA] disconnect FAILED contract=${contract.id}: ${(err as Error).message}`,
+      );
+      return { kicked: 0, total: 0 };
+    }
   }
 
   // ---------------------------------------------------------------------------
