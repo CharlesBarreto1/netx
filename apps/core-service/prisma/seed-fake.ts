@@ -1,20 +1,22 @@
 /**
  * Povoamento de dados fictícios para testes/demo (escala alta).
  *
- * Gera N clientes paraguaios (CI/RUC, +595, ₲), todos IPoE, com:
+ * Gera N clientes paraguaios (CI/RUC, +595, ₲) com:
  *   - Endereço(s) e contatos
- *   - 1 contrato IPoE com circuit-id Huawei-style + MAC + (às vezes) IP fixo
+ *   - 1 contrato (~98% IPoE com circuit-id Huawei + MAC, ~2% PPPoE legado)
  *   - Faturas mensais espalhadas no histórico (PAID/OPEN/OVERDUE)
  *   - Cobranças avulsas ocasionais (taxa de instalação)
  *   - CashMovements automáticos para cada pagamento
  *   - 0–3 ordens de serviço (instalação, mudança de plano, manutenção)
  *
+ * Distribuição temporal: operação desde 2024-11 (~18 meses retroativos).
+ *
  * Performance: usa createMany em batches (faturas, cobranças, movimentos,
- * O.S) — ~3-5 min pra 8500 clientes em VPS modesto.
+ * O.S) — ~3-5 min pra 8000 clientes em VPS modesto.
  *
  * Modo aditivo: NÃO apaga dados existentes.
  *
- * Uso:  npm run db:seed:fake [N]   (default 8491)
+ * Uso:  npm run db:seed:fake [N]   (default 8000)
  */
 import {
   CashMovementSource,
@@ -182,11 +184,15 @@ function circuitIdFromSeq(seq: number, c: number): string {
 // Main
 // ─────────────────────────────────────────────────────────────────────────────
 async function main() {
-  // CLI: `npm run db:seed:fake -- 8491`
+  // CLI: `npm run db:seed:fake -- 8000`
   const argTarget = Number(process.argv[2]);
-  const TARGET = Number.isFinite(argTarget) && argTarget > 0 ? argTarget : 8491;
+  const TARGET = Number.isFinite(argTarget) && argTarget > 0 ? argTarget : 8000;
 
-  console.log(`🇵🇾  Seed-fake — ${TARGET} clientes (todos IPoE)\n`);
+  // Operação iniciou em 2024-11-01. Limita activatedAt mínimo nessa data.
+  const OPERATION_START = new Date('2024-11-01T00:00:00Z');
+  const MAX_AGE_DAYS = Math.floor((Date.now() - OPERATION_START.getTime()) / 86_400_000);
+
+  console.log(`🇵🇾  Seed-fake — ${TARGET} clientes (98% IPoE / 2% PPPoE) desde ${OPERATION_START.toISOString().slice(0, 10)}\n`);
   const t0 = Date.now();
 
   const tenant = await prisma.tenant.findFirst({ where: { slug: 'default' } });
@@ -388,29 +394,44 @@ async function main() {
         : status === CustomerStatus.CHURNED ? ContractStatus.CANCELLED
         : ContractStatus.ACTIVE;
 
-      const ageMonths = randInt(1, 24);
-      const activatedAt = daysAgo(ageMonths * 30 + randInt(0, 20));
+      // Idade do contrato — distribuição realista (mais clientes recentes que
+      // antigos pra simular crescimento). Clampa em MAX_AGE_DAYS (operação
+      // não pode ser antes de 2024-11-01).
+      const ageDaysRaw = randInt(1, 540); // 1d a ~18 meses
+      const ageDays = Math.min(ageDaysRaw, MAX_AGE_DAYS);
+      const ageMonths = Math.max(1, Math.floor(ageDays / 30));
+      const activatedAt = daysAgo(ageDays);
       const contractCode = `CTR-${pad(seq, 6)}${c > 0 ? '-2' : ''}`;
 
-      const circuitId = circuitIdFromSeq(seq, c);
-      const macAddress = macFromSeq(seq, c);
+      // 98% IPoE / 2% PPPoE — distribuição realista de migração.
+      // Os PPPoE são "legados" da operação antiga; novos contratos vão pra IPoE.
+      const isPPPoE = Math.random() < 0.02;
+      const authMethod = isPPPoE ? 'PPPOE' : 'IPOE';
+
+      const circuitId = isPPPoE ? null : circuitIdFromSeq(seq, c);
+      const macAddress = isPPPoE ? null : macFromSeq(seq, c);
+      // PPPoE: gera username único por seq + sufixo da residência
+      const pppoeUsername = isPPPoE ? `pppoe${pad(seq, 6)}${c > 0 ? '-2' : ''}` : null;
+      const pppoePassword = isPPPoE
+        ? Math.random().toString(36).slice(2, 12)
+        : null;
+
       const contract = await prisma.contract.create({
         data: {
           tenantId: tenant.id,
           customerId: customer.id,
           code: contractCode,
-          authMethod: 'IPOE',
-          // Sem PPPoE — todos os contratos novos são IPoE.
-          pppoeUsername: null,
-          pppoePassword: null,
+          authMethod,
+          pppoeUsername,
+          pppoePassword,
           circuitId,
-          remoteId: `OLT${((seq - 1) % 4) + 1}`,
+          remoteId: isPPPoE ? null : `OLT${((seq - 1) % 4) + 1}`,
           macAddress,
           framedIpAddress: Math.random() < 0.15
             // 15% têm IP fixo na faixa 200.85.x.y (genérico)
             ? `200.85.${randInt(0, 255)}.${randInt(2, 254)}`
             : null,
-          vlanId: Math.random() < 0.4 ? randInt(100, 4000) : null,
+          vlanId: !isPPPoE && Math.random() < 0.4 ? randInt(100, 4000) : null,
           installationAddress: `${rand(STREETS)} ${randInt(100, 9999)}, ${rand(DISTRICTS)}, ${cityInfo.city}`,
           monthlyValue: plan.monthlyG,
           bandwidthMbps: plan.mbps,
@@ -426,6 +447,7 @@ async function main() {
                 'Pidió señal extendida con mesh.',
                 'Tiene 2da residencia — coordinar con comercial.',
                 'Histórico de mora leve.',
+                isPPPoE ? 'Cliente legado PPPoE — migrar pra IPoE quando agendar visita.' : 'Instalación con IPoE.',
               ])
             : null,
         },
@@ -568,32 +590,63 @@ async function main() {
       }
 
       // 35% têm uma falha técnica ao longo da vida do contrato.
+      // Distribui realisticamente entre os 5 status: 70% COMPLETED (já fechou),
+      // 8% CANCELLED (cliente cancelou pedido), 6% OPEN (acabou de abrir),
+      // 8% SCHEDULED (agendado pra hoje/amanhã), 8% IN_PROGRESS (técnico fora).
       if (ageMonths > 2 && Math.random() < 0.35) {
         const failureDate = daysAgo(randInt(15, ageMonths * 30 - 15));
-        const completed = Math.random() < 0.85;
+        const roll = Math.random();
+        let osStatus: ServiceOrderStatus;
+        if (roll < 0.70) osStatus = ServiceOrderStatus.COMPLETED;
+        else if (roll < 0.78) osStatus = ServiceOrderStatus.CANCELLED;
+        else if (roll < 0.84) osStatus = ServiceOrderStatus.OPEN;
+        else if (roll < 0.92) osStatus = ServiceOrderStatus.SCHEDULED;
+        else osStatus = ServiceOrderStatus.IN_PROGRESS;
+
+        const isClosed = osStatus === ServiceOrderStatus.COMPLETED
+          || osStatus === ServiceOrderStatus.CANCELLED;
+        const hasSchedule = osStatus !== ServiceOrderStatus.OPEN;
+        const hasStarted = osStatus === ServiceOrderStatus.IN_PROGRESS
+          || osStatus === ServiceOrderStatus.COMPLETED;
+        const scheduledAt = hasSchedule
+          ? new Date(failureDate.getTime() + randInt(1, 48) * 3600_000)
+          : null;
+
         soBuffer.push({
           tenantId: tenant.id,
           contractId: contract.id,
           reasonId: reasonByName('Falla técnica').id,
           code: `OS-${pad(seq, 6)}-2`,
-          status: completed ? ServiceOrderStatus.COMPLETED : ServiceOrderStatus.OPEN,
+          status: osStatus,
           openedAt: failureDate,
-          scheduledAt: completed ? new Date(failureDate.getTime() + 3600_000) : null,
-          startedAt: completed ? new Date(failureDate.getTime() + 4 * 3600_000) : null,
-          completedAt: completed ? new Date(failureDate.getTime() + 6 * 3600_000) : null,
+          scheduledAt,
+          startedAt: hasStarted && scheduledAt
+            ? new Date(scheduledAt.getTime() + randInt(0, 4) * 3600_000)
+            : null,
+          completedAt: osStatus === ServiceOrderStatus.COMPLETED && scheduledAt
+            ? new Date(scheduledAt.getTime() + randInt(2, 8) * 3600_000)
+            : osStatus === ServiceOrderStatus.CANCELLED
+              ? new Date(failureDate.getTime() + randInt(1, 24) * 3600_000)
+              : null,
           openDescription: rand([
             'Cliente reportó caída intermitente desde ayer.',
             'Sin servicio. CPE no enciende.',
             'Velocidad baja en horario nocturno.',
             'Wi-Fi no llega al fondo de la casa.',
           ]),
-          closeDescription: completed
-            ? rand([
-                'Cambio de patch cord. Servicio restablecido.',
-                'Reset de ONU. Conexión normalizada.',
-                'Cambio de CPE por defecto de fábrica. OK.',
-                'Ajuste de potencia óptica. Velocidad ok.',
-              ])
+          closeDescription: isClosed
+            ? osStatus === ServiceOrderStatus.CANCELLED
+              ? rand([
+                  'Cliente canceló — falha resolvida sozinha.',
+                  'No se pudo contactar al cliente. Cancelado.',
+                  'Cliente pidió reagendar — abrir nueva O.S cuando llamar.',
+                ])
+              : rand([
+                  'Cambio de patch cord. Servicio restablecido.',
+                  'Reset de ONU. Conexión normalizada.',
+                  'Cambio de CPE por defecto de fábrica. OK.',
+                  'Ajuste de potencia óptica. Velocidad ok.',
+                ])
             : null,
           city: cityInfo.city,
           state: cityInfo.state,
