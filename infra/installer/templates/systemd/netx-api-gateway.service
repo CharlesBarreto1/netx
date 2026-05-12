@@ -11,7 +11,9 @@ User=netx
 Group=netx
 WorkingDirectory=/opt/netx/apps/api-gateway
 EnvironmentFile=/etc/netx/.env
-ExecStart=/usr/bin/node dist/main.js
+# Path profundo (idem netx-core-service.service): tsconfig sem rootDir gera
+# dist/apps/<app>/src/main.js em vez de dist/main.js.
+ExecStart=/usr/bin/node dist/apps/api-gateway/src/main.js
 
 Restart=on-failure
 RestartSec=5s

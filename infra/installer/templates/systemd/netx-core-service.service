@@ -10,7 +10,11 @@ User=netx
 Group=netx
 WorkingDirectory=/opt/netx/apps/core-service
 EnvironmentFile=/etc/netx/.env
-ExecStart=/usr/bin/node dist/main.js
+# Path profundo: como o tsconfig.json não fixa `rootDir` (removido pra
+# permitir typecheck dos imports @netx/shared e @netx/config), o nest build
+# calcula o common parent e o output reflete a estrutura completa do monorepo
+# dentro de dist/. Por isso main.js fica em dist/apps/core-service/src/.
+ExecStart=/usr/bin/node dist/apps/core-service/src/main.js
 
 # Restart policy
 Restart=on-failure

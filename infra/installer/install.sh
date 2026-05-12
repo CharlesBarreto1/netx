@@ -173,7 +173,15 @@ main() {
   step "rabbitmq"            rabbitmq_setup
   step "netx_app"            netx_app_setup
   step "freeradius"          freeradius_setup
-  step "evolution"           evolution_setup
+  # Evolution API (WhatsApp) é opcional. Pode pular com NETX_SKIP_EVOLUTION=1.
+  # O módulo Chat do core-service degrada graciosamente sem o serviço — só
+  # endpoints WhatsApp ficam off, resto do app continua normal.
+  if [[ "${NETX_SKIP_EVOLUTION:-0}" != "1" ]]; then
+    step "evolution"           evolution_setup
+  else
+    log_dim "→ evolution: pulado (NETX_SKIP_EVOLUTION=1)"
+    : > "${NETX_STATE_DIR}/evolution.done"
+  fi
   step "systemd"             systemd_setup
   step "nginx"               nginx_setup
   step "smoke"               smoke_test
