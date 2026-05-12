@@ -161,6 +161,37 @@ async function main() {
       update: {},
     });
 
+    // 6) Pipeline default de CRM (vendas) — espelho do que o seed canônico
+    // cria pro tenant default. Sem isso, /crm/pipelines mostra "Nenhum
+    // pipeline configurado". Idempotente: skip se já existe.
+    const existingPipeline = await prisma.pipeline.findFirst({
+      where: { tenantId: tenant.id, slug: 'vendas' },
+    });
+    if (!existingPipeline) {
+      await prisma.pipeline.create({
+        data: {
+          tenantId: tenant.id,
+          name: 'Vendas',
+          slug: 'vendas',
+          description:
+            'Funil padrão — lead → qualificação → proposta → negociação → fechamento',
+          color: '#0ea5e9',
+          isDefault: true,
+          stages: {
+            create: [
+              { tenantId: tenant.id, name: 'Novo lead',        order: 0, probability: 10,  color: '#64748b' },
+              { tenantId: tenant.id, name: 'Qualificado',      order: 1, probability: 25,  color: '#0ea5e9' },
+              { tenantId: tenant.id, name: 'Proposta enviada', order: 2, probability: 50,  color: '#a855f7' },
+              { tenantId: tenant.id, name: 'Negociação',       order: 3, probability: 75,  color: '#f59e0b' },
+              { tenantId: tenant.id, name: 'Ganho',            order: 4, probability: 100, color: '#22c55e', isWon: true },
+              { tenantId: tenant.id, name: 'Perdido',          order: 5, probability: 0,   color: '#ef4444', isLost: true },
+            ],
+          },
+        },
+      });
+      console.log(`[seed-admin] pipeline 'vendas' criado com 6 stages`);
+    }
+
     console.log(
       `[seed-admin] OK — tenant=${tenant.slug} (${tenant.id}) user=${user.email} (${user.id})`,
     );
