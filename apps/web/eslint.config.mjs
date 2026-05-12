@@ -94,4 +94,31 @@ export default [
       '@typescript-eslint/no-require-imports': 'off',
     },
   },
+  // Arquivos JS/MJS/CJS (configs do Next/PostCSS/Tailwind) rodam em Node.
+  // Desliga `no-undef` aqui também — esses arquivos usam `process`, `module`,
+  // `URL`, `import.meta`, etc. sem TypeScript pra validar.
+  {
+    files: ['**/*.{js,mjs,cjs}'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        process: 'readonly',
+        Buffer: 'readonly',
+        __dirname: 'readonly',
+        __filename: 'readonly',
+        module: 'writable',
+        require: 'readonly',
+        exports: 'writable',
+        global: 'readonly',
+        globalThis: 'readonly',
+        URL: 'readonly',
+        URLSearchParams: 'readonly',
+        console: 'readonly',
+      },
+    },
+    rules: {
+      'no-undef': 'off',
+    },
+  },
 ];
