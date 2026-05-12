@@ -74,17 +74,52 @@ async function main() {
       },
     });
 
-    // 2) Role "admin" — assumida criada pelo seed canônico (db:seed).
-    // Schema atual identifica role por `name`, não `code`.
-    const adminRole = await prisma.role.findFirst({
+    // 2) Sincroniza roles system → tenant.
+    //
+    // O seed canônico (db:seed) cria roles system (tenantId=null) e copia
+    // pros tenants existentes naquele momento. Como o tenant que acabamos
+    // de criar é novo, precisamos replicar o passo de sincronização aqui —
+    // mesma lógica que existe em prisma/seed.ts.
+    const SYSTEM_ROLE_NAMES = ['admin', 'operator', 'viewer'] as const;
+    for (const roleName of SYSTEM_ROLE_NAMES) {
+      const tpl = await prisma.role.findFirst({
+        where: { name: roleName, tenantId: null },
+        include: { rolePermissions: true },
+      });
+      if (!tpl) {
+        console.error(
+          `[seed-admin] template system role "${roleName}" não encontrado — rode db:seed primeiro`,
+        );
+        process.exit(1);
+      }
+      const tenantRole = await prisma.role.upsert({
+        where: { tenantId_name: { tenantId: tenant.id, name: roleName } },
+        update: { description: tpl.description, priority: tpl.priority },
+        create: {
+          tenantId: tenant.id,
+          name: roleName,
+          description: tpl.description,
+          priority: tpl.priority,
+          isSystem: false,
+        },
+      });
+      // Sincroniza permissões da role tenant com o template — remove tudo
+      // e re-cria. Garante que customer novo recebe as últimas perms.
+      await prisma.rolePermission.deleteMany({ where: { roleId: tenantRole.id } });
+      if (tpl.rolePermissions.length > 0) {
+        await prisma.rolePermission.createMany({
+          data: tpl.rolePermissions.map((rp) => ({
+            roleId: tenantRole.id,
+            permissionId: rp.permissionId,
+          })),
+          skipDuplicates: true,
+        });
+      }
+    }
+
+    const adminRole = await prisma.role.findFirstOrThrow({
       where: { tenantId: tenant.id, name: 'admin' },
     });
-    if (!adminRole) {
-      console.error(
-        '[seed-admin] role "admin" não encontrada — o seed canônico precisa rodar primeiro',
-      );
-      process.exit(1);
-    }
 
     // 3) Hash senha
     const passwordHash = await argon2.hash(adminPassword, {
