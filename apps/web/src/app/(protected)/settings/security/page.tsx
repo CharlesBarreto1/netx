@@ -268,7 +268,7 @@ export default function SecurityPage() {
             <div className="space-y-3 rounded-md border border-border bg-surface-muted p-4">
               <p className="text-sm">{t('mfa.scanInstructions')}</p>
               <div className="flex flex-col items-center gap-3 md:flex-row md:items-start">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
+                {/* QR code é base64 inline; `next/image` não agrega aqui. */}
                 <img
                   src={setup.qrCodeDataUrl}
                   alt="QR code"

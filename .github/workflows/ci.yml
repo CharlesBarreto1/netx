@@ -51,12 +51,15 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24
-          # Cache do npm — exige package-lock.json no repo. Sem o lockfile,
-          # remova essa linha (ou commite o lockfile, recomendado).
-          cache: npm
+          # Cache do npm DESLIGADO temporariamente: setup-node@v5 com `cache: npm`
+          # falha se não houver package-lock.json no repo. Reativar (descomentar
+          # a linha `cache: npm` abaixo e trocar `npm install` por `npm ci`) quando
+          # o lockfile for commitado.
+          # cache: npm
 
       - name: Install dependencies
-        run: npm ci --no-audit --no-fund
+        # `npm install` em vez de `npm ci` enquanto o lockfile não está no repo.
+        run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Prisma generate
         # O build do core-service depende dos types do @prisma/client.
