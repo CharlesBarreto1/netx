@@ -21,12 +21,19 @@ netx_app_setup() {
 }
 
 netx_app_user() {
-  if id -u "${NETX_USER}" >/dev/null 2>&1; then
+  if ! id -u "${NETX_USER}" >/dev/null 2>&1; then
+    log_info "Criando system user ${NETX_USER}"
+    useradd -r -d "${NETX_HOME}" -s /usr/sbin/nologin "${NETX_USER}"
+  else
     log_dim "user ${NETX_USER} já existe"
-    return
   fi
-  log_info "Criando system user ${NETX_USER}"
-  useradd -r -d "${NETX_HOME}" -s /usr/sbin/nologin "${NETX_USER}"
+  # `/home/netx` precisa existir mesmo com home_dir=/opt/netx. O npm/node
+  # resolve `~` via `getpwnam` em alguns caminhos (cache, log) e usa o
+  # diretório do passwd, mas algumas chamadas internas do npm assumem
+  # `$HOME=/home/$USER` quando rodando via `sudo -u`. Criamos o dir vazio
+  # com owner certo pra evitar EACCES em `npm install`.
+  install -d -o "${NETX_USER}" -g "${NETX_USER}" -m 0750 "/home/${NETX_USER}"
+  install -d -o "${NETX_USER}" -g "${NETX_USER}" -m 0755 "/home/${NETX_USER}/.npm"
 }
 
 netx_app_dirs() {

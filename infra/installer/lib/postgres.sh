@@ -19,7 +19,23 @@ postgres_ensure_running() {
     log_error "PostgreSQL não subiu. Confere: journalctl -u postgresql"
     exit 1
   fi
-  log_ok "PostgreSQL ativo"
+
+  # Garante que o cluster 16-main escuta em ${NETX_DB_PORT}. Quando o pacote
+  # foi instalado com OUTRO processo segurando 5432 (docker-proxy, postgres
+  # antigo, etc), o `pg_createcluster` escala pra 5433/5434/etc — e o resto
+  # do NetX espera 5432. Detecta e normaliza.
+  if command -v pg_lsclusters >/dev/null 2>&1; then
+    local current_port
+    current_port=$(pg_lsclusters -h 2>/dev/null | awk '$1=="16" && $2=="main" {print $3}')
+    if [[ -n "${current_port}" && "${current_port}" != "${NETX_DB_PORT}" ]]; then
+      log_warn "Cluster 16-main em :${current_port}, esperado :${NETX_DB_PORT} — corrigindo"
+      pg_conftool 16 main set port "${NETX_DB_PORT}"
+      systemctl restart postgresql@16-main
+      sleep 2
+    fi
+  fi
+
+  log_ok "PostgreSQL ativo em :${NETX_DB_PORT}"
 }
 
 postgres_create_role() {
