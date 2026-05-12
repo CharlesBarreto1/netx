@@ -204,8 +204,32 @@ async function main() {
   console.log(`🇵🇾  Seed-fake — ${TARGET} clientes (98% IPoE / 2% PPPoE) desde ${OPERATION_START.toISOString().slice(0, 10)}\n`);
   const t0 = Date.now();
 
-  const tenant = await prisma.tenant.findFirst({ where: { slug: 'default' } });
-  if (!tenant) throw new Error('Tenant "default" não existe. Rode db:seed primeiro.');
+  // Resolução do tenant alvo (em ordem):
+  //   1) Argumento CLI: --tenant-slug=foo  OU  segundo posicional
+  //   2) Env DEFAULT_TENANT_SLUG (vem do .env do installer)
+  //   3) Slug 'default' (fallback do db:seed canônico)
+  //
+  // Em prod single-tenant o item 2 é o que sempre vai usar — o `.env` aponta
+  // pro slug real do ISP (ex: 'netx-dev', 'zux-paraguay-sa'), e os clientes
+  // populam onde o operador efetivamente loga.
+  const argTenantFlag = process.argv.find((a) => a.startsWith('--tenant-slug='));
+  const argTenantPos = process.argv[3]; // após N
+  const targetSlug =
+    (argTenantFlag ? argTenantFlag.split('=')[1] : null) ??
+    argTenantPos ??
+    process.env.DEFAULT_TENANT_SLUG ??
+    'default';
+
+  const tenant = await prisma.tenant.findFirst({ where: { slug: targetSlug } });
+  if (!tenant) {
+    throw new Error(
+      `Tenant slug='${targetSlug}' não existe. Tenants disponíveis: ` +
+        (await prisma.tenant.findMany({ select: { slug: true } }))
+          .map((t) => t.slug)
+          .join(', '),
+    );
+  }
+  console.log(`  → populando tenant '${tenant.slug}' (${tenant.name})\n`);
 
   const existingCustomers = await prisma.customer.count({ where: { tenantId: tenant.id } });
   const codeOffset = existingCustomers;

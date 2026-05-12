@@ -69,4 +69,12 @@ export interface UserResponse {
   lastLoginAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Senha temporária GERADA pelo backend (quando admin criou/resetou sem
+   * informar). Aparece SÓ na resposta da operação de criação/reset — o admin
+   * tem que mostrar/transmitir essa senha pro usuário, ela não fica gravada
+   * em lugar nenhum em texto claro. Em listagens (GET /users) é sempre
+   * `undefined`.
+   */
+  temporaryPassword?: string;
 }

@@ -12,6 +12,7 @@ import {
   Label,
   Select,
 } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
 import { toast } from '@/components/ui/sonner';
 import { ApiError } from '@/lib/api';
 import { MENU_CATALOG } from '@/lib/menus';
@@ -85,6 +86,14 @@ export function UserForm({ mode, initial, onSuccess, onCancel }: UserFormProps) 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  // Quando o backend gera senha temp (admin criou sem informar), mostra modal
+  // pro admin copiar ANTES de redirecionar. Sem isso, ninguém sabe a senha
+  // pra logar pela primeira vez.
+  const [tempPasswordInfo, setTempPasswordInfo] = useState<{
+    user: UserResponse;
+    password: string;
+  } | null>(null);
 
   // Quando os roles carregam e ainda não temos roleId selecionado, default
   // pra "operator" (mais comum de criar, e dá pra elevar depois).
@@ -178,6 +187,14 @@ export function UserForm({ mode, initial, onSuccess, onCancel }: UserFormProps) 
           sendInvite: !password, // só envia convite se NÃO definiu senha
         };
         saved = await usersApi.create(body);
+      }
+      // Se o backend gerou senha temp (admin criou sem informar), bloqueia o
+      // fluxo de sucesso e mostra modal pra admin copiar. Quando admin
+      // confirma "Já anotei", chama onSuccess.
+      if (mode === 'create' && saved.temporaryPassword) {
+        setTempPasswordInfo({ user: saved, password: saved.temporaryPassword });
+        setSubmitting(false);
+        return;
       }
       onSuccess(saved);
     } catch (err) {
@@ -414,6 +431,71 @@ export function UserForm({ mode, initial, onSuccess, onCancel }: UserFormProps) 
           {isEdit ? tCommon('save') : tCommon('create')}
         </Button>
       </footer>
+
+      {/* Modal de senha temporária — única chance do admin copiar */}
+      {tempPasswordInfo && (
+        <Modal
+          open={true}
+          onClose={() => {
+            // Se admin fecha sem confirmar, ainda completamos onSuccess —
+            // a alternativa (reabrir o modal) é mais frustrante.
+            const info = tempPasswordInfo;
+            setTempPasswordInfo(null);
+            onSuccess(info.user);
+          }}
+          title="Senha provisória gerada"
+          size="md"
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-text-muted">
+              Copie a senha abaixo e <strong>transmita ao usuário por canal seguro</strong>
+              {' '}(WhatsApp, presencial, etc). Ela só será mostrada UMA vez — após
+              fechar este aviso, ninguém mais consegue recuperá-la sem fazer
+              outro reset.
+            </p>
+
+            <div className="rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30 p-4">
+              <div className="text-2xs uppercase tracking-wider text-amber-700 dark:text-amber-300 mb-1">
+                Senha provisória de {tempPasswordInfo.user.email}
+              </div>
+              <div className="flex items-center gap-2">
+                <code className="flex-1 rounded bg-white dark:bg-slate-900 px-3 py-2 font-mono text-base font-semibold text-text border border-amber-200 dark:border-amber-800 select-all">
+                  {tempPasswordInfo.password}
+                </code>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => {
+                    navigator.clipboard.writeText(tempPasswordInfo.password);
+                    toast.success('Senha copiada');
+                  }}
+                >
+                  Copiar
+                </Button>
+              </div>
+            </div>
+
+            <div className="text-xs text-text-muted space-y-1">
+              <p>O usuário será forçado a definir uma senha própria no primeiro login.</p>
+              <p>Se perdê-la, abra o usuário e use &quot;Resetar senha&quot;.</p>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <Button
+                type="button"
+                onClick={() => {
+                  const info = tempPasswordInfo;
+                  setTempPasswordInfo(null);
+                  onSuccess(info.user);
+                }}
+              >
+                Já anotei, prosseguir
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </form>
   );
 }

@@ -80,18 +80,12 @@ export default function LoginPage() {
       >
         <h1 className="text-2xl font-bold text-center mb-2">Entrar no NetX</h1>
 
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            Tenant <span className="text-slate-400">(opcional)</span>
-          </label>
-          <input
-            className="w-full px-3 py-2 rounded-md border border-slate-300 dark:border-slate-600 bg-transparent"
-            value={tenantSlug}
-            onChange={(e) => setTenantSlug(e.target.value)}
-            placeholder="deixe em branco — usa o desta instância"
-            disabled={needsMfa}
-          />
-        </div>
+        {/*
+          Tenant é detalhe interno — cada instância NetX serve um único ISP,
+          e o backend resolve via DEFAULT_TENANT_SLUG do .env. Não exposto na
+          UI. Se precisar debug multi-tenant no futuro, edita o setState
+          inicial ou usa searchParams.
+        */}
 
         <div>
           <label className="block text-sm font-medium mb-1">Email</label>

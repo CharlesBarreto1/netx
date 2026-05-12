@@ -38,8 +38,14 @@ export class UsersService {
     //      acionar reset manual).
     //   3) sem password e sendInvite=false → gera tempPass; ACTIVE (admin
     //      provavelmente vai resetar via UI).
-    const initialPassword =
-      input.password ?? randomBytes(16).toString('base64url');
+    //
+    // Quando geramos tempPass, RETORNAMOS em texto claro na resposta UMA VEZ
+    // — sem isso, admin não tem como transmitir pro novo user. A senha não
+    // fica gravada além do hash.
+    const generatedPassword = input.password
+      ? null
+      : this.generateTemporaryPassword();
+    const initialPassword = input.password ?? generatedPassword!;
     const passwordHash = await hashPassword(initialPassword, this.argon2Config);
     const initialStatus = input.password
       ? UserStatus.ACTIVE
@@ -90,7 +96,42 @@ export class UsersService {
     });
 
     // TODO: enqueue invite email via RabbitMQ (Notifications module)
-    return this.toResponse(user);
+    // Retorna a senha temp gerada NA RESPOSTA (única oportunidade do admin
+    // copiar). Se admin informou senha, não precisa expor.
+    return {
+      ...this.toResponse(user),
+      ...(generatedPassword ? { temporaryPassword: generatedPassword } : {}),
+    };
+  }
+
+  /**
+   * Gera senha temp pronta pra uso humano: 12 chars, com 1 maiúscula, 1
+   * minúscula, 1 número e 1 símbolo — passa por strongPasswordSchema. Curta
+   * o suficiente pra digitar sem erro.
+   */
+  private generateTemporaryPassword(): string {
+    // Caracteres não-ambíguos: sem O/0/l/I/1 que se confundem em fonte.
+    const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    const lower = 'abcdefghjkmnpqrstuvwxyz';
+    const digits = '23456789';
+    const symbols = '!@#$%&*?';
+    const pick = (set: string) => set[Math.floor(Math.random() * set.length)];
+    const all = upper + lower + digits + symbols;
+
+    // Garante pelo menos 1 de cada classe + 8 random.
+    const chars = [
+      pick(upper),
+      pick(lower),
+      pick(digits),
+      pick(symbols),
+      ...Array.from({ length: 8 }, () => pick(all)),
+    ];
+    // Embaralha (Fisher-Yates).
+    for (let i = chars.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [chars[i], chars[j]] = [chars[j], chars[i]];
+    }
+    return chars.join('');
   }
 
   async list(

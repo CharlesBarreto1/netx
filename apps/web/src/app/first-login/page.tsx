@@ -9,23 +9,47 @@
  * fica fora do grupo (protected) — não passa pelo guard que checa a flag,
  * só pelo check de "tem token".
  *
+ * UX:
+ *  - Toggle "olho" pra revelar/esconder cada campo (evita typo silencioso
+ *    em type=password)
+ *  - Validação visual em tempo real dos 4 requisitos de senha forte
+ *  - Feedback "✓ As senhas conferem" verde quando match
+ *  - Mensagens de erro específicas (não genérica)
+ *
  * Após troca bem-sucedida, atualiza o snapshot da sessão em localStorage
  * (limpa a flag) e redireciona pra /dashboard.
  */
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Eye, EyeOff, Check, X } from 'lucide-react';
 
 import { ApiError } from '@/lib/api';
 import { authApi } from '@/lib/auth-api';
 import { getSession } from '@/lib/session';
+
+interface PasswordCheck {
+  label: string;
+  test: (v: string) => boolean;
+}
+
+const CHECKS: PasswordCheck[] = [
+  { label: 'Pelo menos 8 caracteres', test: (v) => v.length >= 8 },
+  { label: '1 letra maiúscula', test: (v) => /[A-Z]/.test(v) },
+  { label: '1 letra minúscula', test: (v) => /[a-z]/.test(v) },
+  { label: '1 número', test: (v) => /\d/.test(v) },
+  { label: '1 símbolo (!@#$...)', test: (v) => /[^A-Za-z0-9]/.test(v) },
+];
 
 export default function FirstLoginPage() {
   const router = useRouter();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [bootChecked, setBootChecked] = useState(false);
@@ -45,27 +69,39 @@ export default function FirstLoginPage() {
     setBootChecked(true);
   }, [router]);
 
+  const passwordChecks = useMemo(
+    () =>
+      CHECKS.map((c) => ({
+        label: c.label,
+        passed: newPassword.length > 0 && c.test(newPassword),
+      })),
+    [newPassword],
+  );
+
+  const allChecksPassed = passwordChecks.every((c) => c.passed);
+  const passwordsMatch =
+    confirmPassword.length > 0 && newPassword === confirmPassword;
+  const sameAsCurrent =
+    newPassword.length > 0 && newPassword === currentPassword;
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
-    if (newPassword !== confirmPassword) {
-      setErr('As senhas não conferem.');
+    if (!passwordsMatch) {
+      setErr('As senhas não conferem. Confirme que digitou igual nos dois campos.');
       return;
     }
-    if (newPassword.length < 8) {
-      setErr('A nova senha precisa ter pelo menos 8 caracteres.');
+    if (!allChecksPassed) {
+      setErr('A nova senha não atende todos os requisitos.');
       return;
     }
-    if (newPassword === currentPassword) {
+    if (sameAsCurrent) {
       setErr('A nova senha não pode ser igual à atual.');
       return;
     }
     setLoading(true);
     try {
       await authApi.changePassword(currentPassword, newPassword);
-      // Atualiza o snapshot de session em localStorage limpando a flag —
-      // assim o ProtectedLayout deixa passar imediatamente sem precisar
-      // re-autenticar. O backend já invalidou outras sessões.
       const raw = localStorage.getItem('netx.user');
       if (raw) {
         try {
@@ -73,7 +109,6 @@ export default function FirstLoginPage() {
           parsed.mustChangePassword = false;
           localStorage.setItem('netx.user', JSON.stringify(parsed));
         } catch {
-          /* se localStorage corrompeu, força novo login */
           localStorage.removeItem('netx.user');
           router.replace('/login');
           return;
@@ -96,7 +131,7 @@ export default function FirstLoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 px-4">
+    <main className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 px-4 py-8">
       <form
         onSubmit={onSubmit}
         className="w-full max-w-md rounded-xl shadow-xl bg-white dark:bg-slate-800 p-8 space-y-4"
@@ -109,49 +144,122 @@ export default function FirstLoginPage() {
           </p>
         </div>
 
+        {/* Senha atual */}
         <div>
           <label className="block text-sm font-medium mb-1">Senha atual</label>
-          <input
-            type="password"
-            autoComplete="current-password"
-            className="w-full px-3 py-2 rounded-md border border-slate-300 dark:border-slate-600 bg-transparent"
-            value={currentPassword}
-            onChange={(e) => setCurrentPassword(e.target.value)}
-            required
-            autoFocus
-          />
+          <div className="relative">
+            <input
+              type={showCurrent ? 'text' : 'password'}
+              autoComplete="current-password"
+              className="w-full px-3 py-2 pr-10 rounded-md border border-slate-300 dark:border-slate-600 bg-transparent"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              required
+              autoFocus
+            />
+            <button
+              type="button"
+              onClick={() => setShowCurrent((v) => !v)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              aria-label={showCurrent ? 'Ocultar senha' : 'Mostrar senha'}
+              tabIndex={-1}
+            >
+              {showCurrent ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
         </div>
 
+        {/* Nova senha */}
         <div>
           <label className="block text-sm font-medium mb-1">Nova senha</label>
-          <input
-            type="password"
-            autoComplete="new-password"
-            className="w-full px-3 py-2 rounded-md border border-slate-300 dark:border-slate-600 bg-transparent"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            minLength={8}
-            required
-          />
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Mínimo 8 caracteres com letra maiúscula, minúscula, número e
-            símbolo.
-          </p>
+          <div className="relative">
+            <input
+              type={showNew ? 'text' : 'password'}
+              autoComplete="new-password"
+              className="w-full px-3 py-2 pr-10 rounded-md border border-slate-300 dark:border-slate-600 bg-transparent"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setShowNew((v) => !v)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              aria-label={showNew ? 'Ocultar senha' : 'Mostrar senha'}
+              tabIndex={-1}
+            >
+              {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+          {/* Checklist de requisitos */}
+          {newPassword.length > 0 && (
+            <ul className="mt-2 space-y-1">
+              {passwordChecks.map((c) => (
+                <li
+                  key={c.label}
+                  className={`flex items-center gap-1.5 text-xs ${
+                    c.passed
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : 'text-slate-500 dark:text-slate-400'
+                  }`}
+                >
+                  {c.passed ? (
+                    <Check className="h-3.5 w-3.5" />
+                  ) : (
+                    <X className="h-3.5 w-3.5" />
+                  )}
+                  {c.label}
+                </li>
+              ))}
+            </ul>
+          )}
+          {sameAsCurrent && (
+            <p className="mt-2 text-xs text-red-600">
+              A nova senha não pode ser igual à atual.
+            </p>
+          )}
         </div>
 
+        {/* Confirmar nova senha */}
         <div>
           <label className="block text-sm font-medium mb-1">
             Confirmar nova senha
           </label>
-          <input
-            type="password"
-            autoComplete="new-password"
-            className="w-full px-3 py-2 rounded-md border border-slate-300 dark:border-slate-600 bg-transparent"
-            value={confirmPassword}
-            onChange={(e) => setConfirmPassword(e.target.value)}
-            minLength={8}
-            required
-          />
+          <div className="relative">
+            <input
+              type={showConfirm ? 'text' : 'password'}
+              autoComplete="new-password"
+              className="w-full px-3 py-2 pr-10 rounded-md border border-slate-300 dark:border-slate-600 bg-transparent"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirm((v) => !v)}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+              aria-label={showConfirm ? 'Ocultar senha' : 'Mostrar senha'}
+              tabIndex={-1}
+            >
+              {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+          {confirmPassword.length > 0 && (
+            <p
+              className={`mt-2 flex items-center gap-1.5 text-xs ${
+                passwordsMatch
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : 'text-red-600'
+              }`}
+            >
+              {passwordsMatch ? (
+                <Check className="h-3.5 w-3.5" />
+              ) : (
+                <X className="h-3.5 w-3.5" />
+              )}
+              {passwordsMatch ? 'As senhas conferem' : 'As senhas não conferem'}
+            </p>
+          )}
         </div>
 
         {err && (
@@ -161,8 +269,8 @@ export default function FirstLoginPage() {
         )}
 
         <button
-          disabled={loading}
-          className="w-full py-2.5 rounded-md bg-brand-600 text-white font-semibold hover:bg-brand-700 disabled:opacity-60"
+          disabled={loading || !allChecksPassed || !passwordsMatch || sameAsCurrent}
+          className="w-full py-2.5 rounded-md bg-brand-600 text-white font-semibold hover:bg-brand-700 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {loading ? 'Salvando…' : 'Definir nova senha e entrar'}
         </button>
