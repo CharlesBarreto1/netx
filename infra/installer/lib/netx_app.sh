@@ -192,6 +192,10 @@ netx_app_seed_admin() {
 
   # Usa um script Node ad-hoc dentro do core-service pra reusar argon2 + Prisma.
   # Mais robusto que SQL puro porque respeita os mesmos params de hash do app.
+  #
+  # `dotenv -e ../../.env --` injeta o `.env` raiz (DATABASE_URL, ARGON2_*) no
+  # processo, mesmo padrão dos scripts `db:generate`, `db:migrate`, `db:seed`.
+  # Sem isso, o Prisma falha com "Environment variable not found: DATABASE_URL".
   as_netx "cd ${NETX_HOME}/apps/core-service && \
     NETX_ADMIN_EMAIL='${NETX_ADMIN_EMAIL}' \
     NETX_ADMIN_PASSWORD='${NETX_ADMIN_PASSWORD}' \
@@ -199,7 +203,7 @@ netx_app_seed_admin() {
     NETX_TENANT_COUNTRY='${NETX_TENANT_COUNTRY}' \
     NETX_TENANT_LOCALE='${NETX_TENANT_LOCALE}' \
     NETX_TENANT_CURRENCY='${NETX_TENANT_CURRENCY}' \
-    npx ts-node ${INSTALLER_DIR}/scripts/seed-admin.ts"
+    npx dotenv -e ../../.env -- npx ts-node ${INSTALLER_DIR}/scripts/seed-admin.ts"
 
   touch "${NETX_VAR}/.admin-bootstrapped"
   chown "${NETX_USER}:${NETX_USER}" "${NETX_VAR}/.admin-bootstrapped"
