@@ -26,7 +26,6 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
   useEffect(() => {
     // Em prod, encaminhar pra Sentry / observabilidade aqui (futuro).
     // Em dev, dá no console pra debug rápido.
-    // eslint-disable-next-line no-console
     console.error('[global-error]', error);
   }, [error]);
 
