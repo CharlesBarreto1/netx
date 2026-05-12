@@ -3,15 +3,18 @@
 import {
   ArrowRight,
   FileText,
+  Heart,
   Plus,
   Sparkles,
-  TrendingUp,
   UserPlus,
   Users,
   Wallet,
+  Wifi,
+  WifiOff,
   Wrench,
 } from 'lucide-react';
 import Link from 'next/link';
+import { useMemo } from 'react';
 import type { ComponentType, ReactNode } from 'react';
 import useSWR from 'swr';
 
@@ -40,15 +43,21 @@ interface ContractsListResponse {
   pagination: { total: number };
 }
 
-interface ChargesListResponse {
+interface InvoicesListResponse {
   pagination: { total: number };
+}
+
+interface OnlineSnapshotResponse {
+  online: number;
+  offline: number;
+  totalActive: number;
+  snapshotAt: string;
 }
 
 export default function DashboardPage() {
   const session = getSession();
   const canReadCustomers = session?.user.permissions.includes('customers.read') ?? false;
   const canReadContracts = session?.user.permissions.includes('contracts.read') ?? false;
-  const canReadCharges = session?.user.permissions.includes('finance.charges.read') ?? false;
   const canCreateCustomer = session?.user.permissions.includes('customers.create') ?? false;
 
   const { data: cust, isLoading: lCust } = useSWR<CustomersListResponse>(
@@ -57,11 +66,21 @@ export default function DashboardPage() {
   const { data: contracts, isLoading: lContracts } = useSWR<ContractsListResponse>(
     canReadContracts ? '/v1/contracts?pageSize=1' : null,
   );
-  const { data: overdue, isLoading: lOverdue } = useSWR<ChargesListResponse>(
-    canReadCharges ? '/v1/finance/charges?status=OVERDUE&pageSize=1' : null,
+  // Faturas em atraso: endpoint correto é `/v1/contract-invoices` (faturas
+  // mensais recorrentes), não `/v1/finance/charges` (cobranças avulsas, que
+  // tem enum sem OVERDUE — chamada antiga voltava 400 e o card ficava em branco).
+  const { data: overdue, isLoading: lOverdue } = useSWR<InvoicesListResponse>(
+    canReadContracts ? '/v1/contract-invoices?status=OVERDUE&pageSize=1' : null,
+  );
+  // Snapshot de online/offline — refresh cada 30min pra não pesar o DB
+  // (cross join contracts × radius.radacct).
+  const { data: snapshot, isLoading: lSnapshot } = useSWR<OnlineSnapshotResponse>(
+    canReadContracts ? '/v1/radius/stats/online' : null,
+    { refreshInterval: 30 * 60 * 1000, dedupingInterval: 5 * 60 * 1000 },
   );
 
   const greeting = greetingFromHour();
+  const motivationalQuote = useMemo(() => pickQuoteOfDay(), []);
 
   return (
     <div className="animate-fade-in-up space-y-6">
@@ -99,7 +118,7 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* KPIs */}
+      {/* KPIs — primeira linha: negócio */}
       <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <MetricCard
           icon={Users}
@@ -125,11 +144,45 @@ export default function DashboardPage() {
           icon={Wallet}
           label="Faturas em atraso"
           value={overdue?.pagination.total}
-          loading={lOverdue && canReadCharges}
-          disabled={!canReadCharges}
-          href="/finance/charges?status=OVERDUE"
+          loading={lOverdue && canReadContracts}
+          disabled={!canReadContracts}
+          href="/contracts?invoiceStatus=OVERDUE"
           tone={(overdue?.pagination.total ?? 0) > 0 ? 'danger' : 'success'}
           delay={120}
+        />
+      </section>
+
+      {/* KPIs — segunda linha: técnico (RADIUS snapshot) */}
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <MetricCard
+          icon={Wifi}
+          label="Clientes online"
+          value={snapshot?.online}
+          loading={lSnapshot && canReadContracts}
+          disabled={!canReadContracts}
+          href="/network/radius-log"
+          tone="success"
+          delay={180}
+          footer={
+            snapshot
+              ? `${pct(snapshot.online, snapshot.totalActive)}% dos ativos · snapshot ${formatSnapshotAge(snapshot.snapshotAt)}`
+              : undefined
+          }
+        />
+        <MetricCard
+          icon={WifiOff}
+          label="Clientes offline"
+          value={snapshot?.offline}
+          loading={lSnapshot && canReadContracts}
+          disabled={!canReadContracts}
+          href="/network/radius-log"
+          tone={(snapshot?.offline ?? 0) > (snapshot?.online ?? 0) ? 'warning' : 'info'}
+          delay={240}
+          footer={
+            snapshot
+              ? `${pct(snapshot.offline, snapshot.totalActive)}% dos ativos`
+              : undefined
+          }
         />
       </section>
 
@@ -158,18 +211,36 @@ export default function DashboardPage() {
         />
       </section>
 
-      <section className="card flex items-start gap-3 p-5">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-accent-muted text-accent-strong">
-          <Sparkles className="h-5 w-5" />
+      {/* Dica do dia + frase motivacional, lado a lado */}
+      <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="card flex items-start gap-3 p-5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-accent-muted text-accent-strong">
+            <Sparkles className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-md font-semibold text-text">Dica do dia</h2>
+            <p className="mt-1 text-sm text-text-muted">
+              Pressione{' '}
+              <kbd className="kbd">⌘</kbd> <kbd className="kbd">K</kbd> em qualquer
+              lugar pra abrir a busca global e navegar por clientes, contratos,
+              faturas ou pular pra qualquer página da operação.
+            </p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-md font-semibold text-text">Dica do dia</h2>
-          <p className="mt-1 text-sm text-text-muted">
-            Pressione{' '}
-            <kbd className="kbd">⌘</kbd> <kbd className="kbd">K</kbd> em qualquer
-            lugar pra abrir a busca global e navegar por clientes, contratos,
-            faturas ou pular pra qualquer página da operação.
-          </p>
+
+        <div className="card flex items-start gap-3 p-5">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-success-muted text-success">
+            <Heart className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-md font-semibold text-text">Pensamento do dia</h2>
+            <p className="mt-1 text-sm italic text-text-muted">
+              &ldquo;{motivationalQuote.text}&rdquo;
+            </p>
+            {motivationalQuote.author && (
+              <p className="mt-1 text-xs text-text-subtle">— {motivationalQuote.author}</p>
+            )}
+          </div>
         </div>
       </section>
     </div>
@@ -195,6 +266,7 @@ function MetricCard({
   href,
   tone = 'accent',
   delay = 0,
+  footer,
 }: {
   icon: ComponentType<{ className?: string }>;
   label: string;
@@ -204,6 +276,8 @@ function MetricCard({
   href: string;
   tone?: 'accent' | 'info' | 'success' | 'danger' | 'warning';
   delay?: number;
+  /** Linha extra abaixo do valor (ex: "37% dos ativos · snapshot há 4 min"). */
+  footer?: string;
 }) {
   const Body = (
     <div
@@ -235,7 +309,7 @@ function MetricCard({
         </div>
       )}
       <div className="flex items-center justify-between text-xs text-text-subtle">
-        <span>{disabled ? 'Sem permissão' : 'Atualizado agora'}</span>
+        <span>{disabled ? 'Sem permissão' : (footer ?? 'Atualizado agora')}</span>
         {!disabled && (
           <span className="inline-flex items-center gap-0.5 text-text-muted">
             Ver
@@ -287,4 +361,70 @@ function greetingFromHour(): string {
   if (h < 12) return 'Bom dia';
   if (h < 18) return 'Boa tarde';
   return 'Boa noite';
+}
+
+function pct(part: number | undefined, total: number | undefined): string {
+  if (!total || total === 0) return '0';
+  return Math.round(((part ?? 0) / total) * 100).toString();
+}
+
+function formatSnapshotAge(isoDate: string): string {
+  const ms = Date.now() - new Date(isoDate).getTime();
+  if (ms < 60_000) return 'agora';
+  const min = Math.floor(ms / 60_000);
+  if (min < 60) return `há ${min} min`;
+  const h = Math.floor(min / 60);
+  return `há ${h}h`;
+}
+
+// ---------------------------------------------------------------------------
+// Frases motivacionais — rotaciona por dia do ano (estável dentro do mesmo dia,
+// muda automaticamente quando vira meia-noite). Misto de autores reais
+// (Drucker, Bezos, etc) e frases anônimas focadas em operação de ISP.
+// ---------------------------------------------------------------------------
+interface Quote {
+  text: string;
+  author?: string;
+}
+const QUOTES: Quote[] = [
+  { text: 'O melhor jeito de prever o futuro é criá-lo.', author: 'Peter Drucker' },
+  { text: 'Sua marca é o que as pessoas dizem de você quando você não está na sala.', author: 'Jeff Bezos' },
+  { text: 'Resolva o problema do cliente antes do problema do produto.', author: 'Steve Jobs' },
+  { text: 'Disciplina é a ponte entre metas e realizações.', author: 'Jim Rohn' },
+  { text: 'Não é sobre ter tempo; é sobre criar tempo.' },
+  { text: 'Cliente bem atendido vira propaganda gratuita.' },
+  { text: 'A internet que você entrega define a paciência do seu cliente.' },
+  { text: 'Cada chamada técnica resolvida na primeira visita vale 10 visitas mal feitas.' },
+  { text: 'Pequenas melhorias diárias compõem em resultados extraordinários.' },
+  { text: 'Se você não pode medir, não pode melhorar.', author: 'Peter Drucker' },
+  { text: 'Qualidade nunca é um acidente; sempre é o resultado de esforço inteligente.', author: 'John Ruskin' },
+  { text: 'A inadimplência é um termômetro: ou da economia, ou do seu relacionamento.' },
+  { text: 'Sucesso é a soma de pequenos esforços repetidos dia após dia.', author: 'Robert Collier' },
+  { text: 'Operação que documenta hoje, escala amanhã.' },
+  { text: 'Não tenha medo de desistir do bom para perseguir o ótimo.', author: 'John Rockefeller' },
+  { text: 'Quem domina o último quilômetro domina a região.' },
+  { text: 'Foco é dizer não a 100 coisas boas.', author: 'Steve Jobs' },
+  { text: 'A diferença entre um ISP e um grande ISP está nos 5% que ninguém vê.' },
+  { text: 'O segredo é começar antes de estar pronto.', author: 'Marie Forleo' },
+  { text: 'Tecnologia move bits; pessoas movem clientes.' },
+  { text: 'Cada cliente fidelizado vale mais que dez novos perseguidos.' },
+  { text: 'A complacência custa mais que a competição.' },
+  { text: 'Não conte os dias, faça os dias contarem.', author: 'Muhammad Ali' },
+  { text: 'A melhor publicidade é um cliente satisfeito.', author: 'Bill Gates' },
+  { text: 'Velocidade de resposta é a primeira métrica de qualidade.' },
+  { text: 'Se algo trava duas vezes, vire código.' },
+  { text: 'O importante não é onde você está, é pra onde você vai.' },
+  { text: 'Backup só é útil quando você consegue restaurá-lo.' },
+  { text: 'Um bom mapa de rede vale por mil descobertas em produção.' },
+  { text: 'Confiança se constrói com previsibilidade.' },
+  { text: 'Sucesso é cair sete vezes e levantar oito.' },
+  { text: 'Cada cliente offline é uma história que você ainda não ouviu.' },
+];
+
+function pickQuoteOfDay(): Quote {
+  // Dia do ano (0-365) → índice estável durante o dia, troca à meia-noite.
+  const start = new Date(new Date().getFullYear(), 0, 0);
+  const diff = Date.now() - start.getTime();
+  const dayOfYear = Math.floor(diff / 86_400_000);
+  return QUOTES[dayOfYear % QUOTES.length];
 }

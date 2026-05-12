@@ -3,13 +3,15 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedPrincipal } from '@netx/shared';
 
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
+import { RadacctService } from './radacct.service';
 import { RadiusApplierService } from './radius-applier.service';
 import { RadiusAuthLogService } from './radius-auth-log.service';
 
 /**
  * Endpoints administrativos do RADIUS.
- *   - POST /radius/_tasks/run-applier — força aplicação imediata de eventos
- *   - GET  /radius/auth-log           — log de tentativas de autenticação
+ *   - POST /radius/_tasks/run-applier  — força aplicação imediata de eventos
+ *   - GET  /radius/auth-log            — log de tentativas de autenticação
+ *   - GET  /radius/stats/online        — snapshot de contratos online/offline
  */
 @ApiTags('radius')
 @ApiBearerAuth()
@@ -18,7 +20,19 @@ export class RadiusController {
   constructor(
     private readonly applier: RadiusApplierService,
     private readonly authLog: RadiusAuthLogService,
+    private readonly radacct: RadacctService,
   ) {}
+
+  /**
+   * Snapshot agregado pro dashboard. Caro pra DB (cross-join contracts ×
+   * radius.radacct), então o frontend deve cachear com SWR refreshInterval
+   * de 30min — não chama em loop.
+   */
+  @Get('stats/online')
+  @RequirePermissions('contracts.read')
+  onlineSnapshot(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.radacct.getOnlineSnapshot(user.tenantId);
+  }
 
   @Post('_tasks/run-applier')
   @HttpCode(200)

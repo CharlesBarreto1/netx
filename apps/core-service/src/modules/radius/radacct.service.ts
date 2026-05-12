@@ -120,6 +120,57 @@ export class RadacctService {
   }
 
   // ───────────────────────────────────────────────────────────────────────
+  // Snapshot online/offline do tenant — agregado pro dashboard
+  // ───────────────────────────────────────────────────────────────────────
+  /**
+   * Conta contratos ACTIVE que estão online (sessão `acctstoptime IS NULL`)
+   * vs offline (sem sessão ativa). Match por `pppoeUsername`, `circuitId` ou
+   * `mac_address` (com e sem `:`).
+   *
+   * Caro pra DB porque cruza `contracts` × `radius.radacct`. Não é pra rodar
+   * em refresh agressivo — dashboard usa SWR com `refreshInterval=30min`.
+   */
+  async getOnlineSnapshot(tenantId: string): Promise<{
+    online: number;
+    offline: number;
+    totalActive: number;
+    snapshotAt: string;
+  }> {
+    const totalActive = await this.prisma.contract.count({
+      where: { tenantId, status: 'ACTIVE', deletedAt: null },
+    });
+
+    // Conta contracts ativos com sessão em radacct sem stop time. Match com
+    // 4 vias: pppoe_username, circuit_id, mac com `:`, mac sem `:`.
+    const onlineRows = await this.prisma.$queryRawUnsafe<
+      Array<{ count: bigint }>
+    >(
+      `SELECT COUNT(DISTINCT c.id)::bigint AS count
+         FROM contracts c
+         JOIN radius.radacct r ON (
+              (c.pppoe_username IS NOT NULL AND r.username = c.pppoe_username)
+           OR (c.circuit_id IS NOT NULL AND r.callingstationid = c.circuit_id)
+           OR (c.mac_address IS NOT NULL AND r.callingstationid = c.mac_address)
+           OR (c.mac_address IS NOT NULL AND r.callingstationid = REPLACE(c.mac_address, ':', ''))
+         )
+        WHERE c.tenant_id = $1::uuid
+          AND c.status = 'ACTIVE'
+          AND c.deleted_at IS NULL
+          AND r.acctstoptime IS NULL`,
+      tenantId,
+    );
+
+    const online = Number(onlineRows[0]?.count ?? 0);
+    const offline = Math.max(0, totalActive - online);
+    return {
+      online,
+      offline,
+      totalActive,
+      snapshotAt: new Date().toISOString(),
+    };
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
   // Consumo agregado por dia
   // ───────────────────────────────────────────────────────────────────────
   async getDailyUsage(
