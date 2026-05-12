@@ -53,26 +53,58 @@ async function main() {
   console.log(`[seed-admin] tenant=${tenantSlug} admin=${adminEmail}`);
 
   try {
-    // 1) Tenant — schema atual usa enum `TenantStatus` (TRIAL/ACTIVE/SUSPENDED/CHURNED),
-    // não o boolean `active` legado. Em re-runs força ACTIVE pra liberar login.
-    const tenant = await prisma.tenant.upsert({
-      where: { slug: tenantSlug },
-      create: {
-        slug: tenantSlug,
-        name: tenantName,
-        country: tenantCountry,
-        locale: tenantLocale,
-        currency: tenantCurrency,
-        status: 'ACTIVE',
-      },
-      update: {
-        name: tenantName,
-        country: tenantCountry,
-        locale: tenantLocale,
-        currency: tenantCurrency,
-        status: 'ACTIVE',
-      },
-    });
+    // 1) Tenant — schema atual usa enum `TenantStatus`. Estratégia:
+    //
+    //   a) Se já existe tenant com slug=`${tenantSlug}` → atualiza (re-run).
+    //   b) Se NÃO existe e existe um tenant slug='default' (criado pelo
+    //      `db:seed` canônico) → renomeia ele pra `${tenantSlug}` em vez de
+    //      criar novo. Isso evita ter 2 tenants conflitantes ('default' do
+    //      seed + '${tenantSlug}' do operador) e mantém o `.env` consistente.
+    //   c) Senão → cria do zero.
+    //
+    // Sem essa lógica, fresh install fica com DEFAULT_TENANT_SLUG no `.env`
+    // apontando pra um tenant que não existe (ou existe com slug 'default'),
+    // causando "Invalid credentials" no /auth/login.
+    let tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
+    if (tenant) {
+      tenant = await prisma.tenant.update({
+        where: { id: tenant.id },
+        data: {
+          name: tenantName,
+          country: tenantCountry,
+          locale: tenantLocale,
+          currency: tenantCurrency,
+          status: 'ACTIVE',
+        },
+      });
+    } else {
+      const seededDefault = await prisma.tenant.findUnique({ where: { slug: 'default' } });
+      if (seededDefault) {
+        console.log(`[seed-admin] renomeando tenant 'default' → '${tenantSlug}'`);
+        tenant = await prisma.tenant.update({
+          where: { id: seededDefault.id },
+          data: {
+            slug: tenantSlug,
+            name: tenantName,
+            country: tenantCountry,
+            locale: tenantLocale,
+            currency: tenantCurrency,
+            status: 'ACTIVE',
+          },
+        });
+      } else {
+        tenant = await prisma.tenant.create({
+          data: {
+            slug: tenantSlug,
+            name: tenantName,
+            country: tenantCountry,
+            locale: tenantLocale,
+            currency: tenantCurrency,
+            status: 'ACTIVE',
+          },
+        });
+      }
+    }
 
     // 2) Sincroniza roles system → tenant.
     //
@@ -160,6 +192,25 @@ async function main() {
       create: { userId: user.id, roleId: adminRole.id },
       update: {},
     });
+
+    // 5.1) Suspende `admin@netx.local` (criado pelo seed canônico) quando o
+    // operador definiu um email diferente. Evita confusão de "qual admin
+    // logo" e bloqueia uma credencial conhecida (senha hardcoded
+    // 'ChangeMe!2026' no seed canônico) num install de produção.
+    if (adminEmail !== 'admin@netx.local') {
+      const dev = await prisma.user.findUnique({
+        where: {
+          tenantId_email: { tenantId: tenant.id, email: 'admin@netx.local' },
+        },
+      });
+      if (dev && dev.status === 'ACTIVE') {
+        await prisma.user.update({
+          where: { id: dev.id },
+          data: { status: 'SUSPENDED' },
+        });
+        console.log(`[seed-admin] admin@netx.local suspenso (não é o admin desta instância)`);
+      }
+    }
 
     // 6) Pipeline default de CRM (vendas) — espelho do que o seed canônico
     // cria pro tenant default. Sem isso, /crm/pipelines mostra "Nenhum

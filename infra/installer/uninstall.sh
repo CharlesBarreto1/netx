@@ -82,6 +82,13 @@ if (( PURGE == 1 )); then
   rabbitmqctl delete_user netx 2>/dev/null || true
   rabbitmqctl delete_vhost netx 2>/dev/null || true
 
+  # PM2 stale: remove unit de auto-start se sobrou de instalação antiga
+  # via PM2 (caso da VPS dev migrada). Não falha se não existir.
+  systemctl stop pm2-netx 2>/dev/null || true
+  systemctl disable pm2-netx 2>/dev/null || true
+  rm -f /etc/systemd/system/pm2-netx.service
+  systemctl daemon-reload 2>/dev/null || true
+
   # Estado/cookie/mnesia do RabbitMQ travam reinstall em hostname novo. Não
   # limpamos /var/lib/rabbitmq aqui em --purge porque outras apps podem usar
   # a mesma instância — quem PRECISA fazer "reset hard" do rabbit faz:

@@ -128,6 +128,21 @@ export class ContractsController {
     return this.contracts.cancel(user.tenantId, user.sub, id, body);
   }
 
+  /**
+   * Desconecta forçadamente o cliente do NAS (CoA Disconnect-Request) sem
+   * mudar estado do contrato. Útil pra forçar nova autenticação após troca
+   * de plano, debug, ou liberar IP travado.
+   */
+  @Post(':id/kick')
+  @HttpCode(200)
+  @RequirePermissions('contracts.write')
+  kick(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.contracts.kick(user.tenantId, user.sub, id);
+  }
+
   @Delete(':id')
   @HttpCode(204)
   @RequirePermissions('contracts.delete')

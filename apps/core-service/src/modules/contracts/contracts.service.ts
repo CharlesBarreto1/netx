@@ -28,6 +28,7 @@ import {
 
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { RadiusCoAService } from '../radius/radius-coa.service';
 import { InvoiceGeneratorService } from './invoice-generator.service';
 import { RadiusSyncService } from './radius-sync.service';
 
@@ -48,6 +49,7 @@ export class ContractsService {
     private readonly audit: AuditService,
     private readonly invoiceGen: InvoiceGeneratorService,
     private readonly radius: RadiusSyncService,
+    private readonly radiusCoa: RadiusCoAService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -514,6 +516,64 @@ export class ContractsService {
       metadata: { note: input.note ?? null },
     });
     return toContractResponse(updated, { includePassword: true });
+  }
+
+  // ---------------------------------------------------------------------------
+  // KICK — força CoA-Disconnect ao vivo (manual, via UI)
+  // ---------------------------------------------------------------------------
+  /**
+   * Manda Disconnect-Request pra todos os NASes onde o `pppoeUsername` tem
+   * sessão ativa. Não muda estado do contrato — é "kick" mesmo.
+   *
+   * Casos de uso:
+   *   - operador quer derrubar cliente pra forçar reconexão (debug);
+   *   - troca de plano em que o speed-rate só atualiza após nova sessão;
+   *   - cliente reclamando de IP travado.
+   *
+   * Idempotente: se não há sessão ativa, retorna `{ kicked: 0 }` sem erro.
+   */
+  async kick(
+    tenantId: string,
+    actorUserId: string,
+    id: string,
+  ): Promise<{ kicked: number; results: Array<{ nasIp: string; ok: boolean; error?: string }> }> {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!contract) throw new NotFoundException('Contrato não encontrado');
+    if (!contract.pppoeUsername) {
+      throw new BadRequestException('Contrato sem pppoeUsername — nada pra desconectar');
+    }
+
+    const results = await this.radiusCoa.disconnect(contract.pppoeUsername);
+    const kicked = results.filter((r) => r.ok).length;
+
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'contracts.kicked',
+      resource: 'contracts',
+      resourceId: contract.id,
+      metadata: {
+        pppoeUsername: contract.pppoeUsername,
+        totalAttempts: results.length,
+        kicked,
+        results: results.map((r) => ({
+          nasIp: r.nasIp,
+          ok: r.ok,
+          error: r.error ?? null,
+        })),
+      },
+    });
+
+    return {
+      kicked,
+      results: results.map((r) => ({
+        nasIp: r.nasIp,
+        ok: r.ok,
+        error: r.error,
+      })),
+    };
   }
 
   // ---------------------------------------------------------------------------

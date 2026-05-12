@@ -175,6 +175,17 @@ export const contractsApi = {
   cancel(id: string, note?: string) {
     return api.post<Contract>(`/v1/contracts/${id}/cancel`, { note });
   },
+  /**
+   * Força CoA Disconnect-Request pra todos os NASes com sessão ativa. NÃO
+   * muda estado do contrato — só derruba sessão (cliente reconecta automa-
+   * ticamente se RADIUS aceita). Útil em troca de plano, debug, IP travado.
+   */
+  kick(id: string) {
+    return api.post<{
+      kicked: number;
+      results: Array<{ nasIp: string; ok: boolean; error?: string }>;
+    }>(`/v1/contracts/${id}/kick`);
+  },
   remove(id: string) {
     return api.delete(`/v1/contracts/${id}`);
   },

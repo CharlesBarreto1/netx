@@ -1,11 +1,18 @@
 'use client';
 
-import { Wifi, WifiOff } from 'lucide-react';
-import useSWR from 'swr';
+import { Wifi, WifiOff, Power } from 'lucide-react';
+import { useState } from 'react';
+import { toast } from 'sonner';
+import useSWR, { mutate } from 'swr';
 
 import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { ConfirmDialog } from '@/components/ui/Modal';
 import { InlineLoader } from '@/components/ui/Spinner';
+import { ApiError } from '@/lib/api';
+import { contractsApi } from '@/lib/contracts-api';
 import { radacctApi, type ContractSession } from '@/lib/radacct-api';
+import { hasPermission } from '@/lib/session';
 
 /**
  * ContractSessionCard — status técnico do contrato (online/offline + IP +
@@ -19,6 +26,33 @@ export function ContractSessionCard({ contractId }: { contractId: string }) {
     radacctApi.sessionPath(contractId),
     { refreshInterval: 30_000 },
   );
+
+  const canKick = hasPermission('contracts.write');
+  const [kickConfirmOpen, setKickConfirmOpen] = useState(false);
+  const [kicking, setKicking] = useState(false);
+
+  async function doKick() {
+    setKicking(true);
+    try {
+      const res = await contractsApi.kick(contractId);
+      if (res.kicked > 0) {
+        toast.success(`Cliente desconectado em ${res.kicked} NAS(es).`);
+      } else if (res.results.length === 0) {
+        toast.info('Cliente não tem sessão ativa para desconectar.');
+      } else {
+        // Tentou em algum NAS mas todos retornaram erro
+        const firstErr = res.results.find((r) => !r.ok)?.error;
+        toast.error(`Falha ao desconectar${firstErr ? `: ${firstErr}` : ''}`);
+      }
+      // Recarrega o status técnico — em 3s o radacct deve refletir a queda
+      await mutate(radacctApi.sessionPath(contractId));
+      setKickConfirmOpen(false);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
+    } finally {
+      setKicking(false);
+    }
+  }
 
   if (isLoading && !data) return <InlineLoader label="Cargando estado…" />;
   if (error) {
@@ -47,7 +81,7 @@ export function ContractSessionCard({ contractId }: { contractId: string }) {
 
   return (
     <div className="rounded-md border border-border bg-surface p-3 space-y-2">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           {data.online ? (
             <>
@@ -63,10 +97,34 @@ export function ContractSessionCard({ contractId }: { contractId: string }) {
             </>
           )}
         </div>
-        {data.framedIp && (
-          <Badge tone="info">{data.framedIp}</Badge>
-        )}
+        <div className="flex items-center gap-2">
+          {data.framedIp && <Badge tone="info">{data.framedIp}</Badge>}
+          {data.online && canKick && (
+            <Button
+              size="sm"
+              variant="ghost"
+              loading={kicking}
+              onClick={() => setKickConfirmOpen(true)}
+              title="Forçar desconexão (CoA Disconnect-Request)"
+            >
+              <Power className="mr-1 h-3.5 w-3.5" />
+              Desconectar
+            </Button>
+          )}
+        </div>
       </div>
+
+      <ConfirmDialog
+        open={kickConfirmOpen}
+        onClose={() => setKickConfirmOpen(false)}
+        onConfirm={doKick}
+        title="Desconectar cliente?"
+        message="Manda Disconnect-Request pro concentrador. O cliente reconecta automaticamente se RADIUS aceitar."
+        confirmLabel="Desconectar"
+        variant="danger"
+        loading={kicking}
+      />
+
 
       <div className="grid grid-cols-2 gap-2 text-xs">
         <Field
