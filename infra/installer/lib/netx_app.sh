@@ -11,8 +11,11 @@ netx_app_setup() {
   netx_app_install
   netx_app_db_generate   # ANTES do build: core-service importa types de @prisma/client
   netx_app_build
-  netx_app_db_migrate
+  # Schema RADIUS DEVE existir antes das migrations Prisma — algumas migrations
+  # (ex.: 20260509120000_radacct_nullability) referenciam tabelas em `radius.*`.
+  # Fresh install sem essa ordem falha com `não existe o esquema "radius"`.
   postgres_apply_radius_schema
+  netx_app_db_migrate
   netx_app_seed_baseline
   netx_app_seed_admin
 }
