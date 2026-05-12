@@ -58,8 +58,13 @@ smoke_http_endpoints() {
 
 smoke_postgres_radius() {
   log_info "Verificando schema RADIUS"
+  # `NETX_DB_PASSWORD` é gerado por `secret_get_or_create` em postgres.sh e
+  # persistido em /etc/netx/.secrets — não está disponível no env do shell em
+  # re-runs (smoke é um step independente). Lê do file de secrets aqui.
+  local db_password
+  db_password=$(secret_get_or_create NETX_DB_PASSWORD 32)
   local count
-  count=$(PGPASSWORD="${NETX_DB_PASSWORD}" psql \
+  count=$(PGPASSWORD="${db_password}" psql \
     -h "${NETX_DB_HOST}" -p "${NETX_DB_PORT}" \
     -U "${NETX_DB_USER}" -d "${NETX_DB_NAME}" \
     -tAc "SELECT count(*) FROM information_schema.tables WHERE table_schema='radius'" 2>/dev/null || echo 0)
