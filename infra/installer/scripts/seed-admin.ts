@@ -53,7 +53,8 @@ async function main() {
   console.log(`[seed-admin] tenant=${tenantSlug} admin=${adminEmail}`);
 
   try {
-    // 1) Tenant
+    // 1) Tenant — schema atual usa enum `TenantStatus` (TRIAL/ACTIVE/SUSPENDED/CHURNED),
+    // não o boolean `active` legado. Em re-runs força ACTIVE pra liberar login.
     const tenant = await prisma.tenant.upsert({
       where: { slug: tenantSlug },
       create: {
@@ -62,20 +63,21 @@ async function main() {
         country: tenantCountry,
         locale: tenantLocale,
         currency: tenantCurrency,
-        active: true,
+        status: 'ACTIVE',
       },
       update: {
         name: tenantName,
         country: tenantCountry,
         locale: tenantLocale,
         currency: tenantCurrency,
-        active: true,
+        status: 'ACTIVE',
       },
     });
 
-    // 2) Role "admin" — assumida criada pelo seed canônico
+    // 2) Role "admin" — assumida criada pelo seed canônico (db:seed).
+    // Schema atual identifica role por `name`, não `code`.
     const adminRole = await prisma.role.findFirst({
-      where: { tenantId: tenant.id, code: 'admin' },
+      where: { tenantId: tenant.id, name: 'admin' },
     });
     if (!adminRole) {
       console.error(
