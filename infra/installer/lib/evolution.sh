@@ -27,7 +27,11 @@ evolution_install_docker() {
     return 0
   fi
   log_info "Instalando Docker (docker.io do Debian)"
-  apt-get install -y -qq docker.io docker-compose-v2
+  # Debian 12: pacote `docker-compose-v2`. Debian 13+: foi renomeado pra
+  # `docker-compose`. Tentamos os 2 em sequência pra cobrir ambos.
+  if ! apt-get install -y -qq docker.io docker-compose 2>/dev/null; then
+    apt-get install -y -qq docker.io docker-compose-v2
+  fi
   systemctl enable --now docker
   log_ok "Docker pronto"
 }

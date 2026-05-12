@@ -4,6 +4,9 @@ Documentation=https://github.com/charlesbarreto/netx
 After=network-online.target netx-core-service.service
 Wants=network-online.target
 Requires=netx-core-service.service
+# Rate-limit fica em [Unit] (systemd 230+). Em [Service] dispara warning.
+StartLimitBurst=5
+StartLimitIntervalSec=60
 
 [Service]
 Type=simple
@@ -17,8 +20,6 @@ ExecStart=/usr/bin/node dist/apps/api-gateway/src/main.js
 
 Restart=on-failure
 RestartSec=5s
-StartLimitBurst=5
-StartLimitIntervalSec=60
 
 StandardOutput=journal
 StandardError=journal

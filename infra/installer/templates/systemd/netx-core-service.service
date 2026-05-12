@@ -3,6 +3,10 @@ Description=NetX Core Service (NestJS)
 Documentation=https://github.com/charlesbarreto/netx
 After=network-online.target postgresql.service redis-server.service rabbitmq-server.service
 Wants=network-online.target postgresql.service redis-server.service rabbitmq-server.service
+# Restart rate-limit fica em [Unit] em systemd 230+. Em [Service] dispara
+# "Unknown key" warning no journal.
+StartLimitBurst=5
+StartLimitIntervalSec=60
 
 [Service]
 Type=simple
@@ -19,8 +23,6 @@ ExecStart=/usr/bin/node dist/apps/core-service/src/main.js
 # Restart policy
 Restart=on-failure
 RestartSec=5s
-StartLimitBurst=5
-StartLimitIntervalSec=60
 
 # Logging
 StandardOutput=journal

@@ -86,16 +86,17 @@ netx_app_render_env() {
 
   # CORS origins. Em produção precisamos de origins explícitos — wildcard
   # com credentials=true é vetor de CSRF (gateway recusa boot se vier '*').
-  # Se NETX_DOMAIN setado, usamos https://${dominio}; se não, caímos pro
-  # IP público em http://. Operador pode sobrescrever via env.
+  # Incluímos SEMPRE: (i) IP público da máquina (acesso direto enquanto DNS
+  # não propaga), (ii) https/http do DOMAIN se setado. Operador pode
+  # sobrescrever via env.
   export NETX_CORS_ORIGINS
+  local _ip
+  _ip=$(detect_public_ip)
+  local origins="http://${_ip}"
   if [[ -n "${NETX_DOMAIN:-}" ]]; then
-    NETX_CORS_ORIGINS="https://${NETX_DOMAIN},http://${NETX_DOMAIN}"
-  else
-    local _ip
-    _ip=$(hostname -I 2>/dev/null | awk '{print $1}')
-    NETX_CORS_ORIGINS="http://${_ip:-localhost}"
+    origins="https://${NETX_DOMAIN},http://${NETX_DOMAIN},${origins}"
   fi
+  NETX_CORS_ORIGINS="${origins}"
 
   # Apikey do Evolution já criada (ou ainda vazia se evolution_setup ainda
   # não rodou). Se vazia agora, vai ser preenchida na próxima execução —
@@ -142,7 +143,11 @@ netx_app_install() {
 
 netx_app_build() {
   log_info "npm run build (Nx — todos os apps)"
-  as_netx "cd ${NETX_HOME} && npm run build"
+  # IMPORTANTE: carrega o .env ANTES do build. Vars `NEXT_PUBLIC_*` são
+  # injetadas no bundle do Next durante build (build-time), não em runtime.
+  # Sem isso, frontend ficaria com URLs/CORS errados gravados no JavaScript
+  # entregue ao browser, e o operador teria que rebuildar manualmente.
+  as_netx "set -a; . /etc/netx/.env; set +a; cd ${NETX_HOME} && npm run build"
   log_ok "Build concluído"
 }
 

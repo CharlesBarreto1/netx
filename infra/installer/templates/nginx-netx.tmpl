@@ -16,9 +16,12 @@ upstream netx_api {
 }
 
 server {
-    listen 80;
-    listen [::]:80;
-    server_name ${NETX_NGINX_SERVER_NAME};
+    # default_server: este vhost atende QUALQUER Host header (domain, IP,
+    # subdomain) — fundamental enquanto DNS ainda não propagou ou pra acesso
+    # direto via IP. server_name fica explícito pra logs e fallback.
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name ${NETX_NGINX_SERVER_NAME} _;
 
     client_max_body_size 50M;
     proxy_read_timeout 300s;

@@ -40,12 +40,18 @@ smoke_http_endpoints() {
     log_warn "core-service /health não respondeu (talvez rota diferente)"
   fi
 
-  # api-gateway
-  if curl -fsS "http://127.0.0.1:${NETX_PORT_API_GATEWAY}/health" >/dev/null 2>&1 \
-     || curl -fsS "http://127.0.0.1:${NETX_PORT_API_GATEWAY}/api/health" >/dev/null 2>&1; then
-    log_ok "api-gateway /health OK"
+  # api-gateway — gateway ainda não tem endpoint /health (TODO v1.1).
+  # Por enquanto checamos só que a porta responde (qualquer HTTP, incluindo 404).
+  local gateway_status
+  gateway_status=$(curl -sS -o /dev/null -w "%{http_code}" \
+    "http://127.0.0.1:${NETX_PORT_API_GATEWAY}/api/v1/auth/login" 2>/dev/null \
+    --connect-timeout 5 || echo "000")
+  if [[ "${gateway_status}" =~ ^[1-5][0-9]{2}$ ]]; then
+    log_ok "api-gateway respondendo em :${NETX_PORT_API_GATEWAY} (HTTP ${gateway_status})"
   else
-    log_warn "api-gateway /health não respondeu"
+    log_error "api-gateway NÃO RESPONDE em :${NETX_PORT_API_GATEWAY}"
+    journalctl -u netx-api-gateway -n 40 --no-pager >&2 || true
+    exit 1
   fi
 
   # nginx :80
