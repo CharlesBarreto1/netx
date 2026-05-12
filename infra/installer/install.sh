@@ -37,6 +37,19 @@ set -Eeuo pipefail
 shopt -s inherit_errexit 2>/dev/null || true
 
 # -----------------------------------------------------------------------------
+# Trava: precisa rodar como root. O installer cria system user, instala pacotes
+# APT, escreve em /etc/systemd, /etc/nginx, /var/lib — nada disso roda sem
+# privilégio. Falhar aqui é mais educativo do que o primeiro `apt-get install`
+# dar "Permission denied" no meio da execução.
+# -----------------------------------------------------------------------------
+if [[ "${EUID}" -ne 0 ]]; then
+  echo "ERRO: o installer precisa rodar como root." >&2
+  echo "  → use: sudo -E bash $0" >&2
+  echo "  (o '-E' preserva NETX_TENANT_NAME, NETX_ADMIN_EMAIL etc do seu env)" >&2
+  exit 1
+fi
+
+# -----------------------------------------------------------------------------
 # Resolve diretório do installer (funciona via curl|bash ou execução local).
 # -----------------------------------------------------------------------------
 INSTALLER_SCRIPT="${BASH_SOURCE[0]:-$0}"
