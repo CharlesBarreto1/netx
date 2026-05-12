@@ -148,6 +148,15 @@ function pickPaymentMethod(): PaymentMethod {
   return 'CASH';
 }
 const pad = (n: number, w: number) => String(n).padStart(w, '0');
+// CI/RUC determinísticos via `seq` — garante unicidade até 9.999.999 clientes.
+// Random com pool de 8M tem colisão real em 8000 amostras (paradoxo do
+// aniversário). Determinístico via offset elimina o problema.
+//
+// Formato CI paraguaio: 7 dígitos, sem zero à esquerda → começa em 1_000_000.
+const paraguayanCIFromSeq = (seq: number) => String(1_000_000 + seq);
+const paraguayanRUCFromSeq = (seq: number) =>
+  `${paraguayanCIFromSeq(seq)}-${(seq % 9) + 1}`;
+// Versão random ainda exposta pra usos esporádicos (não conflitam com seq).
 const paraguayanCI = () => String(randInt(1_000_000, 9_999_999));
 const paraguayanRUC = () => `${paraguayanCI()}-${randInt(1, 9)}`;
 const paraguayanMobile = () => {
@@ -296,7 +305,7 @@ async function main() {
       companyName = `${prefix} ${middle} ${suffix}`;
       tradeName = `${prefix} ${middle}`;
       displayName = companyName;
-      taxId = paraguayanRUC();
+      taxId = paraguayanRUCFromSeq(seq);
       taxIdType = TaxIdType.RUC;
       primaryEmail = `contacto+${seq}@${slugify(middle)}.com.py`;
     } else {
@@ -304,7 +313,7 @@ async function main() {
       firstName = rand(isFemale ? FIRST_NAMES_F : FIRST_NAMES_M);
       lastName = `${rand(LAST_NAMES)} ${rand(LAST_NAMES)}`;
       displayName = `${firstName} ${lastName}`;
-      taxId = paraguayanCI();
+      taxId = paraguayanCIFromSeq(seq);
       taxIdType = TaxIdType.CI;
       primaryEmail = `${slugify(firstName)}.${slugify(lastName).slice(0, 12)}+${seq}@gmail.com`;
     }
