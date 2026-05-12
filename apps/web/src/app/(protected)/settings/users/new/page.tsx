@@ -7,6 +7,10 @@ import { useTranslations } from 'next-intl';
 import { UserForm } from '@/components/users/UserForm';
 import { toast } from '@/components/ui/sonner';
 
+// Usa `useTranslations` (next-intl) que depende de provider do layout (protected).
+// Next 16 quebra o prerender sem isso.
+export const dynamic = 'force-dynamic';
+
 export default function NewUserPage() {
   const router = useRouter();
   const tCommon = useTranslations('common');

@@ -14,7 +14,15 @@ import type { Contract } from '@/lib/contracts-api';
  * do tenant ficam num só lugar.
  *
  * `?customerId=<uuid>` continua suportado — pré-trava o select de cliente.
+ *
+ * Por que `dynamic`: Next 16 tenta prerender essa página em build time. O
+ * componente `NewContractInline` usa `useTenantConfig()` que requer o provider
+ * do layout (protected), só montado em runtime. Sem isso, prerender quebra
+ * com "Cannot read properties of null (reading 'useContext')". A propagação
+ * de `dynamic` via layout mudou no Next 16 — precisa ser declarado na page.
  */
+export const dynamic = 'force-dynamic';
+
 export default function NewContractPage() {
   const router = useRouter();
   const params = useSearchParams();

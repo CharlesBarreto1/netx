@@ -6,6 +6,12 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 
+// Por que `dynamic`: usa `useTranslations` (next-intl) e SWR fetch que dependem
+// de providers do layout (protected). Next 16 tenta prerender em build e
+// quebra com "useContext null". Ver também /contracts/new/page.tsx.
+export const dynamic = 'force-dynamic';
+
+
 import { Button } from '@/components/ui/Button';
 import {
   FieldError,

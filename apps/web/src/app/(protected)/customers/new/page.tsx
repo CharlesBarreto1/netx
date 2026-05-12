@@ -11,6 +11,11 @@ import { api } from '@/lib/api';
 import type { Contract } from '@/lib/contracts-api';
 import type { Customer } from '@/lib/crm-types';
 
+// Mesmo motivo de /contracts/new e /service-orders/new: usa providers
+// (TenantConfig, I18n) só montados em runtime. Sem isso, Next 16 quebra o
+// prerender com "useContext null".
+export const dynamic = 'force-dynamic';
+
 type Step = 'customer' | 'contract';
 
 /**
