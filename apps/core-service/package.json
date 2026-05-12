@@ -4,6 +4,7 @@
   "private": true,
   "description": "NetX Core Service — Módulo 1 (Auth, Multi-tenancy, Users, RBAC, Audit)",
   "scripts": {
+    "postinstall": "prisma generate || true",
     "dev": "ts-node-dev --respawn --transpile-only -r tsconfig-paths/register src/main.ts",
     "build": "nest build",
     "start": "node dist/main.js",

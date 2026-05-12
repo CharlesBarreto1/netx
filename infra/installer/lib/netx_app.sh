@@ -9,6 +9,7 @@ netx_app_setup() {
   netx_app_clone_or_update
   netx_app_render_env
   netx_app_install
+  netx_app_db_generate   # ANTES do build: core-service importa types de @prisma/client
   netx_app_build
   netx_app_db_migrate
   postgres_apply_radius_schema
@@ -142,9 +143,19 @@ netx_app_build() {
   log_ok "Build concluído"
 }
 
-netx_app_db_migrate() {
-  log_info "prisma migrate deploy"
+netx_app_db_generate() {
+  # Gera o `@prisma/client` ANTES do build, senão o `nest build` falha com
+  # ~200 erros TS2305/TS2694 ("Module '@prisma/client' has no exported member
+  # 'AuditLevel'", etc.) — todos os enums e types derivados do schema só ficam
+  # disponíveis após o `prisma generate`. Idempotente: roda toda vez sem efeito
+  # colateral.
+  log_info "prisma generate (gerando types do schema)"
   as_netx "cd ${NETX_HOME} && npm run -w apps/core-service db:generate"
+  log_ok "Prisma client gerado"
+}
+
+netx_app_db_migrate() {
+  log_info "prisma migrate deploy (aplicando migrations no DB)"
   as_netx "cd ${NETX_HOME} && npm run -w apps/core-service db:migrate:deploy"
   log_ok "Migrações Prisma aplicadas"
 }
