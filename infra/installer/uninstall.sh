@@ -38,6 +38,16 @@ echo "==> Parando Evolution API (Docker)"
 if [ -d /opt/netx-evolution ]; then
   (cd /opt/netx-evolution && docker compose down -v 2>/dev/null) || true
 fi
+# Defesa em profundidade: mesmo sem /opt/netx-evolution, containers órfãos
+# podem ter sobrevivido a desinstalações anteriores (ex.: VPS dev migrada
+# de PM2 pro installer). Containers com porta 5672 conflitam com RabbitMQ.
+if command -v docker >/dev/null 2>&1; then
+  # Pára qualquer container que esteja publicando 5672 ou 8080 (portas que
+  # o NetX usa: AMQP e Evolution). Não remove a imagem por segurança.
+  for port in 5672 8080; do
+    docker ps -q --filter "publish=${port}" 2>/dev/null | xargs -r docker stop 2>/dev/null || true
+  done
+fi
 
 echo "==> Removendo unidades systemd"
 rm -f /etc/systemd/system/netx-{web,api-gateway,core-service}.service
@@ -71,6 +81,19 @@ if (( PURGE == 1 )); then
 
   rabbitmqctl delete_user netx 2>/dev/null || true
   rabbitmqctl delete_vhost netx 2>/dev/null || true
+
+  # Estado/cookie/mnesia do RabbitMQ travam reinstall em hostname novo. Não
+  # limpamos /var/lib/rabbitmq aqui em --purge porque outras apps podem usar
+  # a mesma instância — quem PRECISA fazer "reset hard" do rabbit faz:
+  #   systemctl stop rabbitmq-server
+  #   pkill -9 -f beam.smp; pkill -9 -f epmd
+  #   rm -rf /var/lib/rabbitmq /var/log/rabbitmq
+  #   mkdir -p /var/log/rabbitmq /var/lib/rabbitmq
+  #   chown rabbitmq:rabbitmq /var/log/rabbitmq /var/lib/rabbitmq
+  #   chmod 750 /var/log/rabbitmq /var/lib/rabbitmq
+  #   dpkg --configure -a   # ou apt-get install --reinstall rabbitmq-server
+  # ATENÇÃO: o post-install do pacote chown'a /var/log/rabbitmq — se vc apagar
+  # o dir sem recriar, dpkg falha. Recriar (mkdir+chown) é obrigatório.
 
   rm -rf /etc/netx /var/lib/netx /opt/netx-evolution
   userdel -r netx 2>/dev/null || true
