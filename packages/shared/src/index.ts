@@ -14,3 +14,4 @@ export * from './finance';
 export * from './reports';
 export * from './backups';
 export * from './portal.dto';
+export * from './sifen';

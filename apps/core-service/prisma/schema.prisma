@@ -95,6 +95,9 @@ model Tenant {
   whatsappContacts     WhatsappContact[]
   whatsappConversations WhatsappConversation[]
 
+  // SIFEN — fatura eletrônica Paraguay (módulo opcional, ligado via env)
+  sifenDocuments       SifenDocument[]
+
   @@index([status])
   @@index([country])
   @@map("tenants")
@@ -1070,6 +1073,9 @@ model ContractInvoice {
   contract     Contract       @relation(fields: [contractId], references: [id], onDelete: Cascade)
   cashRegister CashRegister?  @relation(fields: [cashRegisterId], references: [id], onDelete: SetNull)
 
+  // SIFEN — 0..N documentos (1 fatura pode ter Factura + Nota de Crédito, etc).
+  sifenDocuments SifenDocument[]
+
   @@index([tenantId, contractId])
   @@index([tenantId, cashRegisterId])
   @@index([tenantId, status, dueDate])
@@ -1337,6 +1343,9 @@ model OneTimeCharge {
   cashRegister   CashRegister? @relation(fields: [cashRegisterId], references: [id], onDelete: SetNull)
   createdBy      User?         @relation("ChargeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy      User?         @relation("ChargeUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  // SIFEN — 0..N documentos fiscais associados a essa cobrança avulsa.
+  sifenDocuments SifenDocument[]
 
   @@unique([tenantId, code])
   @@index([tenantId, status])
@@ -1723,4 +1732,109 @@ model WhatsappConversationView {
   @@index([conversationId, viewedAt])
   @@index([viewerUserId, viewedAt])
   @@map("whatsapp_conversation_views")
+}
+
+// =============================================================================
+// SIFEN — Sistema Integrado de Facturación Electrónica Nacional (Paraguay)
+// =============================================================================
+// Cada DTE (Documento Tributario Electrónico) emitido pro SIFEN da DNIT.
+// Vinculado a uma ContractInvoice (mensalidade) ou OneTimeCharge (avulsa).
+// Mantém XML em 3 versões (gerado / assinado / enviado) pra audit fiscal.
+//
+// Veja docs/sifen-integration.md (TODO) e Manual Técnico v150:
+// https://www.dnit.gov.py/documents/20123/420592/Manual+Técnico+Versión+150.pdf
+
+enum SifenDocumentType {
+  FACTURA       // Tipo 1 — mensalidade, taxa, serviço
+  NOTA_CREDITO  // Tipo 5 — devolução, desconto retroativo
+  NOTA_DEBITO   // Tipo 6 — juros, multa, ajuste
+  AUTOFACTURA   // Tipo 4 — compra de não contribuinte (raro p/ ISP)
+  NOTA_REMISION // Tipo 7 — entrega de CPE/ONU (não fiscal)
+}
+
+enum SifenDocumentStatus {
+  DRAFT     // Persistido localmente, ainda não assinado
+  SIGNED    // Assinado com CCFE, pronto pra enviar
+  SENT      // Enviado pro SIFEN, aguarda resposta
+  APPROVED  // SIFEN aprovou — vira DTE com efeito fiscal
+  REJECTED  // SIFEN rejeitou — corrigir e re-emitir (CDC novo)
+  CANCELLED // Cancelado via evento pós-emissão (até 48h)
+}
+
+model SifenDocument {
+  id                  String              @id @default(uuid()) @db.Uuid
+  tenantId            String              @map("tenant_id") @db.Uuid
+
+  // Vínculos opcionais com a origem do documento. Pelo menos um deve estar
+  // preenchido. ContractInvoice = mensalidade; OneTimeCharge = avulsa.
+  contractInvoiceId   String?             @map("contract_invoice_id") @db.Uuid
+  oneTimeChargeId     String?             @map("one_time_charge_id") @db.Uuid
+
+  type                SifenDocumentType
+  status              SifenDocumentStatus @default(DRAFT)
+
+  // Número fiscal — único por (tenant, establecimiento, puntoExpedicion).
+  // Formato impresso: "001-001-0000001" (estab-punto-numero, padding 7).
+  // Sem buracos: cancelar NÃO recicla número.
+  establecimiento     String              @db.VarChar(3)
+  puntoExpedicion     String              @map("punto_expedicion") @db.VarChar(3)
+  numero              Int                 // contador sequencial; @@unique abaixo
+
+  // CDC (Código de Control): 44 chars determinístico, calculado a partir de
+  // RUC + timbrado + tipo + estab + punto + número + data + tipoEmissão +
+  // código de segurança aleatório (9 dígitos) + DV. É o "código de barras"
+  // do DTE — vai no QR e na URL de consulta pública.
+  cdc                 String              @unique @db.VarChar(44)
+
+  // Identificadores fiscais denormalizados (não dependem de relação)
+  emisorRuc           String              @map("emisor_ruc") @db.VarChar(20)
+  emisorTimbrado      String              @map("emisor_timbrado") @db.VarChar(8)
+  receptorTaxId       String?             @map("receptor_tax_id") @db.VarChar(32)
+  receptorName        String?             @map("receptor_name") @db.VarChar(255)
+
+  // Valor total do documento (denormalizado)
+  totalAmount         Decimal             @map("total_amount") @db.Decimal(14, 2)
+  currency            String              @default("PYG") @db.Char(3)
+
+  // Versões do XML (Text, podem ser grandes — ~5-10KB cada)
+  xmlGenerated        String?             @map("xml_generated") @db.Text
+  xmlSigned           String?             @map("xml_signed") @db.Text
+  xmlSent             String?             @map("xml_sent") @db.Text
+
+  // Resposta crua do SIFEN (envelope SOAP). Útil pra debug + audit.
+  sifenResponse       Json?               @map("sifen_response")
+  rejectionCode       String?             @map("rejection_code") @db.VarChar(20)
+  rejectionReason     String?             @map("rejection_reason") @db.Text
+
+  // QR code URL (consulta pública do DTE no portal SIFEN)
+  qrUrl               String?             @map("qr_url") @db.Text
+
+  // Timestamps relevantes
+  issuedAt            DateTime            @map("issued_at")
+  signedAt            DateTime?           @map("signed_at")
+  sentAt              DateTime?           @map("sent_at")
+  approvedAt          DateTime?           @map("approved_at")
+  rejectedAt          DateTime?           @map("rejected_at")
+  cancelledAt         DateTime?           @map("cancelled_at")
+
+  // Retry de envio (em caso de timeout / 5xx do SIFEN)
+  retryCount          Int                 @default(0) @map("retry_count")
+  lastError           String?             @map("last_error") @db.Text
+  nextRetryAt         DateTime?           @map("next_retry_at")
+
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+
+  tenant              Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contractInvoice     ContractInvoice?    @relation(fields: [contractInvoiceId], references: [id], onDelete: SetNull)
+  oneTimeCharge       OneTimeCharge?      @relation(fields: [oneTimeChargeId], references: [id], onDelete: SetNull)
+
+  // Numeração sequencial sem buracos por (tenant, estab, punto)
+  @@unique([tenantId, establecimiento, puntoExpedicion, numero], map: "sifen_doc_numero_uniq")
+  @@index([tenantId, status, issuedAt(sort: Desc)])
+  @@index([tenantId, type, issuedAt(sort: Desc)])
+  @@index([contractInvoiceId])
+  @@index([oneTimeChargeId])
+  @@index([nextRetryAt], map: "sifen_doc_retry_idx")
+  @@map("sifen_documents")
 }

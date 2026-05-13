@@ -142,6 +142,15 @@ const chatPermissions = [
   { code: 'chat.audit',  module: 'chat', resource: 'chat', action: 'audit'  },
   // chat.admin = gerenciar instâncias Evolution + conexão WhatsApp
   { code: 'chat.admin',  module: 'chat', resource: 'chat', action: 'admin'  },
+
+  // SIFEN — Fatura eletrônica Paraguay (DNIT / e-Kuatiá)
+  { code: 'sifen.read',   module: 'sifen', resource: 'sifen', action: 'read'   },
+  // sifen.emit = disparar emissão manual de DE (factura, NC, ND)
+  { code: 'sifen.emit',   module: 'sifen', resource: 'sifen', action: 'emit'   },
+  // sifen.cancel = cancelar DTE aprovado (janela 48h)
+  { code: 'sifen.cancel', module: 'sifen', resource: 'sifen', action: 'cancel' },
+  // sifen.admin = configurar certificado, timbrado, ambiente, reemissão em massa
+  { code: 'sifen.admin',  module: 'sifen', resource: 'sifen', action: 'admin'  },
 ];
 
 // Role → permission mapping
@@ -218,6 +227,11 @@ const systemRoles = [
       'chat.assign',
       'chat.audit',
       'chat.admin',
+      // SIFEN — admin gerencia certificado e pode cancelar/emitir
+      'sifen.read',
+      'sifen.emit',
+      'sifen.cancel',
+      'sifen.admin',
     ],
   },
   {
@@ -261,6 +275,10 @@ const systemRoles = [
       'chat.read',
       'chat.send',
       'chat.assign',
+      // SIFEN — operador pode ver e disparar emissão manual; cancelamento e
+      // config de certificado ficam pro admin.
+      'sifen.read',
+      'sifen.emit',
     ],
   },
   {
@@ -279,6 +297,7 @@ const systemRoles = [
       'finance.charges.read',
       'reports.read',
       'network.read',
+      'sifen.read',
     ],
   },
 ];
