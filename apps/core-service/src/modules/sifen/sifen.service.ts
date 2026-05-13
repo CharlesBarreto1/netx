@@ -348,6 +348,7 @@ export class SifenService {
     });
     if (!ch) throw new NotFoundException('OneTimeCharge não encontrada');
     const amount = Number(ch.amount);
+    const chargeCode = ch.code ?? `CHG-${input.oneTimeChargeId!.slice(0, 8)}`;
     return {
       receptorTaxId: ch.customer.taxId,
       receptorName: ch.customer.displayName,
@@ -355,8 +356,8 @@ export class SifenService {
       currency: 'PYG',
       items: [
         {
-          code: ch.code,
-          description: ch.description ?? ch.code,
+          code: chargeCode,
+          description: ch.description ?? chargeCode,
           quantity: 1,
           unitPrice: amount,
           ivaRate: 10,
