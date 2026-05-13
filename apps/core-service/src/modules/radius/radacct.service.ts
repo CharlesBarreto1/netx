@@ -1,3 +1,5 @@
+// Match em radacct normaliza MAC (strip prefix `N:`, separadores, case)
+// pra cobrir formatos Mikrotik (`1:b8:9f:..`), Huawei, Cisco etc.
 /**
  * RadacctService — leitura do schema `radius.radacct` populado pelo
  * FreeRADIUS via accounting requests do BNG/OLT.

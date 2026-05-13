@@ -544,6 +544,7 @@ export class ContractsService {
    * com as credenciais antigas. Aqui assumimos que `radius.enqueueSync`
    * já rodou na transação.
    */
+  // Dispara CoA Disconnect cobrindo PPPoE e IPoE — vide RadiusCoAService.
   private async fireCoADisconnect(
     contract: ContractWithRelations,
     reason: string,

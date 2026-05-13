@@ -1,3 +1,5 @@
+// RadiusCoAService — Disconnect-Request via radclient.
+// Cobre PPPoE (User-Name) e IPoE (Acct-Session-Id + Framed-IP-Address).
 import { Injectable, Logger } from '@nestjs/common';
 import { execFile } from 'node:child_process';
 
