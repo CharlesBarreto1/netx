@@ -548,10 +548,21 @@ export class ContractsService {
     contract: ContractWithRelations,
     reason: string,
   ): Promise<{ kicked: number; total: number }> {
-    if (!contract.pppoeUsername) return { kicked: 0, total: 0 };
+    // Cobre PPPoE (pppoeUsername) E IPoE (macAddress / circuitId).
+    if (
+      !contract.pppoeUsername &&
+      !contract.macAddress &&
+      !contract.circuitId
+    ) {
+      return { kicked: 0, total: 0 };
+    }
 
     try {
-      const results = await this.radiusCoa.disconnect(contract.pppoeUsername);
+      const results = await this.radiusCoa.disconnectContract({
+        pppoeUsername: contract.pppoeUsername,
+        macAddress: contract.macAddress,
+        circuitId: contract.circuitId,
+      });
       const kicked = results.filter((r) => r.ok).length;
 
       // Atualiza o último evento DISCONNECT PENDING desse contrato pra APPLIED
@@ -613,11 +624,21 @@ export class ContractsService {
       where: { id, tenantId, deletedAt: null },
     });
     if (!contract) throw new NotFoundException('Contrato não encontrado');
-    if (!contract.pppoeUsername) {
-      throw new BadRequestException('Contrato sem pppoeUsername — nada pra desconectar');
+    if (
+      !contract.pppoeUsername &&
+      !contract.macAddress &&
+      !contract.circuitId
+    ) {
+      throw new BadRequestException(
+        'Contrato sem identificador RADIUS (pppoeUsername, macAddress ou circuitId) — nada pra desconectar',
+      );
     }
 
-    const results = await this.radiusCoa.disconnect(contract.pppoeUsername);
+    const results = await this.radiusCoa.disconnectContract({
+      pppoeUsername: contract.pppoeUsername,
+      macAddress: contract.macAddress,
+      circuitId: contract.circuitId,
+    });
     const kicked = results.filter((r) => r.ok).length;
 
     await this.audit.log({
@@ -627,7 +648,8 @@ export class ContractsService {
       resource: 'contracts',
       resourceId: contract.id,
       metadata: {
-        pppoeUsername: contract.pppoeUsername,
+        identifier:
+          contract.pppoeUsername ?? contract.macAddress ?? contract.circuitId,
         totalAttempts: results.length,
         kicked,
         results: results.map((r) => ({
