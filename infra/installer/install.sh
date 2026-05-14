@@ -146,6 +146,10 @@ source "${INSTALLER_DIR}/lib/redis.sh"
 source "${INSTALLER_DIR}/lib/rabbitmq.sh"
 # shellcheck source=lib/freeradius.sh
 source "${INSTALLER_DIR}/lib/freeradius.sh"
+# shellcheck source=lib/chrony.sh
+source "${INSTALLER_DIR}/lib/chrony.sh"
+# shellcheck source=lib/firewall.sh
+source "${INSTALLER_DIR}/lib/firewall.sh"
 # shellcheck source=lib/evolution.sh
 source "${INSTALLER_DIR}/lib/evolution.sh"
 # shellcheck source=lib/netx_app.sh
@@ -186,6 +190,7 @@ main() {
   step "rabbitmq"            rabbitmq_setup
   step "netx_app"            netx_app_setup
   step "freeradius"          freeradius_setup
+  step "chrony"              chrony_setup
   # Evolution API (WhatsApp) é opcional. Pode pular com NETX_SKIP_EVOLUTION=1.
   # O módulo Chat do core-service degrada graciosamente sem o serviço — só
   # endpoints WhatsApp ficam off, resto do app continua normal.
@@ -197,6 +202,10 @@ main() {
   fi
   step "systemd"             systemd_setup
   step "nginx"               nginx_setup
+  # Firewall AFTER nginx (porque nginx adiciona regras 80/443 e o smoke testa
+  # essas portas). Também AFTER netx_app pra ter radius.nas populado pelos
+  # NetworkEquipment cadastrados em runs anteriores.
+  step "firewall"            firewall_setup
   step "smoke"               smoke_test
 
   log_banner "Instalação concluída"

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -10,12 +11,29 @@ import {
   NetworkEquipmentVendor,
   Prisma,
 } from '@prisma/client';
+import { execFile } from 'node:child_process';
 
 import { AuditService } from '../audit/audit.service';
 import { CryptoService } from '../crypto/crypto.service';
 import { DisconnectService } from '../disconnect/disconnect.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RadiusNasSyncService } from './radius-nas-sync.service';
+
+/**
+ * Dispara scripts do installer pra ressincronizar UFW e NTP allowlist quando
+ * NetworkEquipment muda. Falhas não bloqueiam — só logam (operador pode rodar
+ * scripts manualmente: `sudo /opt/netx/infra/installer/scripts/sync-firewall.sh`).
+ *
+ * Requer sudoers config:
+ *   netx ALL=(root) NOPASSWD: /opt/netx/infra/installer/scripts/sync-firewall.sh,\
+ *                              /opt/netx/infra/installer/scripts/sync-ntp.sh
+ */
+const SYNC_SCRIPTS = {
+  firewall: process.env.NETX_SYNC_FIREWALL_SCRIPT ??
+    '/opt/netx/infra/installer/scripts/sync-firewall.sh',
+  ntp: process.env.NETX_SYNC_NTP_SCRIPT ??
+    '/opt/netx/infra/installer/scripts/sync-ntp.sh',
+};
 
 export interface CreateEquipmentInput {
   popId?: string | null;
@@ -59,6 +77,8 @@ export type UpdateEquipmentInput = Partial<CreateEquipmentInput>;
  */
 @Injectable()
 export class NetworkEquipmentService {
+  private readonly logger = new Logger(NetworkEquipmentService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -66,6 +86,31 @@ export class NetworkEquipmentService {
     private readonly crypto: CryptoService,
     private readonly disconnect: DisconnectService,
   ) {}
+
+  /**
+   * Dispara scripts de sync infra (UFW + NTP allowlist) via sudo. Non-blocking:
+   * roda em background, falhas só logam. Operador sempre pode rodar manual.
+   */
+  private async syncInfra(): Promise<void> {
+    const run = (script: string, label: string): Promise<void> =>
+      new Promise((resolve) => {
+        execFile('sudo', ['-n', script], { timeout: 8000 }, (err, _out, stderr) => {
+          if (err) {
+            this.logger.warn(
+              `[infra-sync:${label}] falhou: ${err.message} ${stderr?.slice(0, 200) ?? ''}`,
+            );
+          } else {
+            this.logger.log(`[infra-sync:${label}] OK`);
+          }
+          resolve();
+        });
+      });
+
+    await Promise.all([
+      run(SYNC_SCRIPTS.firewall, 'firewall'),
+      run(SYNC_SCRIPTS.ntp, 'ntp'),
+    ]);
+  }
 
   /**
    * Sanitiza output removendo passwords cifrados (mas mantém flag indicando
@@ -93,7 +138,7 @@ export class NetworkEquipmentService {
     tenantId: string,
     filter?: { type?: NetworkEquipmentType; popId?: string },
   ) {
-    return this.prisma.networkEquipment.findMany({
+    const rows = await this.prisma.networkEquipment.findMany({
       where: {
         tenantId,
         deletedAt: null,
@@ -103,15 +148,22 @@ export class NetworkEquipmentService {
       include: { pop: { select: { id: true, name: true, code: true } } },
       orderBy: [{ type: 'asc' }, { name: 'asc' }],
     });
+    return rows.map((r) => this.maskCredentials(r));
   }
 
-  async findById(tenantId: string, id: string) {
+  /** Variante "raw" pra uso interno (update precisa do ID + nome originais). */
+  private async findByIdRaw(tenantId: string, id: string) {
     const eq = await this.prisma.networkEquipment.findFirst({
       where: { id, tenantId, deletedAt: null },
       include: { pop: true },
     });
     if (!eq) throw new NotFoundException('Equipamento não encontrado');
     return eq;
+  }
+
+  async findById(tenantId: string, id: string) {
+    const eq = await this.findByIdRaw(tenantId, id);
+    return this.maskCredentials(eq);
   }
 
   // ───────────────────────────────────────────────────────────────────────
@@ -176,7 +228,9 @@ export class NetworkEquipmentService {
           ipAddress: eq.ipAddress,
         },
       });
-      return eq;
+      // Background — atualiza UFW e NTP allowlist, não bloqueia o request
+      void this.syncInfra();
+      return this.maskCredentials(eq);
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw new ConflictException('Já existe equipamento com esse nome ou IP');
@@ -281,7 +335,9 @@ export class NetworkEquipmentService {
         resource: 'network_equipment',
         resourceId: eq.id,
       });
-      return eq;
+      // Background — atualiza UFW e NTP allowlist, não bloqueia o request
+      void this.syncInfra();
+      return this.maskCredentials(eq);
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw new ConflictException('Já existe equipamento com esse nome ou IP');
@@ -322,6 +378,8 @@ export class NetworkEquipmentService {
       resourceId: before.id,
       beforeState: { name: before.name, ipAddress: before.ipAddress, type: before.type },
     });
+    // Background — atualiza UFW e NTP allowlist, não bloqueia o request
+    void this.syncInfra();
   }
 
   // ───────────────────────────────────────────────────────────────────────

@@ -140,17 +140,23 @@ netx_app_install() {
   # ou após bump pesado (TW4, Next 16, etc), peer-deps em transição justificam
   # --legacy-peer-deps.
   #
+  # CRÍTICO — `NODE_ENV=development` + `--include=dev`:
+  # Precisamos das devDependencies (nx, nest, tsc, dotenv-cli, prisma CLI) pra
+  # rodar `nx build`. Se o shell já tiver `NODE_ENV=production` (vem do .env do
+  # systemd que roda o installer em re-runs), o npm pula devDeps silenciosamente
+  # e o build falha com "nx: command not found".
+  #
   # `npm_config_yes=true`: defesa em profundidade contra prompts interativos
   # de `npx` (ex.: o script `preinstall` usa `npx only-allow npm` e versões
   # antigas do npx prompts "Ok to proceed?"). Mesmo com `npx --yes` no script,
   # garantimos via env que NENHUM npx aqui pausa esperando stdin.
   if [[ -f "${NETX_HOME}/package-lock.json" ]]; then
-    as_netx "cd ${NETX_HOME} && npm_config_yes=true npm ci --legacy-peer-deps --prefer-offline --no-audit --no-fund"
+    as_netx "cd ${NETX_HOME} && NODE_ENV=development npm_config_yes=true npm ci --include=dev --legacy-peer-deps --prefer-offline --no-audit --no-fund"
   else
     log_warn "package-lock.json ausente — usando 'npm install' (mais lento, gera lockfile)"
-    as_netx "cd ${NETX_HOME} && npm_config_yes=true npm install --legacy-peer-deps --no-audit --no-fund"
+    as_netx "cd ${NETX_HOME} && NODE_ENV=development npm_config_yes=true npm install --include=dev --legacy-peer-deps --no-audit --no-fund"
   fi
-  log_ok "Dependências instaladas"
+  log_ok "Dependências instaladas (incluindo devDependencies pra build)"
 }
 
 netx_app_build() {

@@ -13,6 +13,21 @@ export type EquipmentVendor =
   | 'JUNIPER'
   | 'OTHER';
 
+/** Estratégia de disconnect. AUTO escolhe baseado em vendor + authType do contrato. */
+export type DisconnectStrategy = 'AUTO' | 'COA' | 'MIKROTIK_API' | 'SSH';
+
+/** Resultado de uma strategy no Test Connection. */
+export interface TestConnectionStrategyResult {
+  strategy: 'COA' | 'MIKROTIK_API' | 'SSH';
+  ok: boolean;
+  message?: string;
+}
+export interface TestConnectionResponse {
+  equipmentId: string;
+  name: string;
+  results: TestConnectionStrategyResult[];
+}
+
 export interface NetworkPop {
   id: string;
   tenantId: string;
@@ -41,6 +56,23 @@ export interface NetworkEquipment {
   radiusNasType: string | null;
   snmpCommunity: string | null;
   snmpVersion: string | null;
+  // Multi-vendor disconnect
+  disconnectStrategy: DisconnectStrategy;
+  coaPort: number | null;
+  apiHost: string | null;
+  apiPort: number | null;
+  apiUser: string | null;
+  apiTlsEnabled: boolean;
+  /** Indica que apiPassword está cifrada no banco. Plaintext nunca volta no GET. */
+  hasApiPassword?: boolean;
+  sshHost: string | null;
+  sshPort: number | null;
+  sshUser: string | null;
+  sshKeyName: string | null;
+  sshDisconnectCmd: string | null;
+  hasSshPassword?: boolean;
+  lastReachableAt: string | null;
+  lastReachError: string | null;
   notes: string | null;
   isActive: boolean;
   createdAt: string;
@@ -70,6 +102,21 @@ export interface CreateEquipmentInput {
   radiusNasType?: string;
   snmpCommunity?: string;
   snmpVersion?: string;
+  // Multi-vendor disconnect — todos opcionais, default no backend
+  disconnectStrategy?: DisconnectStrategy;
+  coaPort?: number | null;
+  apiHost?: string | null;
+  apiPort?: number | null;
+  apiUser?: string | null;
+  /** Plaintext — backend cifra com KMS antes de salvar. */
+  apiPassword?: string | null;
+  apiTlsEnabled?: boolean;
+  sshHost?: string | null;
+  sshPort?: number | null;
+  sshUser?: string | null;
+  sshPassword?: string | null;
+  sshKeyName?: string | null;
+  sshDisconnectCmd?: string | null;
   notes?: string;
   isActive?: boolean;
 }
@@ -108,5 +155,11 @@ export const networkApi = {
   resyncBngs: () =>
     api.post<{ totalBngs: number; synced: number }>(
       '/v1/network/equipment/_resync-bngs',
+    ),
+
+  /** Testa conectividade nas strategies disponíveis (CoA / Mikrotik API / SSH). */
+  testConnection: (id: string) =>
+    api.post<TestConnectionResponse>(
+      `/v1/network/equipment/${id}/test-connection`,
     ),
 };

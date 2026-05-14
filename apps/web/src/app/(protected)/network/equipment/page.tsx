@@ -1,6 +1,6 @@
 'use client';
 
-import { Plus, RefreshCw } from 'lucide-react';
+import { CheckCircle2, Plus, Plug, RefreshCw, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -13,13 +13,30 @@ import { toast } from '@/components/ui/sonner';
 import { ApiError } from '@/lib/api';
 import {
   networkApi,
+  type DisconnectStrategy,
   type EquipmentType,
   type EquipmentVendor,
   type NetworkEquipment,
   type NetworkPop,
   type CreateEquipmentInput,
+  type TestConnectionStrategyResult,
 } from '@/lib/network-api';
 import { hasPermission } from '@/lib/session';
+
+const DISCONNECT_STRATEGIES: { value: DisconnectStrategy; label: string; help: string }[] = [
+  {
+    value: 'AUTO',
+    label: 'Automática',
+    help: 'NetX elige por vendor + tipo de auth del contrato',
+  },
+  { value: 'COA', label: 'CoA (RADIUS 3799)', help: 'Disconnect-Request RADIUS' },
+  {
+    value: 'MIKROTIK_API',
+    label: 'RouterOS API',
+    help: 'API Mikrotik (necesario para IPoE/DHCP)',
+  },
+  { value: 'SSH', label: 'SSH', help: 'Ejecuta sshDisconnectCmd via SSH' },
+];
 
 const TYPES: EquipmentType[] = ['BNG', 'OLT', 'ROUTER', 'SWITCH', 'OTHER'];
 const TYPE_LABEL: Record<EquipmentType, string> = {
@@ -229,11 +246,46 @@ function EquipmentFormDialog({
     radiusNasType: initial?.radiusNasType ?? 'mikrotik',
     snmpCommunity: initial?.snmpCommunity ?? '',
     snmpVersion: initial?.snmpVersion ?? 'v2c',
+    disconnectStrategy: initial?.disconnectStrategy ?? 'AUTO',
+    coaPort: initial?.coaPort ?? null,
+    apiHost: initial?.apiHost ?? '',
+    apiPort: initial?.apiPort ?? 8728,
+    apiUser: initial?.apiUser ?? '',
+    apiPassword: '',
+    apiTlsEnabled: initial?.apiTlsEnabled ?? false,
+    sshHost: initial?.sshHost ?? '',
+    sshPort: initial?.sshPort ?? 22,
+    sshUser: initial?.sshUser ?? '',
+    sshPassword: '',
+    sshKeyName: initial?.sshKeyName ?? '',
+    sshDisconnectCmd: initial?.sshDisconnectCmd ?? '',
     notes: initial?.notes ?? '',
     isActive: initial?.isActive ?? true,
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [testResults, setTestResults] = useState<TestConnectionStrategyResult[] | null>(null);
+
+  async function handleTestConnection() {
+    if (!initial) {
+      toast.error('Guarda el equipamiento primero pra testar conectividad');
+      return;
+    }
+    setTesting(true);
+    setTestResults(null);
+    try {
+      const res = await networkApi.testConnection(initial.id);
+      setTestResults(res.results);
+      const allOk = res.results.every((r) => r.ok);
+      if (allOk) toast.success('Todas las strategies OK');
+      else toast.error('Una o más strategies fallaron — ver detalles abajo');
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : 'Error');
+    } finally {
+      setTesting(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -244,10 +296,16 @@ function EquipmentFormDialog({
     }
     setSubmitting(true);
     try {
+      // Senhas vazias = não tocar no que está cifrado no banco
+      // (undefined = "manter atual", string vazia também — backend trata).
+      const payload: CreateEquipmentInput = { ...form };
+      if (!form.apiPassword) delete (payload as Record<string, unknown>).apiPassword;
+      if (!form.sshPassword) delete (payload as Record<string, unknown>).sshPassword;
+
       if (isNew) {
-        await networkApi.createEquipment(form);
+        await networkApi.createEquipment(payload);
       } else {
-        await networkApi.updateEquipment(initial!.id, form);
+        await networkApi.updateEquipment(initial!.id, payload);
       }
       toast.success(isNew ? 'Equipo creado' : 'Equipo actualizado');
       onSaved();
@@ -433,6 +491,280 @@ function EquipmentFormDialog({
                 </Select>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Acceso (Disconnect multi-vendor) — só pra BNG */}
+        {form.type === 'BNG' && (
+          <div className="rounded-md border border-dashed border-border bg-surface-muted p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                Acceso (Disconnect)
+              </p>
+              {!isNew && (
+                <Button
+                  size="xs"
+                  variant="outline"
+                  type="button"
+                  loading={testing}
+                  onClick={handleTestConnection}
+                >
+                  <Plug className="h-3 w-3" />
+                  Testar conectividad
+                </Button>
+              )}
+            </div>
+
+            <div>
+              <Label>Estrategia de disconnect</Label>
+              <Select
+                value={form.disconnectStrategy ?? 'AUTO'}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    disconnectStrategy: e.target.value as DisconnectStrategy,
+                  })
+                }
+              >
+                {DISCONNECT_STRATEGIES.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </Select>
+              <FieldHelp>
+                {
+                  DISCONNECT_STRATEGIES.find(
+                    (s) => s.value === (form.disconnectStrategy ?? 'AUTO'),
+                  )?.help
+                }
+              </FieldHelp>
+            </div>
+
+            {/* RouterOS API — Mikrotik */}
+            {form.vendor === 'MIKROTIK' && (
+              <div className="rounded bg-surface p-3 space-y-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                  RouterOS API (necesario pra IPoE)
+                </p>
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="md:col-span-2">
+                    <Label>API host</Label>
+                    <Input
+                      value={form.apiHost ?? ''}
+                      onChange={(e) =>
+                        setForm({ ...form, apiHost: e.target.value || null })
+                      }
+                      placeholder={`(default: ${form.ipAddress || 'IP de management'})`}
+                    />
+                  </div>
+                  <div>
+                    <Label>Puerto</Label>
+                    <Input
+                      type="number"
+                      value={form.apiPort ?? ''}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          apiPort: e.target.value
+                            ? Number(e.target.value)
+                            : null,
+                        })
+                      }
+                      placeholder={form.apiTlsEnabled ? '8729' : '8728'}
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div>
+                    <Label>Usuario API</Label>
+                    <Input
+                      value={form.apiUser ?? ''}
+                      onChange={(e) =>
+                        setForm({ ...form, apiUser: e.target.value || null })
+                      }
+                      placeholder="netx-coa"
+                    />
+                  </div>
+                  <div>
+                    <Label>Contraseña API</Label>
+                    <Input
+                      type="password"
+                      value={form.apiPassword ?? ''}
+                      onChange={(e) =>
+                        setForm({ ...form, apiPassword: e.target.value })
+                      }
+                      placeholder={
+                        initial?.hasApiPassword
+                          ? '•••••••• (deja vacío para mantener)'
+                          : 'contraseña'
+                      }
+                      autoComplete="new-password"
+                    />
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 text-xs">
+                  <input
+                    type="checkbox"
+                    checked={form.apiTlsEnabled ?? false}
+                    onChange={(e) =>
+                      setForm({ ...form, apiTlsEnabled: e.target.checked })
+                    }
+                  />
+                  TLS habilitado (puerto 8729)
+                </label>
+              </div>
+            )}
+
+            {/* SSH — fallback genérico */}
+            <details className="rounded bg-surface p-3">
+              <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                SSH (override / fallback)
+              </summary>
+              <div className="mt-3 space-y-3">
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="md:col-span-2">
+                    <Label>SSH host</Label>
+                    <Input
+                      value={form.sshHost ?? ''}
+                      onChange={(e) =>
+                        setForm({ ...form, sshHost: e.target.value || null })
+                      }
+                      placeholder={`(default: ${form.ipAddress || 'IP de management'})`}
+                    />
+                  </div>
+                  <div>
+                    <Label>Puerto SSH</Label>
+                    <Input
+                      type="number"
+                      value={form.sshPort ?? 22}
+                      onChange={(e) =>
+                        setForm({
+                          ...form,
+                          sshPort: e.target.value
+                            ? Number(e.target.value)
+                            : 22,
+                        })
+                      }
+                      placeholder="22"
+                    />
+                  </div>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div>
+                    <Label>Usuario SSH</Label>
+                    <Input
+                      value={form.sshUser ?? ''}
+                      onChange={(e) =>
+                        setForm({ ...form, sshUser: e.target.value || null })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label>Contraseña SSH</Label>
+                    <Input
+                      type="password"
+                      value={form.sshPassword ?? ''}
+                      onChange={(e) =>
+                        setForm({ ...form, sshPassword: e.target.value })
+                      }
+                      placeholder={
+                        initial?.hasSshPassword
+                          ? '•••••••• (deja vacío para mantener)'
+                          : 'contraseña'
+                      }
+                      autoComplete="new-password"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label>Comando de disconnect</Label>
+                  <Textarea
+                    rows={2}
+                    value={form.sshDisconnectCmd ?? ''}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        sshDisconnectCmd: e.target.value || null,
+                      })
+                    }
+                    placeholder="/ip dhcp-server lease remove [find mac-address={{macAddress}}]"
+                  />
+                  <FieldHelp>
+                    Placeholders:{' '}
+                    <code className="font-mono">{`{{macAddress}}`}</code>,{' '}
+                    <code className="font-mono">{`{{framedIp}}`}</code>,{' '}
+                    <code className="font-mono">{`{{username}}`}</code>,{' '}
+                    <code className="font-mono">{`{{acctSessionId}}`}</code>,{' '}
+                    <code className="font-mono">{`{{nasIp}}`}</code>
+                  </FieldHelp>
+                </div>
+              </div>
+            </details>
+
+            {/* CoA port custom (raro mexer) */}
+            <details className="rounded bg-surface p-3">
+              <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                CoA — Avanzado
+              </summary>
+              <div className="mt-3 grid gap-3 md:grid-cols-2">
+                <div>
+                  <Label>Puerto CoA</Label>
+                  <Input
+                    type="number"
+                    value={form.coaPort ?? ''}
+                    onChange={(e) =>
+                      setForm({
+                        ...form,
+                        coaPort: e.target.value ? Number(e.target.value) : null,
+                      })
+                    }
+                    placeholder="3799 (default RFC 5176)"
+                  />
+                </div>
+              </div>
+            </details>
+
+            {/* Resultados do Test Connection */}
+            {testResults && (
+              <div className="space-y-1 rounded border border-border bg-surface p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                  Resultado del test
+                </p>
+                {testResults.length === 0 ? (
+                  <p className="text-xs text-text-muted">
+                    Ninguna strategy configurada — define credenciales API/SSH primero.
+                  </p>
+                ) : (
+                  testResults.map((r) => (
+                    <div
+                      key={r.strategy}
+                      className="flex items-start gap-2 text-xs"
+                    >
+                      {r.ok ? (
+                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-green-600" />
+                      ) : (
+                        <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-600" />
+                      )}
+                      <div>
+                        <span className="font-mono font-semibold">
+                          {r.strategy}
+                        </span>{' '}
+                        — {r.message ?? (r.ok ? 'OK' : 'falló')}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {/* Última conectividad confirmada */}
+            {!isNew && initial?.lastReachableAt && (
+              <p className="text-[11px] text-text-muted">
+                Última conexión OK:{' '}
+                {new Date(initial.lastReachableAt).toLocaleString()}
+              </p>
+            )}
           </div>
         )}
 

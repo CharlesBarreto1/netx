@@ -70,6 +70,12 @@ postgres_create_db() {
 postgres_search_path() {
   log_info "Configurando search_path da role ${NETX_DB_USER}"
   psql_super -c "ALTER ROLE ${NETX_DB_USER} SET search_path TO radius, public"
+
+  # Força mensagens de erro em inglês — Postgres traduz "column does not exist"
+  # pra pt-BR e o parser do Prisma extrai a palavra "existe" como nome de
+  # coluna inexistente. Idempotente.
+  log_info "Setando lc_messages=C na role ${NETX_DB_USER}"
+  psql_super -c "ALTER ROLE ${NETX_DB_USER} SET lc_messages TO 'C'"
 }
 
 postgres_enable_extensions() {
@@ -104,4 +110,47 @@ postgres_apply_radius_schema() {
       -v ON_ERROR_STOP=1 \
       -f "${fix}"
   fi
+
+  postgres_fix_radius_ownership
+}
+
+# Idempotente — garante que schema/tabelas RADIUS pertencem ao user netx.
+# Necessário porque o radius-schema.sql usa `CREATE SCHEMA` que herda owner do
+# user que rodou (no nosso caso é netx, então OK). Mas se em algum momento o
+# schema foi criado via outra rota (ex.: pacote freeradius-postgresql do APT),
+# o owner pode ficar postgres, impedindo Prisma migrate de fazer ALTER TABLE.
+postgres_fix_radius_ownership() {
+  log_info "Garantindo ownership do schema radius pra ${NETX_DB_USER}"
+  psql_super -d "${NETX_DB_NAME}" <<SQL
+DO \$\$
+DECLARE r RECORD;
+BEGIN
+    -- Schema
+    EXECUTE format('ALTER SCHEMA radius OWNER TO %I', '${NETX_DB_USER}');
+
+    -- Tabelas
+    FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'radius' LOOP
+        EXECUTE format('ALTER TABLE radius.%I OWNER TO %I', r.tablename, '${NETX_DB_USER}');
+    END LOOP;
+
+    -- Sequences
+    FOR r IN SELECT sequencename FROM pg_sequences WHERE schemaname = 'radius' LOOP
+        EXECUTE format('ALTER SEQUENCE radius.%I OWNER TO %I', r.sequencename, '${NETX_DB_USER}');
+    END LOOP;
+
+    -- Views
+    FOR r IN SELECT viewname FROM pg_views WHERE schemaname = 'radius' LOOP
+        EXECUTE format('ALTER VIEW radius.%I OWNER TO %I', r.viewname, '${NETX_DB_USER}');
+    END LOOP;
+END \$\$;
+
+GRANT USAGE ON SCHEMA radius TO ${NETX_DB_USER};
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA radius TO ${NETX_DB_USER};
+GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA radius TO ${NETX_DB_USER};
+ALTER DEFAULT PRIVILEGES IN SCHEMA radius
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ${NETX_DB_USER};
+ALTER DEFAULT PRIVILEGES IN SCHEMA radius
+    GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO ${NETX_DB_USER};
+SQL
+  log_ok "Ownership radius OK"
 }
