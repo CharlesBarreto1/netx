@@ -1501,6 +1501,19 @@ enum NetworkEquipmentVendor {
   OTHER
 }
 
+/// Estratégia usada pra desconectar sessões de cliente (CoA/API/SSH).
+/// AUTO escolhe baseado em vendor + authType do contrato:
+///   - Mikrotik + IPoE → MIKROTIK_API (CoA não suportado pra DHCP no RouterOS)
+///   - Mikrotik + PPPoE → COA
+///   - Cisco/Juniper/Huawei (qualquer auth) → COA com payload do vendor
+///   - Override: sshDisconnectCmd configurado → SSH (sempre vence)
+enum DisconnectStrategy {
+  AUTO
+  COA
+  MIKROTIK_API
+  SSH
+}
+
 model NetworkEquipment {
   id          String                  @id @default(uuid()) @db.Uuid
   tenantId    String                  @map("tenant_id") @db.Uuid
@@ -1522,6 +1535,35 @@ model NetworkEquipment {
   // Específico de OLT/Router (SNMP futuro):
   snmpCommunity String? @map("snmp_community") @db.VarChar(64)
   snmpVersion   String? @map("snmp_version") @db.VarChar(10)
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Disconnect (multi-vendor) — credenciais pra CoA/API/SSH
+  // ───────────────────────────────────────────────────────────────────────
+  // Strategy: AUTO infere por vendor+authType. Override quando o cenário
+  // foge do padrão (ex: BNG Linux com script SSH custom).
+  disconnectStrategy DisconnectStrategy @default(AUTO) @map("disconnect_strategy")
+  coaPort            Int?               @map("coa_port")              // default 3799
+
+  // RouterOS API (Mikrotik) — porta 8728 (plain) ou 8729 (TLS)
+  apiHost            String?            @map("api_host")              // null → usa ipAddress
+  apiPort            Int?               @map("api_port")
+  apiUser            String?            @map("api_user")              @db.VarChar(64)
+  apiPasswordEnc     String?            @map("api_password_enc")      @db.Text
+  apiTlsEnabled      Boolean            @default(false) @map("api_tls_enabled")
+
+  // SSH (fallback ou override) — comando customizado por equipment
+  // Template aceita placeholders: {{macAddress}}, {{framedIp}}, {{username}},
+  // {{acctSessionId}}, {{nasIp}}. Ex: "/ip dhcp-server lease remove [find mac-address={{macAddress}}]"
+  sshHost            String?            @map("ssh_host")
+  sshPort            Int?               @default(22) @map("ssh_port")
+  sshUser            String?            @map("ssh_user")              @db.VarChar(64)
+  sshPasswordEnc     String?            @map("ssh_password_enc")      @db.Text
+  sshKeyName         String?            @map("ssh_key_name")          @db.VarChar(128)
+  sshDisconnectCmd   String?            @map("ssh_disconnect_cmd")    @db.Text
+
+  // Última verificação de conectividade (Test connection)
+  lastReachableAt    DateTime?          @map("last_reachable_at")
+  lastReachError     String?            @map("last_reach_error")      @db.Text
 
   notes       String?  @db.Text
   isActive    Boolean  @default(true) @map("is_active")

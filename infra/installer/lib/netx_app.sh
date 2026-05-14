@@ -74,6 +74,11 @@ netx_app_render_env() {
   export NETX_JWT_REFRESH_SECRET
   NETX_JWT_REFRESH_SECRET=$(secret_get_or_create NETX_JWT_REFRESH_SECRET 64)
 
+  # KMS master key — AES-256-GCM pra cifrar credenciais API/SSH de equipamentos.
+  # 32 bytes = 64 hex chars. NÃO regerar depois (passwords cifrados ficam ilegíveis).
+  export NETX_KMS_MASTER_KEY
+  NETX_KMS_MASTER_KEY=$(secret_get_or_create NETX_KMS_MASTER_KEY 64)
+
   # Recupera senhas de Postgres/RabbitMQ (já criadas em postgres.sh / rabbitmq.sh)
   export NETX_DB_PASSWORD
   NETX_DB_PASSWORD=$(secret_get_or_create NETX_DB_PASSWORD 32)
@@ -115,7 +120,7 @@ netx_app_render_env() {
   log_info "Renderizando ${env}"
   render_template "${tmpl}" "${env}" \
     NETX_DATABASE_URL NETX_REDIS_URL NETX_RABBITMQ_URL \
-    NETX_JWT_ACCESS_SECRET NETX_JWT_REFRESH_SECRET \
+    NETX_JWT_ACCESS_SECRET NETX_JWT_REFRESH_SECRET NETX_KMS_MASTER_KEY \
     NETX_PORT_API_GATEWAY NETX_PORT_CORE_SERVICE NETX_PORT_WEB \
     NETX_TENANT_SLUG NETX_CORS_ORIGINS \
     EVOLUTION_API_KEY

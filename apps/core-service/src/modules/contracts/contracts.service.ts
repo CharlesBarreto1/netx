@@ -28,7 +28,7 @@ import {
 
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
-import { RadiusCoAService } from '../radius/radius-coa.service';
+import { DisconnectService } from '../disconnect/disconnect.service';
 import { InvoiceGeneratorService } from './invoice-generator.service';
 import { RadiusSyncService } from './radius-sync.service';
 
@@ -49,7 +49,7 @@ export class ContractsService {
     private readonly audit: AuditService,
     private readonly invoiceGen: InvoiceGeneratorService,
     private readonly radius: RadiusSyncService,
-    private readonly radiusCoa: RadiusCoAService,
+    private readonly disconnect: DisconnectService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -544,7 +544,7 @@ export class ContractsService {
    * com as credenciais antigas. Aqui assumimos que `radius.enqueueSync`
    * já rodou na transação.
    */
-  // Dispara CoA Disconnect cobrindo PPPoE e IPoE — vide RadiusCoAService.
+  // Dispara disconnect (multi-vendor: CoA / Mikrotik API / SSH) — vide DisconnectService.
   private async fireCoADisconnect(
     contract: ContractWithRelations,
     reason: string,
@@ -559,7 +559,9 @@ export class ContractsService {
     }
 
     try {
-      const results = await this.radiusCoa.disconnectContract({
+      const results = await this.disconnect.disconnectContract({
+        tenantId: contract.tenantId,
+        authType: contract.authMethod,
         pppoeUsername: contract.pppoeUsername,
         macAddress: contract.macAddress,
         circuitId: contract.circuitId,
@@ -584,7 +586,7 @@ export class ContractsService {
             appliedAt: new Date(),
             error:
               kicked === 0 && results.length > 0
-                ? results.find((r) => !r.ok)?.error ?? 'No NAS responded'
+                ? results.find((r) => !r.ok)?.message ?? 'No NAS responded'
                 : null,
           },
         });
@@ -635,7 +637,9 @@ export class ContractsService {
       );
     }
 
-    const results = await this.radiusCoa.disconnectContract({
+    const results = await this.disconnect.disconnectContract({
+      tenantId,
+      authType: contract.authMethod,
       pppoeUsername: contract.pppoeUsername,
       macAddress: contract.macAddress,
       circuitId: contract.circuitId,
@@ -651,12 +655,15 @@ export class ContractsService {
       metadata: {
         identifier:
           contract.pppoeUsername ?? contract.macAddress ?? contract.circuitId,
+        authType: contract.authMethod,
         totalAttempts: results.length,
         kicked,
         results: results.map((r) => ({
           nasIp: r.nasIp,
           ok: r.ok,
-          error: r.error ?? null,
+          strategy: r.strategy,
+          reason: r.reason ?? null,
+          message: r.message ?? null,
         })),
       },
     });
@@ -665,8 +672,11 @@ export class ContractsService {
       kicked,
       results: results.map((r) => ({
         nasIp: r.nasIp,
+        equipmentName: r.equipmentName,
+        strategy: r.strategy,
         ok: r.ok,
-        error: r.error,
+        reason: r.reason ?? null,
+        message: r.message ?? null,
       })),
     };
   }

@@ -167,4 +167,21 @@ export class NetworkController {
   resyncBngs(@CurrentUser() u: AuthenticatedPrincipal) {
     return this.equipment.resyncAllBngs(u.tenantId, u.sub);
   }
+
+  /**
+   * Testa conectividade nas strategies disponíveis pra esse equipamento.
+   * Não derruba sessões — só valida credenciais e canal:
+   *   - CoA: manda Disconnect com User-Name fictício, espera NAK
+   *   - Mikrotik API: connect + /system/identity/print
+   *   - SSH: connect + echo
+   */
+  @Post('equipment/:id/test-connection')
+  @HttpCode(200)
+  @RequirePermissions('network.write')
+  testConnection(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id') id: string,
+  ) {
+    return this.equipment.testConnection(u.tenantId, u.sub, id);
+  }
 }

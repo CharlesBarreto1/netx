@@ -5,12 +5,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  DisconnectStrategy as DisconnectStrategyEnum,
   NetworkEquipmentType,
   NetworkEquipmentVendor,
   Prisma,
 } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
+import { CryptoService } from '../crypto/crypto.service';
+import { DisconnectService } from '../disconnect/disconnect.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RadiusNasSyncService } from './radius-nas-sync.service';
 
@@ -27,6 +30,22 @@ export interface CreateEquipmentInput {
   // SNMP — pra OLT/Router
   snmpCommunity?: string | null;
   snmpVersion?: string | null;
+  // Disconnect multi-vendor
+  disconnectStrategy?: DisconnectStrategyEnum;
+  coaPort?: number | null;
+  // RouterOS API
+  apiHost?: string | null;
+  apiPort?: number | null;
+  apiUser?: string | null;
+  apiPassword?: string | null; // plaintext no input — cifrado antes de salvar
+  apiTlsEnabled?: boolean;
+  // SSH
+  sshHost?: string | null;
+  sshPort?: number | null;
+  sshUser?: string | null;
+  sshPassword?: string | null; // plaintext no input
+  sshKeyName?: string | null;
+  sshDisconnectCmd?: string | null;
   notes?: string | null;
   isActive?: boolean;
 }
@@ -44,7 +63,28 @@ export class NetworkEquipmentService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly nasSync: RadiusNasSyncService,
+    private readonly crypto: CryptoService,
+    private readonly disconnect: DisconnectService,
   ) {}
+
+  /**
+   * Sanitiza output removendo passwords cifrados (mas mantém flag indicando
+   * que existe credencial salva — UI mostra "•••• preenchido").
+   */
+  private maskCredentials<T extends {
+    apiPasswordEnc?: string | null;
+    sshPasswordEnc?: string | null;
+  }>(eq: T): Omit<T, 'apiPasswordEnc' | 'sshPasswordEnc'> & {
+    hasApiPassword: boolean;
+    hasSshPassword: boolean;
+  } {
+    const { apiPasswordEnc, sshPasswordEnc, ...rest } = eq;
+    return {
+      ...rest,
+      hasApiPassword: !!apiPasswordEnc,
+      hasSshPassword: !!sshPasswordEnc,
+    };
+  }
 
   // ───────────────────────────────────────────────────────────────────────
   // Read
@@ -158,6 +198,22 @@ export class NetworkEquipmentService {
     if (input.type) this.validateBngFields({ ...before, ...input } as never);
 
     try {
+      // Cifra passwords se novos foram passados. Plaintext vazio => limpa.
+      // undefined => mantém o atual (não toca).
+      const apiPasswordEnc =
+        input.apiPassword === undefined
+          ? undefined
+          : input.apiPassword === null || input.apiPassword === ''
+            ? null
+            : this.crypto.encrypt(input.apiPassword);
+
+      const sshPasswordEnc =
+        input.sshPassword === undefined
+          ? undefined
+          : input.sshPassword === null || input.sshPassword === ''
+            ? null
+            : this.crypto.encrypt(input.sshPassword);
+
       const eq = await this.prisma.networkEquipment.update({
         where: { id: before.id },
         data: {
@@ -175,6 +231,24 @@ export class NetworkEquipmentService {
             input.snmpCommunity === undefined ? undefined : input.snmpCommunity ?? null,
           snmpVersion:
             input.snmpVersion === undefined ? undefined : input.snmpVersion ?? null,
+          // Disconnect multi-vendor
+          disconnectStrategy: input.disconnectStrategy,
+          coaPort: input.coaPort === undefined ? undefined : input.coaPort ?? null,
+          apiHost: input.apiHost === undefined ? undefined : input.apiHost ?? null,
+          apiPort: input.apiPort === undefined ? undefined : input.apiPort ?? null,
+          apiUser: input.apiUser === undefined ? undefined : input.apiUser ?? null,
+          apiPasswordEnc,
+          apiTlsEnabled: input.apiTlsEnabled,
+          sshHost: input.sshHost === undefined ? undefined : input.sshHost ?? null,
+          sshPort: input.sshPort === undefined ? undefined : input.sshPort ?? null,
+          sshUser: input.sshUser === undefined ? undefined : input.sshUser ?? null,
+          sshPasswordEnc,
+          sshKeyName:
+            input.sshKeyName === undefined ? undefined : input.sshKeyName ?? null,
+          sshDisconnectCmd:
+            input.sshDisconnectCmd === undefined
+              ? undefined
+              : input.sshDisconnectCmd ?? null,
           notes: input.notes === undefined ? undefined : input.notes ?? null,
           isActive: input.isActive,
           updatedById: actorUserId,
@@ -281,6 +355,23 @@ export class NetworkEquipmentService {
       metadata: { totalBngs: bngs.length, synced },
     });
     return { totalBngs: bngs.length, synced };
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Test connection — usado pelo botão "Testar conectividade" na UI
+  // ───────────────────────────────────────────────────────────────────────
+  async testConnection(tenantId: string, actorUserId: string, id: string) {
+    const eq = await this.findById(tenantId, id);
+    const results = await this.disconnect.testEquipmentConnectivity(eq.id);
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'network.equipment.test_connection',
+      resource: 'network_equipment',
+      resourceId: eq.id,
+      metadata: { results },
+    });
+    return { equipmentId: eq.id, name: eq.name, results };
   }
 
   // ───────────────────────────────────────────────────────────────────────

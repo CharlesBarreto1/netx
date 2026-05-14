@@ -57,6 +57,12 @@ const baseSchema = z.object({
   TENANT_HEADER_NAME: z.string().default('x-tenant-id'),
   DEFAULT_TENANT_SLUG: z.string().default('default'),
 
+  // KMS master key (cifra credenciais sensíveis no DB — equipment.apiPassword,
+  // sshPassword etc). Hex de 64 chars (256 bits) gerado pelo installer e
+  // persistido em /etc/netx/.secrets. NUNCA mude — torna passwords irrecuperáveis.
+  // Gerar com: openssl rand -hex 32
+  KMS_MASTER_KEY: z.string().regex(/^[0-9a-f]{64}$/i, 'KMS_MASTER_KEY deve ser hex 64 chars (32 bytes)'),
+
   // Observability (optional)
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
   OTEL_SERVICE_NAME: z.string().default('netx'),
@@ -95,6 +101,9 @@ export interface Config {
     strategy: 'subdomain' | 'header' | 'jwt';
     headerName: string;
     defaultTenantSlug: string;
+  };
+  kms: {
+    masterKey: string;
   };
   observability: {
     otlpEndpoint?: string;
@@ -140,6 +149,9 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
       strategy: e.TENANT_RESOLUTION_STRATEGY,
       headerName: e.TENANT_HEADER_NAME,
       defaultTenantSlug: e.DEFAULT_TENANT_SLUG,
+    },
+    kms: {
+      masterKey: e.KMS_MASTER_KEY,
     },
     observability: {
       otlpEndpoint: e.OTEL_EXPORTER_OTLP_ENDPOINT,
