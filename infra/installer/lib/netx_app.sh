@@ -185,12 +185,26 @@ netx_app_install() {
   fi
 
   # Sanity check — versão do Next bate com o lockfile (já vi npm install
-  # downgrade silencioso pra Next 9.x quando peer-deps colidem)
-  local next_installed
-  next_installed=$(grep '"version"' "${NETX_HOME}/apps/web/node_modules/next/package.json" 2>/dev/null \
-    | head -1 | sed -E 's/.*"version": *"([^"]+)".*/\1/')
+  # downgrade silencioso pra Next 9.x quando peer-deps colidem).
+  # npm workspaces içam deps pro root node_modules/, mas em caso de conflito
+  # de peer-deps podem ficar aninhadas em apps/web/node_modules/. Checa os dois.
+  local next_pkg=""
+  for candidate in \
+    "${NETX_HOME}/node_modules/next/package.json" \
+    "${NETX_HOME}/apps/web/node_modules/next/package.json"; do
+    if [[ -f "$candidate" ]]; then
+      next_pkg="$candidate"
+      break
+    fi
+  done
+  local next_installed=""
+  if [[ -n "$next_pkg" ]]; then
+    # `|| true` defende contra pipefail + set -e caso o sed/grep retornem vazio
+    next_installed=$(grep '"version"' "$next_pkg" 2>/dev/null \
+      | head -1 | sed -E 's/.*"version": *"([^"]+)".*/\1/' || true)
+  fi
   if [[ -z "${next_installed}" ]]; then
-    log_warn "Next.js não foi instalado em apps/web/node_modules/next"
+    log_warn "Next.js não foi encontrado em node_modules (root nem apps/web)"
   elif [[ "${next_installed%%.*}" -lt 15 ]]; then
     log_error "Next.js ${next_installed} instalado — esperado 15+ (App Router)"
     log_error "Lockfile pede 16.x. Causa típica: --legacy-peer-deps + conflito de peer dep"
@@ -209,14 +223,16 @@ netx_app_build() {
   # Sem isso, frontend ficaria com URLs/CORS errados gravados no JavaScript
   # entregue ao browser, e o operador teria que rebuildar manualmente.
   #
-  # `NODE_ENV=development` aqui é necessário pra que comandos internos do nx
-  # (que pode rodar `npm exec`) não pulem devDeps. O Next em si gera bundle
-  # otimizado independente do NODE_ENV no build (usa `NODE_ENV=production`
-  # internamente no Webpack).
+  # `NODE_ENV=production` é obrigatório no build do Next 16: ele respeita
+  # NODE_ENV pra precedência de .env.*, vars públicas e dead-code elimination
+  # do React. Com NODE_ENV=development, Next 16 emite warning e gera bundle
+  # com hints de dev. DevDeps já foram instaladas no passo anterior com
+  # --include=dev, então não há risco de "nx pular devDeps" — elas estão
+  # em node_modules independente do NODE_ENV no build.
   #
   # `--skip-nx-cache` na primeira build evita o caso "cache válido mas dist
   # vazio" (acontece quando alguém rm -rf'a o dist sem invalidar cache).
-  as_netx "set -a; . /etc/netx/.env; set +a; cd ${NETX_HOME} && NODE_ENV=development npm run build -- --skip-nx-cache"
+  as_netx "set -a; . /etc/netx/.env; set +a; cd ${NETX_HOME} && NODE_ENV=production npm run build -- --skip-nx-cache"
 
   # Sanity check — confirma que os main.js foram gerados onde esperamos.
   local core_main="${NETX_HOME}/apps/core-service/dist/apps/core-service/src/main.js"

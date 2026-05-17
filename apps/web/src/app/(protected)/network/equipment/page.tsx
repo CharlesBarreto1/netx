@@ -298,9 +298,11 @@ function EquipmentFormDialog({
     try {
       // Senhas vazias = não tocar no que está cifrado no banco
       // (undefined = "manter atual", string vazia também — backend trata).
-      const payload: CreateEquipmentInput = { ...form };
-      if (!form.apiPassword) delete (payload as Record<string, unknown>).apiPassword;
-      if (!form.sshPassword) delete (payload as Record<string, unknown>).sshPassword;
+      const payload: CreateEquipmentInput = {
+        ...form,
+        apiPassword: form.apiPassword || undefined,
+        sshPassword: form.sshPassword || undefined,
+      };
 
       if (isNew) {
         await networkApi.createEquipment(payload);
