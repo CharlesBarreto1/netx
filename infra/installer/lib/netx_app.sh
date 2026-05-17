@@ -158,7 +158,14 @@ netx_app_install() {
   if [[ -f "${NETX_HOME}/package-lock.json" ]]; then
     log_dim "Limpando node_modules pra garantir reprodutibilidade"
     as_netx "cd ${NETX_HOME} && rm -rf node_modules apps/*/node_modules packages/*/node_modules"
-    as_netx "cd ${NETX_HOME} && NODE_ENV=development npm_config_yes=true npm ci --include=dev --no-audit --no-fund"
+    # `npm ci` exige sincronia perfeita package.json ↔ lockfile. Se uma dep
+    # foi adicionada sem regerar lock (ex.: PR esquece de commit lock), o
+    # `ci` aborta com EUSAGE. Fallback automático pra `npm install` que
+    # regenera o lock — mais lento mas evita travar entrega em produção.
+    if ! as_netx "cd ${NETX_HOME} && NODE_ENV=development npm_config_yes=true npm ci --include=dev --no-audit --no-fund"; then
+      log_warn "npm ci falhou (lockfile fora de sync?) — tentando npm install"
+      as_netx "cd ${NETX_HOME} && NODE_ENV=development npm_config_yes=true npm install --include=dev --no-audit --no-fund"
+    fi
   else
     log_warn "package-lock.json ausente — usando 'npm install' (mais lento, gera lockfile)"
     as_netx "cd ${NETX_HOME} && NODE_ENV=development npm_config_yes=true npm install --include=dev --legacy-peer-deps --no-audit --no-fund"
