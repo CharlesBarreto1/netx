@@ -18,6 +18,14 @@ sql {
     password = "${NETX_DB_PASSWORD}"
     radius_db = "${NETX_DB_NAME}"
 
+    # Postgres é local (mesma VPS) — sem SSL. Sem isso libpq tenta SSL por
+    # default e procura cert do client em $HOME/.postgresql/postgresql.crt,
+    # gerando "Permission denied" quando freeradius dropa pro user freerad.
+    postgresql {
+        send_application_name = no
+        sslmode = "disable"
+    }
+
     # Tabelas (nomes default — search_path da role já aponta pra radius)
     acct_table1     = "radacct"
     acct_table2     = "radacct"

@@ -130,6 +130,22 @@ fi
 export INSTALLER_DIR
 
 # -----------------------------------------------------------------------------
+# Carrega secrets persistidos de runs anteriores. Cada step gera seu segredo
+# via `secret_get_or_create` (salva em /etc/netx/.secrets) e exporta a env var.
+# Mas quando um step é pulado em re-run ("já concluído (skip)"), o `export`
+# dele não roda — e steps posteriores que renderizam templates (ex.: freeradius
+# usa NETX_DB_PASSWORD) recebem string vazia no envsubst. Carregando aqui antes
+# do main(), garantimos que TODO step subsequente vê as vars exportadas
+# independentemente de quais foram skipped.
+# -----------------------------------------------------------------------------
+if [[ -f "${NETX_ETC}/.secrets" ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "${NETX_ETC}/.secrets"
+  set +a
+fi
+
+# -----------------------------------------------------------------------------
 # Carrega libs em ordem de dependência
 # -----------------------------------------------------------------------------
 # shellcheck source=lib/common.sh
