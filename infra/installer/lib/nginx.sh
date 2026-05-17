@@ -37,10 +37,14 @@ nginx_setup() {
     exit 1
   fi
 
-  systemctl enable nginx
-  systemctl restart nginx
+  # `enable --now` em vez de enable+restart separados: cobre o caso (raro)
+  # do serviço estar `masked` em fresh install — o restart sozinho falharia.
+  systemctl unmask nginx 2>/dev/null || true
+  systemctl enable --now nginx
+  systemctl reload nginx 2>/dev/null || systemctl restart nginx
   if ! systemctl is-active --quiet nginx; then
     log_error "nginx não subiu"
+    journalctl -u nginx -n 30 --no-pager >&2 || true
     exit 1
   fi
   log_ok "nginx ativo (porta 80)"

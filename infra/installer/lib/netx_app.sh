@@ -135,27 +135,63 @@ netx_app_render_env() {
 
 netx_app_install() {
   log_info "npm install (esto pode demorar 2-5 min)"
-  # Usa `npm ci` se tiver lockfile (mais reprodutível) — senão cai pra
-  # `npm install --legacy-peer-deps` que gera o lockfile. Em monorepos novos
-  # ou após bump pesado (TW4, Next 16, etc), peer-deps em transição justificam
-  # --legacy-peer-deps.
   #
-  # CRÍTICO — `NODE_ENV=development` + `--include=dev`:
+  # CRÍTICO #1 — `NODE_ENV=development` + `--include=dev`:
   # Precisamos das devDependencies (nx, nest, tsc, dotenv-cli, prisma CLI) pra
   # rodar `nx build`. Se o shell já tiver `NODE_ENV=production` (vem do .env do
-  # systemd que roda o installer em re-runs), o npm pula devDeps silenciosamente
-  # e o build falha com "nx: command not found".
+  # systemd em re-runs), o npm pula devDeps silenciosamente e o build falha.
   #
-  # `npm_config_yes=true`: defesa em profundidade contra prompts interativos
-  # de `npx` (ex.: o script `preinstall` usa `npx only-allow npm` e versões
-  # antigas do npx prompts "Ok to proceed?"). Mesmo com `npx --yes` no script,
-  # garantimos via env que NENHUM npx aqui pausa esperando stdin.
+  # CRÍTICO #2 — `npm ci` SEM `--legacy-peer-deps`:
+  # `npm ci` lê o lockfile estritamente — `--legacy-peer-deps` faz ele
+  # IGNORAR conflitos e às vezes escolher uma versão **diferente** do lockfile
+  # (vimos Next 16 no lockfile virar Next 9.x instalado). `npm ci` puro é
+  # garantido reprodutível. `--legacy-peer-deps` fica só pro fallback de
+  # `npm install` quando lockfile ausente.
+  #
+  # CRÍTICO #3 — limpa node_modules antes:
+  # Re-runs em estado parcialmente instalado (npm install que falhou no meio,
+  # workspaces sem hoist) deixam binários faltando em .bin/. Limpar garante
+  # determinismo. ~30s extra mas vale a previsibilidade.
+  #
+  # `npm_config_yes=true`: defesa contra `npx` prompts interativos
+  # (`npx only-allow npm` no preinstall).
   if [[ -f "${NETX_HOME}/package-lock.json" ]]; then
-    as_netx "cd ${NETX_HOME} && NODE_ENV=development npm_config_yes=true npm ci --include=dev --legacy-peer-deps --prefer-offline --no-audit --no-fund"
+    log_dim "Limpando node_modules pra garantir reprodutibilidade"
+    as_netx "cd ${NETX_HOME} && rm -rf node_modules apps/*/node_modules packages/*/node_modules"
+    as_netx "cd ${NETX_HOME} && NODE_ENV=development npm_config_yes=true npm ci --include=dev --no-audit --no-fund"
   else
     log_warn "package-lock.json ausente — usando 'npm install' (mais lento, gera lockfile)"
     as_netx "cd ${NETX_HOME} && NODE_ENV=development npm_config_yes=true npm install --include=dev --legacy-peer-deps --no-audit --no-fund"
   fi
+
+  # Sanity check — binários críticos pra build
+  local missing=()
+  [[ -x "${NETX_HOME}/node_modules/.bin/nx" ]] || missing+=("nx")
+  [[ -x "${NETX_HOME}/node_modules/.bin/nest" ]] || missing+=("nest")
+  [[ -x "${NETX_HOME}/node_modules/.bin/dotenv" ]] || missing+=("dotenv-cli")
+  [[ -x "${NETX_HOME}/node_modules/.bin/prisma" ]] || missing+=("prisma")
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    log_error "Binários ausentes em node_modules/.bin/: ${missing[*]}"
+    log_error "Provavelmente NODE_ENV=production no shell pulou devDeps."
+    log_error "Tente: NODE_ENV=development npm ci --include=dev (manual)"
+    exit 1
+  fi
+
+  # Sanity check — versão do Next bate com o lockfile (já vi npm install
+  # downgrade silencioso pra Next 9.x quando peer-deps colidem)
+  local next_installed
+  next_installed=$(grep '"version"' "${NETX_HOME}/apps/web/node_modules/next/package.json" 2>/dev/null \
+    | head -1 | sed -E 's/.*"version": *"([^"]+)".*/\1/')
+  if [[ -z "${next_installed}" ]]; then
+    log_warn "Next.js não foi instalado em apps/web/node_modules/next"
+  elif [[ "${next_installed%%.*}" -lt 15 ]]; then
+    log_error "Next.js ${next_installed} instalado — esperado 15+ (App Router)"
+    log_error "Lockfile pede 16.x. Causa típica: --legacy-peer-deps + conflito de peer dep"
+    exit 1
+  else
+    log_dim "Next.js ${next_installed} OK"
+  fi
+
   log_ok "Dependências instaladas (incluindo devDependencies pra build)"
 }
 
@@ -165,8 +201,33 @@ netx_app_build() {
   # injetadas no bundle do Next durante build (build-time), não em runtime.
   # Sem isso, frontend ficaria com URLs/CORS errados gravados no JavaScript
   # entregue ao browser, e o operador teria que rebuildar manualmente.
-  as_netx "set -a; . /etc/netx/.env; set +a; cd ${NETX_HOME} && npm run build"
-  log_ok "Build concluído"
+  #
+  # `NODE_ENV=development` aqui é necessário pra que comandos internos do nx
+  # (que pode rodar `npm exec`) não pulem devDeps. O Next em si gera bundle
+  # otimizado independente do NODE_ENV no build (usa `NODE_ENV=production`
+  # internamente no Webpack).
+  #
+  # `--skip-nx-cache` na primeira build evita o caso "cache válido mas dist
+  # vazio" (acontece quando alguém rm -rf'a o dist sem invalidar cache).
+  as_netx "set -a; . /etc/netx/.env; set +a; cd ${NETX_HOME} && NODE_ENV=development npm run build -- --skip-nx-cache"
+
+  # Sanity check — confirma que os main.js foram gerados onde esperamos.
+  local core_main="${NETX_HOME}/apps/core-service/dist/apps/core-service/src/main.js"
+  local gw_main="${NETX_HOME}/apps/api-gateway/dist/apps/api-gateway/src/main.js"
+  local web_build_id="${NETX_HOME}/apps/web/.next/BUILD_ID"
+  if [[ ! -f "${core_main}" ]]; then
+    log_error "Build do core-service não gerou ${core_main}"
+    exit 1
+  fi
+  if [[ ! -f "${gw_main}" ]]; then
+    log_error "Build do api-gateway não gerou ${gw_main}"
+    exit 1
+  fi
+  if [[ ! -f "${web_build_id}" ]]; then
+    log_error "Build do web (Next.js) não gerou .next/BUILD_ID"
+    exit 1
+  fi
+  log_ok "Build concluído (core + gateway + web)"
 }
 
 netx_app_db_generate() {

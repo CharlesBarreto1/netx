@@ -22,18 +22,29 @@ evolution_setup() {
 }
 
 evolution_install_docker() {
-  if command -v docker >/dev/null 2>&1; then
-    log_dim "Docker já instalado"
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    log_dim "Docker + compose v2 já instalados"
     return 0
   fi
-  log_info "Instalando Docker (docker.io do Debian)"
-  # Debian 12: pacote `docker-compose-v2`. Debian 13+: foi renomeado pra
-  # `docker-compose`. Tentamos os 2 em sequência pra cobrir ambos.
-  if ! apt-get install -y -qq docker.io docker-compose 2>/dev/null; then
-    apt-get install -y -qq docker.io docker-compose-v2
+  log_info "Instalando Docker (docker.io) + Compose v2 plugin"
+  # Debian 13: o plugin Compose v2 vem do pacote `docker-compose-v2` (que
+  # registra o subcommand `docker compose`). O pacote `docker-compose` (sem
+  # `-v2`) é o legado Python (`docker-compose`) que não nos serve — usamos
+  # `docker compose` (plugin) no resto do código.
+  # Tenta os 2 nomes pq Debian 13 introduziu inconsistência de naming.
+  if ! apt-get install -y -qq docker.io docker-compose-v2 2>/dev/null; then
+    log_warn "docker-compose-v2 indisponível, tentando docker-compose-plugin"
+    apt-get install -y -qq docker.io docker-compose-plugin
   fi
   systemctl enable --now docker
-  log_ok "Docker pronto"
+
+  # Sanity: confirma que `docker compose` (plugin v2) funciona — não `docker-compose` v1
+  if ! docker compose version >/dev/null 2>&1; then
+    log_error "Compose v2 não disponível após instalação. Verifica:"
+    log_error "  apt list --installed 2>/dev/null | grep -i docker"
+    exit 1
+  fi
+  log_ok "Docker $(docker --version | awk '{print $3}' | tr -d ,) + Compose $(docker compose version --short)"
 }
 
 evolution_create_db() {
@@ -65,11 +76,11 @@ evolution_render_compose() {
   apikey=$(secret_get_or_create EVOLUTION_API_KEY 48)
   export EVOLUTION_API_KEY="${apikey}"
 
-  # Postgres roda em localhost (host); o container Evolution acessa via
-  # bridge "host" ou pelo IP do host. Usamos `host.docker.internal` mapeando.
+  # network_mode: host — container compartilha namespace de rede do host.
+  # Postgres + Redis ficam acessíveis em 127.0.0.1 sem precisar de bridge.
+  # Side-effect: NÃO PUBLICAR ports — o container já escuta direto no host.
   cat > "${EVOLUTION_DIR}/docker-compose.yml" <<EOF
 # Gerado pelo installer NetX. Não edite manualmente — re-rode o installer.
-version: "3.8"
 services:
   evolution:
     image: atendai/evolution-api:v2.1.1
