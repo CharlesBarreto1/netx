@@ -1,6 +1,6 @@
 [Unit]
 Description=NetX API Gateway (NestJS)
-Documentation=https://github.com/charlesbarreto/netx
+Documentation=https://github.com/CharlesBarreto1/netx
 After=network-online.target netx-core-service.service
 Wants=network-online.target
 Requires=netx-core-service.service

@@ -1,6 +1,6 @@
 [Unit]
 Description=NetX Core Service (NestJS)
-Documentation=https://github.com/charlesbarreto/netx
+Documentation=https://github.com/CharlesBarreto1/netx
 After=network-online.target postgresql.service redis-server.service rabbitmq-server.service
 Wants=network-online.target postgresql.service redis-server.service rabbitmq-server.service
 # Restart rate-limit fica em [Unit] em systemd 230+. Em [Service] dispara

@@ -63,7 +63,7 @@ fi
 # -----------------------------------------------------------------------------
 # Variáveis globais (defaults, podem ser sobrescritos via env)
 # -----------------------------------------------------------------------------
-export NETX_REPO_URL="${NETX_REPO_URL:-https://github.com/charlesbarreto/netx.git}"
+export NETX_REPO_URL="${NETX_REPO_URL:-https://github.com/CharlesBarreto1/netx.git}"
 export NETX_REPO_BRANCH="${NETX_REPO_BRANCH:-main}"
 export NETX_USER="${NETX_USER:-netx}"
 export NETX_HOME="${NETX_HOME:-/opt/netx}"

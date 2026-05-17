@@ -15,7 +15,7 @@ Em uma máquina limpa (VM, VPS ou bare metal), em ~10 minutos você sai de `apt 
 ## Instalação rápida
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/charlesbarreto/netx/main/infra/installer/install.sh \
+curl -fsSL https://raw.githubusercontent.com/CharlesBarreto1/netx/main/infra/installer/install.sh \
   | sudo bash
 ```
 
@@ -108,7 +108,7 @@ Isso faz `git fetch + reset --hard`, re-builda, aplica novas migrações Prisma 
 
 | Variável | Default | Descrição |
 |---|---|---|
-| `NETX_REPO_URL` | github.com/charlesbarreto/netx | URL do repo |
+| `NETX_REPO_URL` | github.com/CharlesBarreto1/netx | URL do repo |
 | `NETX_REPO_BRANCH` | `main` | branch a clonar |
 | `NETX_DOMAIN` | _(vazio = IP)_ | server_name no nginx |
 | `NETX_ADMIN_EMAIL` | _(prompt)_ | login do admin |

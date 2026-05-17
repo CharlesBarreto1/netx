@@ -1,6 +1,6 @@
 [Unit]
 Description=NetX Web Frontend (Next.js)
-Documentation=https://github.com/charlesbarreto/netx
+Documentation=https://github.com/CharlesBarreto1/netx
 After=network-online.target netx-api-gateway.service
 Wants=network-online.target
 
