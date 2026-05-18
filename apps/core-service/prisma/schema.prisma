@@ -98,6 +98,12 @@ model Tenant {
   // SIFEN — fatura eletrônica Paraguay (módulo opcional, ligado via env)
   sifenDocuments       SifenDocument[]
 
+  // Estoque (Fase 1)
+  suppliers            Supplier[]
+  products             Product[]
+  stockLocations       StockLocation[]
+  purchases            Purchase[]
+
   @@index([status])
   @@index([country])
   @@map("tenants")
@@ -219,6 +225,11 @@ model User {
   whatsappConversationsAssigned WhatsappConversation[] @relation("WaConversationAssignee")
   whatsappMessagesSent          WhatsappMessage[]      @relation("WaMessageFromUser")
   whatsappConversationViews     WhatsappConversationView[]
+
+  // Estoque (Fase 1)
+  stockLocationAccess  StockLocationUser[]
+  stockMovementsCreated StockMovement[] @relation("StockMovementCreatedBy")
+  purchasesCreated      Purchase[]      @relation("PurchaseCreatedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId, status])
@@ -1894,4 +1905,292 @@ model SifenDocument {
   @@index([oneTimeChargeId])
   @@index([nextRetryAt], map: "sifen_doc_retry_idx")
   @@map("sifen_documents")
+}
+
+// =============================================================================
+// MÓDULO ESTOQUE — Fase 1
+// =============================================================================
+// Cobre: catálogo de produtos, fornecedores, locais de estoque com ACL,
+// compras com seriais, saldo por (produto, local), kardex completo, custo
+// médio ponderado global por produto.
+//
+// Fase 2 (próxima): Sale, comodato (vínculo com Contract), consumo em OS.
+// =============================================================================
+
+enum ProductType {
+  PATRIMONIAL // unidade rastreada por serial (router, ONU) — comodato
+  CONSUMIVEL  // qty rastreada (cabo, conector) — consumo em OS
+}
+
+enum SerialStatus {
+  IN_STOCK     // disponível em algum local
+  ALLOCATED    // em comodato com cliente (Fase 2: contract_id setado)
+  IN_TRANSIT   // entre locais
+  DEFECTIVE    // com defeito, aguardando RMA/descarte
+  WRITTEN_OFF  // baixado contábil
+}
+
+enum MovementType {
+  PURCHASE          // entrada — compra de fornecedor
+  PURCHASE_RETURN   // saída — devolução pro fornecedor
+  SALE              // saída — venda avulsa (Fase 2)
+  SALE_RETURN       // entrada — devolução do cliente
+  COMODATO_OUT      // saída — equipamento ao cliente (Fase 2)
+  COMODATO_RETURN   // entrada — retorno de equipamento (Fase 2)
+  OS_CONSUMPTION    // saída — consumo em OS (Fase 2)
+  ADJUSTMENT_IN     // entrada — ajuste de inventário (achado)
+  ADJUSTMENT_OUT    // saída — ajuste de inventário (perda, dano)
+  TRANSFER_OUT      // saída — transferência entre locais
+  TRANSFER_IN       // entrada — par do TRANSFER_OUT
+}
+
+model Supplier {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  name        String   @db.VarChar(255)
+  taxId       String?  @map("tax_id") @db.VarChar(32) // CNPJ/RUC/etc
+  taxIdType   String?  @map("tax_id_type") @db.VarChar(16) // CNPJ | RUC | DNI | ...
+  email       String?  @db.VarChar(255)
+  phone       String?  @db.VarChar(40)
+  address     String?  @db.VarChar(500)
+  city        String?  @db.VarChar(120)
+  state       String?  @db.VarChar(120)
+  notes       String?  @db.Text
+  isActive    Boolean  @default(true) @map("is_active")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  purchases Purchase[]
+
+  @@unique([tenantId, taxId, taxIdType])
+  @@index([tenantId, name])
+  @@index([tenantId, isActive])
+  @@map("suppliers")
+}
+
+model Product {
+  id           String      @id @default(uuid()) @db.Uuid
+  tenantId     String      @map("tenant_id") @db.Uuid
+  sku          String      @db.VarChar(64)
+  name         String      @db.VarChar(255)
+  description  String?     @db.Text
+  brand        String?     @db.VarChar(120)
+  model        String?     @db.VarChar(120)
+  type         ProductType
+  unit         String      @default("un") @db.VarChar(16) // un, m, kg, pç, cx
+  // Custo médio ponderado global (recalculado a cada PURCHASE / ADJUSTMENT_IN).
+  // Decimal(14,4) cobre cents fracionários típicos de cálculo médio
+  // (ex.: 1234,5678 / unit). Saída usa este custo pra avaliar a movimentação.
+  cost         Decimal     @default(0) @db.Decimal(14, 4)
+  // Preço de venda (consultivo — venda real pode override). Optional.
+  price        Decimal?    @db.Decimal(14, 4)
+  // Alerta de estoque baixo. Quando saldo global cai abaixo, badge na UI.
+  minStock     Decimal?    @default(0) @map("min_stock") @db.Decimal(14, 4)
+  isActive     Boolean     @default(true) @map("is_active")
+
+  createdAt    DateTime    @default(now()) @map("created_at")
+  updatedAt    DateTime    @updatedAt @map("updated_at")
+  deletedAt    DateTime?   @map("deleted_at")
+
+  tenant       Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serialItems  SerialItem[]
+  stockLevels  StockLevel[]
+  movements    StockMovement[]
+  purchaseItems PurchaseItem[]
+
+  @@unique([tenantId, sku])
+  @@index([tenantId, type])
+  @@index([tenantId, name])
+  @@index([tenantId, isActive])
+  @@map("products")
+}
+
+model StockLocation {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  code        String   @db.VarChar(40)  // "DEP-MATRIZ", "VAN-JOAO"
+  name        String   @db.VarChar(120) // "Depósito Matriz", "Caminhão João"
+  address     String?  @db.VarChar(500)
+  // Trava: não pode deletar local com saldo > 0 ou seriais alocados.
+  isActive    Boolean  @default(true) @map("is_active")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userAccess   StockLocationUser[]
+  stockLevels  StockLevel[]
+  serialItems  SerialItem[]
+  movementsFrom StockMovement[]    @relation("MovementFromLocation")
+  movementsTo   StockMovement[]    @relation("MovementToLocation")
+
+  @@unique([tenantId, code])
+  @@index([tenantId, isActive])
+  @@map("stock_locations")
+}
+
+// ACL many-to-many: quais users operam quais locais.
+// Filtro padrão das listagens: WHERE location_id IN (select location_id from
+// stock_location_users where user_id = current_user).
+// Roles com permissão `stock.admin` bypass — vêem todos os locais do tenant.
+model StockLocationUser {
+  locationId String  @map("location_id") @db.Uuid
+  userId     String  @map("user_id") @db.Uuid
+  canWrite   Boolean @default(true) @map("can_write") // false = read-only nesse local
+
+  location StockLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([locationId, userId])
+  @@index([userId])
+  @@map("stock_location_users")
+}
+
+// Saldo de CONSUMÍVEIS por (produto, local). Patrimoniais NÃO usam esta tabela
+// — saldo deles é COUNT(SerialItem WHERE status='IN_STOCK' AND location_id=X
+// AND product_id=Y). Manter ambos na mesma tabela criaria desync.
+model StockLevel {
+  tenantId   String   @map("tenant_id") @db.Uuid // denorm pra índice
+  productId  String   @map("product_id") @db.Uuid
+  locationId String   @map("location_id") @db.Uuid
+  quantity   Decimal  @default(0) @db.Decimal(14, 4)
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  product  Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  location StockLocation @relation(fields: [locationId], references: [id], onDelete: Cascade)
+
+  @@id([productId, locationId])
+  @@index([tenantId, productId])
+  @@index([tenantId, locationId])
+  @@map("stock_levels")
+}
+
+// Unidade patrimonial (1 row = 1 equipamento físico com serial).
+model SerialItem {
+  id              String       @id @default(uuid()) @db.Uuid
+  tenantId        String       @map("tenant_id") @db.Uuid
+  productId       String       @map("product_id") @db.Uuid
+  serial          String       @db.VarChar(120)
+  status          SerialStatus @default(IN_STOCK)
+  locationId      String?      @map("location_id") @db.Uuid // null se status != IN_STOCK e != IN_TRANSIT
+
+  // Vínculo com contrato — preenchido em Fase 2 (operação ALLOCATE).
+  // Por ora opcional, sem FK ainda (adicionada na migration de Fase 2 pra evitar
+  // ciclo nesta release).
+  contractId      String?      @map("contract_id") @db.Uuid
+
+  acquisitionCost Decimal?     @map("acquisition_cost") @db.Decimal(14, 4)
+  acquisitionDate DateTime?    @map("acquisition_date")
+  allocatedAt     DateTime?    @map("allocated_at")
+  returnedAt      DateTime?    @map("returned_at")
+  notes           String?      @db.Text
+
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+
+  product   Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
+  location  StockLocation?  @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  movements StockMovement[]
+
+  @@unique([tenantId, productId, serial])
+  @@index([tenantId, status])
+  @@index([tenantId, contractId])
+  @@index([tenantId, locationId, status])
+  @@map("serial_items")
+}
+
+// Kardex completo — every stock-affecting operation gera linhas aqui.
+// Fonte da verdade pra reconciliação e auditoria. Saldo é derivado mas
+// cacheado em StockLevel/SerialItem pra performance.
+model StockMovement {
+  id             String         @id @default(uuid()) @db.Uuid
+  tenantId       String         @map("tenant_id") @db.Uuid
+  type           MovementType
+  productId      String         @map("product_id") @db.Uuid
+  serialItemId   String?        @map("serial_item_id") @db.Uuid // se patrimonial
+
+  // Direção:
+  //   Entradas (PURCHASE, ADJ_IN, TRANSFER_IN, etc): toLocationId setado, fromLocationId null
+  //   Saídas:                                       fromLocationId setado, toLocationId null
+  //   Transfer cria PAR: TRANSFER_OUT (from setado) + TRANSFER_IN (to setado)
+  fromLocationId String?        @map("from_location_id") @db.Uuid
+  toLocationId   String?        @map("to_location_id") @db.Uuid
+
+  quantity       Decimal        @db.Decimal(14, 4)
+  unitCost       Decimal        @map("unit_cost") @db.Decimal(14, 4)
+  totalCost      Decimal        @map("total_cost") @db.Decimal(14, 4)
+
+  // Referências polimórficas — só uma é populada conforme o type.
+  purchaseId     String?        @map("purchase_id") @db.Uuid
+  // saleId, contractId, serviceOrderId entram em Fase 2.
+
+  notes          String?        @db.Text
+  createdById    String         @map("created_by_id") @db.Uuid
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  product      Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  serialItem   SerialItem?    @relation(fields: [serialItemId], references: [id], onDelete: SetNull)
+  fromLocation StockLocation? @relation("MovementFromLocation", fields: [fromLocationId], references: [id], onDelete: SetNull)
+  toLocation   StockLocation? @relation("MovementToLocation",   fields: [toLocationId],   references: [id], onDelete: SetNull)
+  purchase     Purchase?      @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+  createdBy    User           @relation("StockMovementCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, createdAt(sort: Desc)])
+  @@index([tenantId, productId, createdAt(sort: Desc)])
+  @@index([tenantId, type, createdAt(sort: Desc)])
+  @@index([purchaseId])
+  @@index([serialItemId])
+  @@map("stock_movements")
+}
+
+model Purchase {
+  id            String         @id @default(uuid()) @db.Uuid
+  tenantId      String         @map("tenant_id") @db.Uuid
+  supplierId    String         @map("supplier_id") @db.Uuid
+  // Número da NF-e/factura do fornecedor (texto livre pra suportar vários formatos)
+  invoiceNumber String?        @map("invoice_number") @db.VarChar(64)
+  date          DateTime
+  totalCost     Decimal        @map("total_cost") @db.Decimal(14, 4)
+  notes         String?        @db.Text
+  createdById   String         @map("created_by_id") @db.Uuid
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier  Supplier        @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  createdBy User            @relation("PurchaseCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  items     PurchaseItem[]
+  movements StockMovement[]
+
+  @@unique([tenantId, supplierId, invoiceNumber])
+  @@index([tenantId, date(sort: Desc)])
+  @@index([supplierId])
+  @@map("purchases")
+}
+
+model PurchaseItem {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid // denorm
+  purchaseId   String   @map("purchase_id") @db.Uuid
+  productId    String   @map("product_id") @db.Uuid
+  locationId   String   @map("location_id") @db.Uuid // onde foi recebido
+  quantity     Decimal  @db.Decimal(14, 4)
+  unitCost     Decimal  @map("unit_cost") @db.Decimal(14, 4)
+  totalCost    Decimal  @map("total_cost") @db.Decimal(14, 4)
+  // Seriais cadastrados nesta entrada (1 array de N strings, N = quantity pra patrimonial).
+  // Pra consumível, fica vazio. Validado no service.
+  serials      String[] @default([]) // será desnormalizado em SerialItem rows
+  notes        String?  @db.Text
+
+  purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  location StockLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  @@index([purchaseId])
+  @@index([productId])
+  @@map("purchase_items")
 }

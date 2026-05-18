@@ -132,6 +132,25 @@ const networkPermissions = [
 ];
 
 // -----------------------------------------------------------------------------
+// Permission catalog — Estoque
+// -----------------------------------------------------------------------------
+const stockPermissions = [
+  // stock.read: ver produtos, fornecedores, locais (filtrados pela ACL), kardex
+  { code: 'stock.read',            module: 'stock', resource: 'stock', action: 'read' },
+  // stock.write: criar/editar produto/fornecedor + transferências + ACL-write em local
+  { code: 'stock.write',           module: 'stock', resource: 'stock', action: 'write' },
+  // stock.delete: remover (soft) produto/fornecedor que ainda não tem histórico
+  { code: 'stock.delete',          module: 'stock', resource: 'stock', action: 'delete' },
+  // stock.purchase.create: registrar entrada por compra
+  { code: 'stock.purchase.create', module: 'stock', resource: 'purchases', action: 'create' },
+  // stock.adjust: ajustes de inventário (contagem, perda, descarte, achado)
+  { code: 'stock.adjust',          module: 'stock', resource: 'stock', action: 'adjust' },
+  // stock.admin: gerenciar locais + ACL de usuário por local. Bypassa filtro de
+  // ACL nas listagens — vê todos os locais do tenant.
+  { code: 'stock.admin',           module: 'stock', resource: 'stock', action: 'admin' },
+];
+
+// -----------------------------------------------------------------------------
 // Permission catalog — Chat / Atendimento (WhatsApp via Evolution API)
 // -----------------------------------------------------------------------------
 const chatPermissions = [
@@ -221,6 +240,13 @@ const systemRoles = [
       'network.read',
       'network.write',
       'network.delete',
+      // Estoque (admin tem tudo, inclusive gerenciar locais e ACL)
+      'stock.read',
+      'stock.write',
+      'stock.delete',
+      'stock.purchase.create',
+      'stock.adjust',
+      'stock.admin',
       // Chat / Atendimento (admin tem tudo, inclusive auditoria)
       'chat.read',
       'chat.send',
@@ -271,6 +297,13 @@ const systemRoles = [
       'reports.read',
       // Rede — só leitura pra operador
       'network.read',
+      // Estoque — operador faz leitura, compra, ajuste, transferência.
+      // Sem `stock.admin` (gerenciar locais e ACL fica pro admin) e sem `stock.delete`
+      // (remover catálogo é decisão administrativa).
+      'stock.read',
+      'stock.write',
+      'stock.purchase.create',
+      'stock.adjust',
       // Chat (operador atende: lê, envia, atribui — sem auditar terceiros nem admin)
       'chat.read',
       'chat.send',
@@ -297,6 +330,7 @@ const systemRoles = [
       'finance.charges.read',
       'reports.read',
       'network.read',
+      'stock.read',
       'sifen.read',
     ],
   },
@@ -316,6 +350,7 @@ async function main() {
     ...reportsPermissions,
     ...backupsPermissions,
     ...networkPermissions,
+    ...stockPermissions,
     ...chatPermissions,
   ]) {
     await prisma.permission.upsert({

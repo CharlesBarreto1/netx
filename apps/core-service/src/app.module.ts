@@ -22,6 +22,7 @@ import { PrismaModule } from './modules/prisma/prisma.module';
 import { RadiusModule } from './modules/radius/radius.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { SifenModule } from './modules/sifen/sifen.module';
+import { StockModule } from './modules/stock/stock.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { UsersModule } from './modules/users/users.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
@@ -82,6 +83,7 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
     PortalModule,
     RadiusModule,
     SifenModule,
+    StockModule,
     WhatsappModule,
   ],
 })

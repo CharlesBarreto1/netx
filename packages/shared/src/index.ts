@@ -16,3 +16,4 @@ export * from './backups';
 export * from './portal.dto';
 export * from './sifen';
 export * from './network';
+export * from './stock';
