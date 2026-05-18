@@ -51,6 +51,7 @@ import { SimpleTooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/cn';
 import { DensityProvider } from '@/lib/density';
 import { visibleMenuGroups, type MenuDef, type MenuGroup } from '@/lib/menus';
+import { authApi } from '@/lib/auth-api';
 import { clearSession, displayName, type Session } from '@/lib/session';
 
 interface NavItem {
@@ -160,7 +161,12 @@ export function AppShell({
     [session.user.permissions, session.user.menuAccess, tNav],
   );
 
-  function logout() {
+  async function logout() {
+    // Invalida session no backend ANTES de limpar sessão local. Sem isso, o
+    // refresh token continua válido até expirar mesmo após "Sair" — atacante
+    // de posse do token mantém acesso. authApi.logout() é tolerante a falha,
+    // então um backend offline não bloqueia o user.
+    await authApi.logout();
     clearSession();
     router.replace('/login');
   }

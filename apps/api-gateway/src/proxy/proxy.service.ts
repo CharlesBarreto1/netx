@@ -25,11 +25,43 @@ export class ProxyService {
     const base = `http://${this.config.coreService.host}:${this.config.coreService.port}`;
     const url = `${base}${targetPath}`;
 
+    // Headers que NÃO repassamos pro core-service:
+    //
+    // - Hop-by-hop standard (RFC 7230 §6.1): host, connection, content-length,
+    //   transfer-encoding — proxy não deve forwardar.
+    //
+    // - Tenant/auth headers controlados pelo gateway/core: o gateway NÃO
+    //   resolve tenant — quem decide é o core-service via TENANT_RESOLUTION_STRATEGY
+    //   (subdomain | header | jwt). Se o cliente envia `x-tenant-id` num cenário
+    //   onde a strategy é `subdomain` ou `jwt`, ele tentaria forçar tenant
+    //   arbitrário. Stripping aqui é defesa em profundidade — qualquer cliente
+    //   que precise setar tenant via header DEVE estar com TENANT_RESOLUTION_STRATEGY=header
+    //   explicitamente (e nesse caso o gateway propaga normalmente, vide config).
+    //
+    // - `x-forwarded-*` exceto os que renomeamos: cliente NÃO deveria poder
+    //   spoofar o IP visto pelo backend. Sobrescrevemos com `req.ip` mais abaixo.
+    const STRIP_HEADERS = new Set([
+      'host',
+      'connection',
+      'content-length',
+      'transfer-encoding',
+      'x-real-ip',
+      'x-forwarded-for',
+      'x-forwarded-host',
+      'x-forwarded-proto',
+    ]);
+    const tenancyStrategy = this.config.tenancy.strategy;
+    const tenantHeader = this.config.tenancy.headerName.toLowerCase();
+
     const forwardedHeaders: Record<string, string> = {};
     for (const [k, v] of Object.entries(req.headers)) {
       if (!v) continue;
-      if (['host', 'connection', 'content-length', 'transfer-encoding'].includes(k)) continue;
-      forwardedHeaders[k] = Array.isArray(v) ? v.join(', ') : (v as string);
+      const key = k.toLowerCase();
+      if (STRIP_HEADERS.has(key)) continue;
+      // Strip do header de tenant quando a strategy NÃO é `header` —
+      // impede um cliente de forçar tenant arbitrário via header injection.
+      if (key === tenantHeader && tenancyStrategy !== 'header') continue;
+      forwardedHeaders[key] = Array.isArray(v) ? v.join(', ') : (v as string);
     }
     // Always propagate tenant and correlation context
     if (req.headers['x-correlation-id']) {

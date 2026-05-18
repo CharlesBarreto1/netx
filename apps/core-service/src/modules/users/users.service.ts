@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { Prisma, UserStatus } from '@prisma/client';
 
 import { hashPassword } from '@netx/auth';
@@ -11,7 +11,7 @@ import type {
   Paginated,
 } from '@netx/shared';
 import { paginationMeta } from '@netx/shared';
-import { randomBytes } from 'crypto';
+import { randomBytes, randomInt } from 'crypto';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -30,6 +30,12 @@ export class UsersService {
       where: { tenantId_email: { tenantId, email: input.email } },
     });
     if (existing) throw new ConflictException('User with this email already exists');
+
+    // Anti-escalonamento cross-tenant: garante que todos os roleIds informados
+    // pertencem ao próprio tenant OU são roles globais (tenantId IS NULL).
+    // Sem isso, um admin malicioso/comprometido podia atribuir Role.id de
+    // outro tenant ao seu próprio user e herdar permissões cruzadas.
+    await this.assertRolesBelongToTenant(tenantId, input.roleIds);
 
     // 3 caminhos de senha:
     //   1) input.password informado → usa; user nasce ACTIVE.
@@ -108,6 +114,10 @@ export class UsersService {
    * Gera senha temp pronta pra uso humano: 12 chars, com 1 maiúscula, 1
    * minúscula, 1 número e 1 símbolo — passa por strongPasswordSchema. Curta
    * o suficiente pra digitar sem erro.
+   *
+   * Usa `crypto.randomInt` (CSPRNG) em vez de `Math.random()` — Math.random
+   * é Xorshift128+ no V8, sem propriedades criptográficas; sequência pode ser
+   * recuperada a partir de poucas amostras → atacante prediz senha temp.
    */
   private generateTemporaryPassword(): string {
     // Caracteres não-ambíguos: sem O/0/l/I/1 que se confundem em fonte.
@@ -115,7 +125,7 @@ export class UsersService {
     const lower = 'abcdefghjkmnpqrstuvwxyz';
     const digits = '23456789';
     const symbols = '!@#$%&*?';
-    const pick = (set: string) => set[Math.floor(Math.random() * set.length)];
+    const pick = (set: string) => set[randomInt(0, set.length)];
     const all = upper + lower + digits + symbols;
 
     // Garante pelo menos 1 de cada classe + 8 random.
@@ -126,12 +136,40 @@ export class UsersService {
       pick(symbols),
       ...Array.from({ length: 8 }, () => pick(all)),
     ];
-    // Embaralha (Fisher-Yates).
+    // Embaralha (Fisher-Yates) com CSPRNG.
     for (let i = chars.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
+      const j = randomInt(0, i + 1);
       [chars[i], chars[j]] = [chars[j], chars[i]];
     }
     return chars.join('');
+  }
+
+  /**
+   * Garante que cada `roleId` pertence ao tenant atual OU é role global
+   * (Role.tenantId IS NULL — system roles compartilhadas). Lança
+   * BadRequestException se algum role não casa.
+   *
+   * Bug que isso fecha: até hoje `userRoles: { create: input.roleIds.map(...) }`
+   * confiava cego no client; um admin podia injetar id de Role de outro
+   * tenant e o user nascia com permissões cruzadas.
+   */
+  private async assertRolesBelongToTenant(tenantId: string, roleIds: string[]): Promise<void> {
+    if (roleIds.length === 0) return;
+    const unique = Array.from(new Set(roleIds));
+    const found = await this.prisma.role.findMany({
+      where: {
+        id: { in: unique },
+        OR: [{ tenantId }, { tenantId: null }],
+      },
+      select: { id: true },
+    });
+    if (found.length !== unique.length) {
+      const foundIds = new Set(found.map((r) => r.id));
+      const invalid = unique.filter((id) => !foundIds.has(id));
+      throw new BadRequestException(
+        `Roles inválidas ou de outro tenant: ${invalid.join(', ')}`,
+      );
+    }
   }
 
   async list(
@@ -188,6 +226,11 @@ export class UsersService {
       where: { id, tenantId, deletedAt: null },
     });
     if (!before) throw new NotFoundException('User not found');
+
+    // Validação de roles: mesma checagem do create, agora pro update.
+    if (input.roleIds) {
+      await this.assertRolesBelongToTenant(tenantId, input.roleIds);
+    }
 
     // Reset de senha pelo admin: se input.password vier, hashea agora e
     // atualiza passwordHash junto. Bons padrões cuidados aqui:

@@ -1,5 +1,4 @@
 import {
-  Body,
   Controller,
   Get,
   Param,
@@ -8,6 +7,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { z } from 'zod';
 
 import {
   CancelContractInvoiceRequestSchema,
@@ -25,6 +25,21 @@ import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { ZodBody } from '../../common/zod.pipe';
 import { ZodQueryPipe } from '../crm/zod-query.pipe';
 import { ContractInvoicesService } from './contract-invoices.service';
+
+// Schemas inline pra endpoints de ação rápida (discount/postpone). Quando
+// virarem API documentada/pública, mover pra @netx/shared.
+const ApplyDiscountRequestSchema = z.object({
+  discountAmount: z.coerce.number().nonnegative().max(1_000_000_000),
+  note: z.string().max(2000).optional(),
+});
+type ApplyDiscountRequest = z.infer<typeof ApplyDiscountRequestSchema>;
+
+const PostponeInvoiceRequestSchema = z.object({
+  // ISO 8601 date string ("2026-06-15" ou full datetime). Backend converte.
+  newDueDate: z.string().min(8).max(40),
+  note: z.string().max(2000).optional(),
+});
+type PostponeInvoiceRequest = z.infer<typeof PostponeInvoiceRequestSchema>;
 
 @ApiTags('contracts/invoices')
 @ApiBearerAuth()
@@ -110,13 +125,13 @@ export class ContractInvoicesController {
   applyDiscount(
     @CurrentUser() user: AuthenticatedPrincipal,
     @Param('id', new ParseUUIDPipe()) id: string,
-    @Body() body: { discountAmount: number; note?: string },
+    @ZodBody(ApplyDiscountRequestSchema) body: ApplyDiscountRequest,
   ) {
     return this.invoices.applyDiscount(
       user.tenantId,
       user.sub,
       id,
-      Number(body.discountAmount) || 0,
+      body.discountAmount,
       body.note,
     );
   }
@@ -131,7 +146,7 @@ export class ContractInvoicesController {
   postpone(
     @CurrentUser() user: AuthenticatedPrincipal,
     @Param('id', new ParseUUIDPipe()) id: string,
-    @Body() body: { newDueDate: string; note?: string },
+    @ZodBody(PostponeInvoiceRequestSchema) body: PostponeInvoiceRequest,
   ) {
     return this.invoices.postpone(
       user.tenantId,

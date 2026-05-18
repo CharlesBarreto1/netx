@@ -14,7 +14,14 @@ EVOLUTION_PORT=8080
 EVOLUTION_REDIS_DB=6
 
 evolution_setup() {
+  EVOLUTION_DOCKER_FAILED=0
   evolution_install_docker
+  # Se Docker não rolou (ex.: Debian 13 sem pacotes compose), pula tudo sem
+  # quebrar o install. Operador pode habilitar Evolution depois manualmente.
+  if [[ "${EVOLUTION_DOCKER_FAILED}" == "1" ]]; then
+    log_warn "Evolution skipped (Docker indisponível). NetX core/web/gateway continuam OK."
+    return 0
+  fi
   evolution_create_db
   evolution_render_compose
   evolution_start
@@ -27,22 +34,36 @@ evolution_install_docker() {
     return 0
   fi
   log_info "Instalando Docker (docker.io) + Compose v2 plugin"
-  # Debian 13: o plugin Compose v2 vem do pacote `docker-compose-v2` (que
-  # registra o subcommand `docker compose`). O pacote `docker-compose` (sem
-  # `-v2`) é o legado Python (`docker-compose`) que não nos serve — usamos
-  # `docker compose` (plugin) no resto do código.
-  # Tenta os 2 nomes pq Debian 13 introduziu inconsistência de naming.
+  # Em Debian 13 nenhum dos pacotes APT default tem o plugin compose v2.
+  # Adiciona o repo oficial Docker (sempre disponível) — único caminho
+  # estável pra obter docker-compose-plugin.
   if ! apt-get install -y -qq docker.io docker-compose-v2 2>/dev/null; then
-    log_warn "docker-compose-v2 indisponível, tentando docker-compose-plugin"
-    apt-get install -y -qq docker.io docker-compose-plugin
+    log_warn "Pacote compose v2 ausente no APT default — usando repo oficial Docker"
+    apt-get install -y -qq ca-certificates curl gnupg
+    install -m 0755 -d /etc/apt/keyrings
+    if [[ ! -f /etc/apt/keyrings/docker.gpg ]]; then
+      curl -fsSL https://download.docker.com/linux/debian/gpg \
+        | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+      chmod a+r /etc/apt/keyrings/docker.gpg
+    fi
+    local codename
+    codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian ${codename} stable" \
+      > /etc/apt/sources.list.d/docker.list
+    apt-get update -qq
+    if ! apt-get install -y -qq docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin; then
+      log_warn "Docker install falhou — Evolution (WhatsApp) será PULADO."
+      log_warn "NetX core continua funcionando. Pra habilitar depois: vide docs/whatsapp.md"
+      EVOLUTION_DOCKER_FAILED=1
+      return 0
+    fi
   fi
-  systemctl enable --now docker
+  systemctl enable --now docker 2>/dev/null || true
 
-  # Sanity: confirma que `docker compose` (plugin v2) funciona — não `docker-compose` v1
   if ! docker compose version >/dev/null 2>&1; then
-    log_error "Compose v2 não disponível após instalação. Verifica:"
-    log_error "  apt list --installed 2>/dev/null | grep -i docker"
-    exit 1
+    log_warn "Compose v2 não disponível — Evolution será PULADO. Reste do install continua."
+    EVOLUTION_DOCKER_FAILED=1
+    return 0
   fi
   log_ok "Docker $(docker --version | awk '{print $3}' | tr -d ,) + Compose $(docker compose version --short)"
 }

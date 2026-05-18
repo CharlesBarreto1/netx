@@ -1,5 +1,4 @@
 import {
-  Body,
   Controller,
   Delete,
   Get,
@@ -11,6 +10,16 @@ import {
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { z } from 'zod';
+
+// Schema inline pra /:id/trust-extend — fica perto do uso porque é pequeno
+// e específico desse controller. Quando virar API pública/documentada, mover
+// pra @netx/shared.
+const TrustExtendRequestSchema = z.object({
+  days: z.number().int().min(1).max(60).optional(),
+  note: z.string().max(2000).optional(),
+});
+type TrustExtendRequest = z.infer<typeof TrustExtendRequestSchema>;
 
 import {
   CancelContractRequestSchema,
@@ -110,7 +119,7 @@ export class ContractsController {
   trustExtend(
     @CurrentUser() user: AuthenticatedPrincipal,
     @Param('id', new ParseUUIDPipe()) id: string,
-    @Body() body: { days?: number; note?: string },
+    @ZodBody(TrustExtendRequestSchema) body: TrustExtendRequest,
   ) {
     return this.contracts.trustExtend(user.tenantId, user.sub, id, {
       days: body.days ?? 5,

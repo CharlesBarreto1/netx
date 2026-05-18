@@ -1,5 +1,4 @@
 import {
-  Body,
   Controller,
   Delete,
   Get,
@@ -15,19 +14,26 @@ import {
   NetworkEquipmentType,
   NetworkEquipmentVendor,
 } from '@prisma/client';
-import type { AuthenticatedPrincipal } from '@netx/shared';
+import {
+  CreateNetworkEquipmentRequestSchema,
+  CreateNetworkPopRequestSchema,
+  UpdateNetworkEquipmentRequestSchema,
+  UpdateNetworkPopRequestSchema,
+  type AuthenticatedPrincipal,
+  type CreateNetworkEquipmentRequest,
+  type CreateNetworkPopRequest,
+  type UpdateNetworkEquipmentRequest,
+  type UpdateNetworkPopRequest,
+} from '@netx/shared';
 
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
+import { ZodBody } from '../../common/zod.pipe';
 import {
   NetworkEquipmentService,
   type CreateEquipmentInput,
   type UpdateEquipmentInput,
 } from './network-equipment.service';
-import {
-  NetworkPopsService,
-  type CreatePopInput,
-  type UpdatePopInput,
-} from './network-pops.service';
+import { NetworkPopsService } from './network-pops.service';
 
 @ApiTags('network')
 @ApiBearerAuth()
@@ -60,7 +66,7 @@ export class NetworkController {
   @RequirePermissions('network.write')
   createPop(
     @CurrentUser() u: AuthenticatedPrincipal,
-    @Body() body: CreatePopInput,
+    @ZodBody(CreateNetworkPopRequestSchema) body: CreateNetworkPopRequest,
   ) {
     return this.pops.create(u.tenantId, u.sub, body);
   }
@@ -70,7 +76,7 @@ export class NetworkController {
   updatePop(
     @CurrentUser() u: AuthenticatedPrincipal,
     @Param('id', new ParseUUIDPipe()) id: string,
-    @Body() body: UpdatePopInput,
+    @ZodBody(UpdateNetworkPopRequestSchema) body: UpdateNetworkPopRequest,
   ) {
     return this.pops.update(u.tenantId, u.sub, id, body);
   }
@@ -114,9 +120,10 @@ export class NetworkController {
   @RequirePermissions('network.write')
   createEquipment(
     @CurrentUser() u: AuthenticatedPrincipal,
-    @Body() body: CreateEquipmentInput,
+    @ZodBody(CreateNetworkEquipmentRequestSchema) body: CreateNetworkEquipmentRequest,
   ) {
-    // Normalização leve de enums: aceita lowercase e converte
+    // Normalização leve de enums: Zod já valida o set permitido, isto é só
+    // pra aceitar variações de case que o frontend possa mandar.
     const normalized: CreateEquipmentInput = {
       ...body,
       type: (body.type as string).toUpperCase() as NetworkEquipmentType,
@@ -132,7 +139,7 @@ export class NetworkController {
   updateEquipment(
     @CurrentUser() u: AuthenticatedPrincipal,
     @Param('id', new ParseUUIDPipe()) id: string,
-    @Body() body: UpdateEquipmentInput,
+    @ZodBody(UpdateNetworkEquipmentRequestSchema) body: UpdateNetworkEquipmentRequest,
   ) {
     const normalized: UpdateEquipmentInput = {
       ...body,

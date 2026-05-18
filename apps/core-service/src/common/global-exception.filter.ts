@@ -13,6 +13,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type { Request, Response } from 'express';
 
 import { ErrorCodes, type ProblemDetails } from '@netx/shared';
@@ -44,6 +45,18 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const req = ctx.getRequest<Request>();
     const correlationId =
       (req.headers['x-correlation-id'] as string | undefined) ?? undefined;
+
+    // Prisma known errors → status HTTP semântico em vez de 500.
+    // Sem isso, ConflictException disfarçada de unique violation virava 500
+    // genérico no client, vazando stack trace + nome de tabela/coluna no
+    // log do gateway.
+    if (exception instanceof Prisma.PrismaClientKnownRequestError) {
+      const mapped = mapPrismaError(exception, req.originalUrl, correlationId);
+      const ctx = `${req.method} ${req.originalUrl}${correlationId ? ` cid=${correlationId}` : ''}`;
+      this.logger.warn(`[${mapped.status}] prisma:${exception.code} ${mapped.detail}`, ctx);
+      res.status(mapped.status!).json(mapped);
+      return;
+    }
 
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
@@ -144,6 +157,76 @@ function inferType(status: number): string {
       return ErrorCodes.RATE_LIMITED;
     default:
       return ErrorCodes.INTERNAL;
+  }
+}
+
+/**
+ * Mapeia códigos conhecidos do Prisma (https://www.prisma.io/docs/orm/reference/error-reference)
+ * pra status HTTP semântico + ProblemDetails sanitizado. Não vazamos o nome
+ * da tabela/coluna (poderia ajudar enumeration); detail é mensagem genérica.
+ */
+function mapPrismaError(
+  err: Prisma.PrismaClientKnownRequestError,
+  instance: string,
+  correlationId: string | undefined,
+): ProblemDetails {
+  switch (err.code) {
+    case 'P2002': // Unique constraint violation
+      return {
+        type: ErrorCodes.CONFLICT,
+        title: 'Conflict',
+        status: HttpStatus.CONFLICT,
+        detail: 'Já existe um registro com esses valores únicos.',
+        instance,
+        correlationId,
+      };
+    case 'P2025': // Record not found (update/delete of non-existent row)
+      return {
+        type: ErrorCodes.NOT_FOUND,
+        title: 'Not Found',
+        status: HttpStatus.NOT_FOUND,
+        detail: 'Registro não encontrado.',
+        instance,
+        correlationId,
+      };
+    case 'P2003': // Foreign key constraint
+      return {
+        type: ErrorCodes.CONFLICT,
+        title: 'Conflict',
+        status: HttpStatus.CONFLICT,
+        detail: 'Operação viola uma referência de dependência (FK).',
+        instance,
+        correlationId,
+      };
+    case 'P2014': // Required relation violation
+      return {
+        type: ErrorCodes.CONFLICT,
+        title: 'Conflict',
+        status: HttpStatus.CONFLICT,
+        detail: 'Operação viola uma relação obrigatória.',
+        instance,
+        correlationId,
+      };
+    case 'P2000': // Value too long for column
+    case 'P2007': // Data validation error
+      return {
+        type: ErrorCodes.VALIDATION,
+        title: 'Bad Request',
+        status: HttpStatus.BAD_REQUEST,
+        detail: 'Dados inválidos pra essa operação.',
+        instance,
+        correlationId,
+      };
+    default:
+      // Erro Prisma conhecido mas não mapeado: 500 sem detail (não vaza).
+      return {
+        type: ErrorCodes.INTERNAL,
+        title: 'Internal Server Error',
+        status: HttpStatus.INTERNAL_SERVER_ERROR,
+        detail: 'Erro interno do banco de dados.',
+        instance,
+        correlationId,
+      };
   }
 }
 

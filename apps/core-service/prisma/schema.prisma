@@ -1017,7 +1017,10 @@ model Contract {
   deletedAt           DateTime?      @map("deleted_at")
 
   tenant              Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer            Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  // Restrict (não Cascade): impede deletar Customer com contratos. Admin
+  // precisa explicitamente cancelar/arquivar contratos antes — preserva
+  // histórico financeiro e de RADIUS. Migration: cascades_to_restrict_history.
+  customer            Customer       @relation(fields: [customerId], references: [id], onDelete: Restrict)
   createdBy           User?          @relation("ContractCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy           User?          @relation("ContractUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
@@ -1070,7 +1073,9 @@ model ContractInvoice {
   updatedAt    DateTime       @updatedAt @map("updated_at")
 
   tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  contract     Contract       @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  // Restrict (não Cascade): faturas são histórico financeiro — não pode sumir
+  // se contrato for deletado. Soft-delete no Contract é a operação correta.
+  contract     Contract       @relation(fields: [contractId], references: [id], onDelete: Restrict)
   cashRegister CashRegister?  @relation(fields: [cashRegisterId], references: [id], onDelete: SetNull)
 
   // SIFEN — 0..N documentos (1 fatura pode ter Factura + Nota de Crédito, etc).
@@ -1117,7 +1122,10 @@ model RadiusEvent {
   createdAt    DateTime           @default(now()) @map("created_at")
 
   tenant       Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  contract     Contract           @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  // Restrict (não Cascade): eventos RADIUS são histórico de auditoria —
+  // não pode sumir se contrato for deletado. Útil pra reconstruir cenários
+  // de fraude e compliance.
+  contract     Contract           @relation(fields: [contractId], references: [id], onDelete: Restrict)
 
   @@index([tenantId, contractId, createdAt])
   @@index([tenantId, status])
@@ -1206,7 +1214,8 @@ model ServiceOrder {
   deletedAt          DateTime?           @map("deleted_at")
 
   tenant             Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  contract           Contract            @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  // Restrict (não Cascade): OS é histórico operacional/financeiro — preservar.
+  contract           Contract            @relation(fields: [contractId], references: [id], onDelete: Restrict)
   reason             ServiceOrderReason  @relation(fields: [reasonId], references: [id], onDelete: Restrict)
   assignedTo         User?               @relation("ServiceOrderAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
   createdBy          User?               @relation("ServiceOrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -1338,7 +1347,9 @@ model OneTimeCharge {
   deletedAt     DateTime?            @map("deleted_at")
 
   tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer       Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  // Restrict (não Cascade): one-time charges são receita avulsa — histórico
+  // financeiro idêntico a faturas; não pode sumir com delete de customer.
+  customer       Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
   contract       Contract?     @relation(fields: [contractId], references: [id], onDelete: SetNull)
   cashRegister   CashRegister? @relation(fields: [cashRegisterId], references: [id], onDelete: SetNull)
   createdBy      User?         @relation("ChargeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -1560,6 +1571,10 @@ model NetworkEquipment {
   sshPasswordEnc     String?            @map("ssh_password_enc")      @db.Text
   sshKeyName         String?            @map("ssh_key_name")          @db.VarChar(128)
   sshDisconnectCmd   String?            @map("ssh_disconnect_cmd")    @db.Text
+  // Host key fingerprint "SHA256:<base64>" pra defesa MITM (ver migration
+  // 20260517010000_equipment_ssh_host_key). NULL = strategy SSH bloqueada;
+  // operador captura via test-connectivity (TOFU explícito).
+  sshHostKey         String?            @map("ssh_host_key")           @db.Text
 
   // Última verificação de conectividade (Test connection)
   lastReachableAt    DateTime?          @map("last_reachable_at")

@@ -95,9 +95,9 @@ export const SO_STATUS_TONE: Record<
 // =============================================================================
 // QUERY HELPER
 // =============================================================================
-function qs<T extends object>(params: T | Record<string, never> = {}): string {
+function qs<T extends Record<string, unknown>>(params: T | Record<string, never> = {}): string {
   const usp = new URLSearchParams();
-  for (const [k, v] of Object.entries(params as Record<string, unknown>)) {
+  for (const [k, v] of Object.entries(params)) {
     if (v === undefined || v === null || v === '') continue;
     usp.set(k, String(v));
   }

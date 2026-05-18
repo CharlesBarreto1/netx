@@ -39,13 +39,15 @@ const baseSchema = z.object({
   // JWT
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
-  // TTLs longos pra UX "login permanente". Frontend faz auto-refresh
-  // transparente em 401 antes de cair pra /login. Operadores de ISP
-  // tipicamente trabalham em estações fixas, baixo risco de roubo de token.
-  // Pra ambientes com requisitos rígidos (ex.: tenant cliente bancário),
-  // sobrescreva via env: JWT_ACCESS_EXPIRES_IN=15m JWT_REFRESH_EXPIRES_IN=7d.
-  JWT_ACCESS_EXPIRES_IN: z.string().default('12h'),
-  JWT_REFRESH_EXPIRES_IN: z.string().default('90d'),
+  // Secret separado pra Portal do Cliente. Confunir com o secret de operador
+  // (JWT_ACCESS_SECRET) permite audience-confusion: um token de portal
+  // assinado pelo MESMO secret poderia, sob qualquer bug de checagem de
+  // audience, ser aceito como token de operador. Separação reduz blast radius.
+  PORTAL_JWT_SECRET: z.string().min(32, 'PORTAL_JWT_SECRET must be at least 32 characters'),
+  // Access curto + refresh moderado. Token vazado dura no máximo o TTL access;
+  // logout invalida via Session.revokedAt (checado pelo JwtStrategy).
+  JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
+  JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
 
   // Argon2
   ARGON2_MEMORY_COST: z.coerce.number().int().positive().default(19_456),
@@ -89,6 +91,7 @@ export interface Config {
   jwt: {
     accessSecret: string;
     refreshSecret: string;
+    portalSecret: string;
     accessExpiresIn: string;
     refreshExpiresIn: string;
   };
@@ -137,6 +140,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     jwt: {
       accessSecret: e.JWT_ACCESS_SECRET,
       refreshSecret: e.JWT_REFRESH_SECRET,
+      portalSecret: e.PORTAL_JWT_SECRET,
       accessExpiresIn: e.JWT_ACCESS_EXPIRES_IN,
       refreshExpiresIn: e.JWT_REFRESH_EXPIRES_IN,
     },

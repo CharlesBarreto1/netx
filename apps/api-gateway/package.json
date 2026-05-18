@@ -24,6 +24,7 @@
     "@netx/logger": "*",
     "@netx/shared": "*",
     "axios": "^1.8.4",
+    "express": "^5.0.0",
     "helmet": "^8.1.0",
     "http-proxy-middleware": "^3.0.5",
     "nestjs-cls": "^6.0.0",

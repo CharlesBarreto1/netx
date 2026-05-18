@@ -1,5 +1,4 @@
 import {
-  Body,
   Controller,
   Delete,
   Get,
@@ -9,18 +8,29 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { z } from 'zod';
 
 import type { AuthenticatedPrincipal } from '@netx/shared';
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
+import { ZodBody } from '../../common/zod.pipe';
 
 import { WhatsappInstancesService } from './whatsapp-instances.service';
 
-interface CreateInstanceBody {
-  name: string;
-  evolutionUrl?: string;
-  apiKey: string;
-  instanceName: string;
-}
+// Schema inline — endpoint admin-only, contrato pequeno e específico.
+const CreateInstanceBodySchema = z.object({
+  name: z.string().min(1).max(120),
+  evolutionUrl: z.string().url().max(255).optional(),
+  // Evolution API key — comprimento livre, mas algum mínimo razoável.
+  apiKey: z.string().min(8).max(255),
+  // Nome da instance na Evolution: alfanumérico simples + . _ -, sem espaços
+  // (caracteres aceitos pela Evolution + safe pra URL path).
+  instanceName: z
+    .string()
+    .min(1)
+    .max(128)
+    .regex(/^[A-Za-z0-9._\-]+$/u, 'instanceName aceita apenas letras, dígitos, ".", "_", "-"'),
+});
+type CreateInstanceBody = z.infer<typeof CreateInstanceBodySchema>;
 
 /**
  * CRUD de instâncias WhatsApp (sessões Evolution).
@@ -60,7 +70,7 @@ export class WhatsappInstancesController {
   @RequirePermissions('chat.admin')
   create(
     @CurrentUser() user: AuthenticatedPrincipal,
-    @Body() body: CreateInstanceBody,
+    @ZodBody(CreateInstanceBodySchema) body: CreateInstanceBody,
   ) {
     return this.instances.create(user.tenantId, user.sub, body);
   }

@@ -74,8 +74,10 @@ export class PortalAuthService {
   ) {
     const cfg = loadConfig();
     this.argon2 = cfg.argon2;
-    // Reusamos o accessSecret + audience própria pra isolar do JWT operador.
-    this.jwtSecret = cfg.jwt.accessSecret;
+    // Secret dedicado pro portal — separado do JWT_ACCESS_SECRET de operador
+    // pra que um vazamento de portal-jwt não permita forjar token de operador
+    // (defesa contra audience-confusion bugs).
+    this.jwtSecret = cfg.jwt.portalSecret;
   }
 
   // ───────────────────────────────────────────────────────────────────────────

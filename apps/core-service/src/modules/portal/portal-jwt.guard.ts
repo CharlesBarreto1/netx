@@ -31,7 +31,8 @@ export class PortalJwtGuard implements CanActivate {
   private readonly secret: string;
 
   constructor() {
-    this.secret = loadConfig().jwt.accessSecret;
+    // Secret dedicado pro portal — ver justificativa em portal-auth.service.ts.
+    this.secret = loadConfig().jwt.portalSecret;
   }
 
   canActivate(ctx: ExecutionContext): boolean {

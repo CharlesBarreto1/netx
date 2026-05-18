@@ -81,8 +81,12 @@ export const CreateNetworkEquipmentRequestSchema = z.object({
   hostname: optionalNullableString(255),
   ipAddress: ipOrHostnameSchema,
 
-  // RADIUS — obrigatório se type=BNG (validado no backend)
-  radiusSecret: z.string().min(4).max(64).nullish(),
+  // RADIUS — obrigatório se type=BNG (validado no backend).
+  // min(16): RADIUS shared secret é trocado em todos pacotes Access-Request /
+  // Accounting-Request via MD5(secret || request_authenticator). Um secret
+  // curto (4-8 chars) é brute-forçável offline em segundos a partir de UM
+  // único Access-Request capturado. NIST/RFC 6614 recomenda ≥16 chars.
+  radiusSecret: z.string().min(16).max(64).nullish(),
   radiusNasType: z.string().max(30).nullish(),
 
   // SNMP

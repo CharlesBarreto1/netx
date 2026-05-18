@@ -6,7 +6,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
-import { ThrottlerGuard } from '@nestjs/throttler';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import type { Request } from 'express';
 
 import {
@@ -87,6 +87,11 @@ export class AuthController {
   @ApiBearerAuth()
   @Post('mfa/verify')
   @HttpCode(200)
+  // Throttle agressivo: TOTP é 6 dígitos (10⁶ combinações). Sob o limite
+  // global de 120 req/min, atacante com password roubada teria ~10⁴ minutos
+  // pra cobrir o espaço — viável em semanas. 5/min torna inviável (>3 anos
+  // pra esperança matemática). limit:5 cobre digitação errada legítima.
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
   verifyMfa(
     @CurrentUser() user: AuthenticatedPrincipal,
     @ZodBody(VerifyMfaRequestSchema) body: VerifyMfaRequest,

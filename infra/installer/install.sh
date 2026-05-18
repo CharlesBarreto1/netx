@@ -86,6 +86,7 @@ export NETX_PORT_CORE_SERVICE="${NETX_PORT_CORE_SERVICE:-3101}"
 export NETX_PORT_WEB="${NETX_PORT_WEB:-3200}"
 
 export NETX_DOMAIN="${NETX_DOMAIN:-}"
+export NETX_LETSENCRYPT_EMAIL="${NETX_LETSENCRYPT_EMAIL:-${NETX_ADMIN_EMAIL:-}}"
 export NETX_ADMIN_EMAIL="${NETX_ADMIN_EMAIL:-}"
 export NETX_ADMIN_PASSWORD="${NETX_ADMIN_PASSWORD:-}"
 export NETX_TENANT_NAME="${NETX_TENANT_NAME:-NetX Default}"
@@ -96,6 +97,21 @@ export NETX_TENANT_CURRENCY="${NETX_TENANT_CURRENCY:-PYG}"
 export NETX_SKIP_WIZARD="${NETX_SKIP_WIZARD:-0}"
 export NETX_FORCE="${NETX_FORCE:-0}"
 export DEBIAN_FRONTEND=noninteractive
+
+# -----------------------------------------------------------------------------
+# Re-runs: carrega valores persistidos de execução anterior (email, password,
+# domínio) do .secrets — só se as vars de env não estiverem setadas. Permite
+# que `bash install.sh` rode novamente sem perder admin password gerada.
+# -----------------------------------------------------------------------------
+if [[ -f "${NETX_ETC}/.secrets" ]]; then
+  for key in NETX_ADMIN_EMAIL NETX_ADMIN_PASSWORD NETX_DOMAIN NETX_LETSENCRYPT_EMAIL; do
+    eval "current=\${$key:-}"
+    if [[ -z "${current}" ]]; then
+      saved=$(grep "^${key}=" "${NETX_ETC}/.secrets" 2>/dev/null | tail -1 | cut -d= -f2-)
+      [[ -n "${saved}" ]] && export "${key}=${saved}"
+    fi
+  done
+fi
 
 # -----------------------------------------------------------------------------
 # Boot mínimo: mkdir log antes de qualquer source

@@ -15,6 +15,16 @@ import type { LoginResponse } from '@netx/shared';
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL ?? '/api').replace(/\/$/, '');
 
+/**
+ * Timeout default por request. Sem isso, um gateway lento (ou pendurado)
+ * mantém a UI travada indefinidamente — spinner infinito, user reclamando
+ * de "tela congelada". 30s é generoso pra request mais lento que deveríamos
+ * ter (export de relatório, etc); mutations curtas falham bem antes.
+ *
+ * Override individual via api.get(path, { timeoutMs: 60_000 }).
+ */
+const DEFAULT_TIMEOUT_MS = 30_000;
+
 export interface LoginInput {
   email: string;
   password: string;
@@ -154,14 +164,25 @@ async function request<T>(
   method: string,
   path: string,
   body?: unknown,
-  init: RequestInit = {},
+  init: RequestInit & { timeoutMs?: number } = {},
 ): Promise<T> {
   // Endpoints de refresh/login NÃO devem entrar no ciclo de auto-refresh —
   // se /auth/refresh devolve 401, a única coisa a fazer é deslogar.
   const isRefreshCall = path.startsWith('/v1/auth/refresh') || path.startsWith('/v1/auth/login');
 
-  const doFetch = () =>
-    fetch(`${API_BASE}${path}`, {
+  const timeoutMs = init.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+
+  // AbortController + setTimeout: gateway lento não trava UI indefinidamente.
+  // Se o caller passou seu próprio `signal`, encadeamos — qualquer um aborta.
+  const doFetch = () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const callerSignal = init.signal;
+    if (callerSignal) {
+      if (callerSignal.aborted) controller.abort();
+      else callerSignal.addEventListener('abort', () => controller.abort(), { once: true });
+    }
+    return fetch(`${API_BASE}${path}`, {
       method,
       headers: {
         'content-type': 'application/json',
@@ -170,16 +191,40 @@ async function request<T>(
       },
       body: body == null ? undefined : JSON.stringify(body),
       ...init,
-    });
+      signal: controller.signal,
+    }).finally(() => clearTimeout(timer));
+  };
 
-  let res = await doFetch();
+  let res: Response;
+  try {
+    res = await doFetch();
+  } catch (err) {
+    // AbortError vira ApiError pra fluxo consistente no caller.
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new ApiError(0, {
+        title: 'Request timeout',
+        detail: `Request demorou mais de ${timeoutMs}ms — backend lento ou indisponível.`,
+      });
+    }
+    throw err;
+  }
 
   if (res.status === 401 && !isRefreshCall) {
     const newToken = await tryRefresh();
     if (newToken) {
       // Reexecuta o request original com o novo token. authHeaders() lê do
       // localStorage atualizado automaticamente.
-      res = await doFetch();
+      try {
+        res = await doFetch();
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          throw new ApiError(0, {
+            title: 'Request timeout',
+            detail: `Request demorou mais de ${timeoutMs}ms — backend lento ou indisponível.`,
+          });
+        }
+        throw err;
+      }
     }
   }
 

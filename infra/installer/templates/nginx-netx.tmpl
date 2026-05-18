@@ -63,4 +63,18 @@ server {
     add_header X-Content-Type-Options "nosniff" always;
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    # HSTS: força HTTPS por 1 ano em qualquer navegador que receber a
+    # resposta sobre HTTPS. Inócuo sobre HTTP (browsers ignoram). Quando
+    # certbot rodar e adicionar o bloco :443, este header é preservado.
+    # `includeSubDomains` é seguro pra ISP single-tenant; se algum dia
+    # tenants ficarem em subdomínios em HTTP, remover essa flag.
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    # CSP minimalista — só permite recursos same-origin + inline pro Next
+    # (que injeta scripts inline via __NEXT_DATA__ e estilos via styled-jsx).
+    # `data:` em img/font é pra ícones SVG inline + favicons embutidos.
+    # `connect-src self` permite Server Actions e fetch pro /api do mesmo host.
+    # Endurecer no futuro removendo `unsafe-inline` exige refactor de styled-jsx.
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'" always;
+    # Permissions-Policy: opt-out explícito de APIs que NetX não usa
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()" always;
 }

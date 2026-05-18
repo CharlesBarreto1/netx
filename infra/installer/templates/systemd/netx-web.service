@@ -3,6 +3,9 @@ Description=NetX Web Frontend (Next.js)
 Documentation=https://github.com/CharlesBarreto1/netx
 After=network-online.target netx-api-gateway.service
 Wants=network-online.target
+# Rate-limit fica em [Unit] (systemd 230+). Em [Service] dispara warning.
+StartLimitBurst=5
+StartLimitIntervalSec=60
 
 [Service]
 Type=simple
@@ -12,12 +15,21 @@ WorkingDirectory=/opt/netx/apps/web
 EnvironmentFile=/etc/netx/.env
 Environment=PORT=3200
 Environment=HOSTNAME=127.0.0.1
-ExecStart=/usr/bin/npm run start
+# HOME precisa apontar pra um diretório escrevível: o Next.js + a CLI do
+# `next` tentam criar cache de telemetria e logs em `$HOME/.config` e
+# `$HOME/.next`. Com ProtectHome=true, `/home/netx` é mascarado pelo systemd
+# — então redirecionamos HOME pro NETX_VAR (que está em ReadWritePaths).
+Environment=HOME=/var/lib/netx
+# Chama o binário do Next DIRETAMENTE (sem wrapper npm). Razões:
+#   1) `npm run start` cria `~/.npm/_logs/` ao primeiro warning → EACCES com
+#      ProtectHome.
+#   2) npm workspaces içam `next` pro root `/opt/netx/node_modules/.bin/next`;
+#      `npm run` no WorkingDirectory=/opt/netx/apps/web não acha local e
+#      cai num PATH lookup frágil. Caminho absoluto remove ambiguidade.
+ExecStart=/usr/bin/node /opt/netx/node_modules/next/dist/bin/next start -p 3200
 
 Restart=on-failure
 RestartSec=5s
-StartLimitBurst=5
-StartLimitIntervalSec=60
 
 StandardOutput=journal
 StandardError=journal
@@ -27,7 +39,10 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/netx /var/log/netx /opt/netx/apps/web/.next /opt/netx/node_modules
+# /var/lib/netx é writable (HOME redirect acima); /opt/netx/apps/web/.next pro
+# cache do Next em runtime. Outras paths (incluindo node_modules e o resto de
+# /opt/netx) ficam read-only via ProtectSystem=strict.
+ReadWritePaths=/var/lib/netx /var/log/netx /opt/netx/apps/web/.next
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true

@@ -12,6 +12,7 @@
  */
 import 'reflect-metadata';
 
+import express from 'express';
 import helmet from 'helmet';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -34,6 +35,14 @@ async function bootstrap() {
     'trust proxy',
     1,
   );
+
+  // Body-size limit: sem isso, o gateway aceita uploads gigantes em RAM antes
+  // do core ter chance de rejeitar — vetor de DoS trivial. 5MB cobre payloads
+  // típicos (lista grande de customers, upload de logo). Endpoints específicos
+  // que precisam de mais (ex.: import CSV gigante) devem fazer upload streaming
+  // direto pro core via /uploads, fora do JSON parser.
+  app.use(express.json({ limit: '5mb' }));
+  app.use(express.urlencoded({ limit: '5mb', extended: true }));
   // Helmet — em produção habilita HSTS por 1 ano e CSP estrita.
   // Em dev desliga CSP pra Swagger funcionar sem CDNs allowlistadas.
   app.use(

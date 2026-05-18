@@ -11,11 +11,16 @@ netx_app_setup() {
   netx_app_install
   netx_app_db_generate   # ANTES do build: core-service importa types de @prisma/client
   netx_app_build
-  # Schema RADIUS DEVE existir antes das migrations Prisma — algumas migrations
-  # (ex.: 20260509120000_radacct_nullability) referenciam tabelas em `radius.*`.
-  # Fresh install sem essa ordem falha com `não existe o esquema "radius"`.
-  postgres_apply_radius_schema
+  # Schema RADIUS agora está dentro de uma migration Prisma própria
+  # (`20260509115000_radius_schema`), que roda ANTES do radacct_nullability.
+  # `prisma migrate deploy` cuida da ordem. Sem essa unificação, um
+  # `prisma migrate reset` em dev destruía radius.* silenciosamente.
   netx_app_db_migrate
+  # Fix de ownership do schema radius é defesa em profundidade: as migrations
+  # Prisma rodam como user `netx` (dono), então ownership já fica correto.
+  # Mas se um install legado tinha radius criado por outro role (ex.: pacote
+  # APT freeradius-postgresql), esse helper conserta retroativamente.
+  postgres_fix_radius_ownership
   netx_app_seed_baseline
   netx_app_seed_admin
 }
@@ -73,11 +78,18 @@ netx_app_render_env() {
   NETX_JWT_ACCESS_SECRET=$(secret_get_or_create NETX_JWT_ACCESS_SECRET 64)
   export NETX_JWT_REFRESH_SECRET
   NETX_JWT_REFRESH_SECRET=$(secret_get_or_create NETX_JWT_REFRESH_SECRET 64)
+  # Secret separado pro Portal do Cliente (defesa em profundidade: audience-
+  # confusion attacks). Não compartilha com JWT_ACCESS_SECRET de operador.
+  export NETX_PORTAL_JWT_SECRET
+  NETX_PORTAL_JWT_SECRET=$(secret_get_or_create NETX_PORTAL_JWT_SECRET 64)
 
   # KMS master key — AES-256-GCM pra cifrar credenciais API/SSH de equipamentos.
   # 32 bytes = 64 hex chars. NÃO regerar depois (passwords cifrados ficam ilegíveis).
+  # IMPORTANTE: usa `secret_get_or_create_hex` em vez de `secret_get_or_create` —
+  # o Zod schema (`packages/config/src/index.ts`) exige hex64, e
+  # `gen_secret` (base62 alfanumérico) FALHA na validação no boot do core-service.
   export NETX_KMS_MASTER_KEY
-  NETX_KMS_MASTER_KEY=$(secret_get_or_create NETX_KMS_MASTER_KEY 64)
+  NETX_KMS_MASTER_KEY=$(secret_get_or_create_hex NETX_KMS_MASTER_KEY 64)
 
   # Recupera senhas de Postgres/RabbitMQ (já criadas em postgres.sh / rabbitmq.sh)
   export NETX_DB_PASSWORD
@@ -120,7 +132,7 @@ netx_app_render_env() {
   log_info "Renderizando ${env}"
   render_template "${tmpl}" "${env}" \
     NETX_DATABASE_URL NETX_REDIS_URL NETX_RABBITMQ_URL \
-    NETX_JWT_ACCESS_SECRET NETX_JWT_REFRESH_SECRET NETX_KMS_MASTER_KEY \
+    NETX_JWT_ACCESS_SECRET NETX_JWT_REFRESH_SECRET NETX_PORTAL_JWT_SECRET NETX_KMS_MASTER_KEY \
     NETX_PORT_API_GATEWAY NETX_PORT_CORE_SERVICE NETX_PORT_WEB \
     NETX_TENANT_SLUG NETX_CORS_ORIGINS \
     EVOLUTION_API_KEY
@@ -155,21 +167,12 @@ netx_app_install() {
   #
   # `npm_config_yes=true`: defesa contra `npx` prompts interativos
   # (`npx only-allow npm` no preinstall).
-  if [[ -f "${NETX_HOME}/package-lock.json" ]]; then
-    log_dim "Limpando node_modules pra garantir reprodutibilidade"
-    as_netx "cd ${NETX_HOME} && rm -rf node_modules apps/*/node_modules packages/*/node_modules"
-    # `npm ci` exige sincronia perfeita package.json ↔ lockfile. Se uma dep
-    # foi adicionada sem regerar lock (ex.: PR esquece de commit lock), o
-    # `ci` aborta com EUSAGE. Fallback automático pra `npm install` que
-    # regenera o lock — mais lento mas evita travar entrega em produção.
-    if ! as_netx "cd ${NETX_HOME} && NODE_ENV=development npm_config_yes=true npm ci --include=dev --no-audit --no-fund"; then
-      log_warn "npm ci falhou (lockfile fora de sync?) — tentando npm install"
-      as_netx "cd ${NETX_HOME} && NODE_ENV=development npm_config_yes=true npm install --include=dev --no-audit --no-fund"
-    fi
-  else
-    log_warn "package-lock.json ausente — usando 'npm install' (mais lento, gera lockfile)"
-    as_netx "cd ${NETX_HOME} && NODE_ENV=development npm_config_yes=true npm install --include=dev --legacy-peer-deps --no-audit --no-fund"
-  fi
+  # `npm install` em vez de `npm ci` — sempre regenera lock se necessário.
+  # Trade-off: 30s mais lento, mas elimina classe inteira de erros EUSAGE
+  # quando alguém esquece de commitar package-lock atualizado.
+  log_dim "Limpando node_modules pra garantir reprodutibilidade"
+  as_netx "cd ${NETX_HOME} && rm -rf node_modules apps/*/node_modules packages/*/node_modules"
+  as_netx "cd ${NETX_HOME} && NODE_ENV=development npm_config_yes=true npm install --include=dev --no-audit --no-fund"
 
   # Sanity check — binários críticos pra build
   local missing=()
@@ -284,18 +287,18 @@ netx_app_seed_baseline() {
 
 # Cria o usuário admin inicial via SQL (independente do seed pra garantir
 # senha definida pelo wizard). Usa tabelas Prisma.
+#
+# IDEMPOTÊNCIA: o script seed-admin.ts checa duplicata e faz upsert por email
+# (cria se não existe, atualiza password se já existe). Por isso podemos
+# rodar sempre, sem marker — re-run com NETX_ADMIN_PASSWORD novo simplesmente
+# atualiza a senha. Útil pra "esqueci a senha" via re-run do installer.
 netx_app_seed_admin() {
   if [[ -z "${NETX_ADMIN_EMAIL}" || -z "${NETX_ADMIN_PASSWORD}" ]]; then
     log_warn "Admin email/senha vazios — pulando criação de admin"
     return
   fi
 
-  if [[ -f "${NETX_VAR}/.admin-bootstrapped" ]]; then
-    log_dim "Admin já bootstrapado anteriormente"
-    return
-  fi
-
-  log_info "Criando admin ${NETX_ADMIN_EMAIL} no tenant ${NETX_TENANT_NAME}"
+  log_info "Criando/atualizando admin ${NETX_ADMIN_EMAIL} no tenant ${NETX_TENANT_NAME}"
 
   # Usa um script Node ad-hoc dentro do core-service pra reusar argon2 + Prisma.
   # Mais robusto que SQL puro porque respeita os mesmos params de hash do app.
@@ -312,7 +315,5 @@ netx_app_seed_admin() {
     NETX_TENANT_CURRENCY='${NETX_TENANT_CURRENCY}' \
     npx dotenv -e ../../.env -- npx ts-node ${INSTALLER_DIR}/scripts/seed-admin.ts"
 
-  touch "${NETX_VAR}/.admin-bootstrapped"
-  chown "${NETX_USER}:${NETX_USER}" "${NETX_VAR}/.admin-bootstrapped"
-  log_ok "Admin criado"
+  log_ok "Admin criado/atualizado"
 }

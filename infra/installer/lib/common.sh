@@ -82,6 +82,66 @@ gen_secret() {
   echo
 }
 
+# Gera HEX (0-9a-f) com N chars exatos. Usado pra KMS_MASTER_KEY que tem regex
+# `^[0-9a-f]{64}$` no Zod schema. `gen_secret` (base62) NÃO atende — alfanumérico
+# inclui [a-z][A-Z][0-9] e quebra a validação.
+#
+# `openssl rand -hex N` gera 2N chars hex. Pra obter 64 chars hex (32 bytes),
+# precisamos passar `len/2`.
+gen_hex_secret() {
+  local len=${1:-64}
+  local bytes=$((len / 2))
+  openssl rand -hex "${bytes}"
+}
+
+# Mesma semântica do `secret_get_or_create`, mas usa hex generator. Reuso da
+# lógica de persistência via leitura/escrita em ${NETX_ETC}/.secrets.
+#
+# DEFESA contra valores legados inválidos: se o segredo existente NÃO bater
+# com `[0-9a-f]{len}`, regenera e SOBRESCREVE o valor no .secrets. Isso protege
+# contra installs que rodaram antes do fix de `secret_get_or_create_hex` (que
+# usavam `gen_secret` alfanumérico — quebra Zod regex `^[0-9a-f]{64}$`).
+#
+# IMPORTANTE: regeneração só é válida quando o valor antigo nunca foi usado
+# pra cifrar nada (cenário do bug). Pra KMS_MASTER_KEY ATIVA com dados
+# cifrados, NUNCA regerar — torna senhas irrecuperáveis. Por isso a checagem
+# é "valor é hex válido" (legado-com-bug = não-hex → regenera; legado-OK
+# = hex → preserva).
+secret_get_or_create_hex() {
+  local key=$1
+  local len=${2:-64}
+  local file="${NETX_ETC}/.secrets"
+
+  mkdir -p "${NETX_ETC}"
+  touch "${file}"
+  chmod 600 "${file}"
+  chown root:root "${file}"
+
+  local existing
+  existing=$(grep -E "^${key}=" "${file}" | cut -d= -f2- || true)
+  if [[ -n "${existing}" ]]; then
+    # Valida formato. Se está OK (hex com tamanho exato), preserva.
+    if [[ "${existing}" =~ ^[0-9a-fA-F]{${len}}$ ]]; then
+      echo -n "${existing}"
+      return
+    fi
+    # Valor legado em formato inválido — regenera e substitui no arquivo.
+    log_warn "Regenerando ${key} (valor existente não é hex válido — bug de installer antigo)"
+    local newval
+    newval=$(gen_hex_secret "${len}")
+    # Substitui in-place no .secrets (sed -i é seguro porque o arquivo é
+    # root-only e nada mais escreve nele em paralelo).
+    sed -i "s|^${key}=.*|${key}=${newval}|" "${file}"
+    echo -n "${newval}"
+    return
+  fi
+
+  local value
+  value=$(gen_hex_secret "${len}")
+  printf '%s=%s\n' "${key}" "${value}" >> "${file}"
+  echo -n "${value}"
+}
+
 # Slugify — converte "Minha ISP, Ltda" → "minha-isp-ltda".
 # Bate com a `slugify()` em scripts/seed-admin.ts pra que o slug do tenant
 # criado pelo seed seja o mesmo gravado em DEFAULT_TENANT_SLUG.
@@ -193,18 +253,31 @@ wait_port() {
   return 0
 }
 
-# Imprime resumo final ao usuário
+# Imprime resumo final ao usuário.
+#
+# Divide o output em duas partes:
+#
+# 1) "Public summary" — vai pra stdout (que é tee'd pra `${NETX_INSTALL_LOG}`,
+#    chmod 640, legível pelo grupo `adm` por padrão no Debian). NÃO contém
+#    secrets — só URL, email do admin, nome do tenant.
+#
+# 2) "Sensitive summary" — vai pra `/dev/tty` (NÃO é capturado pelo tee, porque
+#    o exec redirect inicial só interceptou file descriptor 1/2 do processo).
+#    Contém a senha do admin em texto puro. Se não houver tty (instalação
+#    headless via curl|bash sem terminal interativo), persiste num arquivo
+#    `${NETX_ETC}/install-credentials.txt` chmod 600 root:root e instrui o
+#    operador a lê-lo.
 print_summary() {
   local ip
   ip=$(detect_public_ip)
   local url="${NETX_DOMAIN:-${ip}}"
+
   cat <<EOF
 
 ${C_GREEN}NetX está rodando.${C_RESET}
 
   ${C_CYAN}URL:${C_RESET}            http://${url}/
   ${C_CYAN}Admin:${C_RESET}          ${NETX_ADMIN_EMAIL}
-  ${C_CYAN}Senha admin:${C_RESET}    ${NETX_ADMIN_PASSWORD}
   ${C_CYAN}Tenant:${C_RESET}         ${NETX_TENANT_NAME} (${NETX_TENANT_COUNTRY})
 
   ${C_CYAN}Logs install:${C_RESET}   ${NETX_INSTALL_LOG}
@@ -214,7 +287,32 @@ ${C_GREEN}NetX está rodando.${C_RESET}
 
 Serviços systemd:
   systemctl status netx-core-service netx-api-gateway netx-web freeradius
-
-${C_DIM}Anote a senha do admin acima — ela não é salva em texto puro além de .secrets.${C_RESET}
 EOF
+
+  # Senha admin: nunca escrever no log. Imprime no terminal real OU persiste
+  # em arquivo root-only, conforme disponibilidade do TTY.
+  local creds_file="${NETX_ETC}/install-credentials.txt"
+  local creds_msg
+  printf -v creds_msg '%s\nAdmin email: %s\nAdmin senha: %s\nTenant:      %s\nURL:         http://%s/\n' \
+    "Credenciais do primeiro login (gerado pelo installer):" \
+    "${NETX_ADMIN_EMAIL}" \
+    "${NETX_ADMIN_PASSWORD}" \
+    "${NETX_TENANT_NAME}" \
+    "${url}"
+
+  if [[ -w /dev/tty ]]; then
+    printf '\n%s%s%s\n' "${C_YELLOW}" "${creds_msg}" "${C_RESET}" > /dev/tty
+    echo "${C_DIM}(senha não foi gravada em ${NETX_INSTALL_LOG} — anote agora ou re-leia em ${creds_file})${C_RESET}" > /dev/tty
+  fi
+
+  # Persistir num arquivo root-only é defesa-em-profundidade: se o operador
+  # rodou via `curl|bash` num shell sem TTY anexado, ele ainda consegue
+  # recuperar a senha sem precisar de db reset.
+  umask 077
+  printf '%s' "${creds_msg}" > "${creds_file}"
+  chmod 600 "${creds_file}"
+  chown root:root "${creds_file}"
+
+  echo
+  echo "${C_DIM}Credenciais de admin salvas em ${creds_file} (root only, chmod 600).${C_RESET}"
 }

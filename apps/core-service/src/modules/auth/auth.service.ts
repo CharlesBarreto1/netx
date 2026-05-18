@@ -210,16 +210,30 @@ export class AuthService {
   // REFRESH
   // ---------------------------------------------------------------------------
   async refresh(refreshToken: string): Promise<{ accessToken: string; refreshToken: string }> {
-    let payload;
+    let payload: { sub: string; tid: string; sid: string; jti: string };
     try {
-      payload = this.jwt.verifyRefresh(refreshToken);
+      payload = this.jwt.verifyRefresh(refreshToken) as typeof payload;
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
 
-    const hash = createHash('sha256').update(refreshToken).digest('hex');
+    // Detecção de reuso de refresh token (rotation hardening):
+    //
+    // Lookup pelo `sid` do payload (não pelo hash). Em rotação normal:
+    //   - cliente apresenta o último refresh token → hash bate → rotate.
+    //
+    // Em ataque de reuso (token vazado E o cliente legítimo já fez refresh):
+    //   - atacante apresenta token antigo válido (assinatura OK) → encontra
+    //     session pelo `sid`, MAS o `refreshTokenHash` armazenado não bate
+    //     (foi rotacionado quando o cliente legítimo refreshou).
+    //   - Detectamos isso e revogamos a session INTEIRA — invalida tanto o
+    //     atacante quanto o cliente legítimo (force-relogin é o preço de
+    //     detectar o vazamento).
+    //
+    // Se `session.revokedAt` já está setado (logout ou reuso anterior), nem
+    // tenta — só nega.
     const session = await this.prisma.session.findUnique({
-      where: { refreshTokenHash: hash },
+      where: { id: payload.sid },
       include: {
         user: {
           include: {
@@ -236,6 +250,29 @@ export class AuthService {
 
     if (!session || session.revokedAt || session.expiresAt < new Date()) {
       throw new UnauthorizedException('Session expired or revoked');
+    }
+
+    const presentedHash = createHash('sha256').update(refreshToken).digest('hex');
+    if (presentedHash !== session.refreshTokenHash) {
+      // REUSE DETECTED — revoga session inteira e emite audit event.
+      await this.prisma.session.update({
+        where: { id: session.id },
+        data: { revokedAt: new Date() },
+      });
+      // Audit é best-effort: se falha, ainda retornamos 401.
+      try {
+        await this.audit.log({
+          tenantId: session.tenantId,
+          userId: session.userId,
+          action: 'AUTH_REFRESH_TOKEN_REUSE_DETECTED',
+          targetType: 'Session',
+          targetId: session.id,
+          metadata: { sid: session.id },
+        });
+      } catch {
+        /* swallow */
+      }
+      throw new UnauthorizedException('Session compromised — please re-authenticate');
     }
 
     const roles = session.user.userRoles.map((ur) => ur.role.name);

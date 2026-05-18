@@ -1,3 +1,5 @@
+import { timingSafeEqual } from 'crypto';
+
 import {
   Body,
   Controller,
@@ -55,18 +57,27 @@ export class WhatsappWebhookController {
     const event: string = body?.event ?? '';
     const instanceName: string = body?.instance ?? '';
 
-    if (!instanceName) {
-      this.logger.warn('Webhook sem instance — ignorando');
+    // Pre-validação de SHAPE antes de qualquer DB hit: bloqueia probe externo
+    // de instance names + DoS amp via lookups massivos. Header apikey é
+    // obrigatório; instance precisa ter formato razoável.
+    if (!apiKey || apiKey.length < 16 || apiKey.length > 256) {
+      this.logger.warn('Webhook sem apikey válida — bloqueando antes de lookup');
+      throw new ForbiddenException('Invalid webhook secret');
+    }
+    if (!instanceName || !/^[A-Za-z0-9._\-]{1,128}$/.test(instanceName)) {
+      this.logger.warn(`Webhook com instance inválida (formato): ${instanceName}`);
       return { ok: false, reason: 'no instance' };
     }
 
     const inst = await this.instances.findByInstanceName(instanceName);
     if (!inst) {
       this.logger.warn(`Webhook pra instância desconhecida: ${instanceName}`);
-      return { ok: false, reason: 'unknown instance' };
+      // Retorna 403 (não 404) pra não vazar quais instances existem — opaque
+      // resposta pra probes externos.
+      throw new ForbiddenException('Invalid webhook secret');
     }
 
-    if (!apiKey || apiKey !== inst.webhookSecret) {
+    if (!safeStringCompare(apiKey, inst.webhookSecret)) {
       this.logger.warn(`Webhook com secret inválido em ${instanceName}`);
       throw new ForbiddenException('Invalid webhook secret');
     }
@@ -152,4 +163,15 @@ export class WhatsappWebhookController {
       });
     }
   }
+}
+
+/**
+ * Comparação de string em tempo constante. Sem isso, um atacante pode inferir
+ * o webhookSecret byte a byte medindo latência da resposta (mesmo que pequena).
+ * `crypto.timingSafeEqual` exige buffers de mesmo tamanho — comparamos
+ * tamanhos primeiro (early exit é seguro: tamanho não vaza nada útil).
+ */
+function safeStringCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
 }

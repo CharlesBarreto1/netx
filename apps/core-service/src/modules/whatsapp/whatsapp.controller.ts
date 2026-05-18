@@ -1,6 +1,4 @@
 import {
-  BadRequestException,
-  Body,
   Controller,
   Get,
   Param,
@@ -16,21 +14,29 @@ import type { Response } from 'express';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { Observable, filter, map } from 'rxjs';
+import { z } from 'zod';
 
 import type { AuthenticatedPrincipal } from '@netx/shared';
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
+import { ZodBody } from '../../common/zod.pipe';
 
 import { WhatsappConversationsService, type InboxFilter } from './whatsapp-conversations.service';
 import { WhatsappEventsBus } from './whatsapp-events.bus';
 
 const MEDIA_ROOT = process.env.WHATSAPP_MEDIA_ROOT ?? '/var/lib/netx/whatsapp/media';
 
-interface AssignBody {
-  userId: string | null;
-}
-interface SendBody {
-  text: string;
-}
+// Schemas inline pros endpoints. Antes eram TS interfaces (não-validadas
+// pelo ValidationPipe). Agora passam por ZodBody → garante shape + tamanhos.
+const AssignBodySchema = z.object({
+  userId: z.string().uuid().nullable(),
+});
+type AssignBody = z.infer<typeof AssignBodySchema>;
+
+const SendBodySchema = z.object({
+  // WhatsApp text limit: 4096 chars (oficial). Min 1 (não-vazio após trim).
+  text: z.string().trim().min(1).max(4096),
+});
+type SendBody = z.infer<typeof SendBodySchema>;
 
 /**
  * Endpoints HTTP do módulo WhatsApp/Atendimento.
@@ -84,7 +90,7 @@ export class WhatsappController {
   assign(
     @CurrentUser() user: AuthenticatedPrincipal,
     @Param('id', new ParseUUIDPipe()) id: string,
-    @Body() body: AssignBody,
+    @ZodBody(AssignBodySchema) body: AssignBody,
   ) {
     return this.conversations.assign(user.tenantId, user.sub, id, body.userId);
   }
@@ -103,12 +109,10 @@ export class WhatsappController {
   send(
     @CurrentUser() user: AuthenticatedPrincipal,
     @Param('id', new ParseUUIDPipe()) id: string,
-    @Body() body: SendBody,
+    @ZodBody(SendBodySchema) body: SendBody,
   ) {
-    if (!body?.text || typeof body.text !== 'string' || body.text.trim().length === 0) {
-      throw new BadRequestException('texto obrigatório');
-    }
-    return this.conversations.sendText(user.tenantId, user.sub, id, body.text.trim());
+    // Zod já validou min(1) após trim — não precisa re-checar.
+    return this.conversations.sendText(user.tenantId, user.sub, id, body.text);
   }
 
   // ----- realtime SSE -----

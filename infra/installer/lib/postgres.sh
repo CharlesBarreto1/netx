@@ -9,8 +9,10 @@ postgres_setup() {
   postgres_create_db
   postgres_search_path
   postgres_enable_extensions
-  # Schema RADIUS é aplicado depois do build do app (pra Prisma migrate primeiro).
-  # Veja netx_app.sh — postgres_apply_radius_schema é chamado de lá.
+  # Schema RADIUS agora é uma migration Prisma (`20260509115000_radius_schema`)
+  # que `prisma migrate deploy` aplica em netx_app. A função legada
+  # `postgres_apply_radius_schema` foi mantida abaixo só pro fluxo `db:adopt`
+  # em servidores que ainda não têm a baseline.
 }
 
 postgres_ensure_running() {
@@ -84,7 +86,13 @@ postgres_enable_extensions() {
   psql_super -d "${NETX_DB_NAME}" -c "CREATE EXTENSION IF NOT EXISTS citext"
 }
 
-# Aplica o schema RADIUS (chamado por netx_app_setup depois do prisma migrate)
+# LEGACY: aplica radius-schema.sql diretamente via psql. Substituída pela
+# migration Prisma `20260509115000_radius_schema` que `prisma migrate deploy`
+# aplica via `netx_app_db_migrate`. Mantida pra dois casos:
+#   1) `db:adopt` em servidores que adotaram baseline sem rodar a migration.
+#   2) Recovery manual caso alguém precise re-aplicar o schema sem rodar
+#      `prisma migrate deploy` (cenário raro).
+# Não invocar pra novos installs — quebra invariante de migration order.
 postgres_apply_radius_schema() {
   local schema="${NETX_HOME}/apps/core-service/prisma/radius-schema.sql"
   if [[ ! -f "${schema}" ]]; then

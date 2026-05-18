@@ -27,10 +27,18 @@ wizard_run() {
   # Domínio
   if [[ -z "${NETX_DOMAIN}" ]]; then
     NETX_DOMAIN=$(whiptail --inputbox \
-      "Domínio onde o NetX vai responder (ex: netx.suaempresa.com).\nDeixe vazio pra usar IP." \
-      10 70 "" --title "Domínio" 3>&1 1>&2 2>&3) || NETX_DOMAIN=""
+      "Domínio onde o NetX vai responder (ex: netx.suaempresa.com).\nDeixe vazio pra usar IP.\nO instalador configura HTTPS via Let's Encrypt automaticamente." \
+      11 70 "" --title "Domínio" 3>&1 1>&2 2>&3) || NETX_DOMAIN=""
   fi
   export NETX_DOMAIN
+
+  # Email pra Let's Encrypt — só pergunta se domínio foi setado
+  if [[ -n "${NETX_DOMAIN}" && -z "${NETX_LETSENCRYPT_EMAIL}" ]]; then
+    NETX_LETSENCRYPT_EMAIL=$(whiptail --inputbox \
+      "E-mail pra notificações do certificado SSL (Let's Encrypt):\n(Use o mesmo do admin se preferir)" \
+      10 70 "${NETX_ADMIN_EMAIL:-admin@${NETX_DOMAIN}}" --title "Let's Encrypt" 3>&1 1>&2 2>&3) || NETX_LETSENCRYPT_EMAIL=""
+  fi
+  export NETX_LETSENCRYPT_EMAIL
 
   # Admin email
   if [[ -z "${NETX_ADMIN_EMAIL}" ]]; then
@@ -102,15 +110,47 @@ Empresa:    ${NETX_TENANT_NAME} (${NETX_TENANT_COUNTRY}/${NETX_TENANT_LOCALE}/${
 
 Confirma e inicia instalação?" 14 70 --title "Confirmar"
 
+  # Persiste config em .secrets pra re-runs idempotentes
+  mkdir -p "${NETX_ETC}"
+  touch "${NETX_ETC}/.secrets"
+  chmod 600 "${NETX_ETC}/.secrets"
+  sed -i '/^NETX_ADMIN_EMAIL=/d;/^NETX_ADMIN_PASSWORD=/d;/^NETX_DOMAIN=/d;/^NETX_LETSENCRYPT_EMAIL=/d' "${NETX_ETC}/.secrets" 2>/dev/null || true
+  printf 'NETX_ADMIN_EMAIL=%s\nNETX_ADMIN_PASSWORD=%s\nNETX_DOMAIN=%s\nNETX_LETSENCRYPT_EMAIL=%s\n' \
+    "${NETX_ADMIN_EMAIL}" "${NETX_ADMIN_PASSWORD}" "${NETX_DOMAIN}" "${NETX_LETSENCRYPT_EMAIL}" >> "${NETX_ETC}/.secrets"
+
   log_ok "Wizard concluído"
 }
 
 wizard_apply_defaults() {
+  mkdir -p "${NETX_ETC}"
+  touch "${NETX_ETC}/.secrets"
+  chmod 600 "${NETX_ETC}/.secrets"
+
+  # 1) Email — usa env, ou recupera do .secrets, ou default
   if [[ -z "${NETX_ADMIN_EMAIL}" ]]; then
-    NETX_ADMIN_EMAIL="admin@netx.local"
+    NETX_ADMIN_EMAIL=$(grep '^NETX_ADMIN_EMAIL=' "${NETX_ETC}/.secrets" 2>/dev/null | cut -d= -f2-)
+    [[ -z "${NETX_ADMIN_EMAIL}" ]] && NETX_ADMIN_EMAIL="admin@netx.local"
   fi
+
+  # 2) Password — usa env, ou recupera do .secrets, ou gera novo
   if [[ -z "${NETX_ADMIN_PASSWORD}" ]]; then
-    NETX_ADMIN_PASSWORD="$(gen_secret 16)Aa1!"
+    NETX_ADMIN_PASSWORD=$(grep '^NETX_ADMIN_PASSWORD=' "${NETX_ETC}/.secrets" 2>/dev/null | cut -d= -f2-)
+    if [[ -z "${NETX_ADMIN_PASSWORD}" ]]; then
+      NETX_ADMIN_PASSWORD="$(gen_secret 16)Aa1!"
+      log_warn ""
+      log_warn "============================================================"
+      log_warn "  CREDENCIAIS DE ADMIN GERADAS AUTOMATICAMENTE (wizard skip)"
+      log_warn "  email: ${NETX_ADMIN_EMAIL}"
+      log_warn "  senha: ${NETX_ADMIN_PASSWORD}"
+      log_warn "============================================================"
+      log_warn ""
+    fi
   fi
+
+  # Persiste em .secrets pra re-runs futuros + print_summary recuperar
+  sed -i '/^NETX_ADMIN_EMAIL=/d;/^NETX_ADMIN_PASSWORD=/d' "${NETX_ETC}/.secrets" 2>/dev/null || true
+  printf 'NETX_ADMIN_EMAIL=%s\nNETX_ADMIN_PASSWORD=%s\n' \
+    "${NETX_ADMIN_EMAIL}" "${NETX_ADMIN_PASSWORD}" >> "${NETX_ETC}/.secrets"
+
   export NETX_ADMIN_EMAIL NETX_ADMIN_PASSWORD
 }
