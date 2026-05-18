@@ -14,7 +14,7 @@ import { StockLocationsService } from './stock-locations.service';
 
 import type {
   CreateAdjustmentRequest,
-  CreateTransferRequest,
+  CreateStockTransferRequest,
   ListStockMovementsQuery,
 } from '@netx/shared';
 
@@ -338,7 +338,7 @@ export class StockMovementsService {
   async transfer(
     tenantId: string,
     actorUserId: string,
-    input: CreateTransferRequest,
+    input: CreateStockTransferRequest,
   ) {
     const product = await this.prisma.product.findFirst({
       where: { id: input.productId, tenantId, deletedAt: null, isActive: true },

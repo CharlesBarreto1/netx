@@ -59,8 +59,11 @@ export const CreateAdjustmentRequestSchema = z.object({
 });
 export type CreateAdjustmentRequest = z.infer<typeof CreateAdjustmentRequestSchema>;
 
-// Transferência entre locais — gera PAR de movimentos (TRANSFER_OUT + TRANSFER_IN).
-export const CreateTransferRequestSchema = z.object({
+// Transferência de ESTOQUE entre locais — gera PAR de movimentos (TRANSFER_OUT + TRANSFER_IN).
+// Nome `CreateStockTransferRequest` (não só `CreateTransferRequest`) pra evitar
+// colisão com `@netx/shared/finance` que tem `CreateTransferRequest` pra
+// transferência ENTRE CAIXAS (cash registers) — domínio diferente.
+export const CreateStockTransferRequestSchema = z.object({
   productId: z.string().uuid(),
   fromLocationId: z.string().uuid(),
   toLocationId: z.string().uuid(),
@@ -72,7 +75,7 @@ export const CreateTransferRequestSchema = z.object({
   (data) => data.fromLocationId !== data.toLocationId,
   { message: 'fromLocationId e toLocationId devem ser diferentes', path: ['toLocationId'] },
 );
-export type CreateTransferRequest = z.infer<typeof CreateTransferRequestSchema>;
+export type CreateStockTransferRequest = z.infer<typeof CreateStockTransferRequestSchema>;
 
 export interface StockMovementResponse {
   id: string;

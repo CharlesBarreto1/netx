@@ -17,7 +17,7 @@ import {
   CreateProductRequestSchema,
   CreateStockLocationRequestSchema,
   CreateSupplierRequestSchema,
-  CreateTransferRequestSchema,
+  CreateStockTransferRequestSchema,
   ListStockMovementsQuerySchema,
   SetLocationAccessRequestSchema,
   UpdateProductRequestSchema,
@@ -29,7 +29,7 @@ import {
   type CreateProductRequest,
   type CreateStockLocationRequest,
   type CreateSupplierRequest,
-  type CreateTransferRequest,
+  type CreateStockTransferRequest,
   type ListStockMovementsQuery,
   type SetLocationAccessRequest,
   type UpdateProductRequest,
@@ -315,7 +315,7 @@ export class StockMovementsController {
   @RequirePermissions('stock.write')
   transfer(
     @CurrentUser() u: AuthenticatedPrincipal,
-    @ZodBody(CreateTransferRequestSchema) body: CreateTransferRequest,
+    @ZodBody(CreateStockTransferRequestSchema) body: CreateStockTransferRequest,
   ) {
     return this.movements.transfer(u.tenantId, u.sub, body);
   }
