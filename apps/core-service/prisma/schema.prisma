@@ -2027,6 +2027,7 @@ model StockLocation {
   serialItems  SerialItem[]
   movementsFrom StockMovement[]    @relation("MovementFromLocation")
   movementsTo   StockMovement[]    @relation("MovementToLocation")
+  purchaseItems PurchaseItem[]
 
   @@unique([tenantId, code])
   @@index([tenantId, isActive])
