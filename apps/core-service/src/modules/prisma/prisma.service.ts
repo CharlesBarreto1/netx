@@ -6,32 +6,42 @@ import { loadConfig } from '@netx/config';
 
 import { TenantClsStore } from '../../common/tenant-context';
 
-const RLS_GUARD_KEY = '_rlsTxActive';
-
 /**
- * PrismaService com isolamento RLS automático.
+ * PrismaService — wrapper de PrismaClient compatível com RLS.
  *
- * Trabalha em conjunto com a migration `20260517000000_enable_rls_tenant_isolation`,
- * que ativa Row-Level Security no Postgres. Esta classe SETA `app.tenant_id`
- * automaticamente antes de cada query usando o `tenantId` do CLS store da request.
+ * RLS infrastructure (em `migrations/20260517000000_enable_rls_tenant_isolation`):
+ *   - Postgres tem ROW LEVEL SECURITY ativo em todas tabelas multi-tenant.
+ *   - Policies usam `app_current_tenant_id()` (lê `current_setting('app.tenant_id', true)`).
+ *   - Quando a session var NÃO está setada, a policy permite (NULL bypass).
  *
- * Implementação (Prisma 6):
- *   - `$use` middleware intercepta cada query antes de executar.
- *   - Se há `tenantId` no CLS, envolve a operação numa `$transaction(interactive)`
- *     que primeiro chama `SELECT set_config('app.tenant_id', $1, true)` (forma
- *     funcional do `SET LOCAL`) e depois despacha a operação pro client da
- *     transação. Mesma conexão garantida; `SET LOCAL` afeta a query.
- *   - Guard no CLS (`_rlsTxActive`) evita recursão infinita quando a operação
- *     interna re-dispara o middleware.
- *   - Sem tenantId no CLS (boot/migrations/scripts admin): query roda direto.
- *     RLS policy permite via `app_current_tenant_id() IS NULL`.
+ * Status atual: o enforcement automático **não está ativo no client level**.
+ * Prisma 6 removeu `$use` (middleware-style API que estava deprecated desde
+ * 4.16). A alternativa `$extends` retorna um tipo diferente de client (NÃO
+ * compatível com `extends PrismaClient`), exigindo refactor de TODOS os
+ * services pra usar o cliente estendido. Optamos por NÃO fazer esse refactor
+ * agora — risco vs. benefício pra esta release. Defesa em runtime continua
+ * sendo o pattern existente: services usam `where: { tenantId }` explícito.
  *
- * Limitações conhecidas (documentar como follow-up):
- *   - `$transaction(callback)` chamado direto pelo service NÃO é envolvido —
- *     o caller fica responsável por incluir `SET LOCAL` no início. Adicionar
- *     helper `runWithTenantTx` futuramente.
- *   - `$queryRaw` / `$executeRaw` chamados direto também NÃO são envolvidos.
- *     Adicionar lint-rule pra forçar passar via wrapper.
+ * Pra ativar RLS enforcement no futuro, duas alternativas:
+ *
+ *   A) Refactor pra Prisma client extension:
+ *      - Trocar `extends PrismaClient` por wrapper que expõe `.client` extended.
+ *      - Migrar cada `this.prisma.user.findMany(...)` pra `this.prisma.client.user.findMany(...)`.
+ *      - $extends({ query: { $allOperations: async ({ args, query }) => {
+ *            await prisma.$transaction([
+ *              prisma.$executeRaw`SELECT set_config('app.tenant_id', ${tenantId}, true)`,
+ *              query(args),
+ *            ]);
+ *        }}}).
+ *
+ *   B) NestJS Interceptor que abre uma transação por request e armazena no CLS:
+ *      - Interceptor wrap todo handler em `$transaction(async tx => { SET LOCAL; ... })`.
+ *      - Services consomem o `tx` do CLS em vez do `prisma` injected.
+ *
+ * Por ora, a infrastructure SQL está em place — a defesa app-level continua
+ * a primária. `runAsSystem` segue disponível pra contextos onde queremos
+ * explicitamente bypassar (que hoje é todos eles, mas é semanticamente
+ * correto pra cron/admin scripts).
  */
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
@@ -46,80 +56,31 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
         { emit: 'event', level: 'warn' },
       ],
     });
-
-    this.installRlsMiddleware();
   }
 
   async onModuleInit(): Promise<void> {
     await this.$connect();
-    this.logger.log('Prisma connected (RLS enforcement active via $use middleware)');
+    this.logger.log('Prisma connected (RLS infra in DB; app-level enforcement via where:{tenantId})');
   }
 
   async onModuleDestroy(): Promise<void> {
     await this.$disconnect();
   }
 
-  private installRlsMiddleware(): void {
-    this.$use(async (params, next) => {
-      // Guard: se estamos dentro de uma operação já envolvida em RLS-tx, não
-      // re-envolver. Sem isso teríamos recursão infinita quando despachamos
-      // a operação pro client da transação.
-      if (this.cls.isActive() && this.cls.get(RLS_GUARD_KEY)) {
-        return next(params);
-      }
-
-      const tenantId = this.cls.isActive() ? (this.cls.get('tenantId') as string | undefined) : undefined;
-      if (!tenantId) {
-        return next(params);
-      }
-
-      // Operações $raw / $transaction: caller controla. Não envolvemos pra
-      // evitar interferência. Documentamos como follow-up.
-      const action = params.action as string;
-      if (action.startsWith('$') || action === 'executeRaw' || action === 'queryRaw' || action === 'runCommandRaw') {
-        return next(params);
-      }
-
-      // Sem model não há como despachar (caso raro, ex.: extensões custom).
-      const model = params.model;
-      if (!model) {
-        return next(params);
-      }
-
-      // Wrap: roda o SET LOCAL + a operação na mesma conexão (interactive tx).
-      return this.$transaction(async (tx) => {
-        await tx.$executeRawUnsafe(
-          `SELECT set_config('app.tenant_id', $1, true)`,
-          tenantId,
-        );
-        this.cls.set(RLS_GUARD_KEY, true);
-        try {
-          const delegate = (tx as unknown as Record<string, Record<string, (args: unknown) => Promise<unknown>>>)[
-            lowerFirst(model)
-          ];
-          if (!delegate || typeof delegate[action] !== 'function') {
-            // Fallback: ação desconhecida (futura version do Prisma?). Não
-            // bloqueia — roda sem RLS-tx. Loga warn pra detectar.
-            this.logger.warn(`RLS middleware: unknown action ${model}.${action}, falling back`);
-            return next(params);
-          }
-          return delegate[action](params.args);
-        } finally {
-          this.cls.set(RLS_GUARD_KEY, false);
-        }
-      });
-    });
-  }
-
   /**
-   * Executa um bloco como "system" (sem tenantId no CLS), bypassando RLS.
-   * Use SÓ em scripts admin, cron jobs cross-tenant ou bootstrap.
+   * Executa um bloco como "system" (sem tenantId no CLS), semanticamente
+   * indicando "esta operação é cross-tenant intencional". Útil pra scripts
+   * admin, cron jobs, bootstrap.
    *
-   * Implementação: roda dentro de um CLS context vazio. O middleware vê
-   * `tenantId === undefined` e pula o wrap.
+   * Hoje (sem $use middleware ativo) é equivalente a chamar o client direto,
+   * mas marca intenção. Quando refactor pra client-extension acontecer, este
+   * helper continuará correto.
    */
   async runAsSystem<T>(fn: (prisma: PrismaClient) => Promise<T>): Promise<T> {
-    return this.cls.runWith({} as TenantClsStore, () => fn(this));
+    if (this.cls.isActive()) {
+      return this.cls.runWith({} as TenantClsStore, () => fn(this));
+    }
+    return fn(this);
   }
 
   /**
@@ -132,10 +93,6 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   ): Promise<T> {
     return model.update({ where: { id }, data: { deletedAt: new Date() } });
   }
-}
-
-function lowerFirst(s: string): string {
-  return s.charAt(0).toLowerCase() + s.slice(1);
 }
 
 export { Prisma };
