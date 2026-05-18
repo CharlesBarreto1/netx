@@ -265,8 +265,9 @@ export class AuthService {
           tenantId: session.tenantId,
           userId: session.userId,
           action: 'AUTH_REFRESH_TOKEN_REUSE_DETECTED',
-          targetType: 'Session',
-          targetId: session.id,
+          resource: 'sessions',
+          resourceId: session.id,
+          level: 'WARNING',
           metadata: { sid: session.id },
         });
       } catch {

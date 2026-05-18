@@ -27,9 +27,12 @@ import type { Paginated } from './crm-types';
  * satisfazem `Record` — o que quebrava o build com TS strict. O cast interno
  * é seguro: iteramos apenas sobre as próprias chaves enumeráveis.
  */
-function qs<T extends Record<string, unknown>>(params: T | Record<string, never> = {}): string {
+// Aceita qualquer interface/type via `object` constraint (interfaces TS não têm
+// index signature, então `Record<string, unknown>` quebra). O cast interno é
+// safe: nunca acessamos props arbitrárias, só iteramos `Object.entries`.
+function qs<T extends object>(params: T | Record<string, never> = {}): string {
   const usp = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) {
+  for (const [k, v] of Object.entries(params as Record<string, unknown>)) {
     if (v === undefined || v === null || v === '') continue;
     if (Array.isArray(v)) {
       v.forEach((item) => usp.append(k, String(item)));
