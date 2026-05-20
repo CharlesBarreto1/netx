@@ -98,6 +98,19 @@ export const MENU_GROUPS: MenuGroup[] = [
     ],
   },
 
+  // Estoque — produtos, compras, locais com ACL, kardex (Fase 1)
+  {
+    key: 'stock',
+    labelKey: 'group.stock',
+    items: [
+      { key: 'stockProducts', href: '/stock/products', labelKey: 'stockProducts', permission: 'stock.read' },
+      { key: 'stockSuppliers', href: '/stock/suppliers', labelKey: 'stockSuppliers', permission: 'stock.read' },
+      { key: 'stockLocations', href: '/stock/locations', labelKey: 'stockLocations', permission: 'stock.read' },
+      { key: 'stockPurchases', href: '/stock/purchases', labelKey: 'stockPurchases', permission: 'stock.purchase.create' },
+      { key: 'stockMovements', href: '/stock/movements', labelKey: 'stockMovements', permission: 'stock.read' },
+    ],
+  },
+
   // Relatórios — solto, sem subgrupo
   {
     key: 'reports-group',
