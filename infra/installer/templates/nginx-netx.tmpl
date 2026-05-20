@@ -43,7 +43,37 @@ server {
         proxy_set_header Connection        "upgrade";
     }
 
-    # Frontend (Next.js)
+    # ---------------------------------------------------------------------
+    # Static assets do Next.js (chunks JS, CSS, fonts, images otimizadas)
+    # ---------------------------------------------------------------------
+    # Estes arquivos têm CONTENT HASH no nome (ex: 0wi.1kmopz0_g.js).
+    # Quando o conteúdo muda, o nome muda — então cachear "pra sempre" é
+    # SEGURO. `immutable` diz pro browser nem revalidar.
+    #
+    # Sem isso (default ~5min), depois de cada rebuild a janela curta de
+    # cache cria mismatch: HTML aponta pra hash novo, browser ainda tem
+    # hash antigo até o cache expirar → ChunkLoadError 500.
+    location ~* ^/_next/static/ {
+        proxy_pass http://netx_web;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # Cache 1 ano + immutable. Hash no nome garante invalidação automática.
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        # Repete os headers de hardening (add_header herdou-NÃO entre locations
+        # quando o location define qualquer add_header próprio).
+        add_header X-Content-Type-Options "nosniff" always;
+    }
+
+    # ---------------------------------------------------------------------
+    # Frontend (Next.js) — HTML + tudo mais
+    # ---------------------------------------------------------------------
+    # CRÍTICO: HTML NUNCA pode ser cacheado. O HTML referencia chunks com
+    # hashes — se browser servir HTML velho do cache, vai pedir chunks que
+    # não existem mais → 500. `no-cache` força revalidação a cada request
+    # (browser ainda pode usar ETag pra evitar download se nada mudou).
     location / {
         proxy_pass http://netx_web;
         proxy_http_version 1.1;
@@ -56,6 +86,12 @@ server {
 
         # Next.js HMR / static
         proxy_buffering off;
+
+        # HTML sem cache — revalida sempre. Browser ainda economiza
+        # transferência via ETag/304 se nada mudou.
+        add_header Cache-Control "no-cache, no-store, must-revalidate" always;
+        add_header Pragma "no-cache" always;
+        add_header X-Content-Type-Options "nosniff" always;
     }
 
     # Hardening

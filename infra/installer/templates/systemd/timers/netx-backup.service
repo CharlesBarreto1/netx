@@ -1,0 +1,41 @@
+[Unit]
+Description=NetX — daily Postgres backup (pg_dump + off-host copy)
+Documentation=https://github.com/CharlesBarreto1/netx
+# Só roda quando o Postgres está ativo. Se o servidor reiniciou e o pg ainda
+# não subiu, o timer trigger pode disparar antes — Requires/After garante ordem.
+Requires=postgresql.service
+After=postgresql.service
+
+[Service]
+Type=oneshot
+# Rodar como root é necessário porque o pg_dump precisa ler o .env (root:netx 640)
+# E o destino /var/backups/netx é root-owned por segurança.
+User=root
+Group=root
+ExecStart=/opt/netx/infra/installer/scripts/backup/netx-backup.sh
+
+# Limita uso de recursos pra não sufocar o app durante o dump (madrugada).
+Nice=10
+IOSchedulingClass=idle
+CPUWeight=50
+
+# Hardening — backup roda sem mais privilégio do que necessário.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+# NÃO usamos ProtectSystem=strict aqui — precisa escrever em /var/backups,
+# /var/log, e ler /etc/netx/.env (esse último não é problema, mas
+# ProtectSystem=full já cobre o resto). full = /usr/, /boot/, /efi/ read-only.
+ProtectSystem=full
+ReadWritePaths=/var/backups/netx /var/log/netx /var/lock
+
+# Limites de tempo — se o dump pendurar > 30min, mata. Backups normais < 2min.
+TimeoutStartSec=30min
+
+# Logs vão pro journal (filtrar com: journalctl -u netx-backup.service)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=netx-backup

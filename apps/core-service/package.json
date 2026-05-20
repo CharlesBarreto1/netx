@@ -13,8 +13,9 @@
     "test": "jest",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "db:generate": "dotenv -e ../../.env -- prisma generate",
-    "db:migrate": "dotenv -e ../../.env -- prisma migrate deploy",
-    "db:migrate:deploy": "dotenv -e ../../.env -- prisma migrate deploy",
+    "db:migrate": "bash scripts/db/safe-migrate.sh",
+    "db:migrate:deploy": "bash scripts/db/safe-migrate.sh",
+    "db:migrate:raw": "dotenv -e ../../.env -- prisma migrate deploy",
     "db:migrate:dev": "dotenv -e ../../.env -- prisma migrate dev",
     "db:migrate:status": "dotenv -e ../../.env -- prisma migrate status",
     "db:baseline": "bash scripts/db/generate-baseline.sh",
@@ -22,7 +23,7 @@
     "db:seed": "dotenv -e ../../.env -- ts-node prisma/seed.ts",
     "db:seed:fake": "dotenv -e ../../.env -- ts-node prisma/seed-fake.ts",
     "db:studio": "dotenv -e ../../.env -- prisma studio",
-    "db:reset": "dotenv -e ../../.env -- prisma migrate reset --force"
+    "db:reset": "bash scripts/db/safe-reset.sh"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

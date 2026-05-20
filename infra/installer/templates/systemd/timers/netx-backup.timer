@@ -1,0 +1,20 @@
+[Unit]
+Description=NetX — daily Postgres backup (timer)
+Documentation=https://github.com/CharlesBarreto1/netx
+
+[Timer]
+# Dispara 03:17 local time todo dia. Hora ímpar pra evitar conflito com janelas
+# típicas de manutenção (03:00, 04:00) e logrotate padrão (03:30).
+OnCalendar=*-*-* 03:17:00
+# Persistent: se o servidor estiver desligado/em manutenção na hora marcada,
+# dispara assim que voltar (em vez de pular o ciclo).
+Persistent=true
+# Jitter de até 5min — evita "thundering herd" se vários VPSes do mesmo
+# operador rodarem o timer no mesmo segundo.
+RandomizedDelaySec=300
+# Identifica unidades cuja missed-run não dispara junto na inicialização
+# (Persistent acima inclui esta unidade).
+Unit=netx-backup.service
+
+[Install]
+WantedBy=timers.target

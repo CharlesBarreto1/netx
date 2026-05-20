@@ -192,6 +192,8 @@ source "${INSTALLER_DIR}/lib/systemd.sh"
 source "${INSTALLER_DIR}/lib/nginx.sh"
 # shellcheck source=lib/wizard.sh
 source "${INSTALLER_DIR}/lib/wizard.sh"
+# shellcheck source=lib/backups.sh
+source "${INSTALLER_DIR}/lib/backups.sh"
 # shellcheck source=lib/smoke.sh
 source "${INSTALLER_DIR}/lib/smoke.sh"
 
@@ -238,6 +240,10 @@ main() {
   # essas portas). Também AFTER netx_app pra ter radius.nas populado pelos
   # NetworkEquipment cadastrados em runs anteriores.
   step "firewall"            firewall_setup
+  # Backups DEPOIS de tudo subir — netx-backup.timer pode disparar imediatamente
+  # se Persistent=true detectar que "deveria" ter rodado hoje. Queremos que os
+  # serviços estejam ativos pra evitar lock no DB durante boot do pg_dump.
+  step "backups"             backups_setup
   step "smoke"               smoke_test
 
   log_banner "Instalação concluída"

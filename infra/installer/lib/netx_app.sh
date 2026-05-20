@@ -253,6 +253,70 @@ netx_app_build() {
     log_error "Build do web (Next.js) não gerou .next/BUILD_ID"
     exit 1
   fi
+
+  # Integridade do build do web: o build-manifest.json lista todos os chunks
+  # que o Next.js vai pedir em runtime. Se algum desses não existir em disco,
+  # o browser pega ChunkLoadError 500 ao carregar a primeira página.
+  #
+  # Já vi cenários onde build "succeeded" mas alguns chunks faltavam:
+  #   - OOM no meio do build (especialmente Turbopack)
+  #   - `rm -rf .next` parcial + rebuild incompleto
+  #   - Race condition entre build e systemd ler .next
+  #
+  # Validamos amostralmente — pega 10 chunks aleatórios do manifest e
+  # confere existência. Suficiente pra pegar inconsistências sem custo alto.
+  local manifest="${NETX_HOME}/apps/web/.next/build-manifest.json"
+  if [[ -f "${manifest}" ]]; then
+    local missing_chunks
+    missing_chunks=$(node -e "
+      const m = require('${manifest}');
+      const all = new Set();
+      const collect = (obj) => {
+        if (Array.isArray(obj)) obj.forEach(v => typeof v === 'string' && all.add(v));
+        else if (obj && typeof obj === 'object') Object.values(obj).forEach(collect);
+      };
+      collect(m);
+      const fs = require('fs');
+      const path = require('path');
+      const root = '${NETX_HOME}/apps/web/.next';
+      const sample = [...all].slice(0, 50);
+      const missing = sample.filter(c => !fs.existsSync(path.join(root, c)));
+      if (missing.length) {
+        console.error('MISSING:' + missing.slice(0, 5).join(','));
+        process.exit(1);
+      }
+    " 2>&1 || true)
+    if [[ "${missing_chunks}" == MISSING:* ]]; then
+      log_error "Build do web está INCONSISTENTE — chunks faltando no .next:"
+      log_error "  ${missing_chunks#MISSING:}"
+      log_error "Possíveis causas: OOM durante build, rebuild interrompido."
+      log_error "Fix: rm -rf ${NETX_HOME}/apps/web/.next && rode o installer de novo"
+      exit 1
+    fi
+    log_dim "Build integrity OK — chunks do manifest existem em disco"
+  fi
+
+  # Garante ownership/perms dos artefatos pro user netx (runtime).
+  # Build roda como netx via as_netx, mas se houver retomada de install antigo
+  # com root no meio, isso conserta retroativamente. Sem isso, systemd com
+  # User=netx + ProtectSystem=strict não consegue ler chunks de outro owner.
+  chown -R "${NETX_USER}:${NETX_USER}" \
+    "${NETX_HOME}/apps/web/.next" \
+    "${NETX_HOME}/apps/core-service/dist" \
+    "${NETX_HOME}/apps/api-gateway/dist" 2>/dev/null || true
+
+  # Restart dos serviços systemd APÓS build — sem isso o systemd continua
+  # servindo .next do build anterior em memória, mesmo com chunks novos em
+  # disco. Causa ChunkLoadError no browser: HTML novo aponta pra hash A,
+  # service em memória só conhece hash B.
+  # `is-active` evita warning quando systemd ainda não foi instalado (1º run).
+  for svc in netx-core-service netx-api-gateway netx-web; do
+    if systemctl is-active --quiet "$svc" 2>/dev/null; then
+      log_dim "Restart ${svc} (build novo no disco)"
+      systemctl restart "$svc"
+    fi
+  done
+
   log_ok "Build concluído (core + gateway + web)"
 }
 
