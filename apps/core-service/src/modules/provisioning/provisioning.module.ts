@@ -6,6 +6,7 @@ import { CryptoModule } from '../crypto/crypto.module';
 
 import { HuaweiSshDriver } from './drivers/huawei-ssh.driver';
 import { MockOltDriver } from './drivers/mock-olt.driver';
+import { NoOpOltDriver } from './drivers/noop-olt.driver';
 import { OltDriverFactory } from './drivers/olt-driver.factory';
 import { UfinetOrchestratorDriver } from './drivers/ufinet.driver';
 import { OltsService } from './olts.service';
@@ -19,6 +20,7 @@ import { Tr069TasksService } from './tr069-tasks.service';
   providers: [
     // Drivers
     MockOltDriver,
+    NoOpOltDriver,
     UfinetOrchestratorDriver,
     HuaweiSshDriver,
     OltDriverFactory,

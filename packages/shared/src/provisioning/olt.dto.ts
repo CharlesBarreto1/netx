@@ -74,6 +74,8 @@ export const CreateOltRequestSchema = z
         });
       }
     }
+    // EXTERNAL: nenhum campo de conexão é obrigatório — a OLT é provisionada
+    // por outro sistema. NetX só registra o nome/vendor pra inventário.
   });
 export type CreateOltRequest = z.infer<typeof CreateOltRequestSchema>;
 

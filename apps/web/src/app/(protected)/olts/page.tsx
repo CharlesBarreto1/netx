@@ -108,7 +108,11 @@ export default function OltsPage() {
                     <span className="text-xs">{o.providerMode}</span>
                   </td>
                   <td className="px-3 py-2 font-mono text-xs">
-                    {o.providerMode === 'DIRECT' ? o.managementIp : o.apiEndpoint}
+                    {o.providerMode === 'DIRECT'
+                      ? o.managementIp
+                      : o.providerMode === 'EXTERNAL'
+                        ? <span className="italic text-slate-500">— (manual)</span>
+                        : o.apiEndpoint}
                   </td>
                   <td className="px-3 py-2">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${statusColor(o.status)}`}>
@@ -175,7 +179,9 @@ function OltFormModal({ olt, onClose, onSaved }: OltFormModalProps) {
     name: olt?.name ?? '',
     vendor: olt?.vendor ?? 'HUAWEI',
     model: olt?.model ?? '',
-    providerMode: olt?.providerMode ?? 'DIRECT',
+    // EXTERNAL como default — útil pra MVP onde Ufinet/OLT são manuais.
+    // DIRECT/ORCHESTRATOR exigem implementação de driver (Fase 2/BR).
+    providerMode: olt?.providerMode ?? 'EXTERNAL',
     managementIp: olt?.managementIp ?? null,
     sshPort: olt?.sshPort ?? 22,
     sshUser: olt?.sshUser ?? null,
@@ -238,12 +244,25 @@ function OltFormModal({ olt, onClose, onSaved }: OltFormModalProps) {
           <div className="sm:col-span-2">
             <Label htmlFor="providerMode">Modo *</Label>
             <Select id="providerMode" value={form.providerMode} onChange={(e) => set('providerMode', e.target.value as OltProviderMode)}>
+              <option value="EXTERNAL">EXTERNAL (provisão manual fora do NetX — Ufinet manual, web OLT, etc)</option>
               <option value="DIRECT">DIRECT (NetX fala SSH/NETCONF na OLT)</option>
-              <option value="ORCHESTRATOR">ORCHESTRATOR (Ufinet ou outro provider)</option>
+              <option value="ORCHESTRATOR">ORCHESTRATOR (Ufinet API ou outro provider)</option>
             </Select>
+            {form.providerMode === 'EXTERNAL' && (
+              <p className="mt-1 text-xs text-slate-500">
+                NetX só registra a ONT no banco e segue pra RADIUS + TR-069.
+                Você é responsável por provisionar SN na OLT real (Ufinet, NMS, etc).
+              </p>
+            )}
           </div>
 
-          {form.providerMode === 'DIRECT' ? (
+          {form.providerMode === 'EXTERNAL' ? (
+            <div className="sm:col-span-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-200">
+              ℹ️ Em modo <strong>EXTERNAL</strong> não há credenciais — NetX não
+              conecta diretamente na OLT. Cadastre apenas nome/vendor/modelo pra
+              inventário e use no fluxo de provisionamento normal.
+            </div>
+          ) : form.providerMode === 'DIRECT' ? (
             <>
               <div className="sm:col-span-2"><h3 className="text-xs font-semibold uppercase text-slate-500">SSH</h3></div>
               <div>

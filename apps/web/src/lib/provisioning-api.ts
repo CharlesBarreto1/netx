@@ -31,7 +31,7 @@ export type OltVendor =
   | 'UFINET'
   | 'GENERIC';
 
-export type OltProviderMode = 'DIRECT' | 'ORCHESTRATOR';
+export type OltProviderMode = 'DIRECT' | 'ORCHESTRATOR' | 'EXTERNAL';
 export type OltStatus = 'ONLINE' | 'OFFLINE' | 'UNREACHABLE' | 'UNKNOWN';
 
 export type OntStatus =

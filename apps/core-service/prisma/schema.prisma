@@ -2266,9 +2266,14 @@ enum OltVendor {
 // DIRECT: NetX fala direto com a OLT (SSH/NETCONF) — operação BR típica.
 // ORCHESTRATOR: NetX chama API de um terceiro (Ufinet, wholesale) que abstrai
 // a OLT física. Operação PY hoje.
+// EXTERNAL: OLT é provisionada FORA do NetX (admin via web/CLI do vendor,
+// ou via plataforma de terceiros). NetX só registra a ONT como AUTHORIZED
+// e segue pra RADIUS+TR-069. Útil enquanto Ufinet API não chega ou pra
+// instalações onde provisioning óptico é manual.
 enum OltProviderMode {
   DIRECT
   ORCHESTRATOR
+  EXTERNAL
 }
 
 enum OltStatus {

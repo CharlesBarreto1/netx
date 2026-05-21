@@ -1,0 +1,15 @@
+-- =============================================================================
+-- Adiciona valor EXTERNAL ao enum OltProviderMode
+-- =============================================================================
+-- Copyright (c) 2024-2026 NETX DESENVOLVIMENTO E TECNOLOGIA LTDA — proprietary.
+--
+-- OltProviderMode.EXTERNAL: OLT provisionada fora do NetX (manual via web do
+-- vendor, ou via Ufinet manual enquanto API não chega). NoOpOltDriver retorna
+-- sucesso sem chamar nada — admin é responsável por garantir que a ONT já
+-- está autorizada na OLT real antes de ativar o cliente no NetX.
+--
+-- Migration separada do schema principal pra evitar conflito de transação
+-- com `ALTER TYPE ... ADD VALUE` (mesmo motivo de
+-- 20260520200000_contract_status_pending_install).
+-- =============================================================================
+ALTER TYPE "OltProviderMode" ADD VALUE IF NOT EXISTS 'EXTERNAL' AFTER 'ORCHESTRATOR';

@@ -19,7 +19,7 @@ export const OLT_VENDORS = [
 export const OltVendorSchema = z.enum(OLT_VENDORS);
 export type OltVendor = z.infer<typeof OltVendorSchema>;
 
-export const OLT_PROVIDER_MODES = ['DIRECT', 'ORCHESTRATOR'] as const;
+export const OLT_PROVIDER_MODES = ['DIRECT', 'ORCHESTRATOR', 'EXTERNAL'] as const;
 export const OltProviderModeSchema = z.enum(OLT_PROVIDER_MODES);
 export type OltProviderMode = z.infer<typeof OltProviderModeSchema>;
 

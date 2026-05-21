@@ -176,6 +176,22 @@ export class ProvisioningService {
     });
     if (!olt) throw new NotFoundException('OLT não encontrada');
 
+    // Defesa pré-driver: drivers stub (Ufinet API real, Huawei SSH real) lançam
+    // mensagens técnicas confusas pro técnico de campo. Damos um erro amigável
+    // antes de chegar lá. EXTERNAL e GENERIC (mock) sempre passam.
+    const isStub =
+      (olt.providerMode === 'ORCHESTRATOR' && olt.vendor === 'UFINET') ||
+      (olt.providerMode === 'DIRECT' && olt.vendor === 'HUAWEI');
+    if (isStub) {
+      throw new BadRequestException(
+        `Driver ${olt.vendor}/${olt.providerMode} ainda não implementado ` +
+          '(Ufinet API aguardando doc; Huawei SSH planejado pra fase BR). ' +
+          'Pra ativar clientes agora, edite a OLT e troque "Modo" pra EXTERNAL ' +
+          '— assim NetX só registra a ONT e segue pra RADIUS + TR-069, com você ' +
+          'provisionando o SN manualmente na OLT real (Ufinet).',
+      );
+    }
+
     // ── 2. Cria ou re-aproveita Ont row em PENDING_AUTH ───────────────────
     let ont: Ont;
     if (contract.ont) {
@@ -216,7 +232,14 @@ export class ProvisioningService {
     // ── 3. Chama driver.authorizeOnt() ─────────────────────────────────────
     const driver = this.drivers.resolve(olt.vendor, olt.providerMode);
     const ctx = buildConnectionContext(olt, this.crypto);
-    pushEvent('OLT_AUTHORIZE', 'PENDING', `Autorizando SN ${input.snGpon} na OLT ${olt.name}`);
+    const isExternal = olt.providerMode === 'EXTERNAL';
+    pushEvent(
+      'OLT_AUTHORIZE',
+      'PENDING',
+      isExternal
+        ? `Registrando ONT ${input.snGpon} (OLT ${olt.name} é EXTERNAL — provisão real fora do NetX)`
+        : `Autorizando SN ${input.snGpon} na OLT ${olt.name}`,
+    );
 
     const authResult = await driver.authorizeOnt(ctx, {
       snGpon: input.snGpon,
