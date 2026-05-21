@@ -29,6 +29,12 @@ firewall_setup() {
   ufw allow 80/tcp comment 'netx-base: http' >/dev/null 2>&1 || true
   ufw allow 443/tcp comment 'netx-base: https' >/dev/null 2>&1 || true
 
+  # TR-069 / CWMP — CPEs Huawei (e outras vendor) abrem conexão TCP pra ACS.
+  # Idealmente restringimos por IP/range da rede neutra (Ufinet) ou da OLT,
+  # mas pra simplificar no MVP abrimos pra qualquer origem. Trade-off: o ACS
+  # NÃO tem auth ainda (TODO), então em produção real seria bom restringir.
+  ufw allow 7547/tcp comment 'netx-cwmp: tr-069 acs' >/dev/null 2>&1 || true
+
   # Habilita UFW se ainda não tiver
   if ! ufw status | grep -q "Status: active"; then
     log_info "Habilitando UFW"

@@ -1,0 +1,51 @@
+[Unit]
+Description=NetX CWMP/TR-069 ACS (gerencia CPEs Huawei EG8145V5/X10)
+Documentation=https://github.com/CharlesBarreto1/netx
+After=network-online.target netx-core-service.service postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+# Rate-limit fica em [Unit] (systemd 230+). Em [Service] dispara warning.
+StartLimitBurst=5
+StartLimitIntervalSec=60
+
+[Service]
+Type=simple
+User=netx
+Group=netx
+WorkingDirectory=/opt/netx/apps/cwmp-server
+EnvironmentFile=/etc/netx/.env
+# Path profundo: tsconfig sem rootDir gera dist/apps/<app>/src/main.js
+# em vez de dist/main.js (mesmo padrão do core-service/api-gateway).
+ExecStart=/usr/bin/node dist/apps/cwmp-server/src/main.js
+
+# Variáveis específicas (override do .env se necessário).
+# CWMP_PORT default 7547 (TR-069 standard).
+Environment=CWMP_PORT=7547
+Environment=CWMP_HOST=0.0.0.0
+
+Restart=on-failure
+RestartSec=5s
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=netx-cwmp
+
+# Hardening — mesmo padrão dos outros services NestJS.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/netx /var/log/netx /opt/netx/apps/cwmp-server/dist
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+# Porta 7547 é privilegiada? Não — 7547 está fora do range 1-1023, então
+# user netx pode bind direto. Em produção, considere por trás de Nginx com
+# TLS (TR-069 fala SOAP sobre HTTPS opcionalmente — Huawei suporta).
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

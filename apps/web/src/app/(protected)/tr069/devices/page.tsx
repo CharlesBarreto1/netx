@@ -34,22 +34,17 @@ export default function Tr069DevicesPage() {
       <header>
         <h1 className="text-2xl font-bold tracking-tight">Dispositivos TR-069</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          CPEs gerenciados via TR-069/CWMP. Fase 1 cria placeholders durante o
-          provisionamento. Aplicação real de Wi-Fi e reboot fica disponível
-          quando o servidor CWMP (Fase 3) estiver ativo.
+          CPEs gerenciados via TR-069/CWMP. ACS embedded escuta porta 7547 —
+          quando ONT Huawei EG8145 faz Inform, aparece aqui com status{' '}
+          <code>ONLINE</code>. Tasks pendentes (SET_PARAMS, REBOOT) são
+          aplicadas no próximo session.
         </p>
       </header>
-
-      <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-200">
-        <strong>Fase 1:</strong> tasks são enfileiradas em <code>tr069_tasks</code>{' '}
-        mas não há ACS escutando porta 7547 ainda. As tasks ficam{' '}
-        <code>PENDING</code> até a Fase 3 entregar o <code>apps/cwmp-server</code>.
-      </div>
 
       {rows.length === 0 ? (
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
           Nenhum device ainda. Ative um cliente em <code>/provisioning/install</code>{' '}
-          pra criar o primeiro placeholder.
+          (cria o placeholder) e aguarde o CPE fazer Inform.
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">

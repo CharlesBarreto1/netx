@@ -142,6 +142,12 @@ as_netx "set -a; . ${NETX_ETC}/.env; set +a; cd ${NETX_HOME} && NODE_ENV=product
   || { err "api-gateway main.js não foi gerado"; exit 1; }
 [[ -f "${NETX_HOME}/apps/web/.next/BUILD_ID" ]] \
   || { err "web BUILD_ID não foi gerado"; exit 1; }
+# cwmp-server é Fase 3 (TR-069). Em servidores antigos pode não existir
+# antes do install.sh rodar de novo — não fatal.
+if [[ -d "${NETX_HOME}/apps/cwmp-server" ]]; then
+  [[ -f "${NETX_HOME}/apps/cwmp-server/dist/apps/cwmp-server/src/main.js" ]] \
+    || { err "cwmp-server main.js não foi gerado"; exit 1; }
+fi
 
 # -----------------------------------------------------------------------------
 # 5. Ownership fix
@@ -149,7 +155,8 @@ as_netx "set -a; . ${NETX_ETC}/.env; set +a; cd ${NETX_HOME} && NODE_ENV=product
 chown -R "${NETX_USER}:${NETX_USER}" \
   "${NETX_HOME}/apps/web/.next" \
   "${NETX_HOME}/apps/core-service/dist" \
-  "${NETX_HOME}/apps/api-gateway/dist" 2>/dev/null || true
+  "${NETX_HOME}/apps/api-gateway/dist" \
+  "${NETX_HOME}/apps/cwmp-server/dist" 2>/dev/null || true
 
 # -----------------------------------------------------------------------------
 # 6. Migrations (com snapshot pré-migration)
@@ -170,12 +177,14 @@ as_netx "cd ${NETX_HOME} && npm run -w apps/core-service db:seed"
 # 8. Restart systemd
 # -----------------------------------------------------------------------------
 log "restart dos serviços systemd"
-for svc in netx-core-service netx-api-gateway netx-web; do
+for svc in netx-core-service netx-api-gateway netx-web netx-cwmp-server; do
   if systemctl is-active --quiet "$svc" 2>/dev/null; then
     systemctl restart "$svc"
     dim "  → ${svc} restarted"
   else
-    warn "${svc} não estava active — não restarting"
+    # Pode acontecer: netx-cwmp-server é novo (F3), VPS antigas só ganham
+    # após install.sh rodar de novo. Não fatal — apenas avisa.
+    warn "${svc} não estava active — não restarting (rode install.sh se serviço novo)"
   fi
 done
 

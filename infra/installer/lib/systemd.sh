@@ -12,7 +12,7 @@ systemd_setup() {
 }
 
 systemd_install_units() {
-  local units=(netx-core-service netx-api-gateway netx-web)
+  local units=(netx-core-service netx-api-gateway netx-web netx-cwmp-server)
   for u in "${units[@]}"; do
     local src="${INSTALLER_DIR}/templates/systemd/${u}.service"
     local dst="${SYSTEMD_DIR}/${u}.service"
@@ -31,7 +31,7 @@ systemd_reload() {
 }
 
 systemd_enable_start() {
-  local units=(netx-core-service netx-api-gateway netx-web)
+  local units=(netx-core-service netx-api-gateway netx-web netx-cwmp-server)
   for u in "${units[@]}"; do
     log_info "Habilitando + iniciando ${u}"
     systemctl enable "${u}"
@@ -60,4 +60,14 @@ systemd_enable_start() {
     exit 1
   fi
   log_ok "web em :${NETX_PORT_WEB}"
+
+  # CWMP server — porta 7547 (TR-069 standard). Daemon novo: se falhar o
+  # bind, não bloqueia install (TR-069 é opcional pra operação básica).
+  local cwmp_port="${NETX_PORT_CWMP:-7547}"
+  if ! wait_port 127.0.0.1 "${cwmp_port}" 30; then
+    log_warn "cwmp-server não abriu porta ${cwmp_port} — TR-069 indisponível"
+    log_warn "  Veja journalctl -u netx-cwmp-server pra investigar"
+  else
+    log_ok "cwmp-server em :${cwmp_port}"
+  fi
 }

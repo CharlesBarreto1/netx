@@ -279,6 +279,7 @@ netx_app_build() {
   # Sanity check — confirma que os main.js foram gerados onde esperamos.
   local core_main="${NETX_HOME}/apps/core-service/dist/apps/core-service/src/main.js"
   local gw_main="${NETX_HOME}/apps/api-gateway/dist/apps/api-gateway/src/main.js"
+  local cwmp_main="${NETX_HOME}/apps/cwmp-server/dist/apps/cwmp-server/src/main.js"
   local web_build_id="${NETX_HOME}/apps/web/.next/BUILD_ID"
   if [[ ! -f "${core_main}" ]]; then
     log_error "Build do core-service não gerou ${core_main}"
@@ -286,6 +287,10 @@ netx_app_build() {
   fi
   if [[ ! -f "${gw_main}" ]]; then
     log_error "Build do api-gateway não gerou ${gw_main}"
+    exit 1
+  fi
+  if [[ -d "${NETX_HOME}/apps/cwmp-server" ]] && [[ ! -f "${cwmp_main}" ]]; then
+    log_error "Build do cwmp-server não gerou ${cwmp_main}"
     exit 1
   fi
   if [[ ! -f "${web_build_id}" ]]; then
@@ -342,7 +347,8 @@ netx_app_build() {
   chown -R "${NETX_USER}:${NETX_USER}" \
     "${NETX_HOME}/apps/web/.next" \
     "${NETX_HOME}/apps/core-service/dist" \
-    "${NETX_HOME}/apps/api-gateway/dist" 2>/dev/null || true
+    "${NETX_HOME}/apps/api-gateway/dist" \
+    "${NETX_HOME}/apps/cwmp-server/dist" 2>/dev/null || true
 
   # Restart dos serviços systemd APÓS build — sem isso o systemd continua
   # servindo .next do build anterior em memória, mesmo com chunks novos em
