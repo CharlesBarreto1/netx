@@ -20,7 +20,9 @@ import {
   Activity,
   BookOpen,
   Building2,
+  ChevronDown,
   ChevronLeft,
+  ChevronRight,
   ChevronsLeft,
   ChevronsRight,
   CreditCard,
@@ -313,6 +315,35 @@ export function AppShell({
 
 // ---------------------------------------------------------------------------
 
+// localStorage key — persiste estado expand/collapse entre reloads.
+// Schema: array de keys de grupos ABERTOS. Default vazio = todos fechados.
+const SIDEBAR_OPEN_GROUPS_KEY = 'netx.sidebar.openGroups';
+
+function loadOpenGroupsFromStorage(): Set<string> | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(SIDEBAR_OPEN_GROUPS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return null;
+    return new Set(parsed.filter((v): v is string => typeof v === 'string'));
+  } catch {
+    return null;
+  }
+}
+
+function persistOpenGroups(open: Set<string>): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(
+      SIDEBAR_OPEN_GROUPS_KEY,
+      JSON.stringify([...open]),
+    );
+  } catch {
+    /* quota/private — ignora */
+  }
+}
+
 function SidebarNav({
   groups,
   pathname,
@@ -322,53 +353,140 @@ function SidebarNav({
   pathname: string;
   collapsed: boolean;
 }) {
+  // Quais grupos estão expandidos. Persiste em localStorage. Auto-expande o
+  // grupo que contém a rota ativa (mesmo se o user tinha fechado antes) — é o
+  // comportamento esperado: você navegou pra lá, faz sentido ver o grupo.
+  const activeGroupKey = useMemo(() => {
+    for (const g of groups) {
+      if (
+        g.items.some(
+          (it) => pathname === it.href || pathname.startsWith(it.href + '/'),
+        )
+      ) {
+        return g.key;
+      }
+    }
+    return null;
+  }, [groups, pathname]);
+
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
+    // Init no SSR: empty. No client primeiro render: tenta localStorage.
+    // Auto-expansão do grupo ativo é aplicada em useEffect abaixo pra
+    // garantir hydratação consistente.
+    return new Set<string>();
+  });
+
+  // Após mount, hidrata do localStorage + força grupo ativo aberto.
+  useEffect(() => {
+    const stored = loadOpenGroupsFromStorage();
+    const next = new Set(stored ?? []);
+    if (activeGroupKey) next.add(activeGroupKey);
+    setOpenGroups(next);
+    // Não persiste aqui — só persiste em toggle explícito do user, evita
+    // grava-grava em cada mudança de rota.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Mudou de rota — garante que o grupo da rota ativa esteja aberto.
+  useEffect(() => {
+    if (!activeGroupKey) return;
+    setOpenGroups((prev) => {
+      if (prev.has(activeGroupKey)) return prev;
+      const next = new Set(prev);
+      next.add(activeGroupKey);
+      return next;
+    });
+  }, [activeGroupKey]);
+
+  const toggleGroup = (key: string) => {
+    setOpenGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      persistOpenGroups(next);
+      return next;
+    });
+  };
+
   return (
     <nav className="flex flex-col gap-1 p-2.5">
-      {groups.map((g, idx) => (
-        <div key={g.key} className={idx === 0 ? '' : 'mt-1'}>
-          {g.label && !collapsed && (
-            <div className="px-2.5 pb-1 pt-2 text-2xs font-semibold uppercase tracking-wider text-text-subtle">
-              {g.label}
-            </div>
-          )}
-          <div className="flex flex-col gap-0.5">
-            {g.items.map((it) => {
-              const active =
-                pathname === it.href || pathname.startsWith(it.href + '/');
-              const Icon = it.icon;
-              const Content = (
-                <Link
-                  key={it.href}
-                  href={it.href}
-                  className={cn(
-                    'group flex items-center gap-2.5 rounded-md px-2.5 text-sm font-medium transition-colors',
-                    'compact:py-1.5 cozy:py-2 comfortable:py-2.5 py-2',
-                    active
-                      ? 'bg-accent-muted text-accent-strong dark:text-accent-foreground'
-                      : 'text-text-muted hover:bg-surface-hover hover:text-text',
-                    collapsed && 'justify-center px-0',
-                  )}
-                  aria-current={active ? 'page' : undefined}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  {!collapsed && <span className="truncate">{it.label}</span>}
-                </Link>
-              );
-              return collapsed ? (
-                <SimpleTooltip
-                  key={it.href}
-                  label={it.label}
-                  side="right"
-                >
-                  {Content}
-                </SimpleTooltip>
-              ) : (
-                Content
-              );
-            })}
+      {groups.map((g, idx) => {
+        const hasLabel = !!g.label;
+        const isCollapsible = hasLabel && !collapsed;
+        const isOpen = !isCollapsible || openGroups.has(g.key);
+        const hasActiveChild = activeGroupKey === g.key;
+
+        return (
+          <div key={g.key} className={idx === 0 ? '' : 'mt-1'}>
+            {/* Header do grupo (clicável quando há label e sidebar não-colapsada) */}
+            {hasLabel && !collapsed && (
+              <button
+                type="button"
+                onClick={() => toggleGroup(g.key)}
+                aria-expanded={isOpen}
+                aria-controls={`navgroup-${g.key}`}
+                className={cn(
+                  'group/header flex w-full items-center justify-between rounded-md px-2.5 py-1.5 text-2xs font-semibold uppercase tracking-wider transition-colors',
+                  hasActiveChild
+                    ? 'text-text'
+                    : 'text-text-subtle hover:text-text hover:bg-surface-hover',
+                )}
+              >
+                <span>{g.label}</span>
+                {isOpen ? (
+                  <ChevronDown className="h-3.5 w-3.5 opacity-60 transition-transform" />
+                ) : (
+                  <ChevronRight className="h-3.5 w-3.5 opacity-60 transition-transform" />
+                )}
+              </button>
+            )}
+
+            {/* Itens do grupo (sempre visíveis quando sidebar colapsada,
+                ou quando o grupo está aberto, ou quando o grupo não tem label) */}
+            {isOpen && (
+              <div
+                id={`navgroup-${g.key}`}
+                className="flex flex-col gap-0.5"
+              >
+                {g.items.map((it) => {
+                  const active =
+                    pathname === it.href || pathname.startsWith(it.href + '/');
+                  const Icon = it.icon;
+                  const Content = (
+                    <Link
+                      key={it.href}
+                      href={it.href}
+                      className={cn(
+                        'group flex items-center gap-2.5 rounded-md px-2.5 text-sm font-medium transition-colors',
+                        'compact:py-1.5 cozy:py-2 comfortable:py-2.5 py-2',
+                        active
+                          ? 'bg-accent-muted text-accent-strong dark:text-accent-foreground'
+                          : 'text-text-muted hover:bg-surface-hover hover:text-text',
+                        collapsed && 'justify-center px-0',
+                      )}
+                      aria-current={active ? 'page' : undefined}
+                    >
+                      <Icon className="h-4 w-4 shrink-0" />
+                      {!collapsed && <span className="truncate">{it.label}</span>}
+                    </Link>
+                  );
+                  return collapsed ? (
+                    <SimpleTooltip
+                      key={it.href}
+                      label={it.label}
+                      side="right"
+                    >
+                      {Content}
+                    </SimpleTooltip>
+                  ) : (
+                    Content
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </nav>
   );
 }
