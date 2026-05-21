@@ -12,6 +12,8 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ProductType } from '@prisma/client';
 import {
+  AddOsConsumptionRequestSchema,
+  AllocateComodatoRequestSchema,
   CreateAdjustmentRequestSchema,
   CreatePurchaseRequestSchema,
   CreateProductRequestSchema,
@@ -19,10 +21,13 @@ import {
   CreateSupplierRequestSchema,
   CreateStockTransferRequestSchema,
   ListStockMovementsQuerySchema,
+  ReturnComodatoRequestSchema,
   SetLocationAccessRequestSchema,
   UpdateProductRequestSchema,
   UpdateStockLocationRequestSchema,
   UpdateSupplierRequestSchema,
+  type AddOsConsumptionRequest,
+  type AllocateComodatoRequest,
   type AuthenticatedPrincipal,
   type CreateAdjustmentRequest,
   type CreatePurchaseRequest,
@@ -31,6 +36,7 @@ import {
   type CreateSupplierRequest,
   type CreateStockTransferRequest,
   type ListStockMovementsQuery,
+  type ReturnComodatoRequest,
   type SetLocationAccessRequest,
   type UpdateProductRequest,
   type UpdateStockLocationRequest,
@@ -40,6 +46,8 @@ import {
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { ZodBody } from '../../common/zod.pipe';
 
+import { ComodatoService } from './comodato.service';
+import { OsConsumptionService } from './os-consumption.service';
 import { ProductsService } from './products.service';
 import { PurchasesService } from './purchases.service';
 import { StockLocationsService } from './stock-locations.service';
@@ -318,5 +326,101 @@ export class StockMovementsController {
     @ZodBody(CreateStockTransferRequestSchema) body: CreateStockTransferRequest,
   ) {
     return this.movements.transfer(u.tenantId, u.sub, body);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COMODATO — /v1/stock/comodato
+// ─────────────────────────────────────────────────────────────────────────────
+// Endpoints:
+//   GET    /v1/stock/comodato/contracts/:contractId   → seriais alocados nesse contrato
+//   GET    /v1/stock/comodato/available?productId=:id → seriais IN_STOCK disponíveis
+//   POST   /v1/stock/comodato/allocate                → aloca serial a contrato
+//   POST   /v1/stock/comodato/return                  → devolve serial pro estoque
+@ApiTags('stock')
+@ApiBearerAuth()
+@Controller('stock/comodato')
+export class ComodatoController {
+  constructor(private readonly comodato: ComodatoService) {}
+
+  @Get('contracts/:contractId')
+  @RequirePermissions('contracts.read', 'stock.read')
+  listByContract(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('contractId', new ParseUUIDPipe()) contractId: string,
+    @Query('includeReturned') includeReturned?: string,
+  ) {
+    return this.comodato.listByContract(u.tenantId, contractId, {
+      includeReturned: includeReturned === 'true' || includeReturned === '1',
+    });
+  }
+
+  @Get('available')
+  @RequirePermissions('stock.read')
+  listAvailable(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Query('productId') productId?: string,
+  ) {
+    return this.comodato.listAvailable(u.tenantId, u.sub, {
+      productId,
+      isAdmin: u.permissions.includes('stock.admin'),
+    });
+  }
+
+  @Post('allocate')
+  @RequirePermissions('contracts.write', 'stock.write')
+  allocate(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @ZodBody(AllocateComodatoRequestSchema) body: AllocateComodatoRequest,
+  ) {
+    return this.comodato.allocate(u.tenantId, u.sub, body);
+  }
+
+  @Post('return')
+  @RequirePermissions('stock.write')
+  returnItem(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @ZodBody(ReturnComodatoRequestSchema) body: ReturnComodatoRequest,
+  ) {
+    return this.comodato.returnItem(u.tenantId, u.sub, body, {
+      isAdmin: u.permissions.includes('stock.admin'),
+    });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OS CONSUMPTION — /v1/service-orders/:id/consumption
+// ─────────────────────────────────────────────────────────────────────────────
+// Endpoints:
+//   GET    /v1/service-orders/:id/consumption  → lista materiais consumidos
+//   POST   /v1/service-orders/:id/consumption  → adiciona consumo (técnico)
+@ApiTags('stock')
+@ApiBearerAuth()
+@Controller('service-orders/:id/consumption')
+export class OsConsumptionController {
+  constructor(private readonly consumption: OsConsumptionService) {}
+
+  @Get()
+  @RequirePermissions('service_orders.read', 'stock.read')
+  list(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) serviceOrderId: string,
+  ) {
+    return this.consumption.listByServiceOrder(u.tenantId, serviceOrderId);
+  }
+
+  @Post()
+  @RequirePermissions('service_orders.write', 'stock.adjust')
+  add(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) serviceOrderId: string,
+    @ZodBody(AddOsConsumptionRequestSchema) body: AddOsConsumptionRequest,
+  ) {
+    return this.consumption.addConsumption(
+      u.tenantId,
+      u.sub,
+      { serviceOrderId, items: body.items },
+      { isAdmin: u.permissions.includes('stock.admin') },
+    );
   }
 }

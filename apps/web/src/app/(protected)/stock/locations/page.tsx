@@ -168,11 +168,11 @@ export default function StockLocationsPage() {
         <ConfirmDialog
           open={true}
           title={`Excluir "${confirmDelete.name}"?`}
-          description="Não é possível excluir locais com saldo ou seriais alocados. Movimentos históricos ficam preservados."
+          message="Não é possível excluir locais com saldo ou seriais alocados. Movimentos históricos ficam preservados."
           confirmLabel="Excluir"
           loading={deleting}
           onConfirm={() => handleDelete(confirmDelete)}
-          onCancel={() => setConfirmDelete(null)}
+          onClose={() => setConfirmDelete(null)}
         />
       )}
     </div>

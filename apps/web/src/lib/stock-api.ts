@@ -299,4 +299,88 @@ export const stockApi = {
     api.post<StockMovement>('/v1/stock/adjustments', input),
   createTransfer: (input: CreateStockTransferInput) =>
     api.post<StockMovement[]>('/v1/stock/transfers', input),
+
+  // Comodato (Fase 2) --------------------------------------------------------
+  comodatoByContractPath: (contractId: string) =>
+    `/v1/stock/comodato/contracts/${contractId}`,
+  listComodatoByContract: (contractId: string) =>
+    api.get<ComodatoSerial[]>(`/v1/stock/comodato/contracts/${contractId}`),
+  listComodatoAvailable: (productId?: string) =>
+    api.get<ComodatoAvailableSerial[]>(
+      `/v1/stock/comodato/available${productId ? `?productId=${productId}` : ''}`,
+    ),
+  allocateComodato: (input: AllocateComodatoInput) =>
+    api.post('/v1/stock/comodato/allocate', input),
+  returnComodato: (input: ReturnComodatoInput) =>
+    api.post('/v1/stock/comodato/return', input),
+
+  // OS Consumption (Fase 2) --------------------------------------------------
+  osConsumptionPath: (serviceOrderId: string) =>
+    `/v1/service-orders/${serviceOrderId}/consumption`,
+  listOsConsumption: (serviceOrderId: string) =>
+    api.get<OsConsumptionMovement[]>(`/v1/service-orders/${serviceOrderId}/consumption`),
+  addOsConsumption: (serviceOrderId: string, input: AddOsConsumptionInput) =>
+    api.post<StockMovement[]>(`/v1/service-orders/${serviceOrderId}/consumption`, input),
 };
+
+// =============================================================================
+// FASE 2 — COMODATO + OS CONSUMPTION
+// =============================================================================
+
+export interface ComodatoSerial {
+  id: string;
+  serial: string;
+  status: string;
+  allocatedAt: string | null;
+  contractId: string | null;
+  acquisitionCost: string | null;
+  product: {
+    id: string;
+    sku: string;
+    name: string;
+    brand?: string | null;
+    model?: string | null;
+  };
+}
+
+export interface ComodatoAvailableSerial {
+  id: string;
+  serial: string;
+  product: { id: string; sku: string; name: string };
+  location: { id: string; code: string; name: string };
+}
+
+export interface AllocateComodatoInput {
+  contractId: string;
+  serialItemId: string;
+  notes?: string | null;
+}
+
+export interface ReturnComodatoInput {
+  serialItemId: string;
+  toLocationId: string;
+  notes?: string | null;
+}
+
+export interface OsConsumptionMovement {
+  id: string;
+  productId: string;
+  product?: { sku: string; name: string; unit: string };
+  fromLocationId: string | null;
+  fromLocation?: { code: string; name: string };
+  quantity: string;
+  unitCost: string;
+  totalCost: string;
+  notes: string | null;
+  createdAt: string;
+  createdBy?: { firstName: string | null; lastName: string | null; email: string };
+}
+
+export interface AddOsConsumptionInput {
+  items: Array<{
+    productId: string;
+    locationId: string;
+    quantity: number | string;
+    notes?: string | null;
+  }>;
+}

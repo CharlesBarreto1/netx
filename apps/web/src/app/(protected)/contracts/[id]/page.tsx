@@ -26,6 +26,7 @@ import { useFormatMoney } from '@/lib/use-money';
 import { hasPermission } from '@/lib/session';
 
 import { AuditTrail } from '@/components/audit/AuditTrail';
+import { ContractComodatoCard } from '@/components/contracts/ContractComodatoCard';
 import { ContractSessionCard } from '@/components/contracts/ContractSessionCard';
 import { ContractUsageChart } from '@/components/contracts/ContractUsageChart';
 import { EditContractDialog } from '@/components/contracts/EditContractDialog';
@@ -422,6 +423,11 @@ export default function ContractDetailPage() {
       {/* Status técnico em tempo real (RADIUS accounting) */}
       <InfoCard title="Estado técnico">
         <ContractSessionCard contractId={contract.id} />
+      </InfoCard>
+
+      {/* Equipamentos em comodato (Estoque Fase 2) */}
+      <InfoCard title="Equipamentos em comodato">
+        <ContractComodatoCard contractId={contract.id} />
       </InfoCard>
 
       {/* Consumo de banda */}

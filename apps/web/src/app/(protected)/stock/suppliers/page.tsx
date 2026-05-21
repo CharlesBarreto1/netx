@@ -165,11 +165,11 @@ export default function SuppliersPage() {
         <ConfirmDialog
           open={true}
           title={`Excluir "${confirmDelete.name}"?`}
-          description="Fornecedores com histórico de compras não podem ser deletados — desative no formulário."
+          message="Fornecedores com histórico de compras não podem ser deletados — desative no formulário."
           confirmLabel="Excluir"
           loading={deleting}
           onConfirm={() => handleDelete(confirmDelete)}
-          onCancel={() => setConfirmDelete(null)}
+          onClose={() => setConfirmDelete(null)}
         />
       )}
     </div>

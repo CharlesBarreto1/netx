@@ -219,11 +219,11 @@ export default function ProductsPage() {
         <ConfirmDialog
           open={true}
           title={`Excluir "${confirmDelete.name}"?`}
-          description="Produtos com saldo ou seriais cadastrados não podem ser excluídos — desative no formulário pra ocultar das listagens."
+          message="Produtos com saldo ou seriais cadastrados não podem ser excluídos — desative no formulário pra ocultar das listagens."
           confirmLabel="Excluir"
           loading={deleting}
           onConfirm={() => handleDelete(confirmDelete)}
-          onCancel={() => setConfirmDelete(null)}
+          onClose={() => setConfirmDelete(null)}
         />
       )}
     </div>

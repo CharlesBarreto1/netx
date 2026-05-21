@@ -1039,6 +1039,9 @@ model Contract {
   radiusEvents        RadiusEvent[]
   serviceOrders       ServiceOrder[]
   oneTimeCharges      OneTimeCharge[]
+  // Estoque — Fase 2 (comodato)
+  serialItems         SerialItem[]
+  stockMovements      StockMovement[]
 
   // pppoeUsername é unique por tenant quando preenchido (Postgres trata
   // múltiplos NULLs como distintos por padrão, então o unique normal funciona
@@ -1231,6 +1234,8 @@ model ServiceOrder {
   assignedTo         User?               @relation("ServiceOrderAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
   createdBy          User?               @relation("ServiceOrderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy          User?               @relation("ServiceOrderUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  // Estoque — Fase 2 (consumo de material em OS)
+  stockMovements     StockMovement[]
 
   @@unique([tenantId, code])
   @@index([tenantId, status])
@@ -2079,9 +2084,8 @@ model SerialItem {
   status          SerialStatus @default(IN_STOCK)
   locationId      String?      @map("location_id") @db.Uuid // null se status != IN_STOCK e != IN_TRANSIT
 
-  // Vínculo com contrato — preenchido em Fase 2 (operação ALLOCATE).
-  // Por ora opcional, sem FK ainda (adicionada na migration de Fase 2 pra evitar
-  // ciclo nesta release).
+  // Vínculo com contrato — preenchido em Fase 2 (operação ALLOCATE = comodato).
+  // FK em migration 20260520000000_stock_phase2_comodato_consumption.
   contractId      String?      @map("contract_id") @db.Uuid
 
   acquisitionCost Decimal?     @map("acquisition_cost") @db.Decimal(14, 4)
@@ -2095,6 +2099,10 @@ model SerialItem {
 
   product   Product         @relation(fields: [productId], references: [id], onDelete: Restrict)
   location  StockLocation?  @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  // SetNull: se contrato for deletado (hoje bloqueado por Restrict em Contract→
+  // Customer; defensive aqui), serial volta ao "limbo" sem contrato. Status NÃO
+  // muda automaticamente — operador deve devolver via UI/comodato.return.
+  contract  Contract?       @relation(fields: [contractId], references: [id], onDelete: SetNull)
   movements StockMovement[]
 
   @@unique([tenantId, productId, serial])
@@ -2125,9 +2133,15 @@ model StockMovement {
   unitCost       Decimal        @map("unit_cost") @db.Decimal(14, 4)
   totalCost      Decimal        @map("total_cost") @db.Decimal(14, 4)
 
-  // Referências polimórficas — só uma é populada conforme o type.
+  // Referências polimórficas — só uma é populada conforme o type:
+  //   PURCHASE / PURCHASE_RETURN   → purchaseId
+  //   COMODATO_OUT / COMODATO_RETURN → contractId (Fase 2)
+  //   OS_CONSUMPTION                → serviceOrderId (Fase 2)
+  //   ADJUSTMENT_IN/OUT, TRANSFER_* → todas null
+  //   SALE / SALE_RETURN            → dormente (não usado; operação só faz comodato)
   purchaseId     String?        @map("purchase_id") @db.Uuid
-  // saleId, contractId, serviceOrderId entram em Fase 2.
+  contractId     String?        @map("contract_id") @db.Uuid
+  serviceOrderId String?        @map("service_order_id") @db.Uuid
 
   notes          String?        @db.Text
   createdById    String         @map("created_by_id") @db.Uuid
@@ -2138,6 +2152,8 @@ model StockMovement {
   fromLocation StockLocation? @relation("MovementFromLocation", fields: [fromLocationId], references: [id], onDelete: SetNull)
   toLocation   StockLocation? @relation("MovementToLocation",   fields: [toLocationId],   references: [id], onDelete: SetNull)
   purchase     Purchase?      @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+  contract     Contract?      @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  serviceOrder ServiceOrder?  @relation(fields: [serviceOrderId], references: [id], onDelete: SetNull)
   createdBy    User           @relation("StockMovementCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
 
   @@index([tenantId, createdAt(sort: Desc)])
@@ -2145,6 +2161,8 @@ model StockMovement {
   @@index([tenantId, type, createdAt(sort: Desc)])
   @@index([purchaseId])
   @@index([serialItemId])
+  @@index([contractId])
+  @@index([serviceOrderId])
   @@map("stock_movements")
 }
 
