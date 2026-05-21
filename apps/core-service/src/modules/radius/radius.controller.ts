@@ -6,6 +6,7 @@ import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { RadacctService } from './radacct.service';
 import { RadiusApplierService } from './radius-applier.service';
 import { RadiusAuthLogService } from './radius-auth-log.service';
+import { RadiusReconcilerService } from './radius-reconciler.service';
 
 /**
  * Endpoints administrativos do RADIUS.
@@ -21,6 +22,7 @@ export class RadiusController {
     private readonly applier: RadiusApplierService,
     private readonly authLog: RadiusAuthLogService,
     private readonly radacct: RadacctService,
+    private readonly reconciler: RadiusReconcilerService,
   ) {}
 
   /**
@@ -39,6 +41,18 @@ export class RadiusController {
   @RequirePermissions('contracts.admin')
   async runApplier() {
     const r = await this.applier.runOnce();
+    return { ok: true, ...r };
+  }
+
+  /**
+   * Roda o reconciler manualmente. Útil pra debug em produção e pro CLI
+   * `netx-radius-check`. Retorna estatísticas do ciclo.
+   */
+  @Post('_tasks/run-reconciler')
+  @HttpCode(200)
+  @RequirePermissions('contracts.admin')
+  async runReconciler() {
+    const r = await this.reconciler.runOnce();
     return { ok: true, ...r };
   }
 

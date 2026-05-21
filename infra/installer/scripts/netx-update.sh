@@ -207,6 +207,58 @@ check_port "api-gateway"  "${GW_PORT}"
 check_port "web"          "${WEB_PORT}"
 
 # -----------------------------------------------------------------------------
+# 10. Smoke check de sincronia RADIUS
+# -----------------------------------------------------------------------------
+# Detecta divergências entre `contracts` (fonte) e `radius.radcheck`/`radusergroup`
+# (estado aplicado). Histórico: já tivemos bug em `contracts.update()` que não
+# enfileirava sync ao trocar identificador IPoE, deixando radcheck stale.
+# Mesmo com o `RadiusReconcilerService` auto-corrigindo a cada 5min, queremos
+# saber NA HORA se o deploy deixou inconsistências.
+log "smoke check RADIUS sync (contracts vs radcheck)"
+
+# Carrega .env (DATABASE_URL) sem expor ao log.
+set -a; . "${NETX_ETC}/.env"; set +a
+
+# Conta:
+#   - contratos ACTIVE que DEVERIAM ter Auth-Type ou Cleartext-Password em radcheck
+#   - contratos ACTIVE COM entrada correspondente em radcheck
+# A diferença é o "drift" — deveria ser 0 (ou ~0 enquanto reconciler corre).
+RADIUS_DRIFT_SQL="
+SELECT
+  (SELECT count(*) FROM contracts WHERE status = 'ACTIVE' AND deleted_at IS NULL
+     AND ((auth_method = 'IPOE'  AND coalesce(circuit_id, mac_address) IS NOT NULL)
+       OR (auth_method = 'PPPOE' AND pppoe_username IS NOT NULL))
+  ) AS active_total,
+  (SELECT count(DISTINCT username) FROM radius.radcheck
+     WHERE attribute IN ('Cleartext-Password','Auth-Type')
+  ) AS radcheck_total;
+"
+
+DRIFT_OUT=$(sudo -u postgres psql -d "${NETX_DB_NAME:-netx_app}" -tA -F'|' -c "${RADIUS_DRIFT_SQL}" 2>/dev/null || echo "ERR|ERR")
+ACTIVE_TOTAL=$(echo "${DRIFT_OUT}" | cut -d'|' -f1 | tr -d ' ')
+RADCHECK_TOTAL=$(echo "${DRIFT_OUT}" | cut -d'|' -f2 | tr -d ' ')
+
+if [[ "${ACTIVE_TOTAL}" == "ERR" || -z "${ACTIVE_TOTAL}" ]]; then
+  warn "smoke check RADIUS pulado — não consegui consultar DB (DB ainda subindo?)"
+elif [[ "${ACTIVE_TOTAL}" == "0" && "${RADCHECK_TOTAL}" == "0" ]]; then
+  dim "  RADIUS sync: nenhum contrato ACTIVE ainda (instalação nova) — OK"
+elif [[ "${ACTIVE_TOTAL}" == "${RADCHECK_TOTAL}" ]]; then
+  ok "RADIUS sync: ${ACTIVE_TOTAL} contratos ACTIVE = ${RADCHECK_TOTAL} entradas em radcheck"
+else
+  # Diff entre os dois — pode ser:
+  #   (a) órfãos em radcheck (radcheck > active)
+  #   (b) contratos sem sync (active > radcheck) — caso do bug que motivou isso
+  DIFF=$(( ACTIVE_TOTAL - RADCHECK_TOTAL ))
+  if [[ ${DIFF#-} -gt $(( ACTIVE_TOTAL / 100 + 1 )) ]]; then
+    # diff > 1% (ou > 1 absoluto se total pequeno) → warn forte
+    warn "RADIUS DRIFT: active=${ACTIVE_TOTAL} radcheck=${RADCHECK_TOTAL} (diff=${DIFF})"
+    warn "  → reconciler vai corrigir em até 5min, ou rode 'netx-radius-check' pra forçar agora"
+  else
+    dim "  RADIUS sync: pequena diferença (active=${ACTIVE_TOTAL} radcheck=${RADCHECK_TOTAL}) — dentro da tolerância"
+  fi
+fi
+
+# -----------------------------------------------------------------------------
 # Done
 # -----------------------------------------------------------------------------
 echo

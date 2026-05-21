@@ -30,6 +30,7 @@ netx_app_setup() {
   netx_app_seed_baseline
   netx_app_seed_admin
   netx_app_install_update_command
+  netx_app_install_radius_check_command
 }
 
 # Cria symlink global /usr/local/bin/netx-update apontando pro script no repo.
@@ -45,6 +46,22 @@ netx_app_install_update_command() {
   ln -sf "${target}" "${link}"
   chmod +x "${target}"
   log_dim "Comando 'sudo netx-update' disponível pra updates futuros"
+}
+
+# Symlink pra /usr/local/bin/netx-radius-check — auditoria + reconciliação manual
+# entre `contracts` e `radius.radcheck`/`radusergroup`. Defesa em profundidade
+# contra bugs que esqueçam de enfileirar `radius_event` (ex.: contracts.update()
+# que só checava pppoeUsername antes do fix de 2026-05-21).
+netx_app_install_radius_check_command() {
+  local target="${NETX_HOME}/infra/installer/scripts/netx-radius-check.sh"
+  local link="/usr/local/bin/netx-radius-check"
+  if [[ ! -f "${target}" ]]; then
+    log_warn "Script netx-radius-check.sh ausente em ${target} — pulando symlink"
+    return
+  fi
+  ln -sf "${target}" "${link}"
+  chmod +x "${target}"
+  log_dim "Comando 'sudo netx-radius-check' disponível (auditoria RADIUS)"
 }
 
 netx_app_user() {
