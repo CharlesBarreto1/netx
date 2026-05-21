@@ -29,6 +29,22 @@ netx_app_setup() {
   postgres_fix_radius_ownership
   netx_app_seed_baseline
   netx_app_seed_admin
+  netx_app_install_update_command
+}
+
+# Cria symlink global /usr/local/bin/netx-update apontando pro script no repo.
+# Permite ao operador atualizar versões com `sudo netx-update` (sem precisar
+# decorar o caminho completo do installer).
+netx_app_install_update_command() {
+  local target="${NETX_HOME}/infra/installer/scripts/netx-update.sh"
+  local link="/usr/local/bin/netx-update"
+  if [[ ! -f "${target}" ]]; then
+    log_warn "Script netx-update.sh ausente em ${target} — pulando symlink"
+    return
+  fi
+  ln -sf "${target}" "${link}"
+  chmod +x "${target}"
+  log_dim "Comando 'sudo netx-update' disponível pra updates futuros"
 }
 
 netx_app_user() {
@@ -361,27 +377,34 @@ netx_app_seed_baseline() {
   chown "${NETX_USER}:${NETX_USER}" "${NETX_VAR}/.seed-baseline-done"
 }
 
-# Cria o usuário admin inicial via SQL (independente do seed pra garantir
-# senha definida pelo wizard). Usa tabelas Prisma.
+# Cria o usuário admin inicial via script Node (argon2 + Prisma upsert).
 #
-# IDEMPOTÊNCIA: o script seed-admin.ts checa duplicata e faz upsert por email
-# (cria se não existe, atualiza password se já existe). Por isso podemos
-# rodar sempre, sem marker — re-run com NETX_ADMIN_PASSWORD novo simplesmente
-# atualiza a senha. Útil pra "esqueci a senha" via re-run do installer.
+# COMPORTAMENTO DE RE-RUN: por padrão SÓ roda 1x (marca .admin-bootstrapped).
+# Em re-runs subsequentes, NÃO toca no admin existente — preserva senhas
+# trocadas pelo user via UI, customizações de role, etc.
+#
+# Pra forçar reset da senha do admin (ex.: esqueci a senha):
+#   NETX_ADMIN_RESET=1 sudo bash /opt/netx/infra/installer/install.sh
+# Isso sobrescreve passwordHash com o valor de NETX_ADMIN_PASSWORD em .secrets.
 netx_app_seed_admin() {
   if [[ -z "${NETX_ADMIN_EMAIL}" || -z "${NETX_ADMIN_PASSWORD}" ]]; then
     log_warn "Admin email/senha vazios — pulando criação de admin"
     return
   fi
 
-  log_info "Criando/atualizando admin ${NETX_ADMIN_EMAIL} no tenant ${NETX_TENANT_NAME}"
+  if [[ -f "${NETX_VAR}/.admin-bootstrapped" && "${NETX_ADMIN_RESET:-0}" != "1" ]]; then
+    log_dim "Admin já criado em install anterior. Pra resetar senha: NETX_ADMIN_RESET=1 sudo bash install.sh"
+    return
+  fi
+
+  if [[ "${NETX_ADMIN_RESET:-0}" == "1" ]]; then
+    log_warn "NETX_ADMIN_RESET=1 — sobrescrevendo senha do admin ${NETX_ADMIN_EMAIL}"
+  else
+    log_info "Criando admin ${NETX_ADMIN_EMAIL} no tenant ${NETX_TENANT_NAME}"
+  fi
 
   # Usa um script Node ad-hoc dentro do core-service pra reusar argon2 + Prisma.
-  # Mais robusto que SQL puro porque respeita os mesmos params de hash do app.
-  #
-  # `dotenv -e ../../.env --` injeta o `.env` raiz (DATABASE_URL, ARGON2_*) no
-  # processo, mesmo padrão dos scripts `db:generate`, `db:migrate`, `db:seed`.
-  # Sem isso, o Prisma falha com "Environment variable not found: DATABASE_URL".
+  # `dotenv -e ../../.env --` injeta o `.env` raiz (DATABASE_URL, ARGON2_*) no processo.
   as_netx "cd ${NETX_HOME}/apps/core-service && \
     NETX_ADMIN_EMAIL='${NETX_ADMIN_EMAIL}' \
     NETX_ADMIN_PASSWORD='${NETX_ADMIN_PASSWORD}' \
@@ -391,5 +414,7 @@ netx_app_seed_admin() {
     NETX_TENANT_CURRENCY='${NETX_TENANT_CURRENCY}' \
     npx dotenv -e ../../.env -- npx ts-node ${INSTALLER_DIR}/scripts/seed-admin.ts"
 
-  log_ok "Admin criado/atualizado"
+  touch "${NETX_VAR}/.admin-bootstrapped"
+  chown "${NETX_USER}:${NETX_USER}" "${NETX_VAR}/.admin-bootstrapped"
+  log_ok "Admin pronto"
 }

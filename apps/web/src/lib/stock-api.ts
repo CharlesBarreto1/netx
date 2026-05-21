@@ -292,8 +292,10 @@ export const stockApi = {
   updateLocation: (id: string, input: UpdateStockLocationInput) =>
     api.patch<StockLocation>(`/v1/stock/locations/${id}`, input),
   deleteLocation: (id: string) => api.delete(`/v1/stock/locations/${id}`),
+  // Backend usa POST (não PUT) — operação "replace inteiro" mas o controller
+  // foi exposto como POST por convenção do módulo.
   setLocationAccess: (id: string, input: SetLocationAccessInput) =>
-    api.put<void>(`/v1/stock/locations/${id}/access`, input),
+    api.post<void>(`/v1/stock/locations/${id}/access`, input),
 
   // Purchases ----------------------------------------------------------------
   // listPurchases retorna array direto (não paginado — backend take:200).
