@@ -21,7 +21,8 @@ import { hasPermission } from '@/lib/session';
  * ordenado pelo backend). Mostra resumo por linha + link para o detalhe; criar
  * contrato leva pra `/contracts/new?customerId=...` (já é suportado pela página).
  */
-const STATUS_TONE: Record<Contract['status'], 'success' | 'warning' | 'danger'> = {
+const STATUS_TONE: Record<Contract['status'], 'success' | 'warning' | 'danger' | 'info'> = {
+  PENDING_INSTALL: 'info',
   ACTIVE: 'success',
   SUSPENDED: 'warning',
   CANCELLED: 'danger',
@@ -30,8 +31,14 @@ export function ContractsTab({ customerId }: { customerId: string }) {
   const canWrite = hasPermission('contracts.write');
   const formatMoney = useFormatMoney();
   const tContracts = useTranslations('contracts');
-  const statusLabel = (s: Contract['status']) =>
-    tContracts(`status.${s.toLowerCase()}` as 'status.active');
+  const statusLabel = (s: Contract['status']) => {
+    // Chave i18n é camelCase (status.pendingInstall, status.active, ...) —
+    // PENDING_INSTALL precisa de conversão snake → camel; demais funcionam
+    // com lowercase direto.
+    const key =
+      s === 'PENDING_INSTALL' ? 'pendingInstall' : s.toLowerCase();
+    return tContracts(`status.${key}` as 'status.active');
+  };
 
   const key = contractsApi.listPath({
     customerId,
