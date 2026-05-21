@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 
+import { OsStockSection } from '@/components/service-orders/OsStockSection';
 import { ServiceOrderStatusBadge } from '@/components/service-orders/StatusBadge';
 import { Button } from '@/components/ui/Button';
 import { Input, Label, Textarea } from '@/components/ui/Input';
@@ -274,6 +275,22 @@ export default function ServiceOrderDetailPage() {
           <p className="mt-2 whitespace-pre-wrap text-sm text-text">
             {os.closeDescription}
           </p>
+        </section>
+      )}
+
+      {/* Estoque — materiais consumidos + atalho pra alocar comodato (Fase 2) */}
+      {os.contractId && (
+        <section className="rounded-md border border-border bg-surface p-4">
+          <h2 className="text-sm font-semibold text-text mb-3">
+            Estoque & comodato
+          </h2>
+          <OsStockSection
+            serviceOrderId={os.id}
+            contractId={os.contractId}
+            isFinalized={
+              os.status === 'COMPLETED' || os.status === 'CANCELLED'
+            }
+          />
         </section>
       )}
 
