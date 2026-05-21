@@ -311,6 +311,12 @@ export class RadiusReconcilerService {
           expectedAttr: null,
           expectedValue: null,
         };
+      case ContractStatus.PENDING_INSTALL:
+        // Contrato aguardando instalação — não deveria ter NADA em RADIUS.
+        // Reconciler skipa (retorna null = sem expectativa). Se houver
+        // entrada órfã em radcheck pro identificador dele, a Pass 2 do
+        // reconciler trata via órfão.
+        return null;
       case ContractStatus.CANCELLED:
         // Cancelado: radcheck deve estar vazio, grupo = cancelados.
         return {

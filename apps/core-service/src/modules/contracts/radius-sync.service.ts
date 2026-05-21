@@ -33,9 +33,18 @@ function actionFor(status: ContractStatus): { action: RadiusAction; pool: string
       return { action: RadiusAction.BLOCK, pool: POOL_BLOQUEADOS };
     case ContractStatus.CANCELLED:
       return { action: RadiusAction.CANCEL, pool: POOL_CANCELADOS };
-    default:
-      // TypeScript guard — exaustivo
+    case ContractStatus.PENDING_INSTALL:
+      // Não deveria chegar aqui — ContractsService.create e .update já
+      // pulam enqueueSync quando status=PENDING_INSTALL. Defesa: enfileirar
+      // BLOCK garante que mesmo se algum bug futuro chamar, o cliente NÃO
+      // sai autorizado (fail-secure).
       return { action: RadiusAction.BLOCK, pool: POOL_BLOQUEADOS };
+    default: {
+      // Exhaustive guard — TS reclama se enum ganhar valor novo sem case.
+      const _exhaustive: never = status;
+      void _exhaustive;
+      return { action: RadiusAction.BLOCK, pool: POOL_BLOQUEADOS };
+    }
   }
 }
 

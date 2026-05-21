@@ -83,7 +83,7 @@ export class OltsController {
     @CurrentUser() user: AuthenticatedPrincipal,
     @ZodBody(CreateOltRequestSchema) input: CreateOltRequest,
   ) {
-    return this.svc.create(user.tenantId, user.id, input);
+    return this.svc.create(user.tenantId, user.sub, input);
   }
 
   @Patch(':id')
@@ -93,7 +93,7 @@ export class OltsController {
     @Param('id', new ParseUUIDPipe()) id: string,
     @ZodBody(UpdateOltRequestSchema) input: UpdateOltRequest,
   ) {
-    return this.svc.update(user.tenantId, user.id, id, input);
+    return this.svc.update(user.tenantId, user.sub, id, input);
   }
 
   @Delete(':id')
@@ -103,7 +103,7 @@ export class OltsController {
     @CurrentUser() user: AuthenticatedPrincipal,
     @Param('id', new ParseUUIDPipe()) id: string,
   ): Promise<void> {
-    await this.svc.remove(user.tenantId, user.id, id);
+    await this.svc.remove(user.tenantId, user.sub, id);
   }
 
   @Post(':id/test-connection')
@@ -113,7 +113,7 @@ export class OltsController {
     @CurrentUser() user: AuthenticatedPrincipal,
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
-    return this.svc.testConnection(user.tenantId, user.id, id);
+    return this.svc.testConnection(user.tenantId, user.sub, id);
   }
 }
 
@@ -145,7 +145,7 @@ export class ProvisioningController {
     @Param('contractId', new ParseUUIDPipe()) contractId: string,
     @ZodBody(InstallCustomerRequestSchema) input: InstallCustomerRequest,
   ) {
-    return this.svc.installCustomer(user.tenantId, user.id, contractId, input);
+    return this.svc.installCustomer(user.tenantId, user.sub, contractId, input);
   }
 
   /** Poll do status da ONT pós-install. */

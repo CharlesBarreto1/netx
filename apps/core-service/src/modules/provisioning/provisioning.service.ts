@@ -236,7 +236,11 @@ export class ProvisioningService {
       action: 'OLT_AUTHORIZE',
       status: authResult.success ? 'SUCCESS' : 'FAILED',
       payload: authResult.success
-        ? { sn: input.snGpon, result: authResult.data }
+        // JSON.parse(JSON.stringify(x)) força o objeto a passar a barreira
+        // de tipos do Prisma JsonValue (interfaces TS strict não casam com
+        // o index signature exigido por JsonObject, embora o conteúdo seja
+        // 100% serializável).
+        ? (JSON.parse(JSON.stringify({ sn: input.snGpon, result: authResult.data })) as Prisma.JsonObject)
         : { sn: input.snGpon },
       error: authResult.success ? null : authResult.error,
       durationMs: authResult.durationMs,

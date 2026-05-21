@@ -9,7 +9,7 @@ import type { Paginated } from './crm-types';
 // Tipos (espelho do backend; mantidos aqui para evitar import do package shared
 // que só é distribuído em dist/ para Node)
 // -----------------------------------------------------------------------------
-export type ContractStatus = 'ACTIVE' | 'SUSPENDED' | 'CANCELLED';
+export type ContractStatus = 'PENDING_INSTALL' | 'ACTIVE' | 'SUSPENDED' | 'CANCELLED';
 export type ContractSuspendReason = 'MANUAL' | 'OVERDUE_PAYMENT' | 'OTHER';
 export type InvoiceStatus = 'OPEN' | 'PAID' | 'OVERDUE' | 'CANCELLED';
 export type ContractAuthMethod = 'PPPOE' | 'IPOE';
