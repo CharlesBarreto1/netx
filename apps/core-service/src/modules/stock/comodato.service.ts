@@ -252,14 +252,11 @@ export class ComodatoService {
     input: { serialItemId: string; toLocationId: string; notes?: string | null },
     options: { isAdmin?: boolean } = {},
   ) {
-    // Pré-check de ACL fora da transaction (mais barato)
-    const canWrite = await this.locations.canUserWrite(
-      input.toLocationId,
-      actorUserId,
-      options.isAdmin ?? false,
-    );
-    if (!canWrite) {
-      throw new BadRequestException('Sem permissão pra escrever no local destino');
+    // Pré-check de ACL fora da transaction (mais barato).
+    // Admin bypassa; demais usuários precisam ter canWrite=true no local.
+    // `assertCanWrite` lança ForbiddenException se faltar.
+    if (!options.isAdmin) {
+      await this.locations.assertCanWrite(tenantId, actorUserId, input.toLocationId);
     }
 
     return this.prisma.$transaction(async (tx) => {

@@ -65,18 +65,13 @@ export class OsConsumptionService {
       throw new BadRequestException('Nenhum item informado pra consumo');
     }
 
-    // Pré-check ACL fora da transaction (mais barato)
-    const distinctLocations = new Set(input.items.map((i) => i.locationId));
-    for (const locId of distinctLocations) {
-      const canWrite = await this.locations.canUserWrite(
-        locId,
-        actorUserId,
-        options.isAdmin ?? false,
-      );
-      if (!canWrite) {
-        throw new BadRequestException(
-          `Sem permissão pra escrever no local ${locId}`,
-        );
+    // Pré-check ACL fora da transaction (mais barato). Admin bypassa;
+    // operador normal precisa ter canWrite=true em CADA local distinto usado.
+    // `assertCanWrite` lança ForbiddenException se faltar permissão.
+    if (!options.isAdmin) {
+      const distinctLocations = new Set(input.items.map((i) => i.locationId));
+      for (const locId of distinctLocations) {
+        await this.locations.assertCanWrite(tenantId, actorUserId, locId);
       }
     }
 

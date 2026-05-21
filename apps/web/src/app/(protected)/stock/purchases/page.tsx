@@ -18,10 +18,9 @@ import {
   type StockLocation,
   type Supplier,
 } from '@/lib/stock-api';
-import type { Paginated } from '@/lib/crm-types';
 
 export default function PurchasesPage() {
-  const { data, isLoading, error, mutate } = useSWR<Paginated<Purchase>>(
+  const { data, isLoading, error, mutate } = useSWR<Purchase[]>(
     stockApi.purchasesPath(),
     () => stockApi.listPurchases(),
   );
@@ -50,13 +49,13 @@ export default function PurchasesPage() {
         </div>
       )}
 
-      {data && data.items.length === 0 && (
+      {data && data.length === 0 && (
         <p className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
           Nenhuma compra registrada ainda.
         </p>
       )}
 
-      {data && data.items.length > 0 && (
+      {data && data.length > 0 && (
         <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
@@ -72,7 +71,7 @@ export default function PurchasesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                {data.items.map((p) => (
+                {data.map((p) => (
                   <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
                     <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
                       {new Date(p.date).toLocaleDateString()}

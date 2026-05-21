@@ -15,11 +15,11 @@ import {
   type CreateStockTransferInput,
   type ListMovementsQuery,
   type MovementType,
+  type PaginatedStock,
   type Product,
   type StockLocation,
   type StockMovement,
 } from '@/lib/stock-api';
-import type { Paginated } from '@/lib/crm-types';
 
 const MOVEMENT_LABELS: Record<MovementType, string> = {
   PURCHASE: 'Compra',
@@ -46,7 +46,7 @@ const IN_TYPES = new Set<MovementType>([
 export default function StockMovementsPage() {
   const [filters, setFilters] = useState<ListMovementsQuery>({ page: 1, pageSize: 50 });
 
-  const { data, isLoading, error, mutate } = useSWR<Paginated<StockMovement>>(
+  const { data, isLoading, error, mutate } = useSWR<PaginatedStock<StockMovement>>(
     stockApi.movementsPath(filters),
     () => stockApi.listMovements(filters),
   );

@@ -7,7 +7,19 @@
  * do web — manter aqui dispensa essa dependência em dev.
  */
 import { api } from './api';
-import type { Paginated } from './crm-types';
+
+/**
+ * Shape de paginação usado pelos endpoints de stock (kardex). Difere do
+ * `Paginated<T>` de `./crm-types` (que usa `data` + `pagination.total`).
+ * O backend de stock retorna `{ items, total, page, pageSize }` direto —
+ * mantemos um tipo local pra evitar confusão com o pattern do CRM.
+ */
+export interface PaginatedStock<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
 
 // =============================================================================
 // SUPPLIERS
@@ -284,8 +296,9 @@ export const stockApi = {
     api.put<void>(`/v1/stock/locations/${id}/access`, input),
 
   // Purchases ----------------------------------------------------------------
+  // listPurchases retorna array direto (não paginado — backend take:200).
   purchasesPath: () => `/v1/stock/purchases`,
-  listPurchases: () => api.get<Paginated<Purchase>>('/v1/stock/purchases'),
+  listPurchases: () => api.get<Purchase[]>('/v1/stock/purchases'),
   getPurchase: (id: string) => api.get<Purchase>(`/v1/stock/purchases/${id}`),
   createPurchase: (input: CreatePurchaseInput) =>
     api.post<Purchase>('/v1/stock/purchases', input),
@@ -294,7 +307,7 @@ export const stockApi = {
   movementsPath: (params?: ListMovementsQuery) =>
     `/v1/stock/movements${qs(params ?? {})}`,
   listMovements: (params?: ListMovementsQuery) =>
-    api.get<Paginated<StockMovement>>(`/v1/stock/movements${qs(params ?? {})}`),
+    api.get<PaginatedStock<StockMovement>>(`/v1/stock/movements${qs(params ?? {})}`),
   createAdjustment: (input: CreateAdjustmentInput) =>
     api.post<StockMovement>('/v1/stock/adjustments', input),
   createTransfer: (input: CreateStockTransferInput) =>
