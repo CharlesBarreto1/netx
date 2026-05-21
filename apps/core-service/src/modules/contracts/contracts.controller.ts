@@ -28,6 +28,7 @@ import {
   ReactivateContractRequestSchema,
   SuspendContractRequestSchema,
   UpdateContractRequestSchema,
+  UpdateContractWifiRequestSchema,
   type AuthenticatedPrincipal,
   type CancelContractRequest,
   type CreateContractRequest,
@@ -35,6 +36,7 @@ import {
   type ReactivateContractRequest,
   type SuspendContractRequest,
   type UpdateContractRequest,
+  type UpdateContractWifiRequest,
 } from '@netx/shared';
 
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
@@ -160,6 +162,37 @@ export class ContractsController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ): Promise<void> {
     await this.contracts.remove(user.tenantId, user.sub, id);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Wi-Fi management (pós-instalação via TR-069)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Estado atual do Wi-Fi + última task TR-069 (UI mostra no card do contrato).
+   */
+  @Get(':id/wifi')
+  @RequirePermissions('contracts.read')
+  wifiStatus(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.contracts.getWifiStatus(user.tenantId, id);
+  }
+
+  /**
+   * Atualiza SSID/senha Wi-Fi do contrato. Enfileira Tr069Task SET_PARAMS
+   * (e opcionalmente REBOOT). Aplicação acontece no próximo Inform do CPE
+   * (típico ≤60s). Senha é cifrada at-rest.
+   */
+  @Patch(':id/wifi')
+  @RequirePermissions('contracts.write')
+  updateWifi(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(UpdateContractWifiRequestSchema) input: UpdateContractWifiRequest,
+  ) {
+    return this.contracts.updateWifi(user.tenantId, user.sub, id, input);
   }
 
   /**

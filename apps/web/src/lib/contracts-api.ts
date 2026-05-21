@@ -200,7 +200,47 @@ export const contractsApi = {
   remove(id: string) {
     return api.delete(`/v1/contracts/${id}`);
   },
+
+  // ---------------------------------------------------------------------------
+  // Wi-Fi pós-instalação (TR-069)
+  // ---------------------------------------------------------------------------
+  wifiStatus(id: string) {
+    return api.get<ContractWifiStatus>(`/v1/contracts/${id}/wifi`);
+  },
+  updateWifi(id: string, input: UpdateContractWifiInput) {
+    return api.patch<UpdateContractWifiResponse>(`/v1/contracts/${id}/wifi`, input);
+  },
 };
+
+// -----------------------------------------------------------------------------
+// WI-FI TYPES
+// -----------------------------------------------------------------------------
+export interface UpdateContractWifiInput {
+  ssid: string;
+  wifiPassword: string;
+  reboot?: boolean;
+}
+
+export interface UpdateContractWifiResponse {
+  setParamsTaskId: string;
+  rebootTaskId: string | null;
+  etaSeconds: number;
+}
+
+export interface ContractWifiStatus {
+  ssid: string | null;
+  hasWifiPassword: boolean;
+  hasTr069Device: boolean;
+  lastTask: {
+    id: string;
+    action: 'SET_PARAMS' | 'GET_PARAMS' | 'REBOOT' | 'FACTORY_RESET' | 'DOWNLOAD' | 'ADD_OBJECT' | 'DELETE_OBJECT';
+    status: 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED' | 'CANCELLED';
+    createdAt: string;
+    completedAt: string | null;
+    error: string | null;
+  } | null;
+  lastInformAt: string | null;
+}
 
 // -----------------------------------------------------------------------------
 // INVOICES

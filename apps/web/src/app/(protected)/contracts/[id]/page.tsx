@@ -28,6 +28,7 @@ import { hasPermission } from '@/lib/session';
 import { AuditTrail } from '@/components/audit/AuditTrail';
 import { ContractComodatoCard } from '@/components/contracts/ContractComodatoCard';
 import { ContractSessionCard } from '@/components/contracts/ContractSessionCard';
+import { ContractWifiCard } from '@/components/contracts/ContractWifiCard';
 import { ContractUsageChart } from '@/components/contracts/ContractUsageChart';
 import { EditContractDialog } from '@/components/contracts/EditContractDialog';
 import { PaymentDialog } from '@/components/finance/PaymentDialog';
@@ -424,6 +425,10 @@ export default function ContractDetailPage() {
       <InfoCard title="Estado técnico">
         <ContractSessionCard contractId={contract.id} />
       </InfoCard>
+
+      {/* Wi-Fi (TR-069 ACS) — só faz sentido pra contratos com ONT vinculada,
+          mas o próprio card renderiza um aviso quando não há TR-069 device. */}
+      <ContractWifiCard contractId={contract.id} />
 
       {/* Equipamentos em comodato (Estoque Fase 2) */}
       <InfoCard title="Equipamentos em comodato">

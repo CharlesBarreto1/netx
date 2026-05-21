@@ -17,27 +17,10 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { Tr069TaskAction, Tr069TaskStatus } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { HUAWEI_EG8145_PATHS } from './tr069-paths.huawei';
 
-/** Data model paths Huawei EG8145V5/X10 (Customized HGW DataModel). */
-export const HUAWEI_EG8145_PATHS = {
-  // SSID 2.4GHz e 5GHz (X10 tem ambos; V5 tem ambos em algumas firmwares)
-  ssid24:
-    'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID',
-  ssid50:
-    'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.SSID',
-  pwd24:
-    'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.PreSharedKey',
-  pwd50:
-    'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.PreSharedKey.1.PreSharedKey',
-  // Security mode (WPA2-PSK)
-  sec24:
-    'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.X_HW_SecurityMode',
-  sec50:
-    'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.X_HW_SecurityMode',
-  // Inform interval — reduzir após primeira config pra próxima sessão ser rápida
-  informInterval:
-    'InternetGatewayDevice.ManagementServer.PeriodicInformInterval',
-} as const;
+// Re-export pra compat com código existente que importava daqui
+export { HUAWEI_EG8145_PATHS };
 
 interface SetWifiInput {
   ssid: string;

@@ -19,17 +19,22 @@ import {
   type ContractResponse,
   type ContractStatus,
   type ContractSuspendReason,
+  type ContractWifiStatus,
   type CreateContractRequest,
   type ListContractsQuery,
   type Paginated,
   type ReactivateContractRequest,
   type SuspendContractRequest,
   type UpdateContractRequest,
+  type UpdateContractWifiRequest,
+  type UpdateContractWifiResponse,
 } from '@netx/shared';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { CryptoService } from '../crypto/crypto.service';
 import { DisconnectService } from '../disconnect/disconnect.service';
+import { HUAWEI_EG8145_PATHS } from '../provisioning/tr069-paths.huawei';
 import { InvoiceGeneratorService } from './invoice-generator.service';
 import { RadiusSyncService } from './radius-sync.service';
 
@@ -68,6 +73,7 @@ export class ContractsService {
     private readonly invoiceGen: InvoiceGeneratorService,
     private readonly radius: RadiusSyncService,
     private readonly disconnect: DisconnectService,
+    private readonly crypto: CryptoService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -848,6 +854,189 @@ export class ContractsService {
         code: existing.code,
       },
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // WI-FI MANAGEMENT (pós-instalação via TR-069)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Status atual do Wi-Fi do contrato + última task TR-069. UI mostra no card
+   * "/contracts/:id" pra operador saber se a última mudança aplicou.
+   */
+  async getWifiStatus(tenantId: string, contractId: string): Promise<ContractWifiStatus> {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, tenantId, deletedAt: null },
+      select: {
+        ssid: true,
+        wifiPasswordEnc: true,
+        ont: {
+          select: {
+            tr069Device: {
+              select: {
+                id: true,
+                lastInformAt: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    if (!contract) throw new NotFoundException('Contrato não encontrado');
+
+    const deviceId = contract.ont?.tr069Device?.id ?? null;
+    const lastInformAt = contract.ont?.tr069Device?.lastInformAt ?? null;
+
+    const lastTask = await this.prisma.tr069Task.findFirst({
+      where: { tenantId, contractId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        action: true,
+        status: true,
+        createdAt: true,
+        completedAt: true,
+        error: true,
+      },
+    });
+
+    return {
+      ssid: contract.ssid,
+      hasWifiPassword: !!contract.wifiPasswordEnc,
+      hasTr069Device: !!deviceId,
+      lastTask: lastTask
+        ? {
+            id: lastTask.id,
+            action: lastTask.action,
+            status: lastTask.status,
+            createdAt: lastTask.createdAt.toISOString(),
+            completedAt: lastTask.completedAt?.toISOString() ?? null,
+            error: lastTask.error,
+          }
+        : null,
+      lastInformAt: lastInformAt?.toISOString() ?? null,
+    };
+  }
+
+  /**
+   * Atualiza SSID/senha Wi-Fi e enfileira Tr069Task SET_PARAMS (+ Reboot
+   * opcional). Aplicação real depende do CPE fazer próximo Inform (≤60s
+   * típico). Operador vê status via getWifiStatus.
+   *
+   * Pre-req: contrato precisa ter ONT vinculada + Tr069Device pré-existente.
+   * Sem isso (ex.: contrato ainda PENDING_INSTALL), retorna erro orientando
+   * a usar /provisioning/install primeiro.
+   */
+  async updateWifi(
+    tenantId: string,
+    actorUserId: string,
+    contractId: string,
+    input: UpdateContractWifiRequest,
+  ): Promise<UpdateContractWifiResponse> {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, tenantId, deletedAt: null },
+      include: {
+        ont: {
+          include: {
+            tr069Device: true,
+          },
+        },
+      },
+    });
+    if (!contract) throw new NotFoundException('Contrato não encontrado');
+    if (!contract.ont) {
+      throw new BadRequestException(
+        'Contrato sem ONT vinculada. Ative o cliente em /provisioning/install primeiro.',
+      );
+    }
+
+    // Tr069Device pode ainda não existir se o CPE nunca fez Inform. Criamos
+    // placeholder usando padrão "<OUI>-<SN_GPON>" (mesmo do enqueueSetWifi).
+    // Quando CPE realmente conectar, o session matchupa pelo SN.
+    let deviceDbId = contract.ont.tr069Device?.id;
+    if (!deviceDbId) {
+      const placeholder = `00259E-${contract.ont.snGpon.toUpperCase()}`;
+      const created = await this.prisma.tr069Device.upsert({
+        where: { deviceId: placeholder },
+        create: {
+          tenantId,
+          ontId: contract.ont.id,
+          deviceId: placeholder,
+          manufacturer: 'Huawei',
+          oui: '00259E',
+          status: 'UNKNOWN',
+        },
+        update: { ontId: contract.ont.id },
+      });
+      deviceDbId = created.id;
+    }
+
+    // Persiste SSID em plaintext + senha encrypted no Contract.
+    await this.prisma.contract.update({
+      where: { id: contract.id },
+      data: {
+        ssid: input.ssid,
+        wifiPasswordEnc: this.crypto.encrypt(input.wifiPassword),
+        updatedById: actorUserId,
+      },
+    });
+
+    // Enfileira SET_PARAMS — aplica SSID + senha em 2.4G e 5G + reduz
+    // PeriodicInformInterval pra 60s pra próxima sessão.
+    const setParams = await this.prisma.tr069Task.create({
+      data: {
+        tenantId,
+        deviceId: deviceDbId,
+        contractId,
+        action: 'SET_PARAMS',
+        status: 'PENDING',
+        payload: {
+          params: [
+            { name: HUAWEI_EG8145_PATHS.ssid24, value: input.ssid, type: 'xsd:string' },
+            { name: HUAWEI_EG8145_PATHS.pwd24, value: input.wifiPassword, type: 'xsd:string' },
+            { name: HUAWEI_EG8145_PATHS.ssid50, value: `${input.ssid}-5G`, type: 'xsd:string' },
+            { name: HUAWEI_EG8145_PATHS.pwd50, value: input.wifiPassword, type: 'xsd:string' },
+            { name: HUAWEI_EG8145_PATHS.informInterval, value: '60', type: 'xsd:unsignedInt' },
+          ],
+        },
+      },
+    });
+
+    let rebootTaskId: string | null = null;
+    if (input.reboot) {
+      const reboot = await this.prisma.tr069Task.create({
+        data: {
+          tenantId,
+          deviceId: deviceDbId,
+          contractId,
+          action: 'REBOOT',
+          status: 'PENDING',
+          payload: {},
+        },
+      });
+      rebootTaskId = reboot.id;
+    }
+
+    this.logger.log(
+      `[contracts.updateWifi] contract=${contractId} ssid="${input.ssid}" ` +
+        `setParamsTask=${setParams.id.slice(0, 8)} reboot=${input.reboot}`,
+    );
+
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'contracts.wifi.updated',
+      resource: 'contracts',
+      resourceId: contractId,
+      // Senha NUNCA vai no audit. SSID OK (não é PII).
+      afterState: { ssid: input.ssid, reboot: input.reboot },
+    });
+
+    return {
+      setParamsTaskId: setParams.id,
+      rebootTaskId,
+      etaSeconds: 60, // PeriodicInformInterval esperado pós primeira sessão
+    };
   }
 }
 
