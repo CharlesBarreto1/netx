@@ -24,8 +24,9 @@ backups_setup() {
 backups_install_dirs() {
   # /var/backups/netx — root-owned, grupo netx pode ler pra restaurar via UI.
   install -d -o root  -g netx -m 0750 /var/backups/netx
-  # Subdir pra pre-migration snapshots (gerados pelo safe-migrate)
-  install -d -o root  -g netx -m 0750 /var/backups/netx/pre-migration
+  # Subdir pra pre-migration snapshots — mode 0770 porque safe-migrate.sh roda
+  # como user netx e precisa WRITE aqui. (auto/ é 0750 porque só root cron grava.)
+  install -d -o root  -g netx -m 0770 /var/backups/netx/pre-migration
   install -d -o root  -g netx -m 0750 /var/log/netx
   install -d -o root  -g root -m 0755 /var/lock
 }

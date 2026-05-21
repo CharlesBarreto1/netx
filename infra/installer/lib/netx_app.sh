@@ -15,6 +15,12 @@ netx_app_setup() {
   # (`20260509115000_radius_schema`), que roda ANTES do radacct_nullability.
   # `prisma migrate deploy` cuida da ordem. Sem essa unificação, um
   # `prisma migrate reset` em dev destruía radius.* silenciosamente.
+  #
+  # Pré-cria dir de snapshot pré-migration ANTES do db:migrate. Sem isso,
+  # o wrapper safe-migrate.sh (rodando como user netx) cai no fallback
+  # $HOME/.netx-backups porque /var/backups/netx/ é root-owned. Group=netx
+  # com mode 0770 dá write pro netx mantendo restrição pra outros users.
+  install -d -o root -g "${NETX_USER}" -m 0770 /var/backups/netx /var/backups/netx/pre-migration
   netx_app_db_migrate
   # Fix de ownership do schema radius é defesa em profundidade: as migrations
   # Prisma rodam como user `netx` (dono), então ownership já fica correto.
@@ -338,13 +344,19 @@ netx_app_db_migrate() {
 }
 
 netx_app_seed_baseline() {
-  # Seed de permissões + roles + tenant default + tudo que o seed canônico faz
-  if [[ -f "${NETX_VAR}/.seed-baseline-done" ]]; then
-    log_dim "Seed baseline já executado anteriormente"
-    return
-  fi
-  log_info "Rodando seed baseline (permissões, roles, tenant default)"
+  # Seed canônico — sempre roda. O `prisma/seed.ts` é idempotente:
+  # upsert de permissões (por code), upsert de roles (por nome), upsert de
+  # tenant default (por slug). Sem duplicação.
+  #
+  # ATENÇÃO: ANTES esta função tinha guard `.seed-baseline-done` pra rodar
+  # uma única vez. Bug de design: quando adicionávamos novas permissões ao
+  # seed.ts (ex.: módulo de estoque), installs antigos NUNCA aplicavam as
+  # perms novas — usuários ficavam sem ver os menus correspondentes.
+  # Mantemos o marker pra compat (re-runs antigos ainda funcionam), mas
+  # o seed SEMPRE roda.
+  log_info "Rodando seed (permissões, roles, tenant default — idempotente)"
   as_netx "cd ${NETX_HOME} && npm run -w apps/core-service db:seed"
+  # Marker mantido só pra debug ("já rodou ao menos 1 vez").
   touch "${NETX_VAR}/.seed-baseline-done"
   chown "${NETX_USER}:${NETX_USER}" "${NETX_VAR}/.seed-baseline-done"
 }

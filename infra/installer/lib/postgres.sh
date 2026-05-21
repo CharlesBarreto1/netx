@@ -54,6 +54,23 @@ postgres_create_role() {
     log_info "Criando role ${NETX_DB_USER}"
     psql_super -c "CREATE ROLE ${NETX_DB_USER} WITH LOGIN PASSWORD '${NETX_DB_PASSWORD}' CREATEDB"
   fi
+
+  # BYPASSRLS — necessário pra que pg_dump funcione mesmo com FORCE RLS
+  # ativo nas migrations de multi-tenant isolation. Sem isso, pg_dump usa
+  # COPY TO stdout que falha sob FORCE RLS (mesmo com policy permissiva).
+  #
+  # Implicação: TODAS as queries do role `netx` bypassam RLS no DB. Hoje isso
+  # é OK porque:
+  #   1. Prisma 6 removeu `$use` middleware → app não seta `app.tenant_id`
+  #   2. Policy `app_current_tenant_id() IS NULL OR ...` já permitia tudo
+  #   3. Defesa real é `where: { tenantId }` no app code (pattern original)
+  #
+  # Pra ATIVAR enforcement RLS de verdade no futuro:
+  #   - Criar role separado `netx_app` SEM BypassRLS (runtime)
+  #   - Manter `netx` (atual) com BypassRLS (migrations + pg_dump)
+  #   - App usa connection string de netx_app
+  #   - Implementar Prisma extension que seta app.tenant_id por request
+  psql_super -c "ALTER ROLE ${NETX_DB_USER} BYPASSRLS"
 }
 
 postgres_create_db() {

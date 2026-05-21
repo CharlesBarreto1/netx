@@ -15,6 +15,7 @@ import {
   type StockLocation,
 } from '@/lib/stock-api';
 import type { UserResponse } from '@/lib/users-api';
+import type { Paginated } from '@/lib/crm-types';
 
 export default function StockLocationsPage() {
   const { data, isLoading, error, mutate } = useSWR<StockLocation[]>(
@@ -304,8 +305,11 @@ function AccessManagerModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const { data: users, isLoading: loadingUsers } = useSWR<{ items: UserResponse[] }>(
-    '/v1/users?pageSize=200&status=ACTIVE',
+  // /v1/users retorna `Paginated<UserResponse>` = { data, pagination }.
+  // pageSize=200 cobre tenants pequenos sem paginação na UI (otimização futura
+  // se algum operador tiver >200 users ativos).
+  const { data: users, isLoading: loadingUsers } = useSWR<Paginated<UserResponse>>(
+    '/v1/users?pageSize=200',
   );
   const [access, setAccess] = useState<Map<string, boolean>>(() => {
     const m = new Map<string, boolean>();
@@ -365,7 +369,7 @@ function AccessManagerModal({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                {users.items.map((u) => {
+                {users.data.map((u) => {
                   const has = access.has(u.id);
                   const canWrite = access.get(u.id) ?? false;
                   return (
