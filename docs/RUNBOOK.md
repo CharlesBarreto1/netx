@@ -87,7 +87,7 @@ npm run lint
 > **Atalho:** `npm run preflight` (ver `package.json`) faz install + build do
 > shared + build do app que você tocou + lint.
 
-Se algum passo falhar, **resolva antes do push**. O Next 14 com
+Se algum passo falhar, **resolva antes do push**. O Next 16 com
 `experimental.typedRoutes: true` faz typecheck **depois** do "Compiled
 successfully" — nunca confie no log do webpack sozinho.
 

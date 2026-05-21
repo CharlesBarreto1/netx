@@ -142,4 +142,42 @@ export class RadiusSyncService {
       `[RADIUS] disconnect tenant=${contract.tenantId} method=${contract.authMethod} id=${identifier}`,
     );
   }
+
+  /**
+   * Limpa entradas RADIUS de um identificador OBSOLETO do contrato (ex.: usuário
+   * trocou pppoeUsername / circuitId / MAC via update()). Sem isso, o
+   * identificador antigo continua "autorizado" indefinidamente em
+   * radcheck/radusergroup — vazamento de credencial.
+   *
+   * Implementado como evento CANCEL com pppoe_username = oldIdentifier:
+   *   - applier executa deleteCredentials + clearFramedIp + putInGroup(cancelados)
+   *     usando oldIdentifier como username em radcheck/radreply/radusergroup
+   *   - dispara CoA pra derrubar a sessão atual (se houver) do identificador antigo
+   *
+   * Não impacta o estado do contrato (que continua ACTIVE / SUSPENDED / etc).
+   * O novo identificador é re-autorizado por uma chamada separada a `enqueueSync`.
+   */
+  async enqueueCleanupOldIdentifier(
+    contract: ContractSyncTarget,
+    oldIdentifier: string,
+    note?: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const client = tx ?? this.prisma;
+    await client.radiusEvent.create({
+      data: {
+        tenantId: contract.tenantId,
+        contractId: contract.id,
+        action: RadiusAction.CANCEL,
+        status: RadiusEventStatus.PENDING,
+        pppoeUsername: oldIdentifier,
+        // pool não importa — CANCEL faz putInGroup(cancelados) hard-coded
+        targetPool: POOL_CANCELADOS,
+        note: note ?? `cleanup do identificador antigo (${oldIdentifier})`,
+      },
+    });
+    this.logger.log(
+      `[RADIUS] cleanup tenant=${contract.tenantId} old_id=${oldIdentifier} (contract=${contract.id})`,
+    );
+  }
 }

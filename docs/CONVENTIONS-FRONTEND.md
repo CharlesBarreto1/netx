@@ -1,14 +1,14 @@
 # Convenções — Frontend (`apps/web`)
 
-Regras e padrões obrigatórios para o frontend Next.js 14 + TypeScript estrito.
+Regras e padrões obrigatórios para o frontend Next.js 16 + TypeScript estrito.
 Pensadas para prevenir os erros recorrentes que já tomaram tempo de deploy.
 
 ## Stack
 
-- Next.js 14 (App Router) com `experimental.typedRoutes: true`
-- React 18 + Server/Client Components
-- TypeScript 5 (`strict: true`)
-- Tailwind puro + primitivos caseiros em `components/ui/`
+- Next.js 16 (App Router) com `experimental.typedRoutes: true`
+- React 19 + Server/Client Components
+- TypeScript 5.9 (`strict: true`)
+- Tailwind 4 puro + primitivos caseiros em `components/ui/`
 - SWR para fetching no cliente
 - `sessionStorage` para token + user + tenant (chaves `netx.*`)
 

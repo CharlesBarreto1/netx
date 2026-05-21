@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  ContractAuthMethod,
   ContractStatus as PrismaContractStatus,
   ContractSuspendReason as PrismaSuspendReason,
   InvoiceStatus,
@@ -31,6 +32,23 @@ import { AuditService } from '../audit/audit.service';
 import { DisconnectService } from '../disconnect/disconnect.service';
 import { InvoiceGeneratorService } from './invoice-generator.service';
 import { RadiusSyncService } from './radius-sync.service';
+
+/**
+ * Versão non-throwing de `radiusIdentifier()` — retorna null se identificador
+ * não puder ser resolvido. Usada em `update()` para comparar old vs new sem
+ * lançar quando algum lado está incompleto durante a transição.
+ */
+function safeRadiusIdentifier(c: {
+  authMethod: ContractAuthMethod;
+  pppoeUsername: string | null;
+  circuitId: string | null;
+  macAddress: string | null;
+}): string | null {
+  if (c.authMethod === ContractAuthMethod.IPOE) {
+    return c.circuitId ?? c.macAddress ?? null;
+  }
+  return c.pppoeUsername ?? null;
+}
 
 const DEFAULT_INCLUDE = {
   customer: {
@@ -261,9 +279,52 @@ export class ContractsService {
       include: DEFAULT_INCLUDE,
     });
 
-    // Se pppoeUsername mudou, enfileira sync no RADIUS para novo usuário
-    if (input.pppoeUsername && input.pppoeUsername !== existing.pppoeUsername) {
-      await this.radius.enqueueSync(updated, `pppoe alterado: ${existing.pppoeUsername} -> ${updated.pppoeUsername}`);
+    // Re-sync RADIUS se QUALQUER campo de identidade mudou. Antes só checava
+    // pppoeUsername — bug: trocar authMethod, circuitId, macAddress ou
+    // framedIpAddress não disparava sync, e radcheck/radusergroup ficavam stale.
+    // Pior: o identificador antigo continuava "autorizado" pra sempre (vazamento).
+    //
+    // Strategy:
+    //   1. Se identificador efetivo mudou (oldId vs newId), enfileira um CANCEL
+    //      pro oldId pra limpar radcheck/radreply/radusergroup do antigo.
+    //   2. Sempre re-enfileira AUTHORIZE com o novo identificador pra refletir
+    //      a config atualizada (Auth-Type, Cleartext-Password, Framed-IP, pool).
+    const changed = (
+      key: 'authMethod' | 'pppoeUsername' | 'pppoePassword' | 'circuitId' | 'macAddress' | 'framedIpAddress',
+    ): boolean => {
+      const inputVal = (input as Record<string, unknown>)[key];
+      if (inputVal === undefined) return false;
+      const existingVal = (existing as unknown as Record<string, unknown>)[key];
+      // Trata null/undefined como equivalentes (Prisma null === input não setado).
+      return (inputVal ?? null) !== (existingVal ?? null);
+    };
+    const identityChanged =
+      changed('authMethod') ||
+      changed('pppoeUsername') ||
+      changed('pppoePassword') ||
+      changed('circuitId') ||
+      changed('macAddress') ||
+      changed('framedIpAddress');
+
+    if (identityChanged) {
+      const oldId = safeRadiusIdentifier(existing);
+      const newId = safeRadiusIdentifier(updated);
+
+      if (oldId && newId && oldId !== newId) {
+        // Limpa o identificador antigo ANTES de re-autorizar o novo. Ordem importa
+        // porque o applier processa eventos em createdAt ASC.
+        await this.radius.enqueueCleanupOldIdentifier(
+          existing,
+          oldId,
+          `identificador alterado: ${oldId} -> ${newId}`,
+        );
+      }
+      await this.radius.enqueueSync(
+        updated,
+        oldId === newId
+          ? 'config RADIUS alterada (mesmo identificador)'
+          : `identificador alterado: ${oldId ?? '?'} -> ${newId ?? '?'}`,
+      );
     }
 
     await this.audit.log({

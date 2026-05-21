@@ -4,7 +4,7 @@
 
 Sistema modular, multi-tenant e event-driven que integra as operações administrativas, técnicas, fiscais, comerciais e de atendimento de um ISP em um único ecossistema, com IA nativa.
 
-> Este repositório contém o **scaffolding + Módulo Core** (autenticação, multi-tenancy, RBAC, auditoria). Os demais 19 módulos serão incorporados seguindo o roadmap em `docs/ROADMAP.md`.
+> **Estado atual** — Fase 1 do MVP em produção. Já implementados: Core (auth + MFA TOTP, multi-tenant, RBAC, audit), CRM completo (clientes PF/PJ BR+PY, pipeline/deals, endereços, contatos, consentimentos LGPD), Contratos + faturas + RADIUS (PPPoE/IPoE, CoA), Financeiro (caixas, cobranças avulsas), Service Orders, Portal do Cliente, Estoque (produtos/compras/serial/comodato), Rede (POPs + equipamentos multi-vendor), WhatsApp (Evolution), SIFEN (PY), Backups. Detalhes em `docs/ROADMAP.md`.
 
 > **Software proprietário** — Copyright © 2024-2026 **NETX DESENVOLVIMENTO E TECNOLOGIA LTDA**
 > CNPJ 57.118.236/0001-44 — Av. Paulista, 1471, Sala 511 — São Paulo / SP — Brasil
@@ -35,10 +35,20 @@ Sistema modular, multi-tenant e event-driven que integra as operações administ
 netx/
 ├── apps/
 │   ├── api-gateway/       # BFF + gateway (NestJS)
-│   ├── core-service/      # Módulo 1 — Core (NestJS)
-│   └── web/               # Frontend operacional (Next.js)
+│   ├── core-service/      # Backend principal (NestJS) — agrega todos os módulos
+│   │   └── src/modules/   # audit, auth, backups, contracts, crm, crypto,
+│   │                      # disconnect, finance, health, network, portal,
+│   │                      # prisma, radius, reports, roles, service-orders,
+│   │                      # sifen, stock, tenants, users, whatsapp
+│   └── web/               # Frontend operacional (Next.js 16 + App Router)
+│       └── src/app/
+│           ├── (protected)/   # dashboard, customers, contracts, deals,
+│           │                  # finance, invoices, stock, network,
+│           │                  # service-orders, reports, chat, settings
+│           ├── portal/        # portal self-service do cliente
+│           └── receipts/      # impressão (matricial, fatura, etc.)
 ├── packages/
-│   ├── shared/            # DTOs, contratos, tipos compartilhados
+│   ├── shared/            # DTOs, contratos, tipos compartilhados (Zod)
 │   ├── database/          # Prisma client centralizado
 │   ├── auth/              # Utils JWT, hashing, policies
 │   ├── config/            # Config tipada (Zod)
@@ -46,8 +56,8 @@ netx/
 ├── infra/
 │   ├── docker/            # docker-compose para dev local
 │   └── k8s/               # Manifestos Kubernetes (stubs)
-├── docs/                  # Arquitetura, multi-tenancy, runbook
-├── scripts/               # Scripts utilitários
+├── docs/                  # Arquitetura, multi-tenancy, runbook, conventions
+├── scripts/               # Preflight, install-vps, utilitários
 └── .github/workflows/     # CI
 ```
 
@@ -55,7 +65,7 @@ netx/
 
 ## Quickstart
 
-**Pré-requisitos:** Node.js 20.x, npm 10+, Docker, Docker Compose.
+**Pré-requisitos:** Node.js 24.x, npm 10+, Docker, Docker Compose.
 
 ```bash
 # 1. Instalar dependências
