@@ -257,8 +257,8 @@ export default function InstallPage() {
                 <option value="">Selecione…</option>
                 {(availableSerials ?? []).map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.serial} — {s.productName}
-                    {s.locationName ? ` @ ${s.locationName}` : ''}
+                    {s.serial} — {s.product.name}
+                    {s.location?.name ? ` @ ${s.location.name}` : ''}
                   </option>
                 ))}
               </Select>
