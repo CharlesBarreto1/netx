@@ -102,7 +102,12 @@ export interface PendingInstallItem {
 
 export interface InstallCustomerRequest {
   oltId: string;
-  snGpon: string;
+  /** Equipamento do estoque (caminho normal). */
+  serialItemId?: string | null;
+  /** Bypass de validação de estoque (debug/migração). Quando true, exige snGpon. */
+  allowStockBypass?: boolean;
+  /** Só quando allowStockBypass=true; em modo normal vem do SerialItem. */
+  snGpon?: string | null;
   ponFrame?: number | null;
   ponSlot?: number | null;
   macAddress?: string | null;

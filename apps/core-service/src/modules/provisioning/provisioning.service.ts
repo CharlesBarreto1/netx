@@ -58,6 +58,7 @@ import { AuditService } from '../audit/audit.service';
 import { RadiusSyncService } from '../contracts/radius-sync.service';
 import { CryptoService } from '../crypto/crypto.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { ComodatoService } from '../stock/comodato.service';
 
 import { OltDriverFactory } from './drivers/olt-driver.factory';
 import { buildConnectionContext } from './olt-context.util';
@@ -74,6 +75,7 @@ export class ProvisioningService {
     private readonly radius: RadiusSyncService,
     private readonly tr069: Tr069TasksService,
     private readonly drivers: OltDriverFactory,
+    private readonly comodato: ComodatoService,
   ) {}
 
   /**
@@ -192,11 +194,62 @@ export class ProvisioningService {
       );
     }
 
+    // ── 1.5. Resolve SerialItem (estoque) → SN GPON definitivo ────────────
+    // Trava de segurança: ONT precisa estar registrada no estoque ANTES de
+    // ser entregue ao cliente. Quem provisionou sem cadastrar primeiro tinha
+    // "ONT fantasma" — agora não rola.
+    //
+    // Dois caminhos:
+    //   A) input.serialItemId fornecido → busca SerialItem, valida, usa serial dele
+    //   B) input.allowStockBypass=true + input.snGpon → bypass (debug/migração)
+    let resolvedSnGpon: string;
+    let serialItemId: string | null = input.serialItemId ?? null;
+
+    if (serialItemId) {
+      const serial = await this.prisma.serialItem.findFirst({
+        where: { id: serialItemId, tenantId },
+        include: { product: { select: { type: true, name: true } } },
+      });
+      if (!serial) {
+        throw new NotFoundException(
+          'SerialItem (equipamento) não encontrado em estoque',
+        );
+      }
+      if (serial.product.type !== 'PATRIMONIAL') {
+        throw new BadRequestException(
+          `Produto "${serial.product.name}" não é PATRIMONIAL — não dá pra usar como ONT`,
+        );
+      }
+      if (serial.status === 'ALLOCATED' && serial.contractId === contractId) {
+        // Idempotente — admin já alocou esse serial no contrato (re-execução)
+      } else if (serial.status !== 'IN_STOCK') {
+        throw new BadRequestException(
+          `Serial ${serial.serial} está em status ${serial.status}. ` +
+            'Só seriais IN_STOCK podem ser usados em provisionamento novo.',
+        );
+      }
+      resolvedSnGpon = serial.serial;
+    } else if (input.allowStockBypass && input.snGpon) {
+      // Bypass explícito — admin assume responsabilidade. Logamos warning
+      // pra audit posterior identificar "ONTs sem cadastro".
+      this.logger.warn(
+        `[PROV] allowStockBypass=true contract=${contractId} sn=${input.snGpon} ` +
+          'actor=${actorUserId} — ONT entrando sem registro no estoque',
+      );
+      resolvedSnGpon = input.snGpon;
+    } else {
+      // Defesa em profundidade — DTO já validou, mas faço guarda aqui também
+      throw new BadRequestException(
+        'Selecione um equipamento do estoque (serialItemId) OU marque ' +
+          'allowStockBypass=true e forneça snGpon.',
+      );
+    }
+
     // ── 2. Cria ou re-aproveita Ont row em PENDING_AUTH ───────────────────
     let ont: Ont;
     if (contract.ont) {
       // Re-provisionamento: usa Ont existente, atualiza SN se mudou
-      if (contract.ont.snGpon !== input.snGpon) {
+      if (contract.ont.snGpon !== resolvedSnGpon) {
         throw new ConflictException(
           `Contrato já tem ONT com SN ${contract.ont.snGpon}. Pra trocar, ` +
             'desautorize a antiga via /v1/provisioning/onts/:id antes.',
@@ -206,11 +259,11 @@ export class ProvisioningService {
     } else {
       // Verifica que SN não está vinculado a outro contrato na mesma OLT
       const collision = await this.prisma.ont.findFirst({
-        where: { oltId: input.oltId, snGpon: input.snGpon },
+        where: { oltId: input.oltId, snGpon: resolvedSnGpon },
       });
       if (collision) {
         throw new ConflictException(
-          `SN ${input.snGpon} já vinculado a outro contrato nessa OLT`,
+          `SN ${resolvedSnGpon} já vinculado a outro contrato nessa OLT`,
         );
       }
       ont = await this.prisma.ont.create({
@@ -218,7 +271,7 @@ export class ProvisioningService {
           tenantId,
           contractId,
           oltId: input.oltId,
-          snGpon: input.snGpon,
+          snGpon: resolvedSnGpon,
           macAddress: input.macAddress ?? null,
           serialPhysical: input.serialPhysical ?? null,
           ponFrame: input.ponFrame ?? null,
@@ -229,6 +282,27 @@ export class ProvisioningService {
       });
     }
 
+    // ── 2.5. Aloca SerialItem em comodato (se veio do estoque) ────────────
+    // Mover essa lógica pra DEPOIS de criar Ont garante que se algo falhar
+    // no driver, podemos retry sem ter "alocado e perdido" o serial.
+    // ComodatoService.allocate é idempotente — re-execução não duplica.
+    if (serialItemId) {
+      try {
+        await this.comodato.allocate(tenantId, actorUserId, {
+          contractId,
+          serialItemId,
+          notes: `Provisionado via /provisioning/install — ONT ${resolvedSnGpon}`,
+        });
+        pushEvent('CONTRACT_ACTIVATE', 'SUCCESS', `Equipamento alocado em comodato (estoque)`);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // Falha de alocação = abort total. Sem comodato, não dá pra prosseguir
+        // com instalação confiável (não saberíamos qual ONT entregamos).
+        pushEvent('CONTRACT_ACTIVATE', 'FAILED', 'Falha na alocação de comodato', null, msg);
+        throw err;
+      }
+    }
+
     // ── 3. Chama driver.authorizeOnt() ─────────────────────────────────────
     const driver = this.drivers.resolve(olt.vendor, olt.providerMode);
     const ctx = buildConnectionContext(olt, this.crypto);
@@ -237,12 +311,12 @@ export class ProvisioningService {
       'OLT_AUTHORIZE',
       'PENDING',
       isExternal
-        ? `Registrando ONT ${input.snGpon} (OLT ${olt.name} é EXTERNAL — provisão real fora do NetX)`
-        : `Autorizando SN ${input.snGpon} na OLT ${olt.name}`,
+        ? `Registrando ONT ${resolvedSnGpon} (OLT ${olt.name} é EXTERNAL — provisão real fora do NetX)`
+        : `Autorizando SN ${resolvedSnGpon} na OLT ${olt.name}`,
     );
 
     const authResult = await driver.authorizeOnt(ctx, {
-      snGpon: input.snGpon,
+      snGpon: resolvedSnGpon,
       macAddress: input.macAddress ?? null,
       ponFrame: input.ponFrame ?? null,
       ponSlot: input.ponSlot ?? null,
@@ -263,8 +337,8 @@ export class ProvisioningService {
         // de tipos do Prisma JsonValue (interfaces TS strict não casam com
         // o index signature exigido por JsonObject, embora o conteúdo seja
         // 100% serializável).
-        ? (JSON.parse(JSON.stringify({ sn: input.snGpon, result: authResult.data })) as Prisma.JsonObject)
-        : { sn: input.snGpon },
+        ? (JSON.parse(JSON.stringify({ sn: resolvedSnGpon, result: authResult.data })) as Prisma.JsonObject)
+        : { sn: resolvedSnGpon },
       error: authResult.success ? null : authResult.error,
       durationMs: authResult.durationMs,
       actorUserId,
@@ -375,7 +449,7 @@ export class ProvisioningService {
         tenantId,
         ont.id,
         contractId,
-        input.snGpon,
+        resolvedSnGpon,
         { ssid: input.ssid, password: input.wifiPassword, bothBands: true },
       );
       await this.persistEvent({
@@ -410,7 +484,9 @@ export class ProvisioningService {
       metadata: {
         ontId: ont.id,
         oltId: olt.id,
-        snGpon: input.snGpon,
+        snGpon: resolvedSnGpon,
+        serialItemId,
+        stockBypass: input.allowStockBypass,
         bandwidthMbps: contract.bandwidthMbps,
       },
     });

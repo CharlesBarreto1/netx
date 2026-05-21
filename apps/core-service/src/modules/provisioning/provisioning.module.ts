@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
 import { ContractsModule } from '../contracts/contracts.module';
 import { CryptoModule } from '../crypto/crypto.module';
+import { StockModule } from '../stock/stock.module';
 
 import { HuaweiSshDriver } from './drivers/huawei-ssh.driver';
 import { MockOltDriver } from './drivers/mock-olt.driver';
@@ -15,7 +16,7 @@ import { ProvisioningService } from './provisioning.service';
 import { Tr069TasksService } from './tr069-tasks.service';
 
 @Module({
-  imports: [AuditModule, CryptoModule, ContractsModule],
+  imports: [AuditModule, CryptoModule, ContractsModule, StockModule],
   controllers: [ProvisioningController, OltsController, Tr069Controller],
   providers: [
     // Drivers

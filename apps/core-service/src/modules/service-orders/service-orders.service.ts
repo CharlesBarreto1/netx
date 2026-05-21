@@ -345,12 +345,36 @@ export class ServiceOrdersService {
   ): Promise<ServiceOrderResponse> {
     const before = await this.prisma.serviceOrder.findFirst({
       where: { id, tenantId, deletedAt: null },
+      include: {
+        reason: { select: { isInstallation: true, name: true } },
+      },
     });
     if (!before) throw new NotFoundException('O.S não encontrada');
     if (before.status === PrismaSOStatus.COMPLETED)
       throw new ConflictException('O.S já está finalizada');
     if (before.status === PrismaSOStatus.CANCELLED)
       throw new ConflictException('O.S cancelada — reabra antes de finalizar');
+
+    // Trava de segurança: OS de instalação NÃO pode ser fechada sem ter
+    // SerialItem ALLOCATED ao contrato. Impede técnico finalizar instalação
+    // sem registrar equipamento entregue (comodato).
+    if (before.reason?.isInstallation) {
+      const allocatedCount = await this.prisma.serialItem.count({
+        where: {
+          tenantId,
+          contractId: before.contractId,
+          status: 'ALLOCATED',
+        },
+      });
+      if (allocatedCount === 0) {
+        throw new ConflictException(
+          `Esta O.S é uma instalação ("${before.reason.name}") e exige pelo menos ` +
+            'um equipamento em comodato vinculado ao contrato. Antes de finalizar, ' +
+            'vincule um equipamento via aba "Estoque" do contrato ' +
+            '(ou via /provisioning/install se for ONT GPON).',
+        );
+      }
+    }
 
     const completedAt = input.completedAt
       ? new Date(input.completedAt)

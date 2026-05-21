@@ -13,6 +13,12 @@ export const CreateServiceOrderReasonRequestSchema = z.object({
   name: z.string().min(1).max(120),
   description: z.string().max(500).nullish(),
   isActive: z.boolean().default(true),
+  /**
+   * Marca este motivo como "instalação". OS desse motivo só pode ser fechada
+   * (COMPLETED) com SerialItem ALLOCATED ao contrato — trava de segurança que
+   * impede técnico finalizar instalação sem registrar equipamento entregue.
+   */
+  isInstallation: z.coerce.boolean().default(false),
   /** Ordem de exibição em selects (asc). 0 = primeiro. */
   order: z.number().int().min(0).max(9999).default(0),
 });
@@ -40,6 +46,7 @@ export interface ServiceOrderReasonResponse {
   name: string;
   description: string | null;
   isActive: boolean;
+  isInstallation: boolean;
   order: number;
   createdAt: string;
   updatedAt: string;

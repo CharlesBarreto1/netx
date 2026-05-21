@@ -1201,6 +1201,11 @@ model ServiceOrderReason {
   name        String   @db.VarChar(120)
   description String?  @db.VarChar(500)
   isActive    Boolean  @default(true) @map("is_active")
+  // Marca esse motivo como "instalação". OS com reason.isInstallation = true
+  // NÃO pode ser fechada (status=COMPLETED) sem ter SerialItem ALLOCATED ao
+  // contrato (vínculo comodato). Trava operacional de segurança: impede o
+  // técnico finalizar sem registrar equipamento entregue.
+  isInstallation Boolean @default(false) @map("is_installation")
   // Ordem de exibição em selects (asc).
   order       Int      @default(0)
   createdAt   DateTime @default(now()) @map("created_at")

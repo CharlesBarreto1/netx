@@ -67,6 +67,8 @@ export interface ServiceOrderReasonResponse {
   name: string;
   description: string | null;
   isActive: boolean;
+  /** Quando true, OS com esse motivo só pode ser fechada com equipamento em comodato. */
+  isInstallation: boolean;
   order: number;
   createdAt: string;
   updatedAt: string;
@@ -202,6 +204,7 @@ export interface CreateServiceOrderReasonInput {
   name: string;
   description?: string | null;
   isActive?: boolean;
+  isInstallation?: boolean;
   order?: number;
 }
 
@@ -209,6 +212,7 @@ export interface UpdateServiceOrderReasonInput {
   name?: string;
   description?: string | null;
   isActive?: boolean;
+  isInstallation?: boolean;
   order?: number;
 }
 

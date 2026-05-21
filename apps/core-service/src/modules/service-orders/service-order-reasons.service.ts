@@ -61,6 +61,7 @@ export class ServiceOrderReasonsService {
           name: input.name.trim(),
           description: input.description ?? null,
           isActive: input.isActive ?? true,
+          isInstallation: input.isInstallation ?? false,
           order: input.order ?? 0,
         },
       });
@@ -104,6 +105,7 @@ export class ServiceOrderReasonsService {
           name: input.name?.trim(),
           description: input.description,
           isActive: input.isActive,
+          isInstallation: input.isInstallation,
           order: input.order,
         },
       });
@@ -163,6 +165,7 @@ function toResponse(r: any): ServiceOrderReasonResponse {
     name: r.name,
     description: r.description,
     isActive: r.isActive,
+    isInstallation: r.isInstallation ?? false,
     order: r.order,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),

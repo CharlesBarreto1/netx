@@ -16,7 +16,7 @@ import { useState } from 'react';
 import useSWR from 'swr';
 
 import { Button } from '@/components/ui/Button';
-import { Input, Label, Textarea } from '@/components/ui/Input';
+import { Input, Label, Select, Textarea } from '@/components/ui/Input';
 import { PageLoader } from '@/components/ui/Spinner';
 import { ApiError } from '@/lib/api';
 import {
@@ -26,6 +26,7 @@ import {
   type InstallTimelineEvent,
   type Olt,
 } from '@/lib/provisioning-api';
+import { stockApi, type ComodatoAvailableSerial } from '@/lib/stock-api';
 
 function generatePassword(): string {
   // 10 chars, sem ambíguos (0/O, 1/l) — fácil de ditar no campo
@@ -58,8 +59,16 @@ export default function InstallPage() {
   );
   const olts: Olt[] = oltsResp?.data ?? [];
 
+  // Equipamentos PATRIMONIAIS disponíveis em estoque (filtrados por ACL no backend)
+  const { data: availableSerials } = useSWR<ComodatoAvailableSerial[]>(
+    'comodato/available',
+    () => stockApi.listComodatoAvailable(),
+  );
+
   // Form state
   const [oltId, setOltId] = useState('');
+  const [serialItemId, setSerialItemId] = useState('');
+  const [allowStockBypass, setAllowStockBypass] = useState(false);
   const [snGpon, setSnGpon] = useState('');
   const [ponFrame, setPonFrame] = useState('0');
   const [ponSlot, setPonSlot] = useState('1');
@@ -83,7 +92,9 @@ export default function InstallPage() {
     try {
       const res = await provisioningApi.install(contractId, {
         oltId,
-        snGpon: snGpon.trim().toUpperCase(),
+        serialItemId: allowStockBypass ? null : serialItemId || null,
+        allowStockBypass,
+        snGpon: allowStockBypass ? snGpon.trim().toUpperCase() : null,
         ponFrame: ponFrame ? Number(ponFrame) : null,
         ponSlot: ponSlot ? Number(ponSlot) : null,
         macAddress: macAddress.trim() || null,
@@ -231,26 +242,70 @@ export default function InstallPage() {
 
         <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-            ONT
+            ONT (estoque)
           </h2>
 
-          <div>
-            <Label htmlFor="snGpon">SN GPON *</Label>
-            <Input
-              id="snGpon"
-              required
-              autoComplete="off"
-              autoCapitalize="characters"
-              spellCheck={false}
-              value={snGpon}
-              onChange={(e) => setSnGpon(e.target.value.toUpperCase())}
-              placeholder="HWTC12AB34CD"
-              className="font-mono"
+          {!allowStockBypass ? (
+            <div>
+              <Label htmlFor="serialItemId">Equipamento do estoque *</Label>
+              <Select
+                id="serialItemId"
+                required
+                value={serialItemId}
+                onChange={(e) => setSerialItemId(e.target.value)}
+              >
+                <option value="">Selecione…</option>
+                {(availableSerials ?? []).map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.serial} — {s.productName}
+                    {s.locationName ? ` @ ${s.locationName}` : ''}
+                  </option>
+                ))}
+              </Select>
+              {(availableSerials ?? []).length === 0 && (
+                <p className="mt-1 text-xs text-orange-600 dark:text-orange-400">
+                  ⚠️ Nenhum equipamento disponível em estoque. Registre uma compra
+                  em <code>/stock/purchases</code> ou ative o bypass abaixo (debug).
+                </p>
+              )}
+              <p className="mt-1 text-xs text-slate-500">
+                Só aparecem produtos PATRIMONIAIS (ex.: ONT) com status{' '}
+                <code>IN_STOCK</code>. SN GPON será lido do serial selecionado.
+              </p>
+            </div>
+          ) : (
+            <div>
+              <Label htmlFor="snGpon">SN GPON *</Label>
+              <Input
+                id="snGpon"
+                required
+                autoComplete="off"
+                autoCapitalize="characters"
+                spellCheck={false}
+                value={snGpon}
+                onChange={(e) => setSnGpon(e.target.value.toUpperCase())}
+                placeholder="HWTC12AB34CD"
+                className="font-mono"
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                Etiqueta no chassi da ONT (ou caixa). Huawei começa com HWTC.
+              </p>
+            </div>
+          )}
+
+          <label className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs dark:border-amber-900 dark:bg-amber-950">
+            <input
+              type="checkbox"
+              checked={allowStockBypass}
+              onChange={(e) => setAllowStockBypass(e.target.checked)}
+              className="mt-0.5"
             />
-            <p className="mt-1 text-xs text-slate-500">
-              Etiqueta no chassi da ONT (ou caixa). Huawei começa com HWTC.
-            </p>
-          </div>
+            <span className="text-amber-900 dark:text-amber-200">
+              <strong>Ignorar validação de estoque</strong> (debug/migração).
+              Marque só se ainda não cadastrou ONTs como produto patrimonial.
+              Em produção normal, mantém desmarcado pra evitar &quot;ONT fantasma&quot;.
+            </span>
+          </label>
 
           <div>
             <Label htmlFor="macAddress">MAC (opcional)</Label>
@@ -341,7 +396,16 @@ export default function InstallPage() {
         )}
 
         <div className="sticky bottom-0 -mx-4 border-t border-slate-200 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
-          <Button type="submit" disabled={submitting || !oltId} className="w-full">
+          <Button
+            type="submit"
+            disabled={
+              submitting ||
+              !oltId ||
+              (!allowStockBypass && !serialItemId) ||
+              (allowStockBypass && !snGpon.trim())
+            }
+            className="w-full"
+          >
             {submitting ? 'Ativando…' : 'Ativar cliente'}
           </Button>
         </div>

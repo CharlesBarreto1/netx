@@ -203,6 +203,9 @@ function ReasonFormDialog({
   const [name, setName] = useState(initial?.name ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
+  const [isInstallation, setIsInstallation] = useState(
+    initial?.isInstallation ?? false,
+  );
   const [order, setOrder] = useState(String(initial?.order ?? 0));
   const [submitting, setSubmitting] = useState(false);
 
@@ -216,6 +219,7 @@ function ReasonFormDialog({
           name: name.trim(),
           description: description.trim() || null,
           isActive,
+          isInstallation,
           order: Number(order) || 0,
         });
       } else {
@@ -223,6 +227,7 @@ function ReasonFormDialog({
           name: name.trim(),
           description: description.trim() || null,
           isActive,
+          isInstallation,
           order: Number(order) || 0,
         });
       }
@@ -290,6 +295,24 @@ function ReasonFormDialog({
                 </label>
               </div>
             </div>
+
+            <label className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950">
+              <input
+                type="checkbox"
+                checked={isInstallation}
+                onChange={(e) => setIsInstallation(e.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600"
+              />
+              <span className="text-amber-900 dark:text-amber-200">
+                <span className="font-medium">Motivo de instalação</span>
+                <span className="block text-xs">
+                  Quando marcado, O.S desse motivo só pode ser fechada com pelo
+                  menos um equipamento em comodato vinculado ao contrato. Trava
+                  de segurança para evitar instalação sem registro de equipamento
+                  entregue.
+                </span>
+              </span>
+            </label>
           </DialogBody>
           <DialogFooter>
             <Button

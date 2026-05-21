@@ -24,8 +24,27 @@ export const InstallCustomerRequestSchema = z
   .object({
     /** OLT onde a ONT será autorizada. */
     oltId: z.string().uuid(),
-    /** Serial GPON da ONT (etiqueta na carcaça). */
-    snGpon: SnGponSchema,
+    /**
+     * SerialItem do estoque (PATRIMONIAL, status=IN_STOCK) que vai virar
+     * a ONT do cliente. Obrigatório por padrão — trava de segurança que
+     * impede "ONT fantasma" sem rastreio no estoque.
+     *
+     * Pra desligar (debug/migração), passar `allowStockBypass=true` E
+     * fornecer `snGpon` direto.
+     */
+    serialItemId: z.string().uuid().nullish(),
+    /**
+     * Bypass de validação de estoque. Usado em migração inicial / debug
+     * quando ainda não há produtos cadastrados em estoque. Em produção
+     * normal deve ficar false.
+     */
+    allowStockBypass: z.coerce.boolean().default(false),
+    /**
+     * Serial GPON da ONT (etiqueta na carcaça). Quando `serialItemId` é
+     * fornecido, ignoramos esse campo (usamos SerialItem.serial). Quando
+     * `allowStockBypass=true`, este campo é OBRIGATÓRIO.
+     */
+    snGpon: SnGponSchema.nullish(),
     /** Posição PON (opcional pra ORCHESTRATOR — provider decide). */
     ponFrame: z.coerce.number().int().min(0).nullish(),
     ponSlot: z.coerce.number().int().min(0).nullish(),
@@ -41,7 +60,26 @@ export const InstallCustomerRequestSchema = z
     /** Notas livres do técnico (opcional). */
     notes: z.string().max(2000).nullish(),
   })
-  .strict();
+  .strict()
+  .superRefine((data, ctx) => {
+    // serialItemId XOR (allowStockBypass + snGpon)
+    if (!data.serialItemId && !data.allowStockBypass) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['serialItemId'],
+        message:
+          'Selecione o equipamento do estoque (SerialItem). Pra ignorar essa ' +
+          'validação em modo debug, marque allowStockBypass=true e preencha snGpon.',
+      });
+    }
+    if (data.allowStockBypass && !data.snGpon) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['snGpon'],
+        message: 'allowStockBypass=true exige snGpon preenchido manualmente.',
+      });
+    }
+  });
 export type InstallCustomerRequest = z.infer<typeof InstallCustomerRequestSchema>;
 
 export interface InstallTimelineEvent {
