@@ -1,0 +1,16 @@
+-- =============================================================================
+-- Estende ContractStatus com PENDING_INSTALL (pré-provisionamento)
+-- =============================================================================
+-- Copyright (c) 2024-2026 NETX DESENVOLVIMENTO E TECNOLOGIA LTDA — proprietary.
+--
+-- Migration separada do bloco principal (`20260521000000_provisioning_module`)
+-- porque Postgres restringe `ALTER TYPE ... ADD VALUE`:
+--
+--   > If executed inside a transaction block, the new value cannot be used
+--   > until after the transaction has been committed.
+--
+-- Prisma migrate roda cada arquivo .sql em transação implícita. Colocar o
+-- ADD VALUE numa migration isolada garante que o valor está commitado antes
+-- da próxima migration tentar usá-lo (ex.: CREATE TABLE com default).
+-- =============================================================================
+ALTER TYPE "ContractStatus" ADD VALUE IF NOT EXISTS 'PENDING_INSTALL' BEFORE 'ACTIVE';

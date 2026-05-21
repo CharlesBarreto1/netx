@@ -90,6 +90,7 @@ export default function ContractsPage() {
           className="w-40"
         >
           <option value="">{tList('allStatuses')}</option>
+          <option value="PENDING_INSTALL">{tStatus('pendingInstall')}</option>
           <option value="ACTIVE">{tStatus('active')}</option>
           <option value="SUSPENDED">{tStatus('suspended')}</option>
           <option value="CANCELLED">{tStatus('cancelled')}</option>

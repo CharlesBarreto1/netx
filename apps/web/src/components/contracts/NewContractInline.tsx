@@ -89,6 +89,10 @@ export function NewContractInline({
   // Default IPoE — padrão moderno (FTTH GPON com circuit-id/MAC). PPPoE
   // fica disponível como opt-in pra cenários com BNG legado.
   const [authMethod, setAuthMethod] = useState<ContractAuthMethod>('IPOE');
+  // 'ACTIVE' = comercial confirma instalação realizada (fluxo clássico).
+  // 'PENDING_INSTALL' = ZTP — técnico vai instalar em campo via
+  // /provisioning/install/:contractId. Sem fatura/RADIUS até ativação.
+  const [initialStatus, setInitialStatus] = useState<'ACTIVE' | 'PENDING_INSTALL'>('ACTIVE');
   const [form, setForm] = useState({
     customerId: lockedCustomerId ?? '',
     code: initial?.code ?? '',
@@ -137,9 +141,15 @@ export function NewContractInline({
       if (!form.pppoePassword || form.pppoePassword.length < 4)
         e.pppoePassword = 'Mínimo 4 caracteres';
     } else {
-      // IPoE: pelo menos circuit OU MAC. MAC valida formato se preenchido.
-      if (!form.circuitId.trim() && !form.macAddress.trim()) {
-        e.circuitId = 'Informe circuit-id ou MAC';
+      // IPoE: pelo menos circuit OU MAC quando vai entrar ACTIVE direto.
+      // Em PENDING_INSTALL o técnico vai vincular SN GPON em campo, então
+      // os campos de identificação podem ficar vazios.
+      if (
+        initialStatus === 'ACTIVE' &&
+        !form.circuitId.trim() &&
+        !form.macAddress.trim()
+      ) {
+        e.circuitId = 'Informe circuit-id ou MAC (ou marque "Agendar instalação")';
       }
       if (form.macAddress.trim()) {
         const cleaned = form.macAddress.replace(/[^0-9A-Fa-f]/gu, '');
@@ -199,6 +209,7 @@ export function NewContractInline({
       dueDay: Number(form.dueDay),
       notes: form.notes || null,
       firstDueDate: form.firstDueDate || undefined,
+      initialStatus,
     };
 
     const payload: CreateContractInput =
@@ -290,6 +301,36 @@ export function NewContractInline({
           />
         </div>
       </div>
+
+      {/* ─── Status inicial — clássico vs ZTP ─────────────────────────── */}
+      {/* PPPoE não tem fluxo PENDING_INSTALL: usuário/senha já é tudo, não
+          tem ONT pra técnico vincular. Toggle só aparece em IPoE. */}
+      {authMethod === 'IPOE' && (
+        <div>
+          <Label>Início do serviço</Label>
+          <div className="flex flex-col gap-2 md:flex-row">
+            <AuthMethodTab
+              label="Ativar agora"
+              description="Instalação concluída — gera 1ª fatura + ativa RADIUS"
+              active={initialStatus === 'ACTIVE'}
+              onClick={() => setInitialStatus('ACTIVE')}
+            />
+            <AuthMethodTab
+              label="Agendar instalação"
+              description="Técnico fará a ativação em campo via Provisionamento"
+              active={initialStatus === 'PENDING_INSTALL'}
+              onClick={() => setInitialStatus('PENDING_INSTALL')}
+            />
+          </div>
+          {initialStatus === 'PENDING_INSTALL' && (
+            <FieldHelp>
+              Contrato fica em fila de pendentes. Sem fatura e sem RADIUS até
+              o técnico ativar via /provisioning/pending. Identificadores
+              (circuit-id, MAC) podem ser preenchidos depois.
+            </FieldHelp>
+          )}
+        </div>
+      )}
 
       {authMethod === 'PPPOE' ? (
         <div className="grid gap-4 md:grid-cols-2">

@@ -82,9 +82,9 @@ export default function UsersListPage() {
         />
       </div>
 
-      <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
+      <div className="overflow-x-auto rounded-md border border-border">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:bg-slate-900/40 dark:text-slate-400">
+          <thead className="bg-surface-muted text-left text-[11px] font-semibold uppercase tracking-wider text-text-muted">
             <tr>
               <th className="px-3 py-2">{tList('cols.name')}</th>
               <th className="px-3 py-2">{tList('cols.email')}</th>
@@ -94,7 +94,7 @@ export default function UsersListPage() {
               <th className="px-3 py-2"></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+          <tbody className="divide-y divide-border">
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-3 py-6 text-center text-text-muted">
@@ -103,12 +103,12 @@ export default function UsersListPage() {
               </tr>
             ) : (
               rows.map((u) => (
-                <tr key={u.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/40">
-                  <td className="px-3 py-2 font-medium text-slate-800 dark:text-slate-100">
+                <tr key={u.id} className="hover:bg-surface-hover">
+                  <td className="px-3 py-2 font-medium text-text">
                     {u.firstName} {u.lastName}
                   </td>
-                  <td className="px-3 py-2 text-slate-600 dark:text-slate-300">{u.email}</td>
-                  <td className="px-3 py-2 text-slate-600 dark:text-slate-300">
+                  <td className="px-3 py-2 text-text-muted">{u.email}</td>
+                  <td className="px-3 py-2 text-text-muted">
                     {u.roles.map((r) => r.name).join(', ') || '—'}
                   </td>
                   <td className="px-3 py-2">
@@ -116,14 +116,14 @@ export default function UsersListPage() {
                       {tStatus(u.status as 'ACTIVE')}
                     </Badge>
                   </td>
-                  <td className="px-3 py-2 text-slate-500">
+                  <td className="px-3 py-2 text-text-subtle">
                     {u.lastLoginAt ? formatDateTime(u.lastLoginAt) : '—'}
                   </td>
                   <td className="px-3 py-2 text-right">
                     {canUpdate ? (
                       <Link
                         href={`/settings/users/${u.id}`}
-                        className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-300"
+                        className="text-xs font-medium text-accent hover:underline"
                       >
                         {tCommon('edit')} →
                       </Link>

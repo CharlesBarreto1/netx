@@ -1,0 +1,124 @@
+'use client';
+
+/**
+ * /provisioning/pending — lista de contratos PENDING_INSTALL.
+ * Técnico em campo abre essa página no celular pra escolher o cliente que
+ * vai ativar agora.
+ */
+import Link from 'next/link';
+import { useState } from 'react';
+import useSWR from 'swr';
+
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { PageLoader } from '@/components/ui/Spinner';
+import {
+  provisioningApi,
+  type PendingInstallItem,
+} from '@/lib/provisioning-api';
+import type { Paginated } from '@/lib/crm-types';
+import { hasPermission } from '@/lib/session';
+
+function fmtCurrency(v: string): string {
+  const n = Number(v);
+  if (Number.isNaN(n)) return v;
+  return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function fmtRelative(iso: string): string {
+  const d = new Date(iso).getTime();
+  const diff = Date.now() - d;
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  if (days <= 0) return 'hoje';
+  if (days === 1) return 'ontem';
+  return `${days}d atrás`;
+}
+
+export default function PendingInstallsPage() {
+  const [search, setSearch] = useState('');
+  const canInstall = hasPermission('provisioning.write');
+
+  const { data, isLoading, error } = useSWR<Paginated<PendingInstallItem>>(
+    ['provisioning/pending', search],
+    () => provisioningApi.listPending({ pageSize: 100, search: search || undefined }),
+    { refreshInterval: 30_000 },
+  );
+
+  if (isLoading) return <PageLoader />;
+  if (error) {
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
+        Erro ao carregar pendentes. Tente recarregar.
+      </div>
+    );
+  }
+
+  const items = data?.data ?? [];
+
+  return (
+    <div className="space-y-5">
+      <header>
+        <h1 className="text-2xl font-bold tracking-tight">Instalações pendentes</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          Contratos aguardando provisionamento em campo. Selecione um cliente
+          pra ativar a ONT.
+        </p>
+      </header>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <Input
+          placeholder="Buscar por cliente, código, endereço..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="sm:max-w-md"
+        />
+        <span className="text-sm text-slate-500 dark:text-slate-400">
+          {items.length} pendente{items.length === 1 ? '' : 's'}
+        </span>
+      </div>
+
+      {items.length === 0 ? (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
+          Nenhum contrato aguardando instalação. ✨
+        </div>
+      ) : (
+        <ul className="space-y-3">
+          {items.map((c) => (
+            <li
+              key={c.contractId}
+              className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-base font-semibold">{c.customerName}</h3>
+                    {c.contractCode && (
+                      <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                        {c.contractCode}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">
+                    {c.installationAddress}
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {c.bandwidthMbps} Mbps • {fmtCurrency(c.monthlyValue)} •
+                    criado {fmtRelative(c.createdAt)}
+                  </p>
+                </div>
+                {canInstall && (
+                  <Link
+                    href={`/provisioning/install/${c.contractId}`}
+                    className="inline-flex"
+                  >
+                    <Button>Ativar</Button>
+                  </Link>
+                )}
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}

@@ -114,6 +114,14 @@ interface CommonContractInput {
   dueDay: number;
   notes?: string | null;
   firstDueDate?: string;
+  /**
+   * 'ACTIVE' (default) = comercial confirma instalação realizada → gera fatura
+   * inicial + enfileira RADIUS sync.
+   *
+   * 'PENDING_INSTALL' = fluxo ZTP — técnico ainda vai visitar via
+   * /provisioning/install/:contractId. Sem fatura/RADIUS até ativação.
+   */
+  initialStatus?: 'ACTIVE' | 'PENDING_INSTALL';
 }
 
 export type CreateContractInput =

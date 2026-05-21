@@ -3,7 +3,14 @@ import { z } from 'zod';
 // -----------------------------------------------------------------------------
 // Enums (espelho do schema.prisma)
 // -----------------------------------------------------------------------------
-export const ContractStatusSchema = z.enum(['ACTIVE', 'SUSPENDED', 'CANCELLED']);
+export const ContractStatusSchema = z.enum([
+  // Fase 1 ZTP: contrato criado pelo comercial mas ainda não foi
+  // instalado/provisionado (técnico precisa visitar). Não aplica em RADIUS.
+  'PENDING_INSTALL',
+  'ACTIVE',
+  'SUSPENDED',
+  'CANCELLED',
+]);
 export type ContractStatus = z.infer<typeof ContractStatusSchema>;
 
 export const ContractSuspendReasonSchema = z.enum([
@@ -74,7 +81,9 @@ const pppoeFields = {
   pppoePassword: z.string().min(8).max(128),
 };
 
-// Bloco IPoE — pelo menos circuitId OU macAddress. Refinado abaixo.
+// Bloco IPoE — pelo menos circuitId OU macAddress quando ACTIVE. Refinado
+// abaixo. Quando `initialStatus === 'PENDING_INSTALL'` a regra é relaxada
+// (técnico em campo vai preencher SN/MAC via /provisioning/install).
 const ipoeFields = {
   authMethod: z.literal('IPOE'),
   circuitId: z.string().min(1).max(128).nullish(),
@@ -82,6 +91,14 @@ const ipoeFields = {
   macAddress: macAddressSchema.nullish(),
   framedIpAddress: framedIpSchema.nullish(),
   vlanId: z.coerce.number().int().min(1).max(4094).nullish(),
+};
+
+// initialStatus: comercial escolhe se o contrato já entra ACTIVE (caso clássico:
+// instalação já feita) ou PENDING_INSTALL (caso ZTP: técnico vai instalar em
+// campo via /provisioning/install). PPPoE só permite ACTIVE — em PPPoE não há
+// fluxo de instalação separado, user/senha já é tudo que precisa.
+const initialStatusField = {
+  initialStatus: z.enum(['ACTIVE', 'PENDING_INSTALL']).default('ACTIVE'),
 };
 
 // CreateContract: discriminated union pra que o backend não precise validar
@@ -99,6 +116,7 @@ export const CreateContractRequestSchema = z
       firstDueDate: z.string().date().optional(),
       ...commonContractFields,
       ...pppoeFields,
+      ...initialStatusField,
     }),
     z.object({
       customerId: z.string().uuid(),
@@ -106,13 +124,24 @@ export const CreateContractRequestSchema = z
       firstDueDate: z.string().date().optional(),
       ...commonContractFields,
       ...ipoeFields,
+      ...initialStatusField,
     }),
   ])
   .superRefine((data, ctx) => {
-    if (data.authMethod === 'IPOE' && !data.circuitId && !data.macAddress) {
+    // IPoE precisa de identificador (circuit/MAC) só quando vai entrar ACTIVE
+    // direto. Em PENDING_INSTALL o técnico ainda vai vincular a ONT em campo.
+    if (
+      data.authMethod === 'IPOE' &&
+      data.initialStatus === 'ACTIVE' &&
+      !data.circuitId &&
+      !data.macAddress
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Em IPoE, informe pelo menos circuitId ou macAddress.',
+        message:
+          'Em IPoE ativo, informe pelo menos circuitId ou macAddress. ' +
+          'Pra cadastrar sem identificador, use status "PENDING_INSTALL" e ' +
+          'vincule depois via /provisioning/install.',
         path: ['circuitId'],
       });
     }

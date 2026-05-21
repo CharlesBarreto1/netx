@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import useSWR from 'swr';
 
+import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import { FieldError, Input, Label, Textarea } from '@/components/ui/Input';
@@ -57,7 +58,7 @@ export default function ProductsPage() {
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Produtos</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+          <p className="text-sm text-text-muted">
             Catálogo de produtos. <strong>Patrimonial</strong> rastreia unidade por serial
             (router, ONU); <strong>Consumível</strong> rastreia saldo agregado (cabo,
             conector).
@@ -74,7 +75,7 @@ export default function ProductsPage() {
           className="max-w-md"
         />
         <select
-          className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+          className="rounded-md border border-border bg-surface px-3 py-2 text-sm"
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value as ProductType | '')}
         >
@@ -92,17 +93,17 @@ export default function ProductsPage() {
       )}
 
       {data && data.length === 0 && (
-        <p className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
+        <p className="rounded-md border border-dashed border-border bg-surface-muted p-6 text-center text-sm text-text-muted">
           Nenhum produto encontrado.
         </p>
       )}
 
       {data && data.length > 0 && (
-        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
+        <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
-              <thead className="bg-slate-50 dark:bg-slate-900/40">
-                <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            <table className="min-w-full divide-y divide-border text-sm">
+              <thead className="bg-surface-muted">
+                <tr className="text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
                   <th className="px-4 py-3">SKU</th>
                   <th className="px-4 py-3">Produto</th>
                   <th className="px-4 py-3">Tipo</th>
@@ -113,67 +114,55 @@ export default function ProductsPage() {
                   {canWrite && <th className="px-4 py-3 text-right">Ações</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+              <tbody className="divide-y divide-border">
                 {data.map((p) => {
                   const totalStock = Number(p.totalStock ?? 0);
                   const minStock = Number(p.minStock ?? 0);
                   const lowStock = minStock > 0 && totalStock < minStock;
                   return (
-                    <tr key={p.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                    <tr key={p.id} className="hover:bg-surface-hover">
                       <td className="px-4 py-3 font-mono text-xs">{p.sku}</td>
                       <td className="px-4 py-3">
                         <div>
-                          <strong className="text-slate-900 dark:text-slate-100">{p.name}</strong>
+                          <strong className="text-text">{p.name}</strong>
                           {(p.brand || p.model) && (
-                            <p className="text-xs text-slate-500">
+                            <p className="text-xs text-text-muted">
                               {[p.brand, p.model].filter(Boolean).join(' · ')}
                             </p>
                           )}
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <span
-                          className={
-                            p.type === 'PATRIMONIAL'
-                              ? 'inline-flex rounded-full bg-violet-100 px-2 py-0.5 text-xs text-violet-800 dark:bg-violet-900/30 dark:text-violet-300'
-                              : 'inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-xs text-sky-800 dark:bg-sky-900/30 dark:text-sky-300'
-                          }
-                        >
+                        <Badge tone={p.type === 'PATRIMONIAL' ? 'purple' : 'info'}>
                           {PRODUCT_TYPE_LABELS[p.type]}
-                        </span>
+                        </Badge>
                       </td>
                       <td className="px-4 py-3 text-right">
                         <span
                           className={
                             lowStock
-                              ? 'text-red-600 font-semibold dark:text-red-400'
-                              : 'text-slate-700 dark:text-slate-200'
+                              ? 'font-semibold text-danger'
+                              : 'text-text'
                           }
                         >
                           {totalStock} {p.unit}
                         </span>
                         {p.type === 'PATRIMONIAL' && (p.totalAllocated ?? 0) > 0 && (
-                          <p className="text-xs text-slate-500">
+                          <p className="text-xs text-text-muted">
                             {p.totalAllocated} em comodato
                           </p>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-300">
+                      <td className="px-4 py-3 text-right text-text-muted">
                         {formatMoney(p.cost)}
                       </td>
-                      <td className="px-4 py-3 text-right text-slate-600 dark:text-slate-300">
-                        {p.price ? formatMoney(p.price) : <span className="text-slate-400">—</span>}
+                      <td className="px-4 py-3 text-right text-text-muted">
+                        {p.price ? formatMoney(p.price) : <span className="text-text-subtle">—</span>}
                       </td>
                       <td className="px-4 py-3">
-                        <span
-                          className={
-                            p.isActive
-                              ? 'inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-800 dark:bg-green-900/30 dark:text-green-300'
-                              : 'inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300'
-                          }
-                        >
+                        <Badge tone={p.isActive ? 'success' : 'neutral'}>
                           {p.isActive ? 'Ativo' : 'Inativo'}
-                        </span>
+                        </Badge>
                       </td>
                       {canWrite && (
                         <td className="px-4 py-3 text-right">
@@ -325,7 +314,7 @@ function ProductFormModal({
             <Label htmlFor="type">Tipo *</Label>
             <select
               id="type"
-              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+              className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
               value={form.type}
               onChange={(e) => setForm({ ...form, type: e.target.value as ProductType })}
               disabled={!isNew}
@@ -334,7 +323,7 @@ function ProductFormModal({
               <option value="CONSUMIVEL">Consumível (qty)</option>
             </select>
             {!isNew && (
-              <p className="text-xs text-slate-500 mt-1">Tipo não pode mudar após criação</p>
+              <p className="text-xs text-text-muted mt-1">Tipo não pode mudar após criação</p>
             )}
           </div>
           <div>
@@ -399,7 +388,7 @@ function ProductFormModal({
               })
             }
           />
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-text-muted mt-1">
             Consultivo — venda real pode override. Custo médio é recalculado automaticamente nas compras.
           </p>
         </div>

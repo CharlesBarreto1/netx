@@ -8,6 +8,8 @@ import type { ContractStatus } from '@/lib/contracts-api';
  */
 export function StatusBadge({ status }: { status: ContractStatus }) {
   switch (status) {
+    case 'PENDING_INSTALL':
+      return <Badge tone="info">Aguardando instalação</Badge>;
     case 'ACTIVE':
       return <Badge tone="success">Ativo</Badge>;
     case 'SUSPENDED':

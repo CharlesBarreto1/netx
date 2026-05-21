@@ -111,6 +111,17 @@ export const MENU_GROUPS: MenuGroup[] = [
     ],
   },
 
+  // Provisionamento — OLT/ONT (PY: Ufinet, BR: Parks/etc) + TR-069 ACS (Fase 3)
+  {
+    key: 'provisioning',
+    labelKey: 'group.provisioning',
+    items: [
+      { key: 'provisioningPending', href: '/provisioning/pending', labelKey: 'provisioningPending', permission: 'provisioning.read' },
+      { key: 'olts', href: '/olts', labelKey: 'olts', permission: 'olts.admin' },
+      { key: 'tr069Devices', href: '/tr069/devices', labelKey: 'tr069Devices', permission: 'tr069.admin' },
+    ],
+  },
+
   // Relatórios — solto, sem subgrupo
   {
     key: 'reports-group',

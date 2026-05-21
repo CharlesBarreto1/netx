@@ -115,6 +115,13 @@ export class ContractsService {
                 vlanId: null,
               };
 
+        // initialStatus: comercial pode criar contrato já ACTIVE (fluxo
+        // clássico) ou PENDING_INSTALL (fluxo ZTP — técnico ainda vai instalar
+        // em campo via /provisioning/install/:contractId).
+        const initialStatus =
+          (input as { initialStatus?: 'ACTIVE' | 'PENDING_INSTALL' }).initialStatus ?? 'ACTIVE';
+        const isPending = initialStatus === 'PENDING_INSTALL';
+
         const contract = await tx.contract.create({
           data: {
             tenantId,
@@ -126,8 +133,13 @@ export class ContractsService {
             monthlyValue: new Prisma.Decimal(input.monthlyValue),
             bandwidthMbps: input.bandwidthMbps,
             dueDay: input.dueDay,
-            status: PrismaContractStatus.ACTIVE,
-            activatedAt: now,
+            status: isPending
+              ? PrismaContractStatus.PENDING_INSTALL
+              : PrismaContractStatus.ACTIVE,
+            // activatedAt só preenche quando contrato realmente vai ACTIVE.
+            // Em PENDING_INSTALL o ProvisioningService.installCustomer popula
+            // depois.
+            activatedAt: isPending ? null : now,
             notes: input.notes ?? null,
             createdById: actorUserId,
             updatedById: actorUserId,
@@ -135,8 +147,19 @@ export class ContractsService {
           include: DEFAULT_INCLUDE,
         });
 
-        await this.invoiceGen.generateInitialInvoice(tx, contract, firstDue);
-        await this.radius.enqueueSync(contract, 'contrato criado', tx);
+        if (!isPending) {
+          // Fluxo clássico: gera fatura inicial + enfileira RADIUS sync.
+          await this.invoiceGen.generateInitialInvoice(tx, contract, firstDue);
+          await this.radius.enqueueSync(contract, 'contrato criado', tx);
+        }
+        // Em PENDING_INSTALL pulamos AMBOS:
+        //   - Invoice: cliente não paga pelo serviço que ainda não tem.
+        //     Quando técnico ativar via /provisioning/install, status vira
+        //     ACTIVE e o cron diário gera próxima fatura no dueDay.
+        //     TODO: se quiser cobrar instalação adiantada, gerar one-time
+        //     charge separada (não invoice mensal).
+        //   - RADIUS: identificador pode ainda não existir (IPoE sem MAC).
+        //     installCustomer enfileira AUTHORIZE quando técnico fechar.
         return contract;
       });
     } catch (err) {
@@ -307,24 +330,34 @@ export class ContractsService {
       changed('framedIpAddress');
 
     if (identityChanged) {
-      const oldId = safeRadiusIdentifier(existing);
-      const newId = safeRadiusIdentifier(updated);
+      // PENDING_INSTALL ainda não existe no RADIUS — não há nada pra sync nem
+      // cleanup. Quando técnico ativar via /provisioning/install, o
+      // ProvisioningService enfileira AUTHORIZE com os identificadores finais.
+      if (updated.status === PrismaContractStatus.PENDING_INSTALL) {
+        this.logger.log(
+          `[contracts.update] contrato ${updated.id} em PENDING_INSTALL — ` +
+            'skipando enqueue RADIUS (será feito por ProvisioningService.install)',
+        );
+      } else {
+        const oldId = safeRadiusIdentifier(existing);
+        const newId = safeRadiusIdentifier(updated);
 
-      if (oldId && newId && oldId !== newId) {
-        // Limpa o identificador antigo ANTES de re-autorizar o novo. Ordem importa
-        // porque o applier processa eventos em createdAt ASC.
-        await this.radius.enqueueCleanupOldIdentifier(
-          existing,
-          oldId,
-          `identificador alterado: ${oldId} -> ${newId}`,
+        if (oldId && newId && oldId !== newId) {
+          // Limpa o identificador antigo ANTES de re-autorizar o novo. Ordem importa
+          // porque o applier processa eventos em createdAt ASC.
+          await this.radius.enqueueCleanupOldIdentifier(
+            existing,
+            oldId,
+            `identificador alterado: ${oldId} -> ${newId}`,
+          );
+        }
+        await this.radius.enqueueSync(
+          updated,
+          oldId === newId
+            ? 'config RADIUS alterada (mesmo identificador)'
+            : `identificador alterado: ${oldId ?? '?'} -> ${newId ?? '?'}`,
         );
       }
-      await this.radius.enqueueSync(
-        updated,
-        oldId === newId
-          ? 'config RADIUS alterada (mesmo identificador)'
-          : `identificador alterado: ${oldId ?? '?'} -> ${newId ?? '?'}`,
-      );
     }
 
     await this.audit.log({
@@ -366,6 +399,12 @@ export class ContractsService {
     if (!existing) throw new NotFoundException('Contrato não encontrado');
     if (existing.status === PrismaContractStatus.CANCELLED) {
       throw new BadRequestException('Contrato cancelado não pode ser suspenso');
+    }
+    if (existing.status === PrismaContractStatus.PENDING_INSTALL) {
+      throw new BadRequestException(
+        'Contrato aguardando instalação não está ativo — não há o que suspender. ' +
+          'Pra desistir antes de instalar, use cancelar.',
+      );
     }
     if (existing.status === PrismaContractStatus.SUSPENDED) {
       return toContractResponse(
@@ -433,6 +472,11 @@ export class ContractsService {
     if (!existing) throw new NotFoundException('Contrato não encontrado');
     if (existing.status === PrismaContractStatus.CANCELLED) {
       throw new BadRequestException('Contrato cancelado não pode ser reativado');
+    }
+    if (existing.status === PrismaContractStatus.PENDING_INSTALL) {
+      throw new BadRequestException(
+        'Contrato aguardando instalação — use /provisioning/install pra ativar.',
+      );
     }
     if (existing.status === PrismaContractStatus.ACTIVE) {
       return toContractResponse(
@@ -557,6 +601,12 @@ export class ContractsService {
       );
     }
 
+    // Cliente desistiu antes da instalação (PENDING_INSTALL → CANCELLED):
+    // não há RADIUS aplicado nem sessão ativa, então skipamos enqueueSync,
+    // enqueueDisconnect e CoA. ONT pode existir como placeholder mas a
+    // desautorização na OLT é responsabilidade futura (ProvisioningService).
+    const wasPendingInstall = existing.status === PrismaContractStatus.PENDING_INSTALL;
+
     const updated = await this.prisma.$transaction(async (tx) => {
       const c = await tx.contract.update({
         where: { id: existing.id },
@@ -572,13 +622,17 @@ export class ContractsService {
         where: { tenantId, contractId: c.id, status: { in: [InvoiceStatus.OPEN, InvoiceStatus.OVERDUE] } },
         data: { status: InvoiceStatus.CANCELLED },
       });
-      await this.radius.enqueueSync(c, input.note ?? 'cancelamento', tx);
-      await this.radius.enqueueDisconnect(c, input.note ?? 'cancelamento', tx);
+      if (!wasPendingInstall) {
+        await this.radius.enqueueSync(c, input.note ?? 'cancelamento', tx);
+        await this.radius.enqueueDisconnect(c, input.note ?? 'cancelamento', tx);
+      }
       return c;
     });
 
-    // CoA real após commit — mesma lógica do applySuspend.
-    const coaResults = await this.fireCoADisconnect(updated, 'cancelamento');
+    // CoA real após commit — só pra contratos que estavam aplicados em RADIUS.
+    const coaResults = wasPendingInstall
+      ? { kicked: 0, total: 0 }
+      : await this.fireCoADisconnect(updated, 'cancelamento');
 
     await this.audit.log({
       tenantId,

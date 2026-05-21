@@ -4,7 +4,7 @@ import { cn } from '@/lib/cn';
 export function Spinner({ className }: { className?: string }) {
   return (
     <svg
-      className={cn('h-5 w-5 animate-spin text-brand-600', className)}
+      className={cn('h-5 w-5 animate-spin text-accent', className)}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -19,7 +19,7 @@ export function Spinner({ className }: { className?: string }) {
 
 export function PageLoader({ label = 'Carregando…' }: { label?: string }) {
   return (
-    <div className="flex items-center justify-center gap-2 p-10 text-sm text-slate-500 dark:text-slate-400">
+    <div className="flex items-center justify-center gap-2 p-10 text-sm text-text-muted">
       <Spinner />
       <span>{label}</span>
     </div>
@@ -28,7 +28,7 @@ export function PageLoader({ label = 'Carregando…' }: { label?: string }) {
 
 export function InlineLoader({ label }: { label?: string }) {
   return (
-    <span className="inline-flex items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+    <span className="inline-flex items-center gap-2 text-sm text-text-muted">
       <Spinner className="h-4 w-4" />
       {label}
     </span>

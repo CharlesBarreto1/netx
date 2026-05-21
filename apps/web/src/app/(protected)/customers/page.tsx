@@ -96,7 +96,7 @@ export default function CustomersListPage() {
         )}
       </header>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+      <section className="rounded-xl border border-border bg-surface p-4 shadow-sm">
         <form
           className="grid grid-cols-1 gap-3 md:grid-cols-6"
           onSubmit={(e) => {
@@ -186,11 +186,11 @@ export default function CustomersListPage() {
 
       {data && !isLoading && (
         <>
-          <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
+          <section className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
-                <thead className="bg-slate-50 dark:bg-slate-900/40">
-                  <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <table className="min-w-full divide-y divide-border text-sm">
+                <thead className="bg-surface-muted">
+                  <tr className="text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
                     <th className="px-4 py-3">{tList('cols.name')}</th>
                     <th className="px-4 py-3">{tList('cols.type')}</th>
                     <th className="px-4 py-3">{tList('cols.document')}</th>
@@ -200,28 +200,28 @@ export default function CustomersListPage() {
                     <th className="px-4 py-3 text-right">{tCommon('actions')}</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                <tbody className="divide-y divide-border">
                   {data.data.length === 0 && (
                     <tr>
                       <td
                         colSpan={7}
-                        className="px-4 py-10 text-center text-sm text-slate-500 dark:text-slate-400"
+                        className="px-4 py-10 text-center text-sm text-text-muted"
                       >
                         {tList('empty')}
                       </td>
                     </tr>
                   )}
                   {data.data.map((c) => (
-                    <tr key={c.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                    <tr key={c.id} className="hover:bg-surface-hover">
                       <td className="px-4 py-3">
                         <Link
                           href={`/customers/${c.id}`}
-                          className="font-medium text-brand-700 hover:underline dark:text-brand-300"
+                          className="font-medium text-accent hover:underline"
                         >
                           {c.displayName}
                         </Link>
                         {c.code && (
-                          <div className="text-xs text-slate-500 dark:text-slate-400">
+                          <div className="text-xs text-text-muted">
                             Código: {c.code}
                           </div>
                         )}
@@ -242,23 +242,23 @@ export default function CustomersListPage() {
                             : tCustomers('typeShort.company')}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                      <td className="px-4 py-3 text-text">
                         {formatTaxId(c.taxIdType, c.taxId)}
                         {c.taxIdCountry && (
-                          <div className="text-xs text-slate-500 dark:text-slate-400">
+                          <div className="text-xs text-text-muted">
                             {c.taxIdType} · {c.taxIdCountry}
                           </div>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-slate-700 dark:text-slate-200">
+                      <td className="px-4 py-3 text-text">
                         {c.primaryEmail && <div className="truncate max-w-[220px]">{c.primaryEmail}</div>}
                         {c.primaryPhone && (
-                          <div className="text-xs text-slate-500 dark:text-slate-400">
+                          <div className="text-xs text-text-muted">
                             {formatPhone(c.primaryPhone)}
                           </div>
                         )}
                         {!c.primaryEmail && !c.primaryPhone && (
-                          <span className="text-slate-400">—</span>
+                          <span className="text-text-subtle">—</span>
                         )}
                       </td>
                       <td className="px-4 py-3">
@@ -266,13 +266,13 @@ export default function CustomersListPage() {
                           {STATUS_LABEL[c.status] ?? c.status}
                         </Badge>
                       </td>
-                      <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
+                      <td className="px-4 py-3 text-text-muted">
                         {formatDate(c.createdAt)}
                       </td>
                       <td className="px-4 py-3 text-right">
                         <Link
                           href={`/customers/${c.id}`}
-                          className="text-sm font-medium text-brand-700 hover:underline dark:text-brand-300"
+                          className="text-sm font-medium text-accent hover:underline"
                         >
                           {tCommon('open')}
                         </Link>
@@ -314,7 +314,7 @@ function Pagination({
   const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, total);
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-600 dark:text-slate-300">
+    <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-text-muted">
       <span>
         <strong>{from}</strong>–<strong>{to}</strong> {tCommon('of')}{' '}
         <strong>{total}</strong>

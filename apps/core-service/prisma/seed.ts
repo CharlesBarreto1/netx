@@ -151,6 +151,20 @@ const stockPermissions = [
 ];
 
 // -----------------------------------------------------------------------------
+// Permission catalog — Provisionamento (OLT/ONT + TR-069 ACS)
+// -----------------------------------------------------------------------------
+const provisioningPermissions = [
+  // olts.admin: CRUD de OLTs + test-connection (credenciais sensíveis, restrito)
+  { code: 'olts.admin',          module: 'provisioning', resource: 'olts',          action: 'admin' },
+  // provisioning.read: listar contratos PENDING_INSTALL + status ONT (técnico vê)
+  { code: 'provisioning.read',   module: 'provisioning', resource: 'provisioning', action: 'read'  },
+  // provisioning.write: ativar cliente em campo (técnico — orquestra OLT+RADIUS+TR069)
+  { code: 'provisioning.write',  module: 'provisioning', resource: 'provisioning', action: 'write' },
+  // tr069.admin: gerenciar ACS, cancelar tasks, ver devices (admin)
+  { code: 'tr069.admin',         module: 'provisioning', resource: 'tr069',         action: 'admin' },
+];
+
+// -----------------------------------------------------------------------------
 // Permission catalog — Chat / Atendimento (WhatsApp via Evolution API)
 // -----------------------------------------------------------------------------
 const chatPermissions = [
@@ -247,6 +261,11 @@ const systemRoles = [
       'stock.purchase.create',
       'stock.adjust',
       'stock.admin',
+      // Provisionamento (admin gerencia OLTs e ACS)
+      'olts.admin',
+      'provisioning.read',
+      'provisioning.write',
+      'tr069.admin',
       // Chat / Atendimento (admin tem tudo, inclusive auditoria)
       'chat.read',
       'chat.send',
@@ -304,6 +323,10 @@ const systemRoles = [
       'stock.write',
       'stock.purchase.create',
       'stock.adjust',
+      // Provisionamento — técnico ativa cliente em campo, lê pendentes.
+      // Sem `olts.admin` (creds SSH/API ficam só com admin) nem `tr069.admin`.
+      'provisioning.read',
+      'provisioning.write',
       // Chat (operador atende: lê, envia, atribui — sem auditar terceiros nem admin)
       'chat.read',
       'chat.send',
@@ -331,6 +354,7 @@ const systemRoles = [
       'reports.read',
       'network.read',
       'stock.read',
+      'provisioning.read',
       'sifen.read',
     ],
   },
@@ -351,6 +375,7 @@ async function main() {
     ...backupsPermissions,
     ...networkPermissions,
     ...stockPermissions,
+    ...provisioningPermissions,
     ...chatPermissions,
   ]) {
     await prisma.permission.upsert({

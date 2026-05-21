@@ -36,7 +36,9 @@ export default function NewContractClient() {
       <div>
         <h1 className="text-xl font-semibold tracking-tight text-text">Novo contrato</h1>
         <p className="text-xs text-text-muted">
-          Ao criar, geramos a 1ª fatura automaticamente e registramos a autorização no RADIUS.
+          Em IPoE, escolha &quot;Ativar agora&quot; (gera 1ª fatura + RADIUS) ou
+          &quot;Agendar instalação&quot; (técnico ativa em campo via
+          Provisionamento).
         </p>
       </div>
 

@@ -367,15 +367,64 @@ apps/web/src/
   `@netx/shared` no bundle do browser. Se adicionar novo DTO, espelhe
   aqui.
 
-## 9. Styling
+## 9. Styling — Tokens semânticos
 
-- Tailwind puro. Sem shadcn/ui. Sem component library.
+- Tailwind 4 puro. Sem shadcn/ui. Sem component library.
 - Use `cn()` de `lib/cn.ts` para combinar classes (`clsx` + `tailwind-merge`).
-- Cores de marca: `brand-50` até `brand-900` (ver `tailwind.config.ts`). Se
-  precisar de um tom novo, **adicione ao config antes de usar** — Tailwind
-  faz tree-shaking baseado nas classes encontradas no source.
-- Suporte a dark mode obrigatório: sempre pareie `text-slate-900
-  dark:text-slate-100` etc.
+
+### Tokens canônicos
+
+Tokens vivem em `apps/web/src/app/globals.css` via `@theme`. Eles já trocam
+sozinhos entre light e dark — **você não escreve mais `dark:` pra eles**.
+
+| Token | Quando usar |
+|-------|-------------|
+| `bg-bg` | fundo geral da página |
+| `bg-surface` | cards, modais, painéis |
+| `bg-surface-muted` | thead de tabela, fundo "afundado" (filtros), badges neutros |
+| `bg-surface-hover` | hover em rows de tabela e em itens de lista |
+| `bg-surface-elevated` | popovers, tooltips, dropdowns |
+| `border-border` / `border-border-strong` | bordas neutras / bordas com mais peso |
+| `text-text` | texto principal |
+| `text-text-muted` | texto secundário (subtítulo, descrição) |
+| `text-text-subtle` | texto terciário (placeholder, dash, hint discreto) |
+| `text-accent` / `bg-accent` | CTAs, links, ações primárias |
+| `text-danger` / `bg-danger-muted` | erro, exclusão, alerta crítico |
+| `text-success` / `bg-success-muted` | sucesso, ativo, online |
+| `text-warning` / `bg-warning-muted` | aviso, baixa de estoque |
+| `text-info` / `bg-info-muted` | info, neutro positivo |
+
+Status semânticos por gravidade: `severity-online`, `severity-warn`,
+`severity-offline`, `severity-error` (usados por `StatusBadge`).
+
+### Anti-padrão
+
+```tsx
+// ❌ Errado — hardcoded slate, exige par dark, fragmenta o sistema
+<div className="bg-slate-50 dark:bg-slate-900/40 text-slate-500 dark:text-slate-400" />
+
+// ✅ Correto — token semântico, dark cuidado pelo @theme
+<div className="bg-surface-muted text-text-muted" />
+```
+
+A paleta `brand-50…900` ainda existe **por compatibilidade**, mas está
+deprecated em código novo — prefira `accent`.
+
+### Para badges
+
+Use o primitivo `<Badge tone="success|warning|danger|info|brand|purple|neutral">`
+em vez de classes inline tipo `bg-green-100 text-green-800 dark:…`. Se a
+combinação de cor não couber em nenhum tone existente, **adicione um tone novo**
+no `Badge.tsx` antes de inlinear.
+
+Para status com estado (online/warn/offline/error), use `<StatusBadge>`.
+
+### Dark mode
+
+Como tokens já carregam variantes light/dark, raramente você escreve `dark:` em
+código de aplicação. Quando precisar — sempre que cor for hardcoded por bom
+motivo (ex.: gráfico, logo) — pareie explicitamente: `text-emerald-600
+dark:text-emerald-400`.
 
 ## 10. Checklist pré-commit (frontend)
 
@@ -387,8 +436,9 @@ Antes de `git commit`:
 4. [ ] Toda `router.push`/`router.replace`/`<Link>` usa template literal com
       prefixo conhecido (ver §1).
 5. [ ] Nenhum callback custom usa `cond && fn()` como corpo (ver §2).
-6. [ ] Dark mode testado nas views novas.
-7. [ ] Permissões corretas gatando novos botões/páginas (ver §6).
+6. [ ] Dark mode testado nas views novas (default: tokens cuidam disso sozinhos).
+7. [ ] Sem `slate-*`/`bg-white`/`dark:bg-slate-*` hardcoded em código novo — usar tokens (`surface`, `border`, `text-muted`, etc.) — ver §9.
+8. [ ] Permissões corretas gatando novos botões/páginas (ver §6).
 
 ## Referências
 

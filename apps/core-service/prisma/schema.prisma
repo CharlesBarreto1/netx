@@ -104,6 +104,13 @@ model Tenant {
   stockLocations       StockLocation[]
   purchases            Purchase[]
 
+  // Provisionamento (Fase 1 — OLT/ONT + TR-069 ACS Fase 3)
+  olts                 Olt[]
+  onts                 Ont[]
+  tr069Devices         Tr069Device[]
+  tr069Tasks           Tr069Task[]
+  provisioningEvents   ProvisioningEvent[]
+
   @@index([status])
   @@index([country])
   @@map("tenants")
@@ -925,6 +932,10 @@ model Activity {
 // =============================================================================
 
 enum ContractStatus {
+  // Comercial criou o contrato mas ainda não foi instalado fisicamente
+  // (não tem ONT autorizada na OLT, RADIUS não aplica). Visível em
+  // /provisioning/pending pra técnico ativar em campo.
+  PENDING_INSTALL
   ACTIVE      // libera PPPoE/IPoE
   SUSPENDED   // pool de IP "bloqueados"
   CANCELLED   // pool de IP "cancelados"
@@ -1020,6 +1031,16 @@ model Contract {
 
   notes               String?        @db.Text
 
+  // ── Provisionamento (Fase 1 ZTP — vide modules/provisioning/) ─────────────
+  // Wi-Fi configurado pelo técnico na instalação. Aplicado na ONT via TR-069
+  // (Fase 3 — ACS próprio em apps/cwmp-server). Hoje só armazena pra UI/audit.
+  // wifiPasswordEnc é criptografado at-rest com KMS_MASTER_KEY (LGPD: senha é
+  // PII). Nunca retorna em response sem decrypt explícito + permissão.
+  ssid                String?        @db.VarChar(32)
+  wifiPasswordEnc     String?        @map("wifi_password_enc") @db.Text
+  // ONT vinculada (1:1). Backed-by FK em Ont.contractId (Ont é o lado dono).
+  // Aqui só pra navegação Prisma — não persiste coluna extra.
+
   createdById         String?        @map("created_by_id") @db.Uuid
   updatedById         String?        @map("updated_by_id") @db.Uuid
 
@@ -1042,6 +1063,8 @@ model Contract {
   // Estoque — Fase 2 (comodato)
   serialItems         SerialItem[]
   stockMovements      StockMovement[]
+  // Provisionamento
+  ont                 Ont?
 
   // pppoeUsername é unique por tenant quando preenchido (Postgres trata
   // múltiplos NULLs como distintos por padrão, então o unique normal funciona
@@ -2212,4 +2235,331 @@ model PurchaseItem {
   @@index([purchaseId])
   @@index([productId])
   @@map("purchase_items")
+}
+
+// =============================================================================
+// PROVISIONAMENTO (OLT/ONT + TR-069 ACS) — Fase 1
+// =============================================================================
+// Modela o fluxo de ativação de cliente em campo:
+//   1. Vendedor cria Contract com status=PENDING_INSTALL (sem ONT vinculada)
+//   2. Técnico abre /provisioning/install/:contractId no celular, escolhe OLT,
+//      digita SN GPON da ONT, preenche SSID + senha Wi-Fi
+//   3. ProvisioningService chama OltDriver.authorize() → cria Ont row
+//   4. (Fase 3) Tr069Task enfileira SET_PARAMS + REBOOT pro ACS aplicar Wi-Fi
+//   5. RadiusSyncService enfileira AUTHORIZE → cliente online no pool ativos
+//
+// Multi-provider: Olt.providerMode discrimina entre OLT direta (Parks/Huawei
+// SSH) e orquestrador externo (Ufinet API). Driver-pattern em
+// modules/provisioning/drivers/* esconde a diferença.
+
+enum OltVendor {
+  HUAWEI       // MA5800-X2/X7/X17, MA5608T, EA5800 — SSH CLI
+  ZTE          // C300, C320, C600, C610, C650 — SSH CLI
+  DATACOM      // DM4610, DM4615, DM4170 — NETCONF
+  FIBERHOME    // AN5516-01/04/06 — SSH CLI
+  NOKIA        // 7360 FX, ISAM — NETCONF
+  PARKS        // OLT 4830-G, 4840-G — SSH CLI
+  UFINET       // rede neutra PY — API orquestrador, não OLT direta
+  GENERIC      // fallback / dev
+}
+
+// DIRECT: NetX fala direto com a OLT (SSH/NETCONF) — operação BR típica.
+// ORCHESTRATOR: NetX chama API de um terceiro (Ufinet, wholesale) que abstrai
+// a OLT física. Operação PY hoje.
+enum OltProviderMode {
+  DIRECT
+  ORCHESTRATOR
+}
+
+enum OltStatus {
+  ONLINE       // testConnection() OK na última checagem
+  OFFLINE      // testConnection() falhou
+  UNREACHABLE  // sem rota / timeout
+  UNKNOWN      // ainda não testou
+}
+
+model Olt {
+  id                  String          @id @default(uuid()) @db.Uuid
+  tenantId            String          @map("tenant_id") @db.Uuid
+  name                String          @db.VarChar(128)         // "OLT POP-Centro"
+  vendor              OltVendor
+  model               String          @db.VarChar(64)          // "MA5800-X7", "C320"
+  providerMode        OltProviderMode @default(DIRECT) @map("provider_mode")
+
+  // ── DIRECT mode (SSH/NETCONF) ────────────────────────────────────────────
+  managementIp        String?         @map("management_ip") @db.Inet
+  sshPort             Int             @default(22) @map("ssh_port")
+  sshUser             String?         @map("ssh_user") @db.VarChar(64)
+  // Senha SSH criptografada com KMS_MASTER_KEY (mesma chave que .secrets).
+  // Nunca retorna em response sem decrypt explícito + permissão olts.admin.
+  sshPasswordEnc      String?         @map("ssh_password_enc") @db.Text
+  // Pra Huawei: senha do modo `enable` (privileged exec).
+  enableSecretEnc     String?         @map("enable_secret_enc") @db.Text
+
+  // ── ORCHESTRATOR mode (API REST) ─────────────────────────────────────────
+  apiEndpoint         String?         @map("api_endpoint") @db.VarChar(255)
+  apiAuthType         String?         @map("api_auth_type") @db.VarChar(32)  // "OAUTH2"|"API_KEY"|"MTLS"
+  apiCredentialsEnc   String?         @map("api_credentials_enc") @db.Text   // JSON encrypted
+  apiWebhookSecret    String?         @map("api_webhook_secret") @db.VarChar(128)
+
+  // ── Defaults aplicados nas provisões (override por contrato possível) ────
+  serviceVlanId       Int?            @map("service_vlan_id")
+  defaultUpProfile    String?         @map("default_up_profile") @db.VarChar(64)
+  defaultDownProfile  String?         @map("default_down_profile") @db.VarChar(64)
+
+  // ── Telemetria ───────────────────────────────────────────────────────────
+  status              OltStatus       @default(UNKNOWN)
+  lastSeenAt          DateTime?       @map("last_seen_at")
+  lastError           String?         @map("last_error") @db.Text
+
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+  deletedAt           DateTime?       @map("deleted_at")
+
+  tenant              Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  onts                Ont[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@map("olts")
+}
+
+// Estado da ONT no ciclo de vida:
+//   PENDING_AUTH: criada no NetX mas authorize() na OLT ainda não rodou
+//   AUTHORIZED  : OLT aceitou o SN, esperando ONT registrar/sincronizar
+//   ONLINE      : ONT registrada e operacional (lastSeenAt recente)
+//   OFFLINE     : ONT estava ONLINE mas parou de reportar (lastSeenAt antigo)
+//   LOS         : Loss of Signal — fibra caiu fisicamente
+//   FAULT       : erro persistente reportado pela OLT (firmware/hardware)
+enum OntStatus {
+  PENDING_AUTH
+  AUTHORIZED
+  ONLINE
+  OFFLINE
+  LOS
+  FAULT
+}
+
+model Ont {
+  id                  String       @id @default(uuid()) @db.Uuid
+  tenantId            String       @map("tenant_id") @db.Uuid
+  contractId          String       @unique @map("contract_id") @db.Uuid
+  oltId               String       @map("olt_id") @db.Uuid
+
+  // SN GPON da ONT — identificador único entregue pela Huawei no preset.
+  // Formato típico: "HWTC12AB34CD" (Huawei), "ZTEG..." (ZTE), "ALCL..." (Nokia).
+  // Case-insensitive na consulta (citext seria ideal mas mantemos varchar
+  // pra compat — comparação UPPER() no service).
+  snGpon              String       @map("sn_gpon") @db.VarChar(32)
+  // MAC da WAN da ONT — pode chegar via Inform TR-069 ou via Accounting
+  // RADIUS. Usado como identificador RADIUS (Contract.macAddress).
+  macAddress          String?      @map("mac_address") @db.VarChar(17)
+  // Serial físico (etiqueta na carcaça) — opcional, pra inventário.
+  serialPhysical      String?      @map("serial_physical") @db.VarChar(64)
+
+  // Posicionamento na OLT (frame/slot/onu-index). Em ORCHESTRATOR mode pode
+  // ficar null se o provider não expõe.
+  ponFrame            Int?         @map("pon_frame")
+  ponSlot             Int?         @map("pon_slot")
+  ponOnuIndex         Int?         @map("pon_onu_index")
+
+  status              OntStatus    @default(PENDING_AUTH)
+  // Métricas ópticas (atualizadas por driver poll ou webhook). dBm.
+  lastRxPower         Decimal?     @map("last_rx_power") @db.Decimal(6, 2)
+  lastTxPower         Decimal?     @map("last_tx_power") @db.Decimal(6, 2)
+
+  authorizedAt        DateTime?    @map("authorized_at")
+  lastSeenAt          DateTime?    @map("last_seen_at")
+  lastError           String?      @map("last_error") @db.Text
+
+  // Notas livres do técnico (ex.: "ONT colada atrás do quadro").
+  notes               String?      @db.Text
+
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
+
+  tenant              Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Restrict: ONT é histórico — cancelamento do contrato deve fazer soft-delete
+  // ou desautorizar via driver, mas não sumir a row.
+  contract            Contract     @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  // Restrict tb na OLT — não dá pra deletar OLT com ONTs vinculadas.
+  olt                 Olt          @relation(fields: [oltId], references: [id], onDelete: Restrict)
+  tr069Device         Tr069Device?
+
+  // SN único por OLT (não global — duas OLTs podem ter SNs iguais em
+  // ambientes de teste, embora real-world seja improvável).
+  @@unique([oltId, snGpon])
+  @@unique([oltId, ponFrame, ponSlot, ponOnuIndex])
+  @@index([tenantId, status])
+  @@index([tenantId, macAddress])
+  @@map("onts")
+}
+
+// =============================================================================
+// TR-069 / CWMP — registro de devices ACS
+// =============================================================================
+// Fase 1: schema + stubs. apps/cwmp-server (Fase 3) vai popular essa tabela
+// quando CPEs fazem Inform na porta 7547. Por hora as rows são criadas pelo
+// ProvisioningService como placeholder pra UI mostrar "aguardando Inform".
+
+model Tr069Device {
+  id                       String   @id @default(uuid()) @db.Uuid
+  tenantId                 String   @map("tenant_id") @db.Uuid
+  // ONT vinculada (1:1 quando o device é uma ONT GPON gerenciada pelo NetX).
+  // Pode ser null se cadastrarmos CPEs sem ONT (ex.: roteador downstream
+  // BYOD no futuro).
+  ontId                    String?  @unique @map("ont_id") @db.Uuid
+
+  // OUI-Serial — chave de identificação CWMP. Formato: "<OUI>-<SerialNumber>".
+  // Ex.: Huawei "00259E-HWTC12AB34CD". Único globalmente por TR-069 spec.
+  deviceId                 String   @unique @map("device_id") @db.VarChar(128)
+
+  // Atributos reportados no Inform (cacheados pra UI/filtro):
+  manufacturer             String?  @db.VarChar(64)
+  oui                      String?  @db.VarChar(6)
+  productClass             String?  @map("product_class") @db.VarChar(64)
+  hardwareVersion          String?  @map("hardware_version") @db.VarChar(32)
+  softwareVersion          String?  @map("software_version") @db.VarChar(32)
+  provisioningCode         String?  @map("provisioning_code") @db.VarChar(128)
+
+  // Connection Request — endpoint do CPE que aceita trigger (NetX → CPE) pra
+  // forçar sessão imediata. Em rede neutra com NAT geralmente é unreachable;
+  // confiamos no Periodic Inform.
+  connectionRequestUrl     String?  @map("connection_request_url") @db.VarChar(255)
+  connectionRequestUser    String?  @map("connection_request_user") @db.VarChar(64)
+  connectionRequestPwdEnc  String?  @map("connection_request_pwd_enc") @db.Text
+
+  // Snapshot completo dos parameters lidos no último GetParameterValues
+  // (JSON). Útil pra debug e dashboards. Caro pra storage — TTL implícito
+  // (overwrite a cada Inform).
+  parametersSnapshot       Json?    @map("parameters_snapshot")
+
+  // Estado:
+  status                   String   @default("UNKNOWN") @db.VarChar(32)
+                                    // "UNKNOWN"|"ONLINE"|"OFFLINE"|"PROVISIONING"
+  lastInformAt             DateTime? @map("last_inform_at")
+  lastInformReason         String?   @map("last_inform_reason") @db.VarChar(64)
+                                    // "0 BOOTSTRAP"|"1 BOOT"|"2 PERIODIC"|...
+
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
+
+  tenant                   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ont                      Ont?     @relation(fields: [ontId], references: [id], onDelete: SetNull)
+  tasks                    Tr069Task[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, lastInformAt])
+  @@map("tr069_devices")
+}
+
+enum Tr069TaskAction {
+  SET_PARAMS       // SetParameterValues
+  GET_PARAMS       // GetParameterValues
+  REBOOT           // Reboot()
+  FACTORY_RESET    // FactoryReset()
+  DOWNLOAD         // Download() — firmware upgrade (futuro)
+  ADD_OBJECT       // AddObject() — criar instância (ex.: nova WLAN)
+  DELETE_OBJECT
+}
+
+enum Tr069TaskStatus {
+  PENDING          // aguardando próximo Inform
+  RUNNING          // entregue ao CPE no fim do session, aguardando ack
+  DONE             // CPE confirmou aplicação
+  FAILED           // CPE retornou fault ou timeout
+  CANCELLED        // operador cancelou antes de aplicar
+}
+
+model Tr069Task {
+  id           String           @id @default(uuid()) @db.Uuid
+  tenantId     String           @map("tenant_id") @db.Uuid
+  deviceId     String           @map("device_id") @db.Uuid
+  // Acrescenta rastreabilidade pro contrato — facilita debug ("qual task
+  // criou esse Wi-Fi?")
+  contractId   String?          @map("contract_id") @db.Uuid
+
+  action       Tr069TaskAction
+  // Payload depende da action:
+  //   SET_PARAMS: { params: [{ name, value, type }] }
+  //   GET_PARAMS: { names: string[] }
+  //   REBOOT/FACTORY_RESET: {}
+  //   DOWNLOAD: { url, fileType, targetFileName, ... }
+  payload      Json
+  // Response do CPE (faults + parameter snapshots).
+  result       Json?
+
+  status       Tr069TaskStatus  @default(PENDING)
+  attempts     Int              @default(0)
+  error        String?          @db.Text
+
+  // FIFO por device: applier processa em ordem de createdAt ASC.
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+  startedAt    DateTime?        @map("started_at")
+  completedAt  DateTime?        @map("completed_at")
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  device       Tr069Device      @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, deviceId, status])
+  @@index([tenantId, status, createdAt])
+  @@map("tr069_tasks")
+}
+
+// =============================================================================
+// PROVISIONING_EVENT — trilha de auditoria do orquestrador
+// =============================================================================
+// Cada chamada de driver (authorize, deauthorize, status poll) gera 1 evento.
+// Histórico imutável pra debug ("por que cliente X não subiu?"). Separado de
+// audit_log pq tem retenção/cardinalidade diferentes — provisioning gera muito
+// volume e merece índice próprio.
+
+enum ProvisioningEventStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  TIMEOUT
+}
+
+enum ProvisioningEventAction {
+  OLT_AUTHORIZE
+  OLT_DEAUTHORIZE
+  OLT_STATUS_POLL
+  OLT_TEST_CONNECTION
+  TR069_TASK_ENQUEUE
+  TR069_INFORM_RECEIVED
+  RADIUS_ENQUEUE
+  CONTRACT_ACTIVATE
+}
+
+model ProvisioningEvent {
+  id           String                  @id @default(uuid()) @db.Uuid
+  tenantId     String                  @map("tenant_id") @db.Uuid
+  contractId   String?                 @map("contract_id") @db.Uuid
+  ontId        String?                 @map("ont_id") @db.Uuid
+  oltId        String?                 @map("olt_id") @db.Uuid
+
+  action       ProvisioningEventAction
+  status       ProvisioningEventStatus @default(PENDING)
+  // Detalhes da chamada (input, response, fault). JSON pra flexibilidade
+  // entre drivers — cada driver loga seu próprio formato.
+  payload      Json?
+  error        String?                 @db.Text
+  durationMs   Int?                    @map("duration_ms")
+
+  // Quem disparou (técnico em campo, cron, webhook).
+  actorUserId  String?                 @map("actor_user_id") @db.Uuid
+  actorKind    String                  @default("user") @map("actor_kind") @db.VarChar(32)
+                                       // "user"|"cron"|"webhook"|"system"
+
+  createdAt    DateTime                @default(now()) @map("created_at")
+
+  tenant       Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, contractId, createdAt])
+  @@index([tenantId, ontId])
+  @@index([tenantId, status, createdAt])
+  @@map("provisioning_events")
 }
