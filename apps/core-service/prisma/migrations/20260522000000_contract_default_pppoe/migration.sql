@@ -1,0 +1,19 @@
+-- =============================================================================
+-- Contract.authMethod — default IPOE → PPPOE
+-- =============================================================================
+-- Copyright (c) 2024-2026 NETX DESENVOLVIMENTO E TECNOLOGIA LTDA — proprietary.
+--
+-- Decisão de engenharia (2026-05-22): PPPoE vira o método de autenticação
+-- padrão. Pro cenário NetX (ONT Huawei em modo roteador + BNG Mikrotik +
+-- RADIUS local + TR-069 ACS), PPPoE é superior em:
+--   - confiabilidade operacional (sessão explícita, keepalive LCP)
+--   - ZTP determinístico (identificador = user/senha nasce com o contrato,
+--     diferente do IPoE onde o MAC é descoberto tarde)
+--   - segurança (credencial > MAC, que é trivialmente spoofável)
+--   - simplicidade no Mikrotik (PPPoE server é first-class no RouterOS)
+--
+-- IMPORTANTE: isso só muda o DEFAULT da coluna. Contratos JÁ EXISTENTES
+-- mantêm o authMethod que têm (IPOE continua IPOE). Sem migração de dados.
+-- IPoE permanece 100% suportado — é só opt-in agora.
+-- =============================================================================
+ALTER TABLE "contracts" ALTER COLUMN "auth_method" SET DEFAULT 'PPPOE';

@@ -76,6 +76,12 @@ export default function InstallPage() {
   const [serialPhysical, setSerialPhysical] = useState('');
   const [ssid, setSsid] = useState('');
   const [wifiPassword, setWifiPassword] = useState('');
+  // VLAN da WAN PPPoE — preset da OLT já vem com 1010; reaplicado via TR-069.
+  const [pppoeVlan, setPppoeVlan] = useState('1010');
+  // Modo Wi-Fi — depende do modelo da ONT (band steering x dual band).
+  const [wifiBandMode, setWifiBandMode] = useState<'BAND_STEERING' | 'DUAL_BAND'>(
+    'BAND_STEERING',
+  );
   const [notes, setNotes] = useState('');
 
   // Result state
@@ -101,6 +107,8 @@ export default function InstallPage() {
         serialPhysical: serialPhysical.trim() || null,
         ssid: ssid.trim(),
         wifiPassword,
+        pppoeVlan: Number(pppoeVlan) || 1010,
+        wifiBandMode,
         notes: notes.trim() || null,
       });
       setResult(res);
@@ -338,6 +346,28 @@ export default function InstallPage() {
           </h2>
 
           <div>
+            <Label htmlFor="wifiBandMode">Modelo da ONT</Label>
+            <Select
+              id="wifiBandMode"
+              value={wifiBandMode}
+              onChange={(e) =>
+                setWifiBandMode(e.target.value as 'BAND_STEERING' | 'DUAL_BAND')
+              }
+            >
+              <option value="BAND_STEERING">
+                EG8145X6 / EG8145-X10 — band steering (rede única)
+              </option>
+              <option value="DUAL_BAND">
+                EG8145V5 — bandas separadas (2.4G + 5G-)
+              </option>
+            </Select>
+            <p className="mt-1 text-xs text-slate-500">
+              Band steering: 2.4 e 5 GHz com o mesmo nome. Bandas separadas: a
+              rede 5 GHz recebe o prefixo <code>5G-</code>.
+            </p>
+          </div>
+
+          <div>
             <Label htmlFor="ssid">Nome da rede (SSID) *</Label>
             <Input
               id="ssid"
@@ -347,6 +377,12 @@ export default function InstallPage() {
               onChange={(e) => setSsid(e.target.value)}
               placeholder="Silva-Casa"
             />
+            {wifiBandMode === 'DUAL_BAND' && ssid.trim() && (
+              <p className="mt-1 text-xs text-slate-500">
+                2.4 GHz: <code>{ssid.trim()}</code> · 5 GHz:{' '}
+                <code>5G-{ssid.trim()}</code>
+              </p>
+            )}
           </div>
 
           <div>
@@ -371,8 +407,24 @@ export default function InstallPage() {
               </Button>
             </div>
             <p className="mt-1 text-xs text-slate-500">
-              Aplicado em 2.4 GHz e 5 GHz via TR-069 (Fase 3). Por hora fica
-              salvo pra config manual.
+              Aplicado em 2.4 GHz e 5 GHz via TR-069.
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="pppoeVlan">VLAN da WAN PPPoE</Label>
+            <Input
+              id="pppoeVlan"
+              type="number"
+              min={1}
+              max={4094}
+              value={pppoeVlan}
+              onChange={(e) => setPppoeVlan(e.target.value)}
+              className="font-mono sm:max-w-[160px]"
+            />
+            <p className="mt-1 text-xs text-slate-500">
+              Padrão 1010 — o preset da OLT já traz essa VLAN na WAN2; o NetX
+              reaplica via TR-069 por garantia. Só usada em contratos PPPoE.
             </p>
           </div>
         </section>

@@ -161,16 +161,22 @@ CREATE UNIQUE INDEX IF NOT EXISTS nas_nasname_uidx ON radius.nas (nasname);
 -- Remove linhas antigas dos 3 grupos conhecidos (mantém outros intactos)
 DELETE FROM radius.radgroupreply
  WHERE groupname IN ('ativos', 'bloqueados', 'cancelados')
-   AND attribute IN ('Framed-Pool', 'Acct-Interim-Interval');
+   AND attribute IN ('Framed-Pool', 'Acct-Interim-Interval',
+                     'Framed-IPv6-Pool', 'Delegated-IPv6-Prefix-Pool');
 
--- ativos: pool "ativos" + accounting interim a cada 5 min
+-- ativos: pool IPv4 + IPv6 dual-stack + accounting interim a cada 5 min.
+--   Framed-IPv6-Pool           → /64 na WAN do cliente
+--   Delegated-IPv6-Prefix-Pool → /56 delegado (DHCPv6-PD) pra LAN
+-- Pools alocados pelo BNG Mikrotik (vide migration 20260522010000).
 INSERT INTO radius.radgroupreply (groupname, attribute, op, value) VALUES
-    ('ativos',      'Framed-Pool',            ':=', 'ativos'),
-    ('ativos',      'Acct-Interim-Interval',  ':=', '300'),
-    ('bloqueados',  'Framed-Pool',            ':=', 'bloqueados'),
-    ('bloqueados',  'Acct-Interim-Interval',  ':=', '300'),
-    ('cancelados',  'Framed-Pool',            ':=', 'cancelados'),
-    ('cancelados',  'Acct-Interim-Interval',  ':=', '300');
+    ('ativos',      'Framed-Pool',                ':=', 'ativos'),
+    ('ativos',      'Framed-IPv6-Pool',           ':=', 'ipv6-wan'),
+    ('ativos',      'Delegated-IPv6-Prefix-Pool', ':=', 'ipv6-pd'),
+    ('ativos',      'Acct-Interim-Interval',      ':=', '300'),
+    ('bloqueados',  'Framed-Pool',                ':=', 'bloqueados'),
+    ('bloqueados',  'Acct-Interim-Interval',      ':=', '300'),
+    ('cancelados',  'Framed-Pool',                ':=', 'cancelados'),
+    ('cancelados',  'Acct-Interim-Interval',      ':=', '300');
 
 -- Sanity check: listar grupos populados
 DO $$

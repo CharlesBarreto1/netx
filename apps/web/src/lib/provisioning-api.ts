@@ -114,6 +114,10 @@ export interface InstallCustomerRequest {
   serialPhysical?: string | null;
   ssid: string;
   wifiPassword: string;
+  /** VLAN da WAN PPPoE (default 1010). */
+  pppoeVlan?: number;
+  /** Modo Wi-Fi do modelo da ONT (default BAND_STEERING). */
+  wifiBandMode?: 'BAND_STEERING' | 'DUAL_BAND';
   notes?: string | null;
 }
 

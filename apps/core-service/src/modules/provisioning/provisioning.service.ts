@@ -277,6 +277,9 @@ export class ProvisioningService {
           ponFrame: input.ponFrame ?? null,
           ponSlot: input.ponSlot ?? null,
           status: 'PENDING_AUTH',
+          // Modo Wi-Fi do modelo (escolhido pelo técnico no form). Usado
+          // aqui e depois pelo ContractWifiCard (edição pós-instalação).
+          wifiBandMode: input.wifiBandMode,
           notes: input.notes ?? null,
         },
       });
@@ -445,12 +448,33 @@ export class ProvisioningService {
     // upsert lê do mesmo DB. Mantemos sequencial — falha aqui não rola back
     // a ativação RADIUS (Wi-Fi é nice-to-have, técnico pode config manual).
     try {
+      // ZTP PPPoE: quando o contrato é PPPoE, injetamos a credencial do
+      // contrato na WAN da ONT junto com o Wi-Fi — a ONG disca PPPoE
+      // sozinha, técnico não toca em config de rede.
+      const pppoe =
+        updatedContract.authMethod === 'PPPOE' &&
+        updatedContract.pppoeUsername &&
+        updatedContract.pppoePassword
+          ? {
+              username: updatedContract.pppoeUsername,
+              password: updatedContract.pppoePassword,
+              // VLAN da WAN PPPoE — vem do form (default 1010 no DTO).
+              vlan: input.pppoeVlan,
+            }
+          : undefined;
+
       const { taskId } = await this.tr069.enqueueSetWifi(
         tenantId,
         ont.id,
         contractId,
         resolvedSnGpon,
-        { ssid: input.ssid, password: input.wifiPassword, bothBands: true },
+        {
+          ssid: input.ssid,
+          password: input.wifiPassword,
+          bothBands: true,
+          wifiBandMode: ont.wifiBandMode,
+          pppoe,
+        },
       );
       await this.persistEvent({
         tenantId,
@@ -459,13 +483,20 @@ export class ProvisioningService {
         oltId: olt.id,
         action: 'TR069_TASK_ENQUEUE',
         status: 'SUCCESS',
-        payload: { taskId, ssid: input.ssid, bands: ['2.4', '5'] },
+        payload: {
+          taskId,
+          ssid: input.ssid,
+          bands: ['2.4', '5'],
+          pppoeInjected: !!pppoe,
+        },
         actorUserId,
       });
       pushEvent(
         'TR069_TASK_ENQUEUE',
         'SUCCESS',
-        'Wi-Fi enfileirado pro ACS aplicar (Fase 3) — task ' + taskId.slice(0, 8),
+        pppoe
+          ? `Wi-Fi + credencial PPPoE enfileirados pro ACS — task ${taskId.slice(0, 8)}`
+          : `Wi-Fi enfileirado pro ACS aplicar — task ${taskId.slice(0, 8)}`,
       );
     } catch (err) {
       // TR-069 falha NÃO impede ativação — só loga

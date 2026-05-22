@@ -974,10 +974,12 @@ model Contract {
   // Código humano ex. CTR-000123 (opcional, gerado pelo service)
   code                String?        @db.VarChar(32)
 
-  // Método de autenticação no RADIUS. Default IPOE — padrão moderno em
-  // FTTH GPON (99% das instalações). PPPoE fica como opt-in pra ISPs com
-  // BNG legado.
-  authMethod          ContractAuthMethod @default(IPOE) @map("auth_method")
+  // Método de autenticação no RADIUS. Default PPPOE — decisão de engenharia
+  // (2026-05-22): pro cenário ONT-roteador + BNG Mikrotik + RADIUS local,
+  // PPPoE vence em confiabilidade, ZTP determinístico (identificador nasce
+  // com o contrato), segurança (credencial > MAC) e simplicidade de operação.
+  // IPoE continua suportado como opt-in pra cenários carrier/exigência de rede.
+  authMethod          ContractAuthMethod @default(PPPOE) @map("auth_method")
 
   // ── Autenticação PPPoE (preenchido só se authMethod = PPPOE) ─────────────
   // Nullable porque IPoE não usa. Mantemos UNIQUE parcial via raw SQL.
@@ -2351,6 +2353,17 @@ enum OntStatus {
   FAULT
 }
 
+// Comportamento de Wi-Fi por modelo de ONT — define como o TR-069 aplica
+// os SSIDs 2.4GHz e 5GHz:
+//   BAND_STEERING — SSID único nas 2 bandas (ex.: EG8145X6, EG8145-X10).
+//                   A ONT decide a banda; o cliente vê uma rede só.
+//   DUAL_BAND     — SSIDs separados (ex.: EG8145V5). 2.4GHz = nome normal,
+//                   5GHz = "5G-" + nome.
+enum WifiBandMode {
+  BAND_STEERING
+  DUAL_BAND
+}
+
 model Ont {
   id                  String       @id @default(uuid()) @db.Uuid
   tenantId            String       @map("tenant_id") @db.Uuid
@@ -2375,6 +2388,10 @@ model Ont {
   ponOnuIndex         Int?         @map("pon_onu_index")
 
   status              OntStatus    @default(PENDING_AUTH)
+  // Comportamento de Wi-Fi (depende do modelo da ONT). Escolhido no install,
+  // usado pelo TR-069 ao montar os SSIDs. Default BAND_STEERING (modelos
+  // mais novos — EG8145X6/X10).
+  wifiBandMode        WifiBandMode @default(BAND_STEERING) @map("wifi_band_mode")
   // Métricas ópticas (atualizadas por driver poll ou webhook). dBm.
   lastRxPower         Decimal?     @map("last_rx_power") @db.Decimal(6, 2)
   lastTxPower         Decimal?     @map("last_tx_power") @db.Decimal(6, 2)

@@ -15,6 +15,9 @@ import {
 
 import {
   paginationMeta,
+  pppoeLoginCandidates,
+  pppoeLoginWithSuffix,
+  normalizeNameToken,
   type CancelContractRequest,
   type ContractResponse,
   type ContractStatus,
@@ -34,7 +37,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CryptoService } from '../crypto/crypto.service';
 import { DisconnectService } from '../disconnect/disconnect.service';
-import { HUAWEI_EG8145_PATHS } from '../provisioning/tr069-paths.huawei';
+import { HUAWEI_EG8145_PATHS, ssid5gFor } from '../provisioning/tr069-paths.huawei';
 import { InvoiceGeneratorService } from './invoice-generator.service';
 import { RadiusSyncService } from './radius-sync.service';
 
@@ -86,7 +89,7 @@ export class ContractsService {
   ): Promise<ContractResponse> {
     const customer = await this.prisma.customer.findFirst({
       where: { id: input.customerId, tenantId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, displayName: true },
     });
     if (!customer) throw new NotFoundException('Cliente não encontrado');
 
@@ -96,6 +99,21 @@ export class ContractsService {
     let created: ContractWithRelations;
     try {
       created = await this.prisma.$transaction(async (tx) => {
+        // PPPoE: resolve login (derivado do nome do cliente, único no tenant)
+        // + senha (default '1234'). Feito DENTRO da tx pra a checagem de
+        // unicidade ver estado consistente.
+        let pppoeUsername: string | null = null;
+        let pppoePassword: string | null = null;
+        if (input.authMethod === 'PPPOE') {
+          pppoeUsername = await this.resolvePppoeUsername(
+            tx,
+            tenantId,
+            input.pppoeUsername ?? null,
+            customer.displayName,
+          );
+          pppoePassword = input.pppoePassword?.trim() || '1234';
+        }
+
         // Branch por authMethod — o DTO já garante coerência via discriminated
         // union; aqui só copiamos os campos certos pro Prisma.
         const authData =
@@ -112,8 +130,8 @@ export class ContractsService {
               }
             : {
                 authMethod: 'PPPOE' as const,
-                pppoeUsername: input.pppoeUsername,
-                pppoePassword: input.pppoePassword,
+                pppoeUsername,
+                pppoePassword,
                 circuitId: null,
                 remoteId: null,
                 macAddress: null,
@@ -884,6 +902,61 @@ export class ContractsService {
   }
 
   // ---------------------------------------------------------------------------
+  // PPPoE LOGIN — geração + resolução de unicidade
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Resolve o login PPPoE final, garantido único no tenant.
+   *
+   * Ordem de tentativa:
+   *   1. Se o operador enviou um username explícito → tenta ele primeiro.
+   *   2. Variações derivadas do nome do cliente (charlesbarreto,
+   *      charlesmacedo, barretomacedo — vide pppoe-login.ts).
+   *   3. Se TODAS colidem → sufixo numérico no primeiro candidato
+   *      (charlesbarreto2, charlesbarreto3, ...).
+   *
+   * Roda dentro da transação de criação do contrato — a checagem de
+   * unicidade vê estado consistente. O unique constraint
+   * @@unique([tenantId, pppoeUsername]) é o backstop final.
+   */
+  private async resolvePppoeUsername(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    requested: string | null,
+    customerName: string,
+  ): Promise<string> {
+    const isFree = async (u: string): Promise<boolean> =>
+      (await tx.contract.count({
+        where: { tenantId, pppoeUsername: u, deletedAt: null },
+      })) === 0;
+
+    // Monta lista de candidatos: explícito (se houver) + derivados do nome.
+    const candidates: string[] = [];
+    const add = (c: string | null | undefined): void => {
+      if (c && c.length >= 3 && !candidates.includes(c)) candidates.push(c);
+    };
+    if (requested?.trim()) add(normalizeNameToken(requested));
+    for (const c of pppoeLoginCandidates(customerName)) add(c);
+    // Fallback final caso o nome do cliente não produza nada utilizável.
+    if (candidates.length === 0) add('cliente');
+
+    // 1ª passada — candidatos base
+    for (const cand of candidates) {
+      if (await isFree(cand)) return cand;
+    }
+    // 2ª passada — sufixo numérico no primeiro candidato
+    const root = candidates[0];
+    for (let n = 2; n < 1000; n++) {
+      const withSuffix = pppoeLoginWithSuffix(root, n);
+      if (await isFree(withSuffix)) return withSuffix;
+    }
+    // Praticamente impossível chegar aqui (1000 colisões pro mesmo nome).
+    throw new ConflictException(
+      `Não foi possível gerar um login PPPoE único pra "${customerName}"`,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
   // WI-FI MANAGEMENT (pós-instalação via TR-069)
   // ---------------------------------------------------------------------------
 
@@ -1021,7 +1094,13 @@ export class ContractsService {
           params: [
             { name: HUAWEI_EG8145_PATHS.ssid24, value: input.ssid, type: 'xsd:string' },
             { name: HUAWEI_EG8145_PATHS.pwd24, value: input.wifiPassword, type: 'xsd:string' },
-            { name: HUAWEI_EG8145_PATHS.ssid50, value: `${input.ssid}-5G`, type: 'xsd:string' },
+            // 5GHz: SSID único (band steering) ou "5G-"+nome (dual band),
+            // conforme o modelo da ONT registrado no install.
+            {
+              name: HUAWEI_EG8145_PATHS.ssid50,
+              value: ssid5gFor(input.ssid, contract.ont.wifiBandMode),
+              type: 'xsd:string',
+            },
             { name: HUAWEI_EG8145_PATHS.pwd50, value: input.wifiPassword, type: 'xsd:string' },
             { name: HUAWEI_EG8145_PATHS.informInterval, value: '60', type: 'xsd:unsignedInt' },
           ],

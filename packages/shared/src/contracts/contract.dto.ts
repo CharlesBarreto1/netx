@@ -64,7 +64,11 @@ const commonContractFields = {
   notes: z.string().max(10_000).nullish(),
 };
 
-// Bloco PPPoE — usuário/senha obrigatórios.
+// Bloco PPPoE.
+// usuário/senha são OPCIONAIS no request: quando ausentes, o backend gera
+//   - login: derivado do nome do cliente (vide pppoe-login.ts)
+//   - senha: '1234' (padrão da operação — segurança real fica na camada
+//            GPON/OLT, não na credencial PPPoE; decisão do admin 2026-05-22)
 const pppoeFields = {
   authMethod: z.literal('PPPOE'),
   pppoeUsername: z
@@ -74,11 +78,10 @@ const pppoeFields = {
     .regex(
       /^[A-Za-z0-9._-]+$/u,
       'pppoeUsername deve conter apenas letras, números, "." "_" "-"',
-    ),
-  // min(8): senha PPPoE viaja como CHAP-Password OU PAP em RADIUS — CHAP
-  // já é fraco (MD5 + challenge), PAP é literalmente plaintext sobre o RADIUS.
-  // Mínimo de 8 chars com a regex acima (alfanumérico) impede dicionário.
-  pppoePassword: z.string().min(8).max(128),
+    )
+    .optional(),
+  // min(4) — senha curta é decisão consciente da operação (segurança na OLT).
+  pppoePassword: z.string().min(4).max(128).optional(),
 };
 
 // Bloco IPoE — pelo menos circuitId OU macAddress quando ACTIVE. Refinado

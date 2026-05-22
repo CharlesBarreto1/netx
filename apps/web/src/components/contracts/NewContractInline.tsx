@@ -22,6 +22,7 @@ import {
 } from '@/lib/contracts-api';
 import type { Customer, Paginated } from '@/lib/crm-types';
 import { useTenantConfig } from '@/lib/tenant-config';
+import { pppoeLoginCandidates } from '@netx/shared';
 
 /**
  * NewContractInline — formulário reusável de criação de contrato.
@@ -47,6 +48,7 @@ export interface NewContractInlineProps {
     notes: string;
     installationAddress: string;
     installationMapsUrl: string;
+    authMethod: ContractAuthMethod;
     pppoeUsername: string;
     pppoePassword: string;
     firstDueDate: string;
@@ -58,6 +60,13 @@ export interface NewContractInlineProps {
   onSkip?: () => void;
   skipLabel?: string;
 }
+
+/**
+ * Senha PPPoE padrão da operação. Decisão do admin (2026-05-22): senha curta
+ * fixa — a segurança real está na camada GPON/OLT, não na credencial PPPoE
+ * (que ainda é injetada na ONT via TR-069, o cliente nunca a digita).
+ */
+const DEFAULT_PPPOE_PASSWORD = '1234';
 
 export function NewContractInline({
   lockedCustomerId,
@@ -86,19 +95,26 @@ export function NewContractInline({
   const lockedKey = lockedCustomerId ? `/v1/customers/${lockedCustomerId}` : null;
   const { data: lockedCustomer } = useSWR<Customer>(lockedKey);
 
-  // Default IPoE — padrão moderno (FTTH GPON com circuit-id/MAC). PPPoE
-  // fica disponível como opt-in pra cenários com BNG legado.
-  const [authMethod, setAuthMethod] = useState<ContractAuthMethod>('IPOE');
+  // Default PPPoE — decisão de engenharia (2026-05-22): ZTP determinístico,
+  // sessão explícita, mais robusto pro cenário ONT-roteador + Mikrotik BNG.
+  // IPoE continua disponível como opt-in.
+  const [authMethod, setAuthMethod] = useState<ContractAuthMethod>(
+    initial?.authMethod ?? 'PPPOE',
+  );
   // 'ACTIVE' = comercial confirma instalação realizada (fluxo clássico).
   // 'PENDING_INSTALL' = ZTP — técnico vai instalar em campo via
   // /provisioning/install/:contractId. Sem fatura/RADIUS até ativação.
   const [initialStatus, setInitialStatus] = useState<'ACTIVE' | 'PENDING_INSTALL'>('ACTIVE');
+  // Operador editou o login à mão? Se sim, o auto-preenchimento (derivado do
+  // nome do cliente) para de sobrescrever.
+  const [pppoeUserEdited, setPppoeUserEdited] = useState(false);
   const [form, setForm] = useState({
     customerId: lockedCustomerId ?? '',
     code: initial?.code ?? '',
-    // PPPoE
+    // PPPoE — login é derivado do nome do cliente (preenchido pelo useEffect
+    // quando o cliente é selecionado). Senha = padrão da operação.
     pppoeUsername: initial?.pppoeUsername ?? '',
-    pppoePassword: initial?.pppoePassword ?? '',
+    pppoePassword: initial?.pppoePassword ?? DEFAULT_PPPOE_PASSWORD,
     // IPoE
     circuitId: '',
     remoteId: '',
@@ -129,16 +145,42 @@ export function NewContractInline({
     setForm((s) => ({ ...s, [k]: v }));
   }
 
+  // Nome do cliente selecionado — usado pra derivar o login PPPoE.
+  const selectedCustomerName = useMemo(() => {
+    if (lockedCustomerId) return lockedCustomer?.displayName ?? '';
+    return customers.find((c) => c.id === form.customerId)?.displayName ?? '';
+  }, [lockedCustomerId, lockedCustomer, customers, form.customerId]);
+
+  // Candidatos de login (charlesbarreto, charlesmacedo, barretomacedo…).
+  // O backend resolve a unicidade final; aqui é só sugestão/preview.
+  const loginCandidates = useMemo(
+    () => pppoeLoginCandidates(selectedCustomerName),
+    [selectedCustomerName],
+  );
+
+  // Auto-preenche o login com a 1ª opção quando o cliente é selecionado —
+  // a menos que o operador já tenha editado o campo à mão.
+  useEffect(() => {
+    if (authMethod !== 'PPPOE' || pppoeUserEdited) return;
+    if (loginCandidates.length > 0) {
+      setForm((s) => ({ ...s, pppoeUsername: loginCandidates[0] }));
+    }
+  }, [authMethod, pppoeUserEdited, loginCandidates]);
+
   function validate(): boolean {
     const e: Record<string, string> = {};
     if (!form.customerId) e.customerId = 'Selecione um cliente';
 
     if (authMethod === 'PPPOE') {
-      if (!form.pppoeUsername || form.pppoeUsername.length < 3)
-        e.pppoeUsername = 'Mínimo 3 caracteres';
-      if (form.pppoeUsername && !/^[A-Za-z0-9._-]+$/.test(form.pppoeUsername))
-        e.pppoeUsername = 'Use apenas letras, números, . _ -';
-      if (!form.pppoePassword || form.pppoePassword.length < 4)
+      // Login e senha são opcionais no request — o backend gera (login do
+      // nome do cliente, senha padrão). Só validamos FORMATO se preenchidos.
+      if (form.pppoeUsername) {
+        if (form.pppoeUsername.length < 3)
+          e.pppoeUsername = 'Mínimo 3 caracteres';
+        else if (!/^[A-Za-z0-9._-]+$/.test(form.pppoeUsername))
+          e.pppoeUsername = 'Use apenas letras, números, . _ -';
+      }
+      if (form.pppoePassword && form.pppoePassword.length < 4)
         e.pppoePassword = 'Mínimo 4 caracteres';
     } else {
       // IPoE: pelo menos circuit OU MAC quando vai entrar ACTIVE direto.
@@ -228,8 +270,10 @@ export function NewContractInline({
         : {
             ...common,
             authMethod: 'PPPOE',
-            pppoeUsername: form.pppoeUsername,
-            pppoePassword: form.pppoePassword,
+            // Vazios viram undefined — o backend gera (login do nome do
+            // cliente, senha padrão) e resolve unicidade.
+            pppoeUsername: form.pppoeUsername.trim() || undefined,
+            pppoePassword: form.pppoePassword.trim() || undefined,
           };
 
     try {
@@ -286,78 +330,113 @@ export function NewContractInline({
       {/* ─── Tipo de autenticação ─────────────────────────────────────── */}
       <div>
         <Label>Tipo de autenticação</Label>
-        <div className="flex gap-2">
-          <AuthMethodTab
-            label="IPoE"
-            description="Circuit-ID / MAC (FTTH GPON — padrão)"
-            active={authMethod === 'IPOE'}
-            onClick={() => setAuthMethod('IPOE')}
-          />
+        <div className="flex flex-col gap-2 sm:flex-row">
           <AuthMethodTab
             label="PPPoE"
-            description="Usuário/senha (legado)"
+            description="Usuário/senha — padrão (sessão explícita, ZTP)"
             active={authMethod === 'PPPOE'}
             onClick={() => setAuthMethod('PPPOE')}
+          />
+          <AuthMethodTab
+            label="IPoE"
+            description="Circuit-ID / MAC (cenário carrier / exigência de rede)"
+            active={authMethod === 'IPOE'}
+            onClick={() => setAuthMethod('IPOE')}
           />
         </div>
       </div>
 
       {/* ─── Status inicial — clássico vs ZTP ─────────────────────────── */}
-      {/* PPPoE não tem fluxo PENDING_INSTALL: usuário/senha já é tudo, não
-          tem ONT pra técnico vincular. Toggle só aparece em IPoE. */}
-      {authMethod === 'IPOE' && (
-        <div>
-          <Label>Início do serviço</Label>
-          <div className="flex flex-col gap-2 md:flex-row">
-            <AuthMethodTab
-              label="Ativar agora"
-              description="Instalação concluída — gera 1ª fatura + ativa RADIUS"
-              active={initialStatus === 'ACTIVE'}
-              onClick={() => setInitialStatus('ACTIVE')}
-            />
-            <AuthMethodTab
-              label="Agendar instalação"
-              description="Técnico fará a ativação em campo via Provisionamento"
-              active={initialStatus === 'PENDING_INSTALL'}
-              onClick={() => setInitialStatus('PENDING_INSTALL')}
-            />
-          </div>
-          {initialStatus === 'PENDING_INSTALL' && (
-            <FieldHelp>
-              Contrato fica em fila de pendentes. Sem fatura e sem RADIUS até
-              o técnico ativar via /provisioning/pending. Identificadores
-              (circuit-id, MAC) podem ser preenchidos depois.
-            </FieldHelp>
-          )}
+      {/* Disponível pros DOIS métodos: com TR-069 ACS, o ZTP funciona tanto
+          em PPPoE (NetX injeta user/senha na ONT) quanto em IPoE (MAC). */}
+      <div>
+        <Label>Início do serviço</Label>
+        <div className="flex flex-col gap-2 md:flex-row">
+          <AuthMethodTab
+            label="Ativar agora"
+            description="Instalação concluída — gera 1ª fatura + ativa RADIUS"
+            active={initialStatus === 'ACTIVE'}
+            onClick={() => setInitialStatus('ACTIVE')}
+          />
+          <AuthMethodTab
+            label="Agendar instalação"
+            description="Técnico fará a ativação em campo via Provisionamento"
+            active={initialStatus === 'PENDING_INSTALL'}
+            onClick={() => setInitialStatus('PENDING_INSTALL')}
+          />
         </div>
-      )}
+        {initialStatus === 'PENDING_INSTALL' && (
+          <FieldHelp>
+            Contrato fica em fila de pendentes. Sem fatura e sem RADIUS até
+            o técnico ativar via /provisioning/pending. A credencial PPPoE
+            (ou identificadores IPoE) é injetada na ONT via TR-069 na ativação.
+          </FieldHelp>
+        )}
+      </div>
 
       {authMethod === 'PPPOE' ? (
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <Label htmlFor="contract-pppoeUsername" required>
-              Usuário PPPoE
-            </Label>
-            <Input
-              id="contract-pppoeUsername"
-              value={form.pppoeUsername}
-              onChange={(e) => update('pppoeUsername', e.target.value)}
-              placeholder="ex. joao.silva"
-            />
-            <FieldError>{errors.pppoeUsername}</FieldError>
+        <div className="space-y-3">
+          <Label>Credenciais PPPoE</Label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="contract-pppoeUsername" required>
+                Usuário PPPoE
+              </Label>
+              <Input
+                id="contract-pppoeUsername"
+                value={form.pppoeUsername}
+                onChange={(e) => {
+                  setPppoeUserEdited(true);
+                  update('pppoeUsername', e.target.value);
+                }}
+                placeholder={
+                  selectedCustomerName
+                    ? 'derivado do nome do cliente'
+                    : 'selecione o cliente primeiro'
+                }
+                className="font-mono"
+              />
+              <FieldError>{errors.pppoeUsername}</FieldError>
+              {/* Chips das variações do nome — clicar troca o login. */}
+              {loginCandidates.length > 1 && (
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {loginCandidates.map((cand) => (
+                    <button
+                      key={cand}
+                      type="button"
+                      onClick={() => update('pppoeUsername', cand)}
+                      className={
+                        'rounded-md border px-2 py-0.5 font-mono text-xs transition-colors ' +
+                        (form.pppoeUsername === cand
+                          ? 'border-accent bg-accent-muted text-text'
+                          : 'border-border text-text-muted hover:bg-surface-hover')
+                      }
+                    >
+                      {cand}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="contract-pppoePassword" required>
+                Senha PPPoE
+              </Label>
+              <Input
+                id="contract-pppoePassword"
+                value={form.pppoePassword}
+                onChange={(e) => update('pppoePassword', e.target.value)}
+                className="font-mono"
+              />
+              <FieldError>{errors.pppoePassword}</FieldError>
+            </div>
           </div>
-          <div>
-            <Label htmlFor="contract-pppoePassword" required>
-              Senha PPPoE
-            </Label>
-            <Input
-              id="contract-pppoePassword"
-              value={form.pppoePassword}
-              onChange={(e) => update('pppoePassword', e.target.value)}
-              placeholder="senha"
-            />
-            <FieldError>{errors.pppoePassword}</FieldError>
-          </div>
+          <FieldHelp>
+            Login derivado do nome do cliente — clique numa variação acima ou
+            edite. Se o login já existir, o sistema ajusta automaticamente
+            (sufixo numérico). O cliente nunca digita: a credencial é injetada
+            na ONT via TR-069.
+          </FieldHelp>
         </div>
       ) : (
         <div className="space-y-4 rounded-md border border-dashed border-border p-3">

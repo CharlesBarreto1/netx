@@ -17,17 +17,33 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { Tr069TaskAction, Tr069TaskStatus } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
-import { HUAWEI_EG8145_PATHS } from './tr069-paths.huawei';
+import { HUAWEI_EG8145_PATHS, ssid5gFor } from './tr069-paths.huawei';
 
 // Re-export pra compat com código existente que importava daqui
-export { HUAWEI_EG8145_PATHS };
+export { HUAWEI_EG8145_PATHS, ssid5gFor };
 
 interface SetWifiInput {
   ssid: string;
   password: string;
   /** Se true, aplica em ambos 2.4G e 5G simultâneo. Default true. */
   bothBands?: boolean;
+  /**
+   * Modo de Wi-Fi (depende do modelo da ONT):
+   *   BAND_STEERING — SSID único nas 2 bandas (EG8145X6/X10).
+   *   DUAL_BAND     — 5G ganha prefixo "5G-" (EG8145V5).
+   * Default BAND_STEERING.
+   */
+  wifiBandMode?: 'BAND_STEERING' | 'DUAL_BAND';
+  /**
+   * Credencial PPPoE opcional. Quando o contrato é PPPoE, o ZTP injeta o
+   * usuário/senha na WAN de internet da ONT via TR-069 — assim o técnico
+   * não configura nada no equipamento. A ONT disca PPPoE sozinha.
+   *
+   * `vlan`: VLAN 802.1Q da WAN PPPoE (default 1010).
+   */
+  pppoe?: { username: string; password: string; vlan: number };
 }
+
 
 @Injectable()
 export class Tr069TasksService {
@@ -67,16 +83,38 @@ export class Tr069TasksService {
     });
 
     const bothBands = input.bothBands ?? true;
-    const params: Array<{ name: string; value: string; type: 'xsd:string' | 'xsd:unsignedInt' }> = [
+    type ParamType = 'xsd:string' | 'xsd:unsignedInt' | 'xsd:boolean';
+    const params: Array<{ name: string; value: string; type: ParamType }> = [
       { name: HUAWEI_EG8145_PATHS.ssid24, value: input.ssid, type: 'xsd:string' },
       { name: HUAWEI_EG8145_PATHS.pwd24, value: input.password, type: 'xsd:string' },
     ];
     if (bothBands) {
+      // 5GHz: SSID único (band steering) ou "5G-"+nome (dual band).
+      const ssid5g = ssid5gFor(input.ssid, input.wifiBandMode ?? 'BAND_STEERING');
       params.push(
-        { name: HUAWEI_EG8145_PATHS.ssid50, value: input.ssid + '-5G', type: 'xsd:string' },
+        { name: HUAWEI_EG8145_PATHS.ssid50, value: ssid5g, type: 'xsd:string' },
         { name: HUAWEI_EG8145_PATHS.pwd50, value: input.password, type: 'xsd:string' },
       );
     }
+
+    // ZTP PPPoE: injeta credencial + VLAN + IPv6 na WAN de internet da ONT.
+    // A ONT (modo roteador) disca PPPoE sozinha — técnico não toca em rede.
+    if (input.pppoe) {
+      params.push(
+        { name: HUAWEI_EG8145_PATHS.pppoeUsername, value: input.pppoe.username, type: 'xsd:string' },
+        { name: HUAWEI_EG8145_PATHS.pppoePassword, value: input.pppoe.password, type: 'xsd:string' },
+        // VLAN 802.1Q da WAN PPPoE — o preset já traz, reaplica por garantia.
+        { name: HUAWEI_EG8145_PATHS.pppoeVlan, value: String(input.pppoe.vlan), type: 'xsd:unsignedInt' },
+        // IPv6 dual-stack: ONT negocia /64 (WAN) + /56 (PD) — ambos vêm do RADIUS.
+        { name: HUAWEI_EG8145_PATHS.ipv6Enable, value: '1', type: 'xsd:boolean' },
+        { name: HUAWEI_EG8145_PATHS.pppoeEnable, value: '1', type: 'xsd:boolean' },
+      );
+      this.logger.log(
+        `[TR-069] ZTP PPPoE — injetando credencial user=${input.pppoe.username} ` +
+          `vlan=${input.pppoe.vlan} + IPv6 dual-stack na ONT`,
+      );
+    }
+
     // Acelera o próximo Inform pra ACS confirmar config rapidamente (60s).
     // Default Huawei é 86400 (1 dia) — terrível pra ZTP.
     params.push({

@@ -15,6 +15,7 @@ import {
   ProvisioningEventStatusSchema,
   SnGponSchema,
   SsidSchema,
+  WifiBandModeSchema,
   WifiPasswordSchema,
   type ProvisioningEventAction,
   type ProvisioningEventStatus,
@@ -56,6 +57,20 @@ export const InstallCustomerRequestSchema = z
     /** Wi-Fi pra TR-069 aplicar via SetParameterValues (Fase 3). */
     ssid: SsidSchema,
     wifiPassword: WifiPasswordSchema,
+    /**
+     * Modo de Wi-Fi — depende do modelo da ONT:
+     *   BAND_STEERING (EG8145X6/X10) — SSID único nas 2 bandas.
+     *   DUAL_BAND (EG8145V5) — 2.4G nome normal, 5G "5G-"+nome.
+     * Default BAND_STEERING (modelos mais novos).
+     */
+    wifiBandMode: WifiBandModeSchema.default('BAND_STEERING'),
+
+    /**
+     * VLAN da WAN PPPoE (802.1Q). Default 1010 — o preset da OLT já cria a
+     * WAN2 com essa VLAN; o NetX reaplica via TR-069 pra garantir. Só usada
+     * em contratos PPPoE.
+     */
+    pppoeVlan: z.coerce.number().int().min(1).max(4094).default(1010),
 
     /** Notas livres do técnico (opcional). */
     notes: z.string().max(2000).nullish(),

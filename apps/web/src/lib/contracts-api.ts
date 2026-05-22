@@ -127,8 +127,10 @@ interface CommonContractInput {
 export type CreateContractInput =
   | (CommonContractInput & {
       authMethod: 'PPPOE';
-      pppoeUsername: string;
-      pppoePassword: string;
+      // Opcionais — o backend gera quando ausentes (login derivado do nome
+      // do cliente, senha padrão da operação).
+      pppoeUsername?: string;
+      pppoePassword?: string;
     })
   | (CommonContractInput & {
       authMethod: 'IPOE';

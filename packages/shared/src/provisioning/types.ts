@@ -38,6 +38,15 @@ export const ONT_STATUSES = [
 export const OntStatusSchema = z.enum(ONT_STATUSES);
 export type OntStatus = z.infer<typeof OntStatusSchema>;
 
+/**
+ * Modo de Wi-Fi por modelo de ONT:
+ *   BAND_STEERING — SSID único nas 2 bandas (EG8145X6 / EG8145-X10)
+ *   DUAL_BAND     — SSIDs separados (EG8145V5): 2.4G nome, 5G "5G-"+nome
+ */
+export const WIFI_BAND_MODES = ['BAND_STEERING', 'DUAL_BAND'] as const;
+export const WifiBandModeSchema = z.enum(WIFI_BAND_MODES);
+export type WifiBandMode = z.infer<typeof WifiBandModeSchema>;
+
 export const TR069_TASK_ACTIONS = [
   'SET_PARAMS',
   'GET_PARAMS',
