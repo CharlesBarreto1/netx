@@ -613,6 +613,12 @@ export class ContractsService {
     // desautorização na OLT é responsabilidade futura (ProvisioningService).
     const wasPendingInstall = existing.status === PrismaContractStatus.PENDING_INSTALL;
 
+    // Transação MINIMAL: só o que NÃO PODE FALHAR (atualizar status + invoices).
+    // RADIUS sync/disconnect e CoA ficam FORA — se um deles falhar, contrato
+    // já está CANCELLED e admin pode resync depois via cron reconciler.
+    //
+    // Antes (bug observado): tudo numa tx só → enqueueSync lançava pra IPoE
+    // sem identifier, rollback inteiro e 500 sem feedback claro.
     const updated = await this.prisma.$transaction(async (tx) => {
       const c = await tx.contract.update({
         where: { id: existing.id },
@@ -623,22 +629,43 @@ export class ContractsService {
         },
         include: DEFAULT_INCLUDE,
       });
-      // Cancela todas as faturas abertas
       await tx.contractInvoice.updateMany({
         where: { tenantId, contractId: c.id, status: { in: [InvoiceStatus.OPEN, InvoiceStatus.OVERDUE] } },
         data: { status: InvoiceStatus.CANCELLED },
       });
-      if (!wasPendingInstall) {
-        await this.radius.enqueueSync(c, input.note ?? 'cancelamento', tx);
-        await this.radius.enqueueDisconnect(c, input.note ?? 'cancelamento', tx);
-      }
       return c;
     });
 
-    // CoA real após commit — só pra contratos que estavam aplicados em RADIUS.
-    const coaResults = wasPendingInstall
-      ? { kicked: 0, total: 0 }
-      : await this.fireCoADisconnect(updated, 'cancelamento');
+    // Pós-commit: side effects RADIUS e CoA. Falha aqui NÃO reverte cancel.
+    let coaResults: { kicked: number; total: number } = { kicked: 0, total: 0 };
+    if (!wasPendingInstall) {
+      const hasIdentifier = !!safeRadiusIdentifier(updated);
+      if (hasIdentifier) {
+        try {
+          await this.radius.enqueueSync(updated, input.note ?? 'cancelamento');
+          await this.radius.enqueueDisconnect(updated, input.note ?? 'cancelamento');
+        } catch (err) {
+          this.logger.warn(
+            `[cancel] enqueueSync/Disconnect falhou pra ${updated.id} — ` +
+              'cancel mantido. Reconciler vai corrigir RADIUS em ≤5min. ' +
+              `erro: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+        try {
+          coaResults = await this.fireCoADisconnect(updated, 'cancelamento');
+        } catch (err) {
+          this.logger.warn(
+            `[cancel] CoA disconnect falhou pra ${updated.id} — cancel ok. ` +
+              `erro: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      } else {
+        this.logger.log(
+          `[cancel] contrato ${updated.id} sem identificador RADIUS — ` +
+            'pulando enqueueSync/CoA (não estava aplicado).',
+        );
+      }
+    }
 
     await this.audit.log({
       tenantId,
