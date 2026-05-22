@@ -16,7 +16,7 @@ import { PageLoader } from '@/components/ui/Spinner';
 import { Badge } from '@/components/ui/Badge';
 import { ApiError } from '@/lib/api';
 import { hasPermission } from '@/lib/session';
-import { useFormatMoney } from '@/lib/tenant-config';
+import { useFormatMoney } from '@/lib/use-money';
 import { plansApi, type CreatePlanInput, type Plan } from '@/lib/plans-api';
 
 export default function PlansPage() {
