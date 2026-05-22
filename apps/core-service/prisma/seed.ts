@@ -554,6 +554,33 @@ async function main() {
     });
   }
 
+  // 6. Motivos de O.S. padrão do sistema (idempotente)
+  // "Instalação" com isInstallation=true — usado pelo wizard de novo cliente
+  // e pela trava operacional (OS de instalação não fecha sem comodato).
+  console.log('  → Default service-order reasons');
+  const defaultReasons = [
+    { name: 'Instalação', description: 'Instalação de novo cliente', isInstallation: true, order: 0 },
+    { name: 'Suporte técnico', description: 'Atendimento técnico em campo', isInstallation: false, order: 1 },
+    { name: 'Manutenção', description: 'Manutenção preventiva ou corretiva', isInstallation: false, order: 2 },
+    { name: 'Mudança de endereço', description: 'Transferência de ponto', isInstallation: false, order: 3 },
+  ];
+  for (const r of defaultReasons) {
+    const existing = await prisma.serviceOrderReason.findFirst({
+      where: { tenantId: tenant.id, name: r.name },
+    });
+    if (!existing) {
+      await prisma.serviceOrderReason.create({
+        data: { tenantId: tenant.id, ...r },
+      });
+    } else if (r.isInstallation && !existing.isInstallation) {
+      // Garante que o motivo "Instalação" tenha a flag (corrige seed antigo).
+      await prisma.serviceOrderReason.update({
+        where: { id: existing.id },
+        data: { isInstallation: true },
+      });
+    }
+  }
+
   console.log('✅ Seed completed.');
   console.log('');
   console.log('   Login de desenvolvimento:');

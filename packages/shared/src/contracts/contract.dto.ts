@@ -96,12 +96,13 @@ const ipoeFields = {
   vlanId: z.coerce.number().int().min(1).max(4094).nullish(),
 };
 
-// initialStatus: comercial escolhe se o contrato já entra ACTIVE (caso clássico:
-// instalação já feita) ou PENDING_INSTALL (caso ZTP: técnico vai instalar em
-// campo via /provisioning/install). PPPoE só permite ACTIVE — em PPPoE não há
-// fluxo de instalação separado, user/senha já é tudo que precisa.
+// initialStatus: define se o contrato nasce PENDING_INSTALL (fluxo ZTP
+// padrão — técnico instala em campo via /provisioning/install) ou ACTIVE
+// (exceção — instalação já realizada antes do cadastro).
+// Default PENDING_INSTALL: o caminho normal da operação é o contrato entrar
+// na fila de instalações pendentes. Aplica-se a PPPoE e IPoE.
 const initialStatusField = {
-  initialStatus: z.enum(['ACTIVE', 'PENDING_INSTALL']).default('ACTIVE'),
+  initialStatus: z.enum(['ACTIVE', 'PENDING_INSTALL']).default('PENDING_INSTALL'),
 };
 
 // CreateContract: discriminated union pra que o backend não precise validar

@@ -101,10 +101,14 @@ export function NewContractInline({
   const [authMethod, setAuthMethod] = useState<ContractAuthMethod>(
     initial?.authMethod ?? 'PPPOE',
   );
-  // 'ACTIVE' = comercial confirma instalação realizada (fluxo clássico).
-  // 'PENDING_INSTALL' = ZTP — técnico vai instalar em campo via
-  // /provisioning/install/:contractId. Sem fatura/RADIUS até ativação.
-  const [initialStatus, setInitialStatus] = useState<'ACTIVE' | 'PENDING_INSTALL'>('ACTIVE');
+  // Default 'PENDING_INSTALL' — fluxo ZTP padrão da operação: vendedor cria
+  // o contrato, técnico instala em campo via /provisioning/install. O
+  // contrato nasce na fila de instalações pendentes (sem fatura/RADIUS até
+  // a ativação). 'ACTIVE' é a exceção — instalação já realizada antes do
+  // cadastro.
+  const [initialStatus, setInitialStatus] = useState<'ACTIVE' | 'PENDING_INSTALL'>(
+    'PENDING_INSTALL',
+  );
   // Operador editou o login à mão? Se sim, o auto-preenchimento (derivado do
   // nome do cliente) para de sobrescrever.
   const [pppoeUserEdited, setPppoeUserEdited] = useState(false);

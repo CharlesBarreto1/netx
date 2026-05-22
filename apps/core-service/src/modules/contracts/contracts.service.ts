@@ -139,11 +139,12 @@ export class ContractsService {
                 vlanId: null,
               };
 
-        // initialStatus: comercial pode criar contrato já ACTIVE (fluxo
-        // clássico) ou PENDING_INSTALL (fluxo ZTP — técnico ainda vai instalar
-        // em campo via /provisioning/install/:contractId).
+        // initialStatus: PENDING_INSTALL (fluxo ZTP padrão — técnico instala
+        // em campo) ou ACTIVE (exceção — instalação já realizada). O DTO já
+        // aplica default PENDING_INSTALL; o `??` aqui é só defesa.
         const initialStatus =
-          (input as { initialStatus?: 'ACTIVE' | 'PENDING_INSTALL' }).initialStatus ?? 'ACTIVE';
+          (input as { initialStatus?: 'ACTIVE' | 'PENDING_INSTALL' }).initialStatus ??
+          'PENDING_INSTALL';
         const isPending = initialStatus === 'PENDING_INSTALL';
 
         const contract = await tx.contract.create({

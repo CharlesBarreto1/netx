@@ -12,28 +12,31 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 import { NewContractInline } from '@/components/contracts/NewContractInline';
+import { NewInstallOrderInline } from '@/components/contracts/NewInstallOrderInline';
 import { CustomerForm } from '@/components/crm/CustomerForm';
 import { Badge } from '@/components/ui/Badge';
 import { api } from '@/lib/api';
 import type { Contract } from '@/lib/contracts-api';
 import type { Customer } from '@/lib/crm-types';
 
-type Step = 'customer' | 'contract';
+type Step = 'customer' | 'contract' | 'serviceOrder';
 
 /**
- * Fluxo unificado de criação.
+ * Wizard de criação de novo cliente — 3 passos:
  *
- * Passo 1: cadastra o cliente.
- * Passo 2 (opcional): logo após salvar, oferece criar o contrato já vinculado
- *   ao cliente recém-criado. Botão "Pular" leva direto pro detalhe do cliente.
+ *   1. Cliente   — cadastra o cliente (PF/PJ).
+ *   2. Contrato  — cria o contrato já vinculado (nasce PENDING_INSTALL).
+ *   3. O.S.      — gera a ordem de serviço de instalação (motivo padrão
+ *                  "Instalação") pra o técnico executar em campo.
  *
- * Esse fluxo é o mesmo aplicado quando o usuário converte um deal em cliente
- * (ver `ConvertDealDialog`), garantindo consistência.
+ * Cada passo pode ser pulado. O fluxo conecta venda → contrato → instalação,
+ * fechando o ciclo sem pontas soltas.
  */
 export default function NewCustomerClient() {
   const router = useRouter();
   const [step, setStep] = useState<Step>('customer');
   const [customer, setCustomer] = useState<Customer | null>(null);
+  const [contract, setContract] = useState<Contract | null>(null);
 
   async function handleCustomerSubmit(body: Record<string, unknown>) {
     const created = await api.post<Customer>('/v1/customers', body);
@@ -41,12 +44,17 @@ export default function NewCustomerClient() {
     setStep('contract');
   }
 
-  function handleContractCreated(contract: Contract) {
-    router.replace(`/contracts/${contract.id}`);
+  function handleContractCreated(c: Contract) {
+    setContract(c);
+    setStep('serviceOrder');
   }
 
   function handleSkipContract() {
     if (customer) router.replace(`/customers/${customer.id}`);
+  }
+
+  function finishToContract() {
+    if (contract) router.replace(`/contracts/${contract.id}`);
   }
 
   return (
@@ -59,17 +67,21 @@ export default function NewCustomerClient() {
           › Novo
         </nav>
         <div className="mt-1 flex flex-wrap items-center gap-2">
-          <h1 className="text-2xl font-bold tracking-tight">
-            {step === 'customer' ? 'Novo cliente' : 'Novo cliente + contrato'}
-          </h1>
+          <h1 className="text-2xl font-bold tracking-tight">Novo cliente</h1>
           <Badge tone={step === 'customer' ? 'info' : 'success'}>
-            {step === 'customer' ? '1/2 — Cliente' : '2/2 — Contrato (opcional)'}
+            {step === 'customer'
+              ? '1/3 — Cliente'
+              : step === 'contract'
+                ? '2/3 — Contrato'
+                : '3/3 — Instalação'}
           </Badge>
         </div>
         <p className="text-sm text-slate-500 dark:text-slate-400">
           {step === 'customer'
-            ? 'Cadastre um cliente Pessoa Física ou Pessoa Jurídica. Endereços, contatos adicionais e tags podem ser gerenciados depois no detalhe do cliente.'
-            : 'Quer criar o contrato agora? Os campos básicos abaixo são suficientes para gerar a 1ª fatura e provisionar o RADIUS. Você pode pular e fazer isso depois.'}
+            ? 'Cadastre um cliente Pessoa Física ou Pessoa Jurídica. Endereços, contatos e tags podem ser gerenciados depois no detalhe do cliente.'
+            : step === 'contract'
+              ? 'Crie o contrato vinculado ao cliente. Ele nasce aguardando instalação — o técnico ativa em campo via Provisionamento.'
+              : 'Gere a ordem de serviço de instalação pra o técnico executar. Fecha o ciclo: cliente → contrato → instalação.'}
         </p>
       </header>
 
@@ -85,8 +97,7 @@ export default function NewCustomerClient() {
         {step === 'contract' && customer && (
           <div className="flex flex-col gap-5">
             <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200">
-              Cliente <strong>{customer.displayName}</strong> criado com sucesso. Quer
-              gerar o contrato agora?
+              Cliente <strong>{customer.displayName}</strong> criado com sucesso.
             </div>
 
             <NewContractInline
@@ -97,6 +108,14 @@ export default function NewCustomerClient() {
               skipLabel="Pular — ir para o cliente"
             />
           </div>
+        )}
+
+        {step === 'serviceOrder' && contract && (
+          <NewInstallOrderInline
+            contract={contract}
+            onCreated={() => finishToContract()}
+            onSkip={finishToContract}
+          />
         )}
       </div>
     </div>
