@@ -11,6 +11,8 @@ import { ContractInvoicesController } from './contract-invoices.controller';
 import { ContractInvoicesService } from './contract-invoices.service';
 import { InvoiceGeneratorService } from './invoice-generator.service';
 import { OverdueScanService } from './overdue-scan.service';
+import { PlansController } from './plans.controller';
+import { PlansService } from './plans.service';
 import { RadiusSyncService } from './radius-sync.service';
 
 /**
@@ -28,12 +30,13 @@ import { RadiusSyncService } from './radius-sync.service';
  */
 @Module({
   imports: [AuditModule, FinanceModule, RadiusModule, DisconnectModule],
-  controllers: [ContractsController, ContractInvoicesController],
+  controllers: [ContractsController, ContractInvoicesController, PlansController],
   providers: [
     ContractsService,
     ContractInvoicesService,
     InvoiceGeneratorService,
     OverdueScanService,
+    PlansService,
     RadiusSyncService,
   ],
   exports: [ContractsService, ContractInvoicesService, RadiusSyncService],

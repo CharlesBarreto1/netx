@@ -21,6 +21,7 @@ import {
   type CreateContractInput,
 } from '@/lib/contracts-api';
 import type { Customer, Paginated } from '@/lib/crm-types';
+import { plansApi, type Plan } from '@/lib/plans-api';
 import { useTenantConfig } from '@/lib/tenant-config';
 import { pppoeLoginCandidates } from '@netx/shared';
 
@@ -128,16 +129,50 @@ export function NewContractInline({
     // Comuns
     installationAddress: initial?.installationAddress ?? '',
     installationMapsUrl: initial?.installationMapsUrl ?? '',
+    planId: '',
     monthlyValue:
       initial?.monthlyValue !== undefined ? String(initial.monthlyValue) : '',
     bandwidthMbps:
       initial?.bandwidthMbps !== undefined ? String(initial.bandwidthMbps) : '',
+    uploadMbps: '',
     dueDay: initial?.dueDay !== undefined ? String(initial.dueDay) : '10',
     notes: initial?.notes ?? '',
     firstDueDate: initial?.firstDueDate ?? '',
   });
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Catálogo de planos — opera ativos por padrão.
+  const { data: plans } = useSWR<Plan[]>(plansApi.listPath(false), () =>
+    plansApi.list(false),
+  );
+  const selectedPlan = (plans ?? []).find((p) => p.id === form.planId);
+  // Diferença entre o valor cobrado e o preço do plano (mostra
+  // "desconto" / "acréscimo" pra rastreabilidade visual).
+  const planAdjustment = (() => {
+    if (!selectedPlan) return null;
+    const cobrado = Number(String(form.monthlyValue).replace(',', '.'));
+    const base = Number(selectedPlan.monthlyPrice);
+    if (!Number.isFinite(cobrado) || !Number.isFinite(base)) return null;
+    const diff = cobrado - base;
+    if (Math.abs(diff) < 0.005) return null;
+    return diff;
+  })();
+
+  // Ao selecionar um plano, preenche valor + velocidades (operador pode
+  // ajustar o monthlyValue depois — desconto/acréscimo).
+  function selectPlan(planId: string) {
+    setForm((s) => ({ ...s, planId }));
+    const p = (plans ?? []).find((x) => x.id === planId);
+    if (!p) return;
+    setForm((s) => ({
+      ...s,
+      planId,
+      monthlyValue: String(Number(p.monthlyPrice)),
+      bandwidthMbps: String(p.downloadMbps),
+      uploadMbps: String(p.uploadMbps),
+    }));
+  }
 
   useEffect(() => {
     if (lockedCustomerId) {
@@ -250,8 +285,10 @@ export function NewContractInline({
       installationMapsUrl: form.installationMapsUrl.trim()
         ? normalizeMapsUrl(form.installationMapsUrl)
         : null,
+      planId: form.planId || null,
       monthlyValue: Number(String(form.monthlyValue).replace(',', '.')),
       bandwidthMbps: Number(form.bandwidthMbps),
+      uploadMbps: form.uploadMbps.trim() ? Number(form.uploadMbps) : null,
       dueDay: Number(form.dueDay),
       notes: form.notes || null,
       firstDueDate: form.firstDueDate || undefined,
@@ -545,7 +582,48 @@ export function NewContractInline({
         </FieldHelp>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      {/* ─── Plano de internet ─────────────────────────────────────────── */}
+      {plans && plans.length > 0 && (
+        <div>
+          <Label htmlFor="contract-planId">Plano</Label>
+          <Select
+            id="contract-planId"
+            value={form.planId}
+            onChange={(e) => selectPlan(e.target.value)}
+          >
+            <option value="">— sem plano (valores manuais) —</option>
+            {plans.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} · {p.downloadMbps}/{p.uploadMbps} Mbps ·{' '}
+                {moneyLabel} {Number(p.monthlyPrice).toLocaleString('pt-BR')}
+              </option>
+            ))}
+          </Select>
+          <FieldHelp>
+            Selecione um plano pra preencher valor + velocidades automaticamente.
+            O operador pode ajustar a mensalidade (desconto/acréscimo).
+            {planAdjustment !== null && (
+              <span
+                className={
+                  planAdjustment < 0
+                    ? ' font-medium text-emerald-600 dark:text-emerald-400'
+                    : ' font-medium text-amber-600 dark:text-amber-400'
+                }
+              >
+                {' · '}
+                {planAdjustment < 0 ? 'Desconto' : 'Acréscimo'} de{' '}
+                {moneyLabel}{' '}
+                {Math.abs(planAdjustment).toLocaleString('pt-BR', {
+                  minimumFractionDigits: 2,
+                })}{' '}
+                vs plano
+              </span>
+            )}
+          </FieldHelp>
+        </div>
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <Label htmlFor="contract-monthlyValue" required>
             Mensalidade ({moneyLabel})
@@ -563,7 +641,7 @@ export function NewContractInline({
         </div>
         <div>
           <Label htmlFor="contract-bandwidthMbps" required>
-            Velocidade (Mbps)
+            Download (Mbps)
           </Label>
           <Input
             id="contract-bandwidthMbps"
@@ -574,6 +652,18 @@ export function NewContractInline({
             placeholder="500"
           />
           <FieldError>{errors.bandwidthMbps}</FieldError>
+        </div>
+        <div>
+          <Label htmlFor="contract-uploadMbps">Upload (Mbps)</Label>
+          <Input
+            id="contract-uploadMbps"
+            type="number"
+            min="1"
+            value={form.uploadMbps}
+            onChange={(e) => update('uploadMbps', e.target.value)}
+            placeholder="igual ao download"
+          />
+          <FieldHelp>Se vazio, usa o download (simétrico).</FieldHelp>
         </div>
         <div>
           <Label htmlFor="contract-dueDay" required>

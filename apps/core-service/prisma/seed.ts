@@ -81,6 +81,8 @@ const contractsPermissions = [
   { code: 'contracts.write', module: 'contracts', resource: 'contracts', action: 'write' },
   { code: 'contracts.delete', module: 'contracts', resource: 'contracts', action: 'delete' },
   { code: 'contracts.admin', module: 'contracts', resource: 'contracts', action: 'admin' },
+  // plans.manage: CRUD do catálogo de planos de internet (configuração).
+  { code: 'plans.manage', module: 'contracts', resource: 'plans', action: 'manage' },
 ];
 
 // -----------------------------------------------------------------------------
@@ -237,6 +239,7 @@ const systemRoles = [
       'contracts.write',
       'contracts.delete',
       'contracts.admin',
+      'plans.manage',
       // Ordens de Serviço
       'service_orders.read',
       'service_orders.write',
@@ -577,6 +580,32 @@ async function main() {
       await prisma.serviceOrderReason.update({
         where: { id: existing.id },
         data: { isInstallation: true },
+      });
+    }
+  }
+
+  // 7. Planos de internet exemplo (idempotente)
+  // O admin ajusta velocidades/preços em Configurações → Planos.
+  console.log('  → Sample internet plans');
+  const samplePlans = [
+    { name: 'Plano 300 Mega', downloadMbps: 300, uploadMbps: 300, monthlyPrice: '95000', order: 0 },
+    { name: 'Plano 500 Mega', downloadMbps: 500, uploadMbps: 500, monthlyPrice: '125000', order: 1 },
+    { name: 'Plano 1 Giga', downloadMbps: 1000, uploadMbps: 1000, monthlyPrice: '185000', order: 2 },
+  ];
+  for (const p of samplePlans) {
+    const existing = await prisma.plan.findFirst({
+      where: { tenantId: tenant.id, name: p.name },
+    });
+    if (!existing) {
+      await prisma.plan.create({
+        data: {
+          tenantId: tenant.id,
+          name: p.name,
+          downloadMbps: p.downloadMbps,
+          uploadMbps: p.uploadMbps,
+          monthlyPrice: p.monthlyPrice,
+          order: p.order,
+        },
       });
     }
   }

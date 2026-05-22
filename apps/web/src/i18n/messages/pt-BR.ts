@@ -84,6 +84,7 @@ const messages = {
     serviceOrderReasons: 'Motivos de O.S',
     cashRegisters: 'Caixas',
     users: 'Usuários',
+    plans: 'Planos',
     backups: 'Backups',
     audit: 'Auditoria',
     security: 'Minha segurança',

@@ -58,8 +58,14 @@ const commonContractFields = {
   // Link de localização (Google Maps / OSM / Apple Maps). Validação leve:
   // só exige URL válida; aceitar qualquer host pra não amarrar a um provedor.
   installationMapsUrl: z.string().url().max(500).nullish(),
+  // Plano de internet (opcional). Quando selecionado, o front preenche
+  // monthlyValue/bandwidthMbps/uploadMbps a partir do plano. O operador pode
+  // ajustar o monthlyValue (desconto/acréscimo) — o planId fica como
+  // referência. Sem plano = valores 100% manuais.
+  planId: z.string().uuid().nullish(),
   monthlyValue: z.coerce.number().positive().max(1_000_000),
-  bandwidthMbps: z.coerce.number().int().min(1).max(100_000),
+  bandwidthMbps: z.coerce.number().int().min(1).max(100_000),   // download
+  uploadMbps: z.coerce.number().int().min(1).max(100_000).nullish(),
   dueDay: z.coerce.number().int().min(1).max(28),
   notes: z.string().max(10_000).nullish(),
 };
@@ -230,8 +236,12 @@ export interface ContractResponse {
 
   installationAddress: string;
   installationMapsUrl: string | null;
+  planId: string | null;
+  /** Nome do plano (denormalizado pra UI — evita N+1 na listagem). */
+  planName?: string | null;
   monthlyValue: number;
-  bandwidthMbps: number;
+  bandwidthMbps: number;        // download
+  uploadMbps: number | null;
   dueDay: number;
 
   status: ContractStatus;

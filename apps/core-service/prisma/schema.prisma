@@ -79,6 +79,7 @@ model Tenant {
   deals       Deal[]
   activities  Activity[]
   contracts   Contract[]
+  plans       Plan[]
   contractInvoices ContractInvoice[]
   radiusEvents RadiusEvent[]
   serviceOrders        ServiceOrder[]
@@ -966,6 +967,41 @@ enum ContractSuspendReason {
   OTHER
 }
 
+// =============================================================================
+// PLANO de internet — catálogo de velocidades + preços
+// =============================================================================
+// O contrato referencia um Plan (planId) e DENORMALIZA os valores no momento
+// da criação/edição (monthlyValue, bandwidthMbps, uploadMbps). Mudar o plano
+// depois não afeta contratos existentes — preserva histórico financeiro.
+//
+// A velocidade do plano vira a queue RADIUS: o radius-applier monta
+// `Mikrotik-Rate-Limit` (rx/tx) no radreply, e o Mikrotik cria a queue
+// dinâmica por cliente conectado.
+model Plan {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @map("tenant_id") @db.Uuid
+  name          String    @db.VarChar(120)
+  description   String?   @db.VarChar(500)
+  // Velocidades em Mbps. download = o que o cliente baixa; upload = o que sobe.
+  downloadMbps  Int       @map("download_mbps")
+  uploadMbps    Int       @map("upload_mbps")
+  // Preço mensal na moeda do tenant (PYG, BRL, etc).
+  monthlyPrice  Decimal   @map("monthly_price") @db.Decimal(12, 2)
+  isActive      Boolean   @default(true) @map("is_active")
+  // Ordem de exibição em selects (asc).
+  order         Int       @default(0)
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+
+  tenant        Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contracts     Contract[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, isActive])
+  @@map("plans")
+}
+
 model Contract {
   id                  String         @id @default(uuid()) @db.Uuid
   tenantId            String         @map("tenant_id") @db.Uuid
@@ -1013,8 +1049,15 @@ model Contract {
   installationMapsUrl String?        @map("installation_maps_url") @db.VarChar(500)
 
   // Comerciais
+  // planId — plano de internet selecionado. Os campos abaixo (monthlyValue,
+  // bandwidthMbps, uploadMbps) são DENORMALIZADOS do plano no momento da
+  // criação/edição: se o plano mudar de preço/velocidade depois, contratos
+  // existentes NÃO mudam (preserva histórico). O operador pode ajustar o
+  // monthlyValue (desconto/acréscimo) — o planId fica como referência.
+  planId              String?        @map("plan_id") @db.Uuid
   monthlyValue        Decimal        @map("monthly_value") @db.Decimal(12, 2)
-  bandwidthMbps       Int            @map("bandwidth_mbps")             // velocidade em Mbps
+  bandwidthMbps       Int            @map("bandwidth_mbps")             // download em Mbps
+  uploadMbps          Int?           @map("upload_mbps")                // upload em Mbps
   dueDay              Int            @map("due_day")                    // 1..28
 
   // Estado
@@ -1057,6 +1100,9 @@ model Contract {
   customer            Customer       @relation(fields: [customerId], references: [id], onDelete: Restrict)
   createdBy           User?          @relation("ContractCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy           User?          @relation("ContractUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  // SetNull: deletar um plano não apaga contratos — os valores ficam
+  // denormalizados no contrato, só perde a referência.
+  plan                Plan?          @relation(fields: [planId], references: [id], onDelete: SetNull)
 
   invoices            ContractInvoice[]
   radiusEvents        RadiusEvent[]
@@ -1076,6 +1122,7 @@ model Contract {
   @@unique([tenantId, macAddress])
   @@unique([tenantId, code])
   @@index([tenantId, customerId])
+  @@index([tenantId, planId])
   @@index([tenantId, status])
   @@index([tenantId, dueDay])
   @@index([tenantId, authMethod])

@@ -109,8 +109,12 @@ interface CommonContractInput {
   code?: string;
   installationAddress: string;
   installationMapsUrl?: string | null;
+  /** Plano de internet selecionado (opcional). */
+  planId?: string | null;
   monthlyValue: number;
   bandwidthMbps: number;
+  /** Upload em Mbps (opcional). */
+  uploadMbps?: number | null;
   dueDay: number;
   notes?: string | null;
   firstDueDate?: string;

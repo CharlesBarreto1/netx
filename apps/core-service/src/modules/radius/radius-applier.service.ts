@@ -60,6 +60,9 @@ export class RadiusApplierService {
             pppoePassword: true,
             // Campos IPoE necessários pra montar o radreply (Framed-IP).
             framedIpAddress: true,
+            // Velocidades — viram o Mikrotik-Rate-Limit (queue por cliente).
+            bandwidthMbps: true,
+            uploadMbps: true,
             status: true,
           },
         },
@@ -105,6 +108,8 @@ export class RadiusApplierService {
       pppoeUsername: string | null;
       pppoePassword: string | null;
       framedIpAddress: string | null;
+      bandwidthMbps: number;
+      uploadMbps: number | null;
       status: string;
     } | null;
   }): Promise<void> {
@@ -130,22 +135,31 @@ export class RadiusApplierService {
           await this.upsertCredentials(user, ev.contract.pppoePassword);
           await this.clearFramedIp(user); // limpa se tiver legado
         }
+        // Rate-limit: vira a queue dinâmica do Mikrotik por cliente.
+        await this.setRateLimit(
+          user,
+          ev.contract.bandwidthMbps,
+          ev.contract.uploadMbps,
+        );
         await this.putInGroup(user, POOL_ATIVOS);
         // CoA pra derrubar sessão antiga se houver (pool mudou)
         await this.coa.disconnect(user);
         break;
       }
       case RadiusAction.BLOCK: {
+        // Mantém o rate-limit (o grupo bloqueados é quem manda pra walled
+        // garden); não precisa mexer na queue.
         await this.putInGroup(user, POOL_BLOQUEADOS);
         await this.coa.disconnect(user);
         break;
       }
       case RadiusAction.CANCEL: {
         await this.putInGroup(user, POOL_CANCELADOS);
-        // Tira credenciais (senha PPPoE ou Auth-Type IPoE) e Framed-IP pra
-        // garantir que não autentica mais mesmo se o grupo for alterado.
+        // Tira credenciais (senha PPPoE ou Auth-Type IPoE), Framed-IP e
+        // rate-limit pra não deixar resíduo no radreply.
         await this.deleteCredentials(user);
         await this.clearFramedIp(user);
+        await this.clearRateLimit(user);
         await this.coa.disconnect(user);
         break;
       }
@@ -223,6 +237,42 @@ export class RadiusApplierService {
     await this.prisma.$executeRaw(Prisma.sql`
       DELETE FROM radius.radreply
        WHERE username = ${username} AND attribute = 'Framed-IP-Address'
+    `);
+  }
+
+  /**
+   * Define Mikrotik-Rate-Limit em radreply — o BNG Mikrotik cria a queue
+   * dinâmica por cliente conectado a partir desse atributo.
+   *
+   * Formato: `rx-rate/tx-rate` na perspectiva do NAS:
+   *   rx = tráfego que o NAS RECEBE do cliente = UPLOAD do cliente
+   *   tx = tráfego que o NAS ENVIA pro cliente = DOWNLOAD do cliente
+   * Logo: `${uploadMbps}M/${downloadMbps}M`.
+   *
+   * Se uploadMbps for null (contrato antigo sem o campo), usa o download
+   * como fallback (plano simétrico).
+   */
+  private async setRateLimit(
+    username: string,
+    downloadMbps: number,
+    uploadMbps: number | null,
+  ): Promise<void> {
+    const up = uploadMbps && uploadMbps > 0 ? uploadMbps : downloadMbps;
+    const rateLimit = `${up}M/${downloadMbps}M`;
+    await this.prisma.$executeRaw(Prisma.sql`
+      DELETE FROM radius.radreply
+       WHERE username = ${username} AND attribute = 'Mikrotik-Rate-Limit'
+    `);
+    await this.prisma.$executeRaw(Prisma.sql`
+      INSERT INTO radius.radreply (username, attribute, op, value)
+      VALUES (${username}, 'Mikrotik-Rate-Limit', ':=', ${rateLimit})
+    `);
+  }
+
+  private async clearRateLimit(username: string): Promise<void> {
+    await this.prisma.$executeRaw(Prisma.sql`
+      DELETE FROM radius.radreply
+       WHERE username = ${username} AND attribute = 'Mikrotik-Rate-Limit'
     `);
   }
 

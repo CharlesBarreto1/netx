@@ -62,6 +62,9 @@ const DEFAULT_INCLUDE = {
   customer: {
     select: { id: true, displayName: true, type: true },
   },
+  plan: {
+    select: { id: true, name: true },
+  },
 } as const;
 
 type ContractWithRelations = Prisma.ContractGetPayload<{ include: typeof DEFAULT_INCLUDE }>;
@@ -155,8 +158,13 @@ export class ContractsService {
             ...authData,
             installationAddress: input.installationAddress,
             installationMapsUrl: input.installationMapsUrl ?? null,
+            // Plano: referência. Valores (monthlyValue/bandwidth/upload) já
+            // vêm preenchidos pelo front a partir do plano — o operador pode
+            // ter ajustado o monthlyValue (desconto/acréscimo).
+            planId: input.planId ?? null,
             monthlyValue: new Prisma.Decimal(input.monthlyValue),
             bandwidthMbps: input.bandwidthMbps,
+            uploadMbps: input.uploadMbps ?? null,
             dueDay: input.dueDay,
             status: isPending
               ? PrismaContractStatus.PENDING_INSTALL
@@ -300,8 +308,14 @@ export class ContractsService {
     if (input.installationAddress !== undefined) data.installationAddress = input.installationAddress;
     if (input.installationMapsUrl !== undefined)
       data.installationMapsUrl = input.installationMapsUrl ?? null;
+    if (input.planId !== undefined) {
+      data.plan = input.planId
+        ? { connect: { id: input.planId } }
+        : { disconnect: true };
+    }
     if (input.monthlyValue !== undefined) data.monthlyValue = new Prisma.Decimal(input.monthlyValue);
     if (input.bandwidthMbps !== undefined) data.bandwidthMbps = input.bandwidthMbps;
+    if (input.uploadMbps !== undefined) data.uploadMbps = input.uploadMbps ?? null;
     if (input.dueDay !== undefined) data.dueDay = input.dueDay;
     if (input.notes !== undefined) data.notes = input.notes ?? null;
 
@@ -1169,8 +1183,11 @@ function toContractResponse(
     vlanId: c.vlanId,
     installationAddress: c.installationAddress,
     installationMapsUrl: c.installationMapsUrl,
+    planId: c.planId,
+    planName: c.plan?.name ?? null,
     monthlyValue: Number(c.monthlyValue),
     bandwidthMbps: c.bandwidthMbps,
+    uploadMbps: c.uploadMbps,
     dueDay: c.dueDay,
     status: c.status as ContractStatus,
     suspendReason: (c.suspendReason as ContractSuspendReason | null) ?? null,
