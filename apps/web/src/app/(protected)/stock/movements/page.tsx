@@ -378,7 +378,7 @@ function AdjustmentFormModal({
   return (
     <Modal open onClose={onClose} title="Ajuste de inventário" size="lg">
       <form onSubmit={handleSubmit} className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label>Direção *</Label>
             <select
@@ -425,7 +425,7 @@ function AdjustmentFormModal({
           </select>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label>Quantidade *</Label>
             <Input
@@ -472,7 +472,7 @@ function AdjustmentFormModal({
         {isPatrimonial && Number(form.quantity) > 0 && (
           <div>
             <Label>Seriais</Label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {Array.from({ length: Math.floor(Number(form.quantity)) }, (_, sidx) => (
                 <Input
                   key={sidx}
@@ -591,7 +591,7 @@ function TransferFormModal({
           </select>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label>De *</Label>
             <select

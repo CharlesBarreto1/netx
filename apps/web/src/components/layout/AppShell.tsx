@@ -48,6 +48,7 @@ import { useTranslations } from 'next-intl';
 
 import { CommandPalette } from '@/components/layout/CommandPalette';
 import { LocaleSwitcher } from '@/components/layout/LocaleSwitcher';
+import { ThemeToggle } from '@/components/layout/ThemeToggle';
 import { Toaster } from '@/components/ui/sonner';
 import { SimpleTooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/cn';
@@ -234,6 +235,7 @@ export function AppShell({
           </button>
 
           <div className="flex items-center gap-1.5">
+            <ThemeToggle />
             <LocaleSwitcher />
             <UserMenu session={session} onLogout={logout} />
           </div>

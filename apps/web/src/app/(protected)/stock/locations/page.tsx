@@ -228,7 +228,7 @@ function LocationFormModal({
   return (
     <Modal open onClose={onClose} title={isNew ? 'Novo local de estoque' : 'Editar local'}>
       <form onSubmit={handleSubmit} className="space-y-3">
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <div>
             <Label htmlFor="code">Code *</Label>
             <Input

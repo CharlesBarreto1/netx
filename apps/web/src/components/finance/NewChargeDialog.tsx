@@ -185,7 +185,7 @@ export function NewChargeDialog({
                 placeholder="Ej.: Tasa de instalación, multa por daño…"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label required>Monto</Label>
                 <Input

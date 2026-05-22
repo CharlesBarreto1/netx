@@ -106,7 +106,7 @@ function CashTab() {
   return (
     <div className="space-y-4">
       <DateFilters from={from} to={to} onFromChange={setFrom} onToChange={setTo} />
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <Card label={t('income')} value={formatMoney(data.totalsAcrossRegisters.income)} tone="success" />
         <Card label={t('outcome')} value={formatMoney(data.totalsAcrossRegisters.outcome)} tone="danger" />
         <Card label={t('net')} value={formatMoney(data.totalsAcrossRegisters.netInPeriod)} tone="brand" />
@@ -147,7 +147,7 @@ function FinanceTab() {
   return (
     <div className="space-y-4">
       <DateFilters from={from} to={to} onFromChange={setFrom} onToChange={setTo} />
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <Card
           label={t('open')}
           value={`${data.open.count} · ${formatMoney(data.open.amount)}`}
@@ -214,7 +214,7 @@ function ForecastTab() {
           </Select>
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <Card label={t('baseline')} value={formatMoney(data.monthlyBaseline)} />
         <Card label={t('total')} value={formatMoney(data.totalForecast)} tone="brand" />
         <Card

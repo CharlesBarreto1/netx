@@ -59,24 +59,30 @@ export function Modal({
       role="dialog"
       aria-modal="true"
       aria-labelledby={title ? 'modal-title' : undefined}
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      // items-center centraliza quando cabe; quando o conteúdo é alto, o
+      // overflow-y-auto do container + max-h do painel garantem scroll.
+      // p-4 dá respiro nas bordas (importante em mobile).
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4"
     >
       <button
         type="button"
         aria-label="Fechar"
         tabIndex={-1}
-        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+        className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"
         onClick={dismissable ? onClose : undefined}
       />
       <div
         ref={dialogRef}
         className={cn(
-          'relative z-10 w-full rounded-xl bg-white shadow-xl dark:bg-slate-800',
+          // flex-col + max-h: header/footer fixos, corpo rola.
+          // 100dvh-2rem desconta o p-4 do container (2rem total).
+          'relative z-10 my-auto flex max-h-[calc(100dvh-2rem)] w-full flex-col ' +
+            'rounded-xl bg-white shadow-xl dark:bg-slate-800',
           sizeClass[size],
         )}
       >
         {(title || description) && (
-          <div className="border-b border-slate-200 px-6 py-4 dark:border-slate-700">
+          <div className="shrink-0 border-b border-slate-200 px-6 py-4 dark:border-slate-700">
             {title && (
               <h2
                 id="modal-title"
@@ -90,9 +96,10 @@ export function Modal({
             )}
           </div>
         )}
-        <div className="px-6 py-5">{children}</div>
+        {/* Corpo: flex-1 + overflow-y-auto = a área que rola. */}
+        <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
         {footer && (
-          <div className="flex items-center justify-end gap-2 rounded-b-xl border-t border-slate-200 bg-slate-50 px-6 py-3 dark:border-slate-700 dark:bg-slate-900/40">
+          <div className="flex shrink-0 items-center justify-end gap-2 rounded-b-xl border-t border-slate-200 bg-slate-50 px-6 py-3 dark:border-slate-700 dark:bg-slate-900/40">
             {footer}
           </div>
         )}

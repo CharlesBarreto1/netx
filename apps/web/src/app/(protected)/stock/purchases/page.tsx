@@ -129,7 +129,7 @@ function PurchaseDetailsModal({
   return (
     <Modal open onClose={onClose} title={`Compra de ${new Date(purchase.date).toLocaleDateString()}`}>
       <div className="space-y-4">
-        <dl className="grid grid-cols-2 gap-3 text-sm">
+        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
           <div>
             <dt className="text-xs text-slate-500">Fornecedor</dt>
             <dd>{purchase.supplierName ?? '—'}</dd>
@@ -322,7 +322,7 @@ function PurchaseFormModal({
   return (
     <Modal open onClose={onClose} title="Nova compra" size="xl">
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <div>
             <Label>Fornecedor *</Label>
             <select
@@ -455,7 +455,7 @@ function PurchaseFormModal({
                       <Label className="text-xs">
                         Seriais ({(it.serials ?? []).filter(Boolean).length}/{Number(it.quantity)})
                       </Label>
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                         {Array.from({ length: Math.floor(Number(it.quantity)) }, (_, sidx) => (
                           <Input
                             key={sidx}

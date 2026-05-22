@@ -190,7 +190,7 @@ export default function NewServiceOrderClient() {
           <FieldHelp>{tForm('scheduledHelp')}</FieldHelp>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label htmlFor="so-city">{tForm('city')}</Label>
             <Input

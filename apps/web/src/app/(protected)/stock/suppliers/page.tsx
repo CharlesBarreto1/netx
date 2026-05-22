@@ -243,7 +243,7 @@ function SupplierFormModal({
           />
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <div>
             <Label htmlFor="taxIdType">Tipo doc.</Label>
             <select
@@ -268,7 +268,7 @@ function SupplierFormModal({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label htmlFor="email">E-mail</Label>
             <Input
@@ -297,7 +297,7 @@ function SupplierFormModal({
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label htmlFor="city">Cidade</Label>
             <Input

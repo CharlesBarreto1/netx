@@ -285,7 +285,7 @@ function ProductFormModal({
   return (
     <Modal open onClose={onClose} title={isNew ? 'Novo produto' : 'Editar produto'}>
       <form onSubmit={handleSubmit} className="space-y-3">
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <div>
             <Label htmlFor="sku">SKU *</Label>
             <Input
@@ -309,7 +309,7 @@ function ProductFormModal({
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <div>
             <Label htmlFor="type">Tipo *</Label>
             <select
@@ -354,7 +354,7 @@ function ProductFormModal({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <Label htmlFor="brand">Marca</Label>
             <Input

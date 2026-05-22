@@ -159,42 +159,44 @@ export default function InvoicePrintPage() {
           Detalhes do lançamento
         </h2>
 
-        <table className="mt-2 w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-slate-300 text-left">
-              <th className="py-2">Descrição</th>
-              <th className="py-2 text-right">Vencimento</th>
-              <th className="py-2 text-right">Valor</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr className="border-b border-slate-200">
-              <td className="py-3">{reference}</td>
-              <td className="py-3 text-right">{formatDate(invoice.dueDate)}</td>
-              <td className="py-3 text-right tabular-nums">{formatMoney(invoice.amount)}</td>
-            </tr>
-          </tbody>
-          <tfoot>
-            <tr>
-              <td colSpan={2} className="pt-3 text-right font-semibold">
-                Total
-              </td>
-              <td className="pt-3 text-right text-lg font-bold tabular-nums">
-                {formatMoney(invoice.amount)}
-              </td>
-            </tr>
-            {invoice.status === 'PAID' && invoice.paidAmount != null && (
+        <div className="overflow-x-auto">
+          <table className="mt-2 w-full border-collapse text-sm">
+            <thead>
+              <tr className="border-b border-slate-300 text-left">
+                <th className="py-2">Descrição</th>
+                <th className="py-2 text-right">Vencimento</th>
+                <th className="py-2 text-right">Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-b border-slate-200">
+                <td className="py-3">{reference}</td>
+                <td className="py-3 text-right">{formatDate(invoice.dueDate)}</td>
+                <td className="py-3 text-right tabular-nums">{formatMoney(invoice.amount)}</td>
+              </tr>
+            </tbody>
+            <tfoot>
               <tr>
-                <td colSpan={2} className="pt-1 text-right text-xs text-emerald-700">
-                  Valor pago
+                <td colSpan={2} className="pt-3 text-right font-semibold">
+                  Total
                 </td>
-                <td className="pt-1 text-right text-xs tabular-nums text-emerald-700">
-                  {formatMoney(invoice.paidAmount)}
+                <td className="pt-3 text-right text-lg font-bold tabular-nums">
+                  {formatMoney(invoice.amount)}
                 </td>
               </tr>
-            )}
-          </tfoot>
-        </table>
+              {invoice.status === 'PAID' && invoice.paidAmount != null && (
+                <tr>
+                  <td colSpan={2} className="pt-1 text-right text-xs text-emerald-700">
+                    Valor pago
+                  </td>
+                  <td className="pt-1 text-right text-xs tabular-nums text-emerald-700">
+                    {formatMoney(invoice.paidAmount)}
+                  </td>
+                </tr>
+              )}
+            </tfoot>
+          </table>
+        </div>
 
         {invoice.paymentNote && (
           <p className="mt-4 text-xs text-slate-600">

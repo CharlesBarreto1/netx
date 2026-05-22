@@ -92,6 +92,7 @@ const messages = {
     tr069Devices: 'TR-069 devices',
     logout: 'Sign out',
     language: 'Language',
+    toggleTheme: 'Toggle light/dark theme',
     tenantDefault: 'Tenant default',
     group: {
       crm: 'CRM',
