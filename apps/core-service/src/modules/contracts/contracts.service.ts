@@ -38,6 +38,7 @@ import { AuditService } from '../audit/audit.service';
 import { CryptoService } from '../crypto/crypto.service';
 import { DisconnectService } from '../disconnect/disconnect.service';
 import { HUAWEI_EG8145_PATHS, ssid5gFor } from '../provisioning/tr069-paths.huawei';
+import { recalcCustomerStatus } from './customer-status';
 import { InvoiceGeneratorService } from './invoice-generator.service';
 import { RadiusSyncService } from './radius-sync.service';
 
@@ -185,6 +186,8 @@ export class ContractsService {
           await this.invoiceGen.generateInitialInvoice(tx, contract, firstDue);
           await this.radius.enqueueSync(contract, 'contrato criado', tx);
         }
+        // Auto-status do customer baseado em todos os contratos dele.
+        await recalcCustomerStatus(tx, tenantId, input.customerId);
         // Em PENDING_INSTALL pulamos AMBOS:
         //   - Invoice: cliente não paga pelo serviço que ainda não tem.
         //     Quando técnico ativar via /provisioning/install, status vira
@@ -468,6 +471,7 @@ export class ContractsService {
       });
       await this.radius.enqueueSync(c, opts.note ?? `suspensão (${reason})`, tx);
       await this.radius.enqueueDisconnect(c, `suspensão (${reason})`, tx);
+      await recalcCustomerStatus(tx, tenantId, c.customerId);
       return c;
     });
 
@@ -537,6 +541,7 @@ export class ContractsService {
         include: DEFAULT_INCLUDE,
       });
       await this.radius.enqueueSync(c, opts.note ?? 'reativação', tx);
+      await recalcCustomerStatus(tx, tenantId, c.customerId);
       return c;
     });
 
@@ -601,6 +606,7 @@ export class ContractsService {
         include: DEFAULT_INCLUDE,
       });
       await this.radius.enqueueSync(c, `religue de confiança (${days}d)`, tx);
+      await recalcCustomerStatus(tx, tenantId, c.customerId);
       return c;
     });
 
@@ -666,6 +672,7 @@ export class ContractsService {
         where: { tenantId, contractId: c.id, status: { in: [InvoiceStatus.OPEN, InvoiceStatus.OVERDUE] } },
         data: { status: InvoiceStatus.CANCELLED },
       });
+      await recalcCustomerStatus(tx, tenantId, c.customerId);
       return c;
     });
 

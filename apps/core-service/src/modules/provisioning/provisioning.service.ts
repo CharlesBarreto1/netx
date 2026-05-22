@@ -55,6 +55,7 @@ import {
 } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
+import { recalcCustomerStatus } from '../contracts/customer-status';
 import { RadiusSyncService } from '../contracts/radius-sync.service';
 import { CryptoService } from '../crypto/crypto.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -427,6 +428,10 @@ export class ProvisioningService {
             );
           }
         }
+
+        // Auto-status do customer: contrato saiu de PENDING_INSTALL → ACTIVE,
+        // então o customer deixa de ser INACTIVE e vira ACTIVE.
+        await recalcCustomerStatus(tx, tenantId, c.customerId);
 
         return c;
       });

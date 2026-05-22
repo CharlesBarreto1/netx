@@ -94,7 +94,10 @@ export class CustomersService {
         tenantId,
         code: input.code ?? null,
         type: input.type as PrismaCustomerType,
-        status: input.status ?? 'LEAD',
+        // Customer sem contratos = PROSPECT (regra de auto-status).
+        // Quando o operador especifica um status no payload, respeita —
+        // útil pra importar leads/churn manualmente.
+        status: input.status ?? 'PROSPECT',
 
         firstName: 'firstName' in input ? input.firstName : null,
         lastName: 'lastName' in input ? input.lastName : null,
