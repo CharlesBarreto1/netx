@@ -53,6 +53,11 @@ export const TooltipContent = forwardRef<
  * Helper para o caso mais comum: um trigger + texto simples.
  *
  *   <SimpleTooltip label="Arrastar"><button>…</button></SimpleTooltip>
+ *
+ * Auto-provido: embute o próprio `TooltipProvider`, então funciona em
+ * QUALQUER lugar sem depender de um Provider ancestral. Radix permite
+ * Providers aninhados — usar `SimpleTooltip` dentro de uma árvore que já
+ * tem um Provider é inofensivo (o mais próximo vence).
  */
 export function SimpleTooltip({
   label,
@@ -66,18 +71,20 @@ export function SimpleTooltip({
   shortcut?: string;
 }) {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent side={side}>
-        <span className="inline-flex items-center gap-2">
-          {label}
-          {shortcut && (
-            <span className="text-text-subtle" style={{ fontFamily: 'var(--font-mono)' }}>
-              {shortcut}
-            </span>
-          )}
-        </span>
-      </TooltipContent>
-    </Tooltip>
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>{children}</TooltipTrigger>
+        <TooltipContent side={side}>
+          <span className="inline-flex items-center gap-2">
+            {label}
+            {shortcut && (
+              <span className="text-text-subtle" style={{ fontFamily: 'var(--font-mono)' }}>
+                {shortcut}
+              </span>
+            )}
+          </span>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
