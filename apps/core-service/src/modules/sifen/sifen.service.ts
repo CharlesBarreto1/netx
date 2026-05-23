@@ -206,8 +206,17 @@ export class SifenService {
   }
 
   // ---------------------------------------------------------------------------
-  // CANCEL — janela de 48h após approvedAt
+  // CANCEL — janela por tipo de documento (Manual SIFEN v150)
+  //   FACTURA      → 48h  após approvedAt
+  //   Demais DTEs  → 168h (7 dias) após approvedAt
+  //     (NOTA_CREDITO, NOTA_DEBITO, AUTOFACTURA, NOTA_REMISION, Recibo Simple)
+  // Após esse prazo, só dá pra "anular" emitindo Nota de Crédito.
   // ---------------------------------------------------------------------------
+  /** Horas de janela de cancelamento por tipo, conforme Manual SIFEN v150. */
+  private cancelWindowHours(type: PrismaType): number {
+    return type === PrismaType.FACTURA ? 48 : 168;
+  }
+
   async cancel(
     tenantId: string,
     actorUserId: string | null,
@@ -224,12 +233,16 @@ export class SifenService {
       );
     }
     if (!doc.approvedAt) {
-      throw new BadRequestException('approvedAt ausente — não dá pra calcular janela de 48h');
+      throw new BadRequestException(
+        'approvedAt ausente — não dá pra calcular janela de cancelamento',
+      );
     }
+    const windowHours = this.cancelWindowHours(doc.type);
     const ageMs = Date.now() - doc.approvedAt.getTime();
-    if (ageMs > 48 * 3600_000) {
+    if (ageMs > windowHours * 3600_000) {
       throw new ConflictException(
-        'Janela de 48h pra cancelar expirou. Emita Nota de Crédito.',
+        `Janela de ${windowHours}h pra cancelar ${doc.type} expirou. ` +
+          'Emita Nota de Crédito para anular o efeito fiscal.',
       );
     }
 

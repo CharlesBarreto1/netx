@@ -50,9 +50,12 @@ export default function FiscalDocumentDetailPage() {
 
   if (isLoading || !doc) return <PageLoader />;
 
-  const cancellable = isCancellable(doc);
+  // Janela de cancelamento por tipo (Manual SIFEN v150):
+  //   FACTURA = 48h, demais (NC/ND/Auto/Remision) = 168h.
+  const windowHours = doc.type === 'FACTURA' ? 48 : 168;
+  const cancellable = isCancellable(doc, windowHours);
   const hoursLeft = doc.approvedAt
-    ? Math.max(0, 48 - (Date.now() - new Date(doc.approvedAt).getTime()) / (3600 * 1000))
+    ? Math.max(0, windowHours - (Date.now() - new Date(doc.approvedAt).getTime()) / (3600 * 1000))
     : 0;
 
   async function loadXml() {
@@ -252,10 +255,10 @@ const TYPE_LABELS: Record<string, string> = {
   NOTA_REMISION: 'Nota de Remisión',
 };
 
-function isCancellable(doc: SifenDocument): boolean {
+function isCancellable(doc: SifenDocument, windowHours: number): boolean {
   if (doc.status !== 'APPROVED' || !doc.approvedAt) return false;
   const ageMs = Date.now() - new Date(doc.approvedAt).getTime();
-  return ageMs < 48 * 3600 * 1000;
+  return ageMs < windowHours * 3600 * 1000;
 }
 
 function StatusBadge({ status }: { status: SifenDocument['status'] }) {

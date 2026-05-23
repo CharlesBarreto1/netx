@@ -547,13 +547,16 @@ export class SifenEmitterService {
         // assumimos 2 (jurídica) — o operador pode rever no painel SET se
         // afetar análise.
         ...(hasRuc ? { tipoContribuyente: 2 } : {}),
-        // Pra B2C sem RUC, SET exige tipoDocumento e número (CI). Como NetX
-        // não captura CI hoje, mandamos "Innominado" (campo opcional pra
-        // valor < 1.000.000 PYG). Acima desse limite, exige preenchimento —
-        // operador trata caso a caso.
+        // Pra B2C sem RUC: SET espera tipoDocumento + documentoNumero do
+        // receptor (CI, passaporte, etc). Como NetX não captura CI hoje,
+        // mandamos placeholder "Innominado". A regra exata de a partir de
+        // qual valor a SET exige nominação completa muda em Resoluções
+        // recentes — confirme com contador antes de produção.
+        // Pra anular fatura emitida innominada, primeiro emita evento de
+        // Nominación (não implementado na v1), depois a Nota de Crédito.
         ...(!hasRuc
           ? {
-              tipoDocumento: 1, // CI
+              tipoDocumento: 1, // 1 = CI Paraguay
               documentoNumero: '0',
             }
           : {}),
