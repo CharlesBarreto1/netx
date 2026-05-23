@@ -1082,6 +1082,12 @@ model Contract {
   installationAddress String         @map("installation_address") @db.VarChar(500)
   // Link público de localização (Google Maps, OpenStreetMap, etc.) — opcional.
   installationMapsUrl String?        @map("installation_maps_url") @db.VarChar(500)
+  // Coordenadas estruturadas pra módulo Mapeamento (Leaflet).
+  // Operador marca via LocationPicker no EditContractDialog. Nullable —
+  // contratos antigos ficam sem coord até backfill manual. DECIMAL(9,6) =
+  // erro <11cm, suficiente pra residências.
+  latitude            Decimal?       @db.Decimal(9, 6)
+  longitude           Decimal?       @db.Decimal(9, 6)
 
   // Comerciais
   // planId — plano de internet selecionado. Os campos abaixo (monthlyValue,

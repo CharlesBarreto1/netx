@@ -80,6 +80,11 @@ const commonContractFields = {
   // Override per-contrato dos dias até o bloqueio por inadimplência.
   // null/undefined = usa Plan.blockAfterDays (fallback 5).
   blockAfterDays: z.coerce.number().int().min(0).max(60).nullish(),
+  // Coordenadas pro módulo Mapeamento. Operador marca via LocationPicker
+  // (UI) ou via PATCH direto. Nullable — contratos antigos ficam sem
+  // pino até backfill. Faixas: lat -90..90, lng -180..180.
+  latitude: z.coerce.number().min(-90).max(90).nullish(),
+  longitude: z.coerce.number().min(-180).max(180).nullish(),
   notes: z.string().max(10_000).nullish(),
 };
 
@@ -293,6 +298,9 @@ export interface ContractResponse {
 
   installationAddress: string;
   installationMapsUrl: string | null;
+  /** Coordenada do pino no módulo Mapeamento. Null = não georreferenciado. */
+  latitude: number | null;
+  longitude: number | null;
   planId: string | null;
   /** Nome do plano (denormalizado pra UI — evita N+1 na listagem). */
   planName?: string | null;

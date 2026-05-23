@@ -93,6 +93,19 @@ export const MENU_GROUPS: MenuGroup[] = [
     ],
   },
 
+  // Mapeamento — visualização geográfica (clientes, rede, backbone, etc).
+  {
+    key: 'mapping',
+    labelKey: 'group.mapping',
+    items: [
+      { key: 'mappingCustomers',   href: '/mapping/customers',   labelKey: 'mappingCustomers',   permission: 'mapping.read' },
+      { key: 'mappingNetwork',     href: '/mapping/network',     labelKey: 'mappingNetwork',     permission: 'mapping.read' },
+      { key: 'mappingBackbone',    href: '/mapping/backbone',    labelKey: 'mappingBackbone',    permission: 'mapping.read' },
+      { key: 'mappingTechnicians', href: '/mapping/technicians', labelKey: 'mappingTechnicians', permission: 'mapping.read' },
+      { key: 'mappingVehicles',    href: '/mapping/vehicles',    labelKey: 'mappingVehicles',    permission: 'mapping.read' },
+    ],
+  },
+
   // [DESATIVADO] Atendimento — Evolution API teve problemas; reativar quando
   // trocarmos pra Whaticket/WhatsApp Web JS/Meta oficial. Veja docs/architecture/
   // ou memória "whatsapp_evolution_pendente". Backend/schema/i18n/pages
