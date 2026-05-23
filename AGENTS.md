@@ -5,7 +5,7 @@
 > de quem vai mexer no código. Mantenha atualizado quando algo estrutural
 > mudar.
 >
-> Atualizado: 2026-05-22 · Owner: Charles Barreto (pt-BR / es-PY)
+> Atualizado: 2026-05-23 · Owner: Charles Barreto (pt-BR / es-PY)
 
 ---
 
@@ -60,6 +60,7 @@ apps/
   api-gateway/        # proxy HTTP, porta 3000, repassa /api/v1/* → core
   web/                # Next.js 16, porta 3200 (dashboard)
   cwmp-server/        # TR-069 ACS, porta 7547 (SOAP/XML)
+  mobile/             # Expo SDK 52 + React Native (técnico de campo)
 
 packages/
   shared/             # DTOs Zod + tipos (fonte da verdade contract entre front/back)
@@ -114,6 +115,7 @@ src/modules/
   tenants/               # tenant settings + features
   users/                 # CRUD users, MenuAccess
   whatsapp/              # módulo desativado (Evolution API foi descontinuado)
+  mobile/                # MobileDevicesService — pair, sync (Fase 1+)
 ```
 
 ### apps/web — estrutura
@@ -184,6 +186,8 @@ sudo -u postgres psql netx_app
 | `/var/log/netx/` | logs (backup, update, etc) |
 | `/var/backups/netx/` | dumps diários + pre-migration snapshots |
 | `/etc/systemd/system/netx-*.service` | units dos 4 apps + backup timer |
+| `/etc/systemd/system/minio.service` | unit do MinIO (uploads do mobile) |
+| `/var/lib/netx/minio/` | bucket files do MinIO (vai no backup) |
 
 ### Em dev
 
@@ -337,6 +341,25 @@ npm run lint
   `/var/lib/netx` + opcional rclone pra off-host.
 - `safe-migrate.sh` faz snapshot pré-migration antes de `prisma migrate deploy`.
 - Retenção local 30 dias (configurável).
+
+### Mobile (`apps/mobile`) — app do técnico de campo
+- Expo SDK 52 + React Native 0.76 + expo-router 4 (file-based).
+- **Offline-first** com WatermelonDB (SQLite via JSI). Outbox pattern pra
+  mutations + sync engine no backend (Fase 1+).
+- Auth: mesmo `/v1/auth/login` da web. Tokens em `expo-secure-store`
+  (keychain/keystore). Refresh automático em 401 via `lib/api.ts`.
+- Device pairing: `POST /v1/mobile/devices/pair` (idempotente) — chamado
+  após login. `MobileDevice` no schema permite admin revogar device perdido
+  sem invalidar a sessão web do mesmo user.
+- Storage de fotos: MinIO self-hosted em `127.0.0.1:9000` (bucket
+  `netx-photos`), exposto via nginx em `/minio/*`. Mobile faz upload via
+  presigned URL — bytes não passam pelo core-service.
+- Dev: `cd apps/mobile && npm run dev` → Expo DevTools. App roda em
+  Expo Go (debug rápido) ou dev client (acesso a libs nativas como
+  WatermelonDB JSI, expo-secure-store).
+- Build: `npm run build:android:preview` (APK interno via EAS).
+- **Roadmap**: Fase 0 ✅ (auth + scaffolding), Fase 1 (OS + fotos + GPS),
+  Fase 2 (estoque pessoal), Fase 3 (provisioning ZTP), Fase 4 (push + polish).
 
 ---
 

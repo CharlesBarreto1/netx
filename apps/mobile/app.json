@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "NetX Mobile",
+    "slug": "netx-mobile",
+    "scheme": "netx",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0f172a"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.netx.mobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "O NetX Mobile usa a câmera pra fotografar instalações e ler números de série de equipamentos.",
+        "NSLocationWhenInUseUsageDescription": "O NetX Mobile registra a localização exata da casa do cliente durante a instalação.",
+        "NSPhotoLibraryUsageDescription": "O NetX Mobile salva fotos de instalações localmente até sincronizar."
+      }
+    },
+    "android": {
+      "package": "com.netx.mobile",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f172a"
+      },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": ""
+      }
+    }
+  }
+}

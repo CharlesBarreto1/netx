@@ -18,3 +18,4 @@ export * from './sifen';
 export * from './network';
 export * from './stock';
 export * from './provisioning';
+export * from './mobile';
