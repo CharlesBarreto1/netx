@@ -12,7 +12,9 @@ import type { Paginated } from './crm-types';
 export type ContractStatus = 'PENDING_INSTALL' | 'ACTIVE' | 'SUSPENDED' | 'CANCELLED';
 export type ContractSuspendReason = 'MANUAL' | 'OVERDUE_PAYMENT' | 'OTHER';
 export type InvoiceStatus = 'OPEN' | 'PAID' | 'OVERDUE' | 'CANCELLED';
+export type InvoiceKind = 'REGULAR' | 'INITIAL' | 'PRORATION' | 'CREDIT';
 export type ContractAuthMethod = 'PPPOE' | 'IPOE';
+export type PaymentMode = 'POSTPAID' | 'PREPAID';
 
 export interface Contract {
   id: string;
@@ -31,9 +33,23 @@ export interface Contract {
   vlanId: number | null;
   installationAddress: string;
   installationMapsUrl: string | null;
+  planId: string | null;
+  /** Nome do plano (denormalizado pelo backend pra evitar N+1 na listagem). */
+  planName?: string | null;
   monthlyValue: number;
   bandwidthMbps: number;
+  uploadMbps: number | null;
   dueDay: number;
+  /** POSTPAID = paga depois (dueDay); PREPAID = paga antes (ciclo ancorado em activatedAt). */
+  paymentMode: PaymentMode;
+  /** Override per-contract dos dias até bloqueio. null = usa do plano. */
+  blockAfterDays: number | null;
+  /** Resolvido pelo backend (override > plan > 5). */
+  effectiveBlockAfterDays: number;
+  /** PREPAID — data até onde está pago. */
+  prepaidUntil: string | null;
+  /** PREPAID — dia do mês âncora (clamp 28/fev). */
+  cycleAnchorDay: number | null;
   status: ContractStatus;
   suspendReason: ContractSuspendReason | null;
   activatedAt: string | null;
@@ -53,6 +69,12 @@ export interface ContractInvoice {
   amount: number;
   dueDate: string;
   issuedAt: string;
+  /** Tipo da fatura — separa recorrente de ajustes (prorate, crédito). */
+  kind: InvoiceKind;
+  /** Início do período coberto (inclusive). Null em faturas pré-feature. */
+  periodStart: string | null;
+  /** Fim do período coberto (exclusive). Null em faturas pré-feature. */
+  periodEnd: string | null;
   status: InvoiceStatus;
   paidAt: string | null;
   paidAmount: number | null;
@@ -116,6 +138,10 @@ interface CommonContractInput {
   /** Upload em Mbps (opcional). */
   uploadMbps?: number | null;
   dueDay: number;
+  /** Default POSTPAID. PREPAID = ciclo ancorado em activatedAt. */
+  paymentMode?: PaymentMode;
+  /** Override per-contract dos dias até bloqueio. null/undefined = usa do plano. */
+  blockAfterDays?: number | null;
   notes?: string | null;
   firstDueDate?: string;
   /**
@@ -158,8 +184,45 @@ export interface UpdateContractInput {
   installationMapsUrl?: string | null;
   monthlyValue?: number;
   bandwidthMbps?: number;
+  /** Upload em Mbps (opcional). */
+  uploadMbps?: number | null;
   dueDay?: number;
+  /**
+   * Override per-contract dos dias até bloqueio. `null` explícito limpa
+   * o override (volta a usar do plano).
+   */
+  blockAfterDays?: number | null;
   notes?: string | null;
+  // NÃO inclua planId aqui — troca de plano vai por changePlan()
+  // (calcula prorate). O backend rejeita planId no PATCH /contracts/:id.
+}
+
+/** Input do POST /contracts/:id/change-plan e /preview-change-plan. */
+export interface ChangePlanInput {
+  planId: string;
+  /** true (default) = gera fatura de ajuste. false = só troca o plano. */
+  applyProration?: boolean;
+  /** YYYY-MM-DD. Default = hoje. */
+  effectiveDate?: string;
+  note?: string;
+}
+
+/** Preview do impacto financeiro da troca (resposta de /preview-change-plan). */
+export interface ChangePlanPreview {
+  newPlanId: string;
+  newPlanName: string;
+  newMonthlyValue: number;
+  cycleStart: string;
+  cycleEnd: string;
+  totalDays: number;
+  remainDays: number;
+  /** Crédito proporcional do plano antigo. */
+  creditOld: number;
+  /** Cobrança proporcional do plano novo. */
+  chargeNew: number;
+  /** Positivo = cobrança extra; negativo = crédito; 0 = neutro. */
+  delta: number;
+  willCreate: 'PRORATION' | 'CREDIT' | 'NONE';
 }
 
 export const contractsApi = {
@@ -191,6 +254,24 @@ export const contractsApi = {
   },
   cancel(id: string, note?: string) {
     return api.post<Contract>(`/v1/contracts/${id}/cancel`, { note });
+  },
+  /**
+   * Preview de troca de plano. Não persiste — só calcula crédito/débito
+   * pro operador confirmar antes de chamar changePlan().
+   */
+  previewChangePlan(id: string, input: ChangePlanInput) {
+    return api.post<ChangePlanPreview>(
+      `/v1/contracts/${id}/preview-change-plan`,
+      input,
+    );
+  },
+  /**
+   * Aplica troca de plano. Em ACTIVE+applyProration cria fatura PRORATION
+   * (delta > 0) ou CREDIT (delta < 0). Re-sincroniza RADIUS pra refletir
+   * nova banda. Bloqueado em PREPAID (v1).
+   */
+  changePlan(id: string, input: ChangePlanInput) {
+    return api.post<Contract>(`/v1/contracts/${id}/change-plan`, input);
   },
   /**
    * Força CoA Disconnect-Request pra todos os NASes com sessão ativa. NÃO

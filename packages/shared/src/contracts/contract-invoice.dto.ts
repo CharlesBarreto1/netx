@@ -6,6 +6,12 @@ import type { PaymentMethod } from '../finance/payment.dto';
 export const InvoiceStatusSchema = z.enum(['OPEN', 'PAID', 'OVERDUE', 'CANCELLED']);
 export type InvoiceStatus = z.infer<typeof InvoiceStatusSchema>;
 
+// Tipo da fatura. REGULAR = mensalidade do cron; INITIAL = primeira (POSTPAID
+// pro-rata ou PREPAID cheia); PRORATION = ajuste positivo de troca de plano;
+// CREDIT = nota de crédito (amount negativo). Ver schema.prisma:InvoiceKind.
+export const InvoiceKindSchema = z.enum(['REGULAR', 'INITIAL', 'PRORATION', 'CREDIT']);
+export type InvoiceKind = z.infer<typeof InvoiceKindSchema>;
+
 // -----------------------------------------------------------------------------
 // Criação manual (casos excepcionais; o fluxo normal é automático)
 // -----------------------------------------------------------------------------
@@ -67,6 +73,13 @@ export interface ContractInvoiceResponse {
   amount: number;
   dueDate: string;         // YYYY-MM-DD
   issuedAt: string;
+
+  // Tipo da fatura — separa cobrança recorrente de ajustes financeiros.
+  kind: InvoiceKind;
+  // Janela coberta — inclusivo/exclusivo. Nullable pra compat com faturas
+  // pré-feature (CREDIT também não tem período).
+  periodStart: string | null;  // YYYY-MM-DD
+  periodEnd: string | null;    // YYYY-MM-DD
 
   status: InvoiceStatus;
   paidAt: string | null;

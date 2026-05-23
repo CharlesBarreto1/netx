@@ -23,6 +23,12 @@ export type ContractSuspendReason = z.infer<typeof ContractSuspendReasonSchema>;
 export const ContractAuthMethodSchema = z.enum(['PPPOE', 'IPOE']);
 export type ContractAuthMethod = z.infer<typeof ContractAuthMethodSchema>;
 
+// Modo de pagamento — POSTPAID = clássico (fatura mensal no dueDay, primeira
+// pro-rata se ativou fora do dia); PREPAID = paga antes (1ª vence na ativação,
+// ciclo ancorado em activatedAt). Default POSTPAID.
+export const PaymentModeSchema = z.enum(['POSTPAID', 'PREPAID']);
+export type PaymentMode = z.infer<typeof PaymentModeSchema>;
+
 // -----------------------------------------------------------------------------
 // Validators de campo
 // -----------------------------------------------------------------------------
@@ -67,6 +73,13 @@ const commonContractFields = {
   bandwidthMbps: z.coerce.number().int().min(1).max(100_000),   // download
   uploadMbps: z.coerce.number().int().min(1).max(100_000).nullish(),
   dueDay: z.coerce.number().int().min(1).max(28),
+  // Modo de pagamento. Default POSTPAID = comportamento histórico.
+  // PREPAID inverte o fluxo: 1ª fatura vence na ativação (vide
+  // InvoiceGenerator), ciclo ancorado em activatedAt, sem dueDay efetivo.
+  paymentMode: PaymentModeSchema.default('POSTPAID'),
+  // Override per-contrato dos dias até o bloqueio por inadimplência.
+  // null/undefined = usa Plan.blockAfterDays (fallback 5).
+  blockAfterDays: z.coerce.number().int().min(0).max(60).nullish(),
   notes: z.string().max(10_000).nullish(),
 };
 
@@ -194,6 +207,50 @@ export const CancelContractRequestSchema = z.object({
 });
 export type CancelContractRequest = z.infer<typeof CancelContractRequestSchema>;
 
+// Troca de plano com prorate. Endpoint dedicado porque o cálculo de
+// crédito/débito é não-trivial (vide ContractsService.changePlan).
+// PATCH /contracts/:id NÃO aceita planId — força o uso deste endpoint.
+//
+// applyProration:
+//   true  (default) — gera fatura PRORATION (delta positivo) ou CREDIT
+//                     (delta negativo) cobrindo do dia da troca ao próximo
+//                     dueDay. Próxima fatura cheia com o novo valor.
+//   false           — troca planId/monthlyValue/banda agora, sem cobrança
+//                     de ajuste. Próxima fatura cheia com o novo valor.
+export const ChangeContractPlanRequestSchema = z.object({
+  planId: z.string().uuid(),
+  applyProration: z.coerce.boolean().default(true),
+  // Data efetiva da troca. Default = agora. Útil pra antedatar correções
+  // operacionais (ex.: "troquei dia 15 mas só registro hoje").
+  effectiveDate: z.string().date().optional(),
+  note: z.string().max(500).optional(),
+});
+export type ChangeContractPlanRequest = z.infer<typeof ChangeContractPlanRequestSchema>;
+
+// Preview do cálculo de troca antes de aplicar. Mesma assinatura sem note.
+export const PreviewChangePlanRequestSchema = ChangeContractPlanRequestSchema.omit({
+  note: true,
+});
+export type PreviewChangePlanRequest = z.infer<typeof PreviewChangePlanRequestSchema>;
+
+export interface ChangePlanPreviewResponse {
+  // Plano novo proposto.
+  newPlanId: string;
+  newPlanName: string;
+  newMonthlyValue: number;
+  // Janela do ciclo atual (POSTPAID).
+  cycleStart: string;        // YYYY-MM-DD
+  cycleEnd: string;          // YYYY-MM-DD (= próximo dueDay)
+  totalDays: number;
+  remainDays: number;
+  // Componentes do cálculo (delta = chargeNew - creditOld).
+  creditOld: number;         // crédito proporcional do plano antigo
+  chargeNew: number;         // cobrança proporcional do plano novo
+  delta: number;             // positivo = cobrança extra; negativo = crédito
+  // Como o sistema vai materializar — pra UI confirmar com o operador.
+  willCreate: 'PRORATION' | 'CREDIT' | 'NONE';
+}
+
 // -----------------------------------------------------------------------------
 // Listagem / busca
 // -----------------------------------------------------------------------------
@@ -243,6 +300,18 @@ export interface ContractResponse {
   bandwidthMbps: number;        // download
   uploadMbps: number | null;
   dueDay: number;
+
+  // Modelo de cobrança. POSTPAID = paga depois (dueDay); PREPAID = paga antes.
+  paymentMode: PaymentMode;
+  // Override por contrato; null = usa plan.blockAfterDays.
+  blockAfterDays: number | null;
+  // Resolvido pela API (contract.blockAfterDays ?? plan.blockAfterDays ?? 5).
+  // Útil pra UI mostrar o valor efetivo sem precisar carregar o plano.
+  effectiveBlockAfterDays: number;
+  // PREPAID — data até onde o cliente está pago.
+  prepaidUntil: string | null;
+  // PREPAID — dia do mês âncora do ciclo (clamp 28/fev).
+  cycleAnchorDay: number | null;
 
   status: ContractStatus;
   suspendReason: ContractSuspendReason | null;
