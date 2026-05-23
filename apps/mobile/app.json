@@ -42,7 +42,8 @@
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      "./plugins/withCleartextNetworkSecurity"
     ],
     "experiments": {
       "typedRoutes": true
@@ -55,6 +56,12 @@
         "projectId": "da116cf8-966b-4a43-8873-dfd7afe3b74d"
       }
     },
-    "owner": "netxdev"
+    "owner": "netxdev",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/da116cf8-966b-4a43-8873-dfd7afe3b74d"
+    }
   }
 }

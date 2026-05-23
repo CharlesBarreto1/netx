@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+  <!--
+    Network Security Config — permite HTTP cleartext pro backend NetX em produção
+    enquanto a VPS não tiver TLS. Removido após configurar Let's Encrypt no nginx.
+
+    Default sem este arquivo: Android 9+ bloqueia cleartext mesmo com
+    usesCleartextTraffic="true" no manifest.
+  -->
+  <base-config cleartextTrafficPermitted="false">
+    <trust-anchors>
+      <certificates src="system" />
+    </trust-anchors>
+  </base-config>
+
+  <domain-config cleartextTrafficPermitted="true">
+    <domain includeSubdomains="true">179.49.176.13</domain>
+    <!-- Pra dev local, adicione aqui o IP da sua máquina:
+         <domain includeSubdomains="true">192.168.0.10</domain>
+    -->
+    <domain includeSubdomains="true">localhost</domain>
+    <domain includeSubdomains="true">10.0.2.2</domain>
+  </domain-config>
+</network-security-config>
