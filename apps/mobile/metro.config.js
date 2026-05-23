@@ -1,5 +1,8 @@
-// Metro config — habilita resolução do workspace npm (monorepo Nx)
-// pra que `@netx/shared` seja resolvido sem symlink quebrado.
+// Metro config — monorepo Nx + alias @netx/shared.
+//
+// Por que NÃO usar babel-plugin-module-resolver? Ele intercepta TODA expressão
+// (incl. require.context do expo-router) e quebra o bundle. Resolver de alias
+// no Metro é a forma "oficial" pra workspaces e não atrapalha outros plugins.
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
@@ -8,17 +11,16 @@ const workspaceRoot = path.resolve(projectRoot, '../..');
 
 const config = getDefaultConfig(projectRoot);
 
-// 1. Watch tudo no workspace (pra hot-reload do @netx/shared)
 config.watchFolders = [workspaceRoot];
 
-// 2. Resolver módulos em DOIS caminhos: o do mobile e o do workspace root.
-//    Sem isso, Metro só olha em apps/mobile/node_modules.
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
   path.resolve(workspaceRoot, 'node_modules'),
 ];
 
-// 3. Evita duplicação de react/react-native (hooks quebram se houver 2 cópias)
-config.resolver.disableHierarchicalLookup = true;
+// Alias do workspace package (TS source — Metro transpila on-the-fly).
+config.resolver.extraNodeModules = {
+  '@netx/shared': path.resolve(workspaceRoot, 'packages/shared/src'),
+};
 
 module.exports = config;

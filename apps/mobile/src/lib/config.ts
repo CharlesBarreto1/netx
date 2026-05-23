@@ -15,6 +15,6 @@ export const config = {
   apiBaseUrl:
     process.env.EXPO_PUBLIC_API_URL ||
     extra.apiBaseUrl ||
-    'http://179.49.176.13:3000/api/v1',
+    'http://179.49.176.13/api/v1',
   appVersion: Constants.expoConfig?.version ?? '0.0.0',
 } as const;

@@ -1,25 +1,14 @@
 module.exports = function (api) {
   api.cache(true);
   return {
-    presets: [['babel-preset-expo', { jsxImportSource: 'react' }]],
+    // babel-preset-expo já inclui o transform de expo-router (require.context)
+    // e o JSX runtime do React. Não sobrescrever opções aqui.
+    presets: ['babel-preset-expo'],
     plugins: [
-      // Resolve workspace alias @netx/shared no Metro
-      [
-        'module-resolver',
-        {
-          root: ['./'],
-          alias: {
-            '@': './src',
-            '@netx/shared': '../../packages/shared/src/index.ts',
-          },
-        },
-      ],
-      // WatermelonDB requer plugin de decorators legacy
-      [
-        '@babel/plugin-proposal-decorators',
-        { legacy: true },
-      ],
-      'react-native-reanimated/plugin', // sempre por último
+      // WatermelonDB usa decorators legacy nos @model('table')
+      ['@babel/plugin-proposal-decorators', { legacy: true }],
+      // reanimated/plugin TEM que ser o último plugin da lista
+      'react-native-reanimated/plugin',
     ],
   };
 };

@@ -13,7 +13,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#0f172a"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.netx.mobile",
@@ -25,6 +27,7 @@
     },
     "android": {
       "package": "com.netx.mobile",
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0f172a"
@@ -49,8 +52,9 @@
         "origin": false
       },
       "eas": {
-        "projectId": ""
+        "projectId": "da116cf8-966b-4a43-8873-dfd7afe3b74d"
       }
-    }
+    },
+    "owner": "netxdev"
   }
 }
