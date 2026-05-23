@@ -24,6 +24,8 @@ import type { Paginated } from '@/lib/crm-types';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { useFormatMoney } from '@/lib/use-money';
 import { hasPermission } from '@/lib/session';
+import { useTenantConfig } from '@/lib/tenant-config';
+import { sifenApi } from '@/lib/sifen-api';
 
 import { AuditTrail } from '@/components/audit/AuditTrail';
 import { ContractComodatoCard } from '@/components/contracts/ContractComodatoCard';
@@ -49,6 +51,9 @@ export default function ContractDetailPage() {
 
   const canWrite = hasPermission('contracts.write');
   const canDelete = hasPermission('contracts.delete');
+  const canEmitSifen = hasPermission('sifen.emit');
+  const tenantConfig = useTenantConfig();
+  const tenantCountry = tenantConfig?.tenant?.country ?? null;
   const formatMoney = useFormatMoney();
   const tCommon = useTranslations('common');
   const tContracts = useTranslations('contracts');
@@ -544,27 +549,37 @@ export default function ContractDetailPage() {
                       {inv.paidAt ? formatDate(inv.paidAt) : '—'}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      {(inv.status === 'OPEN' || inv.status === 'OVERDUE') && canWrite && (
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            size="sm"
-                            variant="primary"
-                            onClick={() => {
-                              setPayInvoice(inv);
-                              setNoteValue('');
-                            }}
-                          >
-                            Dar baixa
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => void doCancelInvoice(inv)}
-                          >
-                            Cancelar
-                          </Button>
-                        </div>
-                      )}
+                      <div className="flex justify-end gap-1">
+                        {/* Botão Emitir SIFEN — só pra tenant PY com permissão.
+                            Backend rejeita se SIFEN não configurado, então não
+                            tem cheque extra aqui (UX: msg de erro orienta o user). */}
+                        {tenantCountry === 'PY' &&
+                          canEmitSifen &&
+                          (inv.status === 'OPEN' || inv.status === 'PAID') && (
+                            <SifenEmitButton invoiceId={inv.id} />
+                          )}
+                        {(inv.status === 'OPEN' || inv.status === 'OVERDUE') && canWrite && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="primary"
+                              onClick={() => {
+                                setPayInvoice(inv);
+                                setNoteValue('');
+                              }}
+                            >
+                              Dar baixa
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => void doCancelInvoice(inv)}
+                            >
+                              Cancelar
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -741,4 +756,43 @@ function InvoiceBadge({ status }: { status: InvoiceStatus }) {
     default:
       return <Badge>{status}</Badge>;
   }
+}
+
+/**
+ * Botão que emite DTE SIFEN pra esta fatura. Confirmação inline (não modal —
+ * default tipo FACTURA, sem campos extras). Após sucesso, leva o operador ao
+ * detalhe do documento gerado pra ver QR + status SET.
+ *
+ * Se SIFEN não estiver configurado, o backend devolve 400 com mensagem clara
+ * — o toast mostra e o user clica "Configurar SIFEN" no menu fiscal.
+ */
+function SifenEmitButton({ invoiceId }: { invoiceId: string }) {
+  const router = useRouter();
+  const [emitting, setEmitting] = useState(false);
+
+  async function onClick() {
+    if (emitting) return;
+    if (!window.confirm('Emitir DTE SIFEN (Factura) para esta fatura?')) return;
+    setEmitting(true);
+    try {
+      const doc = await sifenApi.emit({ type: 'FACTURA', contractInvoiceId: invoiceId });
+      toast.success(
+        doc.status === 'APPROVED'
+          ? 'DTE aprovado pelo SET'
+          : `DTE criado com status ${doc.status}`,
+      );
+      router.push(`/fiscal/documents/${doc.id}`);
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
+      toast.error(`Falha: ${msg}`);
+    } finally {
+      setEmitting(false);
+    }
+  }
+
+  return (
+    <Button size="sm" variant="outline" onClick={onClick} loading={emitting}>
+      Emitir SIFEN
+    </Button>
+  );
 }

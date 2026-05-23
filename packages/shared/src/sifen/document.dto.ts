@@ -144,27 +144,10 @@ export interface SifenDocumentResponse {
   updatedAt: string;
 }
 
-// =============================================================================
-// Config do tenant — endpoint de leitura/escrita pelo admin
-// (POST /v1/sifen/config)
-// =============================================================================
-/**
- * Config armazenada em TenantSetting (chave "sifen.config"). Não inclui o
- * arquivo .p12 nem a senha — esses ficam em /etc/netx/.secrets via env vars
- * SIFEN_CERT_PATH / SIFEN_CERT_PASSWORD. Aqui só o que o admin vê na UI.
- */
-export const SifenConfigSchema = z.object({
-  enabled: z.boolean().default(false),
-  environment: SifenEnvironmentSchema.default('test'),
-  emisorRuc: z.string().min(5).max(20),
-  emisorTimbrado: z.string().length(8),
-  establecimiento: z.string().length(3).default('001'),
-  puntoExpedicion: z.string().length(3).default('001'),
-  /** Razão social do emisor — pode diferir do tenant.legalName. */
-  emisorRazonSocial: z.string().min(1).max(255),
-  /** Email pro envelope SOAP (notificação SIFEN, opcional). */
-  emisorEmail: z.string().email().optional(),
-  /** Atividade econômica principal (código SET, ex: '6202'). */
-  actividadEconomica: z.string().max(20).optional(),
-});
-export type SifenConfig = z.infer<typeof SifenConfigSchema>;
+// Config do tenant moved para ./config.dto.ts:
+//   - SifenConfigSchema (expandido com emisor{...}, csc{...})
+//   - SifenConfig, UpdateSifenConfigRequest, SifenConfigResponse
+//   - SifenCertificateInfoResponseSchema, UploadCertificateRequestSchema
+//
+// Removido daqui pra evitar duplicidade de exports e suportar o novo formato
+// multi-tenant (TenantSetting cifrado).

@@ -29,6 +29,12 @@ export interface MenuDef {
   href: string;
   labelKey: string;
   permission?: string;
+  /**
+   * Lista de códigos ISO 3166-1 alpha-2 (ex.: ['PY', 'AR']). Quando presente,
+   * o item só aparece se `tenant.country` estiver na lista. Ausente = todos.
+   * Útil pra módulos exclusivos de um país (fiscal/SIFEN só faz sentido no PY).
+   */
+  visibleIfCountry?: string[];
 }
 
 export interface MenuGroup {
@@ -36,6 +42,8 @@ export interface MenuGroup {
   /** Sem labelKey = item solto (top-level), não renderiza header. */
   labelKey?: string;
   items: MenuDef[];
+  /** Mesmo conceito de `MenuDef.visibleIfCountry`, mas filtra o grupo inteiro. */
+  visibleIfCountry?: string[];
 }
 
 // -----------------------------------------------------------------------------
@@ -70,6 +78,18 @@ export const MENU_GROUPS: MenuGroup[] = [
     items: [
       { key: 'charges', href: '/finance/charges', labelKey: 'charges', permission: 'finance.charges.read' },
       { key: 'cashRegisters', href: '/settings/cash-registers', labelKey: 'cashRegisters', permission: 'cash_registers.manage' },
+    ],
+  },
+
+  // Fiscal — SIFEN / e-Kuatiá (PY). Só aparece pra tenants Paraguai.
+  {
+    key: 'fiscal',
+    labelKey: 'group.fiscal',
+    visibleIfCountry: ['PY'],
+    items: [
+      { key: 'fiscalDocuments', href: '/fiscal/documents', labelKey: 'fiscalDocuments', permission: 'sifen.read' },
+      { key: 'fiscalEmit', href: '/fiscal/documents/new', labelKey: 'fiscalEmit', permission: 'sifen.emit' },
+      { key: 'sifenConfig', href: '/settings/sifen', labelKey: 'sifenConfig', permission: 'sifen.config.read' },
     ],
   },
 
@@ -166,35 +186,57 @@ export const MENU_CATALOG: MenuDef[] = MENU_GROUPS.flatMap((g) => g.items);
 
 export const MENU_KEYS = MENU_CATALOG.map((m) => m.key);
 
+/** Helper: item visível pelo país? Sem restrição = sempre visível. */
+function matchesCountry(
+  entry: { visibleIfCountry?: string[] },
+  country: string | null | undefined,
+): boolean {
+  if (!entry.visibleIfCountry || entry.visibleIfCountry.length === 0) return true;
+  if (!country) return false;
+  return entry.visibleIfCountry.includes(country);
+}
+
 /**
  * Resolve quais menus o user pode efetivamente ver (modo flat — usado
  * em validações que não se importam com agrupamento).
+ *
+ * `country` é opcional pra compat — quando ausente, ignora filtro de país
+ * (mostra tudo que passa em perm/menuAccess). Callers que querem o filtro
+ * passam tenant.country.
  */
 export function visibleMenus(
   permissions: string[],
   menuAccess: string[] | null | undefined,
+  country?: string | null,
 ): MenuDef[] {
   return MENU_CATALOG.filter((m) => {
     if (m.permission && !permissions.includes(m.permission)) return false;
     if (Array.isArray(menuAccess) && !menuAccess.includes(m.key)) return false;
+    if (country !== undefined && !matchesCountry(m, country)) return false;
     return true;
   });
 }
 
 /**
  * Variante hierárquica: devolve grupos com items já filtrados. Grupos sem
- * nenhum item visível são excluídos automaticamente.
+ * nenhum item visível são excluídos automaticamente. Grupos com
+ * `visibleIfCountry` que não bate com `country` também somem inteiros.
  */
 export function visibleMenuGroups(
   permissions: string[],
   menuAccess: string[] | null | undefined,
+  country?: string | null,
 ): MenuGroup[] {
-  return MENU_GROUPS.map((g) => ({
-    ...g,
-    items: g.items.filter((m) => {
-      if (m.permission && !permissions.includes(m.permission)) return false;
-      if (Array.isArray(menuAccess) && !menuAccess.includes(m.key)) return false;
-      return true;
-    }),
-  })).filter((g) => g.items.length > 0);
+  return MENU_GROUPS
+    .filter((g) => country === undefined || matchesCountry(g, country))
+    .map((g) => ({
+      ...g,
+      items: g.items.filter((m) => {
+        if (m.permission && !permissions.includes(m.permission)) return false;
+        if (Array.isArray(menuAccess) && !menuAccess.includes(m.key)) return false;
+        if (country !== undefined && !matchesCountry(m, country)) return false;
+        return true;
+      }),
+    }))
+    .filter((g) => g.items.length > 0);
 }

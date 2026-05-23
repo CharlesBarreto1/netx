@@ -33,6 +33,10 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { formatNumeroDocumento, generateCdc } from './cdc.util';
+import {
+  SifenConfigService,
+  type SifenEffectiveConfig,
+} from './sifen-config.service';
 import { SifenEmitterService } from './sifen-emitter.service';
 
 const PUBLIC_PORTAL_URL = 'https://ekuatia.set.gov.py/consultas/qr';
@@ -46,6 +50,7 @@ export class SifenService {
     private readonly audit: AuditService,
     private readonly emitter: SifenEmitterService,
     private readonly config: ConfigService,
+    private readonly tenantConfig: SifenConfigService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -60,13 +65,39 @@ export class SifenService {
       throw new BadRequestException('Informe contractInvoiceId ou oneTimeChargeId');
     }
 
-    // Pega config do tenant (TODO: substituir por TenantSetting com fallback
-    // pro env enquanto não tem UI de config). Por agora lê só do env.
-    const emisorRuc = this.requiredEnv('SIFEN_RUC');
-    const emisorTimbrado = this.requiredEnv('SIFEN_TIMBRADO');
-    const establecimiento = this.config.get<string>('SIFEN_ESTABLECIMIENTO') ?? '001';
-    const puntoExpedicion = this.config.get<string>('SIFEN_PUNTO_EXPEDICION') ?? '001';
-    const emisorRazonSocial = this.requiredEnv('SIFEN_RAZON_SOCIAL');
+    // Resolve config efetiva (TenantSetting > env). Se ambos vazios ou
+    // enabled=false, falha cedo com mensagem clara pro operador.
+    const effective = await this.tenantConfig.loadEffectiveConfig(tenantId);
+    if (effective && !effective.enabled) {
+      throw new BadRequestException(
+        'SIFEN está desabilitado para este tenant. Acesse /settings/sifen para habilitar.',
+      );
+    }
+    if (!effective && !this.hasEnvConfig()) {
+      throw new BadRequestException(
+        'SIFEN não está configurado para este tenant. Acesse /settings/sifen.',
+      );
+    }
+    if (effective && (!effective.certificate || !effective.csc)) {
+      throw new BadRequestException(
+        'SIFEN requer certificado .p12 e CSC configurados. Acesse /settings/sifen.',
+      );
+    }
+
+    // Campos do emisor — vêm da config efetiva ou fallback env.
+    const emisorRuc = effective?.emisor?.ruc ?? this.requiredEnv('SIFEN_RUC');
+    const emisorTimbrado =
+      effective?.emisor?.timbrado ?? this.requiredEnv('SIFEN_TIMBRADO');
+    const establecimiento =
+      effective?.emisor?.establecimiento ??
+      this.config.get<string>('SIFEN_ESTABLECIMIENTO') ??
+      '001';
+    const puntoExpedicion =
+      effective?.emisor?.puntoExpedicion ??
+      this.config.get<string>('SIFEN_PUNTO_EXPEDICION') ??
+      '001';
+    const emisorRazonSocial =
+      effective?.emisor?.razonSocial ?? this.requiredEnv('SIFEN_RAZON_SOCIAL');
 
     // Carrega origem (invoice ou charge) com cliente
     const origin = await this.resolveOrigin(tenantId, input);
@@ -108,24 +139,27 @@ export class SifenService {
 
     // Chama emitter (xmlgen → sign → qr → SIFEN). Pode demorar; é OK pq
     // estamos num endpoint de ação manual / hook async.
-    const result = await this.emitter.emit({
-      type: input.type,
-      cdc,
-      emisorRuc,
-      emisorTimbrado,
-      emisorRazonSocial,
-      establecimiento,
-      puntoExpedicion,
-      numero,
-      issuedAt,
-      totalAmount: origin.totalAmount,
-      currency: origin.currency,
-      receptor: {
-        taxId: origin.receptorTaxId,
-        name: origin.receptorName,
+    const result = await this.emitter.emit(
+      {
+        type: input.type,
+        cdc,
+        emisorRuc,
+        emisorTimbrado,
+        emisorRazonSocial,
+        establecimiento,
+        puntoExpedicion,
+        numero,
+        issuedAt,
+        totalAmount: origin.totalAmount,
+        currency: origin.currency,
+        receptor: {
+          taxId: origin.receptorTaxId,
+          name: origin.receptorName,
+        },
+        items: origin.items,
       },
-      items: origin.items,
-    });
+      this.toEmitterOverride(effective),
+    );
 
     // Persiste resultado
     const finalStatus = result.ok ? PrismaStatus.APPROVED : PrismaStatus.REJECTED;
@@ -172,8 +206,17 @@ export class SifenService {
   }
 
   // ---------------------------------------------------------------------------
-  // CANCEL — janela de 48h após approvedAt
+  // CANCEL — janela por tipo de documento (Manual SIFEN v150)
+  //   FACTURA      → 48h  após approvedAt
+  //   Demais DTEs  → 168h (7 dias) após approvedAt
+  //     (NOTA_CREDITO, NOTA_DEBITO, AUTOFACTURA, NOTA_REMISION, Recibo Simple)
+  // Após esse prazo, só dá pra "anular" emitindo Nota de Crédito.
   // ---------------------------------------------------------------------------
+  /** Horas de janela de cancelamento por tipo, conforme Manual SIFEN v150. */
+  private cancelWindowHours(type: PrismaType): number {
+    return type === PrismaType.FACTURA ? 48 : 168;
+  }
+
   async cancel(
     tenantId: string,
     actorUserId: string | null,
@@ -190,16 +233,25 @@ export class SifenService {
       );
     }
     if (!doc.approvedAt) {
-      throw new BadRequestException('approvedAt ausente — não dá pra calcular janela de 48h');
+      throw new BadRequestException(
+        'approvedAt ausente — não dá pra calcular janela de cancelamento',
+      );
     }
+    const windowHours = this.cancelWindowHours(doc.type);
     const ageMs = Date.now() - doc.approvedAt.getTime();
-    if (ageMs > 48 * 3600_000) {
+    if (ageMs > windowHours * 3600_000) {
       throw new ConflictException(
-        'Janela de 48h pra cancelar expirou. Emita Nota de Crédito.',
+        `Janela de ${windowHours}h pra cancelar ${doc.type} expirou. ` +
+          'Emita Nota de Crédito para anular o efeito fiscal.',
       );
     }
 
-    const result = await this.emitter.cancel(doc.cdc, input.reason);
+    const effective = await this.tenantConfig.loadEffectiveConfig(tenantId);
+    const result = await this.emitter.cancel(
+      doc.cdc,
+      input.reason,
+      this.toEmitterOverride(effective),
+    );
 
     const updated = await this.prisma.sifenDocument.update({
       where: { id: doc.id },
@@ -392,6 +444,33 @@ export class SifenService {
       );
     }
     return v;
+  }
+
+  /** Indica se há config SIFEN mínima em env vars (fallback single-tenant). */
+  private hasEnvConfig(): boolean {
+    return !!(
+      this.config.get<string>('SIFEN_RUC') &&
+      this.config.get<string>('SIFEN_TIMBRADO') &&
+      this.config.get<string>('SIFEN_CERT_PATH')
+    );
+  }
+
+  /**
+   * Converte SifenEffectiveConfig (tenant) → SifenEmitterOverride (emitter).
+   * Devolve null se config incompleta — emitter cai pra env vars.
+   */
+  private toEmitterOverride(
+    effective: SifenEffectiveConfig | null,
+  ): import('./sifen-emitter.service').SifenEmitterOverride | null {
+    if (!effective || !effective.emisor || !effective.certificate || !effective.csc) {
+      return null;
+    }
+    return {
+      environment: effective.environment,
+      emisor: effective.emisor,
+      certificate: effective.certificate,
+      csc: effective.csc,
+    };
   }
 
   private toResponse(row: {

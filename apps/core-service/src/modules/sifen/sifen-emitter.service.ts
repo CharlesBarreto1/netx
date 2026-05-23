@@ -79,6 +79,40 @@ export interface SifenEmitResult {
   error?: string;
 }
 
+/**
+ * Config efetiva (per-tenant) que sobrescreve env vars. Quando vier null
+ * (operação single-tenant legada), o emitter cai pra env vars do .env.
+ * Senhas/CSC chegam aqui JÁ DECIFRADAS — caller (SifenConfigService) é
+ * responsável pela decifragem.
+ */
+export interface SifenEmitterOverride {
+  environment: 'test' | 'prod';
+  emisor: {
+    ruc: string;
+    timbrado: string;
+    timbradoFecha: string;
+    razonSocial: string;
+    nombreFantasia?: string;
+    tipoContribuyente: 1 | 2;
+    tipoRegimen: number;
+    actividadCodigo: string;
+    actividadDescripcion: string;
+    establecimiento: string;
+    puntoExpedicion: string;
+    direccion: string;
+    departamento: number;
+    departamentoDesc: string;
+    distrito: number;
+    distritoDesc: string;
+    ciudad: number;
+    ciudadDesc: string;
+    telefono?: string;
+    email?: string;
+  };
+  certificate: { path: string; password: string };
+  csc: { id: string; value: string };
+}
+
 // Mapeamento Prisma SifenDocumentType → código numérico do Manual SIFEN v150.
 const TYPE_TO_SIFEN_CODE: Record<string, number> = {
   FACTURA: 1,
@@ -101,16 +135,23 @@ export class SifenEmitterService {
    * `id` numérico (eventoId/recibeId) é o número sequencial do contrato; usa o
    * próprio `input.numero` pra rastreabilidade no portal eKuatia.
    */
-  async emit(input: SifenEmitInput): Promise<SifenEmitResult> {
-    if (!this.isEnabled()) {
+  async emit(
+    input: SifenEmitInput,
+    override?: SifenEmitterOverride | null,
+  ): Promise<SifenEmitResult> {
+    // Override (TenantSetting) NÃO precisa de SIFEN_ENABLED env — quem chama
+    // já validou que o tenant tem config enabled=true. Sem override, mantém
+    // gate por env (compat single-tenant).
+    if (!override && !this.isEnabled()) {
       return this.disabledResult('emit', input.cdc);
     }
 
-    const env = this.readEnvironment();
-    const certPath = this.requiredEnv('SIFEN_CERT_PATH');
-    const certPassword = this.requiredEnv('SIFEN_CERT_PASSWORD');
-    const idCSC = this.requiredEnv('SIFEN_CSC_ID');
-    const CSC = this.requiredEnv('SIFEN_CSC');
+    const env = override?.environment ?? this.readEnvironment();
+    const certPath = override?.certificate.path ?? this.requiredEnv('SIFEN_CERT_PATH');
+    const certPassword =
+      override?.certificate.password ?? this.requiredEnv('SIFEN_CERT_PASSWORD');
+    const idCSC = override?.csc.id ?? this.requiredEnv('SIFEN_CSC_ID');
+    const CSC = override?.csc.value ?? this.requiredEnv('SIFEN_CSC');
 
     // Cert existe e está legível? Falha cedo com mensagem clara — senão o
     // xmlsign joga erro genérico de OpenSSL difícil de debugar.
@@ -125,7 +166,7 @@ export class SifenEmitterService {
       };
     }
 
-    const params = this.loadEmisorParams();
+    const params = this.loadEmisorParams(override?.emisor);
     const data = this.mapInputToData(input);
 
     // Estágio 1: gerar XML do DE
@@ -235,16 +276,21 @@ export class SifenEmitterService {
    * Cancela DTE via evento. Pré-condição (validada pelo SifenService): doc
    * APPROVED + dentro de 48h do approvedAt.
    */
-  async cancel(cdc: string, reason: string): Promise<SifenEmitResult> {
-    if (!this.isEnabled()) {
+  async cancel(
+    cdc: string,
+    reason: string,
+    override?: SifenEmitterOverride | null,
+  ): Promise<SifenEmitResult> {
+    if (!override && !this.isEnabled()) {
       return this.disabledResult('cancel', cdc);
     }
 
-    const env = this.readEnvironment();
-    const certPath = this.requiredEnv('SIFEN_CERT_PATH');
-    const certPassword = this.requiredEnv('SIFEN_CERT_PASSWORD');
+    const env = override?.environment ?? this.readEnvironment();
+    const certPath = override?.certificate.path ?? this.requiredEnv('SIFEN_CERT_PATH');
+    const certPassword =
+      override?.certificate.password ?? this.requiredEnv('SIFEN_CERT_PASSWORD');
 
-    const params = this.loadEmisorParams();
+    const params = this.loadEmisorParams(override?.emisor);
     const eventoData: XmlEventoCancelacionData = {
       cdc,
       // SET exige motivo entre 5 e 500 chars. Trimma e garante mínimo.
@@ -377,10 +423,46 @@ export class SifenEmitterService {
   }
 
   /**
-   * Monta XmlGenParams a partir das env vars. Quando migrar pra TenantSetting
-   * (TODO Fase 2), substituir aqui sem mudar o resto do pipeline.
+   * Monta XmlGenParams. Se `override` vier preenchido (TenantSetting), usa
+   * esses valores; senão lê das env vars (compat single-tenant).
    */
-  private loadEmisorParams(): XmlGenParams {
+  private loadEmisorParams(
+    override?: SifenEmitterOverride['emisor'],
+  ): XmlGenParams {
+    if (override) {
+      return {
+        version: 150,
+        ruc: override.ruc,
+        razonSocial: override.razonSocial,
+        nombreFantasia: override.nombreFantasia || override.razonSocial,
+        timbradoNumero: override.timbrado,
+        timbradoFecha: override.timbradoFecha,
+        tipoContribuyente: override.tipoContribuyente,
+        tipoRegimen: override.tipoRegimen,
+        actividadesEconomicas: [
+          {
+            codigo: override.actividadCodigo,
+            descripcion: override.actividadDescripcion,
+          },
+        ],
+        establecimientos: [
+          {
+            codigo: override.establecimiento,
+            direccion: override.direccion,
+            departamento: override.departamento,
+            departamentoDescripcion: override.departamentoDesc,
+            distrito: override.distrito,
+            distritoDescripcion: override.distritoDesc,
+            ciudad: override.ciudad,
+            ciudadDescripcion: override.ciudadDesc,
+            telefono: override.telefono || undefined,
+            email: override.email || undefined,
+          },
+        ],
+      };
+    }
+
+    // Fallback env (single-tenant legado).
     return {
       version: 150,
       ruc: this.requiredEnv('SIFEN_RUC'),
@@ -465,13 +547,16 @@ export class SifenEmitterService {
         // assumimos 2 (jurídica) — o operador pode rever no painel SET se
         // afetar análise.
         ...(hasRuc ? { tipoContribuyente: 2 } : {}),
-        // Pra B2C sem RUC, SET exige tipoDocumento e número (CI). Como NetX
-        // não captura CI hoje, mandamos "Innominado" (campo opcional pra
-        // valor < 1.000.000 PYG). Acima desse limite, exige preenchimento —
-        // operador trata caso a caso.
+        // Pra B2C sem RUC: SET espera tipoDocumento + documentoNumero do
+        // receptor (CI, passaporte, etc). Como NetX não captura CI hoje,
+        // mandamos placeholder "Innominado". A regra exata de a partir de
+        // qual valor a SET exige nominação completa muda em Resoluções
+        // recentes — confirme com contador antes de produção.
+        // Pra anular fatura emitida innominada, primeiro emita evento de
+        // Nominación (não implementado na v1), depois a Nota de Crédito.
         ...(!hasRuc
           ? {
-              tipoDocumento: 1, // CI
+              tipoDocumento: 1, // 1 = CI Paraguay
               documentoNumero: '0',
             }
           : {}),
