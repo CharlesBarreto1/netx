@@ -25,9 +25,7 @@ import {
 } from '@nestjs/common';
 import forge from 'node-forge';
 import {
-  SifenConfigSchema,
   type SifenCertificateInfoResponse,
-  type SifenConfig,
   type SifenConfigResponse,
   type SifenEmisor,
   type UpdateSifenConfigRequest,
@@ -504,5 +502,3 @@ export class SifenConfigService {
   }
 }
 
-// Re-export SifenConfigSchema pra controller fazer validate (evita import circular)
-export { SifenConfigSchema };
