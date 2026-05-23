@@ -91,6 +91,9 @@ const messages = {
     provisioningPending: 'Pending installs',
     olts: 'OLTs',
     tr069Devices: 'TR-069 devices',
+    fiscalDocuments: 'Fiscal documents',
+    fiscalEmit: 'New emission',
+    sifenConfig: 'SIFEN setup',
     logout: 'Sign out',
     language: 'Language',
     toggleTheme: 'Toggle light/dark theme',
@@ -98,6 +101,7 @@ const messages = {
     group: {
       crm: 'CRM',
       finance: 'Finance',
+      fiscal: 'Fiscal (SIFEN)',
       operations: 'Operations',
       stock: 'Stock',
       provisioning: 'Provisioning',

@@ -186,6 +186,11 @@ const chatPermissions = [
   { code: 'sifen.cancel', module: 'sifen', resource: 'sifen', action: 'cancel' },
   // sifen.admin = configurar certificado, timbrado, ambiente, reemissão em massa
   { code: 'sifen.admin',  module: 'sifen', resource: 'sifen', action: 'admin'  },
+  // sifen.config.read/write = ler/escrever config SIFEN do tenant (RUC, timbrado,
+  // CSC, certificado .p12). Granular pra permitir financeiro ler config sem
+  // poder mexer no certificado.
+  { code: 'sifen.config.read',  module: 'sifen', resource: 'sifen_config', action: 'read'  },
+  { code: 'sifen.config.write', module: 'sifen', resource: 'sifen_config', action: 'write' },
 ];
 
 // Role → permission mapping
@@ -280,6 +285,8 @@ const systemRoles = [
       'sifen.emit',
       'sifen.cancel',
       'sifen.admin',
+      'sifen.config.read',
+      'sifen.config.write',
     ],
   },
   {
@@ -338,6 +345,9 @@ const systemRoles = [
       // config de certificado ficam pro admin.
       'sifen.read',
       'sifen.emit',
+      // Operador pode LER config (sabe se está habilitado/ambiente test/prod),
+      // mas não pode mexer (sem .config.write).
+      'sifen.config.read',
     ],
   },
   {

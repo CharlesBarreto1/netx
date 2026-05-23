@@ -27,13 +27,16 @@ import {
   ChevronsRight,
   CreditCard,
   Database,
+  FileSignature,
   FileText,
   KanbanSquare,
   LayoutDashboard,
   ListChecks,
   LogOut,
   Receipt,
+  ScrollText,
   Search,
+  Send,
   Settings,
   ShieldCheck,
   Tag,
@@ -56,6 +59,7 @@ import { DensityProvider } from '@/lib/density';
 import { visibleMenuGroups, type MenuDef, type MenuGroup } from '@/lib/menus';
 import { authApi } from '@/lib/auth-api';
 import { clearSession, displayName, type Session } from '@/lib/session';
+import { useTenantConfig } from '@/lib/tenant-config';
 
 interface NavItem {
   href: Route;
@@ -84,6 +88,10 @@ const ICON_BY_KEY: Record<string, ComponentType<{ className?: string }>> = {
   pops: Building2,
   equipment: Wrench,
   radiusLog: Activity,
+  // Fiscal (SIFEN PY)
+  fiscalDocuments: ScrollText,
+  fiscalEmit: Send,
+  sifenConfig: FileSignature,
 };
 
 const SIDEBAR_STORAGE_KEY = 'netx.sidebar.collapsed';
@@ -146,11 +154,17 @@ export function AppShell({
     label?: string;
     items: NavItem[];
   }
+  // País do tenant — usado pra filtrar grupos exclusivos de país (ex.: fiscal/PY).
+  // Hook seguro: useTenantConfig devolve null quando ainda não carregou.
+  const tenantConfig = useTenantConfig();
+  const tenantCountry = tenantConfig?.tenant?.country ?? null;
+
   const allowedGroups = useMemo<NavGroup[]>(
     () =>
       visibleMenuGroups(
         session.user.permissions,
         session.user.menuAccess ?? null,
+        tenantCountry,
       ).map((g: MenuGroup) => ({
         key: g.key,
         label: g.labelKey ? tNav(g.labelKey as 'dashboard') : undefined,
@@ -161,7 +175,7 @@ export function AppShell({
           permission: m.permission,
         })),
       })),
-    [session.user.permissions, session.user.menuAccess, tNav],
+    [session.user.permissions, session.user.menuAccess, tenantCountry, tNav],
   );
 
   async function logout() {

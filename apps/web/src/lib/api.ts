@@ -266,6 +266,83 @@ export const api = {
   delete: <T = void>(path: string) => request<T>('DELETE', path),
 };
 
+/**
+ * Upload multipart/form-data com auth + auto-refresh. NÃO força Content-Type
+ * — o browser seta o boundary do multipart automaticamente. Path absoluto
+ * (a partir de /v1).
+ *
+ * Diferente do request() acima: como FormData não é JSON, escrevemos o fetch
+ * direto. Mantém a mesma lógica de 401 + refresh + ApiError.
+ */
+export async function apiUpload<T>(
+  path: string,
+  formData: FormData,
+  init: { timeoutMs?: number } = {},
+): Promise<T> {
+  const timeoutMs = init.timeoutMs ?? 60_000; // upload pode demorar mais
+
+  const doFetch = async (): Promise<Response> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fetch(`${API_BASE}${path}`, {
+        method: 'POST',
+        headers: {
+          // SEM content-type: browser monta multipart/form-data; boundary= ...
+          ...authHeaders(),
+        },
+        body: formData,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  let res: Response;
+  try {
+    res = await doFetch();
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new ApiError(0, {
+        title: 'Upload timeout',
+        detail: `Upload demorou mais de ${timeoutMs}ms.`,
+      });
+    }
+    throw err;
+  }
+
+  if (res.status === 401) {
+    const newToken = await tryRefresh();
+    if (newToken) {
+      try {
+        res = await doFetch();
+      } catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          throw new ApiError(0, {
+            title: 'Upload timeout',
+            detail: `Upload demorou mais de ${timeoutMs}ms.`,
+          });
+        }
+        throw err;
+      }
+    }
+  }
+
+  if (res.status === 204) return undefined as T;
+  const text = await res.text();
+  const parsed = text ? safeParse(text) : null;
+  if (!res.ok) {
+    if (res.status === 401) handleUnauthorized();
+    const problem: ApiProblem =
+      parsed && typeof parsed === 'object'
+        ? (parsed as ApiProblem)
+        : { title: res.statusText, status: res.status };
+    throw new ApiError(res.status, problem);
+  }
+  return (parsed ?? undefined) as T;
+}
+
 /** Fetcher padrão para SWR (usa GET + auth headers). */
 export const swrFetcher = <T>(path: string) => api.get<T>(path);
 
