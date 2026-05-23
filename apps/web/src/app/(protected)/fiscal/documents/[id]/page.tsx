@@ -71,13 +71,18 @@ export default function FiscalDocumentDetailPage() {
     }
   }
 
+  // `doc` foi narrowed pra non-null logo acima (early return). TS perde a
+  // narrow nas closures porque `doc` vem de useSWR e pode mudar entre renders
+  // — capturamos numa const local pra restabelecer o narrow dentro do escopo.
+  const safeDoc = doc;
+
   function downloadXml() {
     if (!xml) return;
     const blob = new Blob([xml], { type: 'application/xml' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${doc.cdc}.xml`;
+    a.download = `${safeDoc.cdc}.xml`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -85,7 +90,7 @@ export default function FiscalDocumentDetailPage() {
   }
 
   function copyCdc() {
-    navigator.clipboard.writeText(doc.cdc);
+    navigator.clipboard.writeText(safeDoc.cdc);
     toast.success('CDC copiado');
   }
 
