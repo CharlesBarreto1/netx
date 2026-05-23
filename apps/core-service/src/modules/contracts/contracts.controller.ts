@@ -23,16 +23,20 @@ type TrustExtendRequest = z.infer<typeof TrustExtendRequestSchema>;
 
 import {
   CancelContractRequestSchema,
+  ChangeContractPlanRequestSchema,
   CreateContractRequestSchema,
   ListContractsQuerySchema,
+  PreviewChangePlanRequestSchema,
   ReactivateContractRequestSchema,
   SuspendContractRequestSchema,
   UpdateContractRequestSchema,
   UpdateContractWifiRequestSchema,
   type AuthenticatedPrincipal,
   type CancelContractRequest,
+  type ChangeContractPlanRequest,
   type CreateContractRequest,
   type ListContractsQuery,
+  type PreviewChangePlanRequest,
   type ReactivateContractRequest,
   type SuspendContractRequest,
   type UpdateContractRequest,
@@ -137,6 +141,37 @@ export class ContractsController {
     @ZodBody(CancelContractRequestSchema) body: CancelContractRequest,
   ) {
     return this.contracts.cancel(user.tenantId, user.sub, id, body);
+  }
+
+  /**
+   * Calcula impacto financeiro de uma troca de plano (sem persistir nada).
+   * UI usa pra mostrar preview do delta antes do operador confirmar.
+   */
+  @Post(':id/preview-change-plan')
+  @HttpCode(200)
+  @RequirePermissions('contracts.write')
+  previewChangePlan(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(PreviewChangePlanRequestSchema) body: PreviewChangePlanRequest,
+  ) {
+    return this.contracts.previewChangePlan(user.tenantId, id, body);
+  }
+
+  /**
+   * Troca o plano de um contrato com prorate. Gera fatura PRORATION (delta > 0)
+   * ou CREDIT (delta < 0). Atualiza banda e dispara re-sync RADIUS pra refletir
+   * Mikrotik-Rate-Limit na próxima sessão. Bloqueado em PREPAID (v1).
+   */
+  @Post(':id/change-plan')
+  @HttpCode(200)
+  @RequirePermissions('contracts.write')
+  changePlan(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(ChangeContractPlanRequestSchema) body: ChangeContractPlanRequest,
+  ) {
+    return this.contracts.changePlan(user.tenantId, user.sub, id, body);
   }
 
   /**

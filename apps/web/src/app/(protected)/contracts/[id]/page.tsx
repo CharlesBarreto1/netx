@@ -297,9 +297,40 @@ export default function ContractDetailPage() {
           />
           <DataRow
             label={tDetail('bandwidth')}
-            value={`${contract.bandwidthMbps} Mbps`}
+            value={
+              contract.uploadMbps != null
+                ? `${contract.bandwidthMbps}/${contract.uploadMbps} Mbps`
+                : `${contract.bandwidthMbps} Mbps`
+            }
           />
-          <DataRow label={tDetail('dueDay')} value={`${contract.dueDay}`} />
+          {contract.planName && (
+            <DataRow label="Plano" value={contract.planName} />
+          )}
+          <DataRow
+            label="Modo de cobrança"
+            value={
+              <Badge tone={contract.paymentMode === 'PREPAID' ? 'warning' : 'neutral'}>
+                {contract.paymentMode === 'PREPAID' ? 'Pré-pago' : 'Pós-pago'}
+              </Badge>
+            }
+          />
+          {contract.paymentMode === 'POSTPAID' && (
+            <DataRow label={tDetail('dueDay')} value={`${contract.dueDay}`} />
+          )}
+          {contract.paymentMode === 'PREPAID' && contract.prepaidUntil && (
+            <DataRow
+              label="Pago até"
+              value={formatDate(contract.prepaidUntil)}
+            />
+          )}
+          <DataRow
+            label="Dias para bloqueio"
+            value={
+              contract.blockAfterDays != null
+                ? `${contract.blockAfterDays} (override)`
+                : `${contract.effectiveBlockAfterDays} (do plano)`
+            }
+          />
           <DataRow
             label={tDetail('installationAddress')}
             value={contract.installationAddress}

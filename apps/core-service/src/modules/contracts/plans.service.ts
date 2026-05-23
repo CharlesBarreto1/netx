@@ -36,6 +36,7 @@ function toResponse(p: PlanRow): PlanResponse {
     downloadMbps: p.downloadMbps,
     uploadMbps: p.uploadMbps,
     monthlyPrice: p.monthlyPrice.toString(),
+    blockAfterDays: p.blockAfterDays,
     isActive: p.isActive,
     order: p.order,
     contractCount: p._count.contracts,
@@ -87,6 +88,7 @@ export class PlansService {
           downloadMbps: input.downloadMbps,
           uploadMbps: input.uploadMbps,
           monthlyPrice: new Prisma.Decimal(input.monthlyPrice),
+          blockAfterDays: input.blockAfterDays,
           isActive: input.isActive,
           order: input.order,
         },
@@ -126,6 +128,7 @@ export class PlansService {
     if (input.uploadMbps !== undefined) data.uploadMbps = input.uploadMbps;
     if (input.monthlyPrice !== undefined)
       data.monthlyPrice = new Prisma.Decimal(input.monthlyPrice);
+    if (input.blockAfterDays !== undefined) data.blockAfterDays = input.blockAfterDays;
     if (input.isActive !== undefined) data.isActive = input.isActive;
     if (input.order !== undefined) data.order = input.order;
 

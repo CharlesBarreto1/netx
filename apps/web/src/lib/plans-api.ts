@@ -13,6 +13,11 @@ export interface Plan {
   uploadMbps: number;
   /** String pra preservar precisão decimal. */
   monthlyPrice: string;
+  /**
+   * Dias após o vencimento até suspender o contrato por inadimplência.
+   * Contract.blockAfterDays sobrescreve por contrato.
+   */
+  blockAfterDays: number;
   isActive: boolean;
   order: number;
   contractCount?: number;
@@ -26,6 +31,8 @@ export interface CreatePlanInput {
   downloadMbps: number;
   uploadMbps: number;
   monthlyPrice: number;
+  /** Dias até bloqueio por inadimplência. Default 5. */
+  blockAfterDays?: number;
   isActive?: boolean;
   order?: number;
 }

@@ -9,7 +9,9 @@ import {
   ContractAuthMethod,
   ContractStatus as PrismaContractStatus,
   ContractSuspendReason as PrismaSuspendReason,
+  InvoiceKind,
   InvoiceStatus,
+  PaymentMode as PrismaPaymentMode,
   Prisma,
 } from '@prisma/client';
 
@@ -19,6 +21,8 @@ import {
   pppoeLoginWithSuffix,
   normalizeNameToken,
   type CancelContractRequest,
+  type ChangeContractPlanRequest,
+  type ChangePlanPreviewResponse,
   type ContractResponse,
   type ContractStatus,
   type ContractSuspendReason,
@@ -26,6 +30,8 @@ import {
   type CreateContractRequest,
   type ListContractsQuery,
   type Paginated,
+  type PaymentMode,
+  type PreviewChangePlanRequest,
   type ReactivateContractRequest,
   type SuspendContractRequest,
   type UpdateContractRequest,
@@ -38,6 +44,14 @@ import { AuditService } from '../audit/audit.service';
 import { CryptoService } from '../crypto/crypto.service';
 import { DisconnectService } from '../disconnect/disconnect.service';
 import { HUAWEI_EG8145_PATHS, ssid5gFor } from '../provisioning/tr069-paths.huawei';
+import {
+  daysBetween,
+  InvoiceReference,
+  nextDueDateFor,
+  previousDueDateFor,
+  prorate,
+  resolveBlockAfterDays,
+} from './billing-period.util';
 import { recalcCustomerStatus } from './customer-status';
 import { InvoiceGeneratorService } from './invoice-generator.service';
 import { RadiusSyncService } from './radius-sync.service';
@@ -64,7 +78,9 @@ const DEFAULT_INCLUDE = {
     select: { id: true, displayName: true, type: true },
   },
   plan: {
-    select: { id: true, name: true },
+    // blockAfterDays é necessário pro effectiveBlockAfterDays na resposta
+    // (fallback do override per-contrato).
+    select: { id: true, name: true, blockAfterDays: true },
   },
 } as const;
 
@@ -167,6 +183,10 @@ export class ContractsService {
             bandwidthMbps: input.bandwidthMbps,
             uploadMbps: input.uploadMbps ?? null,
             dueDay: input.dueDay,
+            // Cobrança. POSTPAID = default. PREPAID inverte o fluxo de fatura.
+            paymentMode: input.paymentMode as PrismaPaymentMode,
+            // Override de dias até bloqueio (null = usa plan.blockAfterDays).
+            blockAfterDays: input.blockAfterDays ?? null,
             status: isPending
               ? PrismaContractStatus.PENDING_INSTALL
               : PrismaContractStatus.ACTIVE,
@@ -183,7 +203,12 @@ export class ContractsService {
 
         if (!isPending) {
           // Fluxo clássico: gera fatura inicial + enfileira RADIUS sync.
-          await this.invoiceGen.generateInitialInvoice(tx, contract, firstDue);
+          // generateInitialInvoice escolhe POSTPAID (pro-rata) vs PREPAID
+          // (cheia vencendo hoje) com base em contract.paymentMode.
+          await this.invoiceGen.generateInitialInvoice(tx, contract, {
+            firstDueDate: firstDue,
+            activatedAt: now,
+          });
           await this.radius.enqueueSync(contract, 'contrato criado', tx);
         }
         // Auto-status do customer baseado em todos os contratos dele.
@@ -294,6 +319,30 @@ export class ContractsService {
     });
     if (!existing) throw new NotFoundException('Contrato não encontrado');
 
+    // Troca de plano vai por endpoint dedicado (POST /contracts/:id/change-plan)
+    // pra cobrir prorate, fatura de ajuste e re-sync RADIUS. Aceitar planId
+    // no PATCH genérico abriria buraco: trocar planId sem mexer em
+    // monthlyValue/bandwidthMbps deixaria contrato inconsistente, e cobrar
+    // delta proporcional fora desse fluxo seria invisível pro operador.
+    if (input.planId !== undefined) {
+      throw new BadRequestException(
+        'Para trocar o plano, use POST /v1/contracts/:id/change-plan ' +
+          '(garante cálculo de prorate e atualização de banda/RADIUS).',
+      );
+    }
+    // Pré-pago muda o ciclo de fatura inteiro. Permitir trocar paymentMode
+    // depois da criação exigiria reescrever prepaidUntil + cancelar/regenerar
+    // faturas futuras. Decisão v1: bloqueia; operador cancela e recria.
+    if (
+      input.paymentMode !== undefined &&
+      input.paymentMode !== (existing.paymentMode as PaymentMode)
+    ) {
+      throw new BadRequestException(
+        'Mudar entre PREPAID/POSTPAID em contrato existente exige ' +
+          'cancelar e recriar (afeta histórico de faturas e ciclo).',
+      );
+    }
+
     const data: Prisma.ContractUpdateInput = {
       updatedBy: { connect: { id: actorUserId } },
     };
@@ -311,15 +360,13 @@ export class ContractsService {
     if (input.installationAddress !== undefined) data.installationAddress = input.installationAddress;
     if (input.installationMapsUrl !== undefined)
       data.installationMapsUrl = input.installationMapsUrl ?? null;
-    if (input.planId !== undefined) {
-      data.plan = input.planId
-        ? { connect: { id: input.planId } }
-        : { disconnect: true };
-    }
     if (input.monthlyValue !== undefined) data.monthlyValue = new Prisma.Decimal(input.monthlyValue);
     if (input.bandwidthMbps !== undefined) data.bandwidthMbps = input.bandwidthMbps;
     if (input.uploadMbps !== undefined) data.uploadMbps = input.uploadMbps ?? null;
     if (input.dueDay !== undefined) data.dueDay = input.dueDay;
+    // Override de dias até bloqueio. `null` explícito limpa o override
+    // (volta a usar plan.blockAfterDays).
+    if (input.blockAfterDays !== undefined) data.blockAfterDays = input.blockAfterDays ?? null;
     if (input.notes !== undefined) data.notes = input.notes ?? null;
 
     // Coerência: se trocar pra PPPOE, exige user+pass (existente ou novo).
@@ -629,6 +676,255 @@ export class ContractsService {
     return toContractResponse(updated, { includePassword: true });
   }
 
+  // ---------------------------------------------------------------------------
+  // CHANGE PLAN (com prorate)
+  // ---------------------------------------------------------------------------
+  /**
+   * Preview do impacto financeiro de uma troca de plano. Não persiste nada,
+   * só calcula crédito/débito. UI usa pra confirmar com o operador antes do
+   * POST /change-plan.
+   *
+   * Fórmula (POSTPAID, applyProration=true):
+   *   cycleStart  = previousDueDateFor(dueDay, today)
+   *   cycleEnd    = nextDueDateFor(dueDay, today)
+   *   totalDays   = cycleEnd - cycleStart
+   *   remainDays  = cycleEnd - today
+   *   creditOld   = prorate(oldMonthly, remainDays, totalDays)
+   *   chargeNew   = prorate(newMonthly, remainDays, totalDays)
+   *   delta       = chargeNew - creditOld
+   */
+  async previewChangePlan(
+    tenantId: string,
+    contractId: string,
+    input: PreviewChangePlanRequest,
+  ): Promise<ChangePlanPreviewResponse> {
+    const { contract, newPlan, today, math } = await this.prepareChangePlan(
+      tenantId,
+      contractId,
+      input,
+    );
+    return {
+      newPlanId: newPlan.id,
+      newPlanName: newPlan.name,
+      newMonthlyValue: Number(newPlan.monthlyPrice),
+      cycleStart: math.cycleStart.toISOString().slice(0, 10),
+      cycleEnd: math.cycleEnd.toISOString().slice(0, 10),
+      totalDays: math.totalDays,
+      remainDays: math.remainDays,
+      creditOld: Number(math.creditOld),
+      chargeNew: Number(math.chargeNew),
+      delta: Number(math.delta),
+      willCreate: !input.applyProration
+        ? 'NONE'
+        : math.delta.isPositive()
+          ? 'PRORATION'
+          : math.delta.isNegative()
+            ? 'CREDIT'
+            : 'NONE',
+    };
+  }
+
+  /**
+   * Troca o plano de um contrato. Em ACTIVE com applyProration=true gera
+   * PRORATION (delta > 0) ou CREDIT (delta < 0). Em PENDING_INSTALL apenas
+   * troca a referência sem fatura (contrato ainda não cobrou nada).
+   *
+   * Bloqueado em PREPAID na v1 — exige cancelar e recriar (decisão do owner).
+   *
+   * Side-effects fora da TX (idem cancel/suspend):
+   *   - Re-enqueue RADIUS pra refletir nova banda em Mikrotik-Rate-Limit.
+   */
+  async changePlan(
+    tenantId: string,
+    actorUserId: string,
+    contractId: string,
+    input: ChangeContractPlanRequest,
+  ): Promise<ContractResponse> {
+    const { contract, newPlan, today, math, oldMonthlyValue } =
+      await this.prepareChangePlan(tenantId, contractId, input);
+
+    // Caso PENDING_INSTALL: contrato nunca cobrou nada, então só troca a
+    // referência + valores denormalizados, sem fatura de ajuste. Mais rápido
+    // e barato pro operador que está montando o cadastro.
+    const isPending = contract.status === PrismaContractStatus.PENDING_INSTALL;
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const c = await tx.contract.update({
+        where: { id: contract.id },
+        data: {
+          planId: newPlan.id,
+          monthlyValue: new Prisma.Decimal(newPlan.monthlyPrice),
+          bandwidthMbps: newPlan.downloadMbps,
+          uploadMbps: newPlan.uploadMbps,
+          updatedById: actorUserId,
+        },
+        include: DEFAULT_INCLUDE,
+      });
+
+      // Em ACTIVE com applyProration: cria fatura PRORATION ou CREDIT.
+      // Idempotência fraca: usamos reference baseada em data; rodar duas
+      // vezes no mesmo dia gera 2 ajustes (controlado por UI, não banco).
+      if (!isPending && input.applyProration) {
+        if (math.delta.isPositive()) {
+          await tx.contractInvoice.create({
+            data: {
+              tenantId,
+              contractId: c.id,
+              amount: math.delta,
+              dueDate: math.cycleEnd,
+              kind: InvoiceKind.PRORATION,
+              periodStart: today,
+              periodEnd: math.cycleEnd,
+              status: InvoiceStatus.OPEN,
+              reference: InvoiceReference.proration(today),
+            },
+          });
+        } else if (math.delta.isNegative()) {
+          // CREDIT: amount NEGATIVO. Operador aplica como desconto na próxima
+          // REGULAR (manual na v1 — vide "Fora de escopo" no plano).
+          await tx.contractInvoice.create({
+            data: {
+              tenantId,
+              contractId: c.id,
+              amount: math.delta,
+              dueDate: math.cycleEnd,
+              kind: InvoiceKind.CREDIT,
+              periodStart: today,
+              periodEnd: math.cycleEnd,
+              status: InvoiceStatus.OPEN,
+              reference: InvoiceReference.credit(today),
+            },
+          });
+        }
+      }
+      return c;
+    });
+
+    // Fora da TX: re-sync RADIUS pra refletir nova banda. Em PENDING_INSTALL
+    // pula (RADIUS ainda não foi aplicado).
+    if (!isPending) {
+      try {
+        await this.radius.enqueueSync(
+          updated,
+          `troca de plano: ${contract.planId ?? '(sem)'} -> ${newPlan.id}`,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `[changePlan] enqueueSync falhou pra ${updated.id} — ` +
+            'reconciler vai corrigir em ≤5min. ' +
+            `erro: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'contracts.plan_changed',
+      resource: 'contracts',
+      resourceId: updated.id,
+      beforeState: {
+        planId: contract.planId,
+        monthlyValue: oldMonthlyValue.toString(),
+        bandwidthMbps: contract.bandwidthMbps,
+        uploadMbps: contract.uploadMbps,
+      },
+      afterState: {
+        planId: newPlan.id,
+        planName: newPlan.name,
+        monthlyValue: newPlan.monthlyPrice.toString(),
+        bandwidthMbps: newPlan.downloadMbps,
+        uploadMbps: newPlan.uploadMbps,
+        delta: math.delta.toString(),
+        applyProration: input.applyProration,
+        note: input.note ?? null,
+      },
+    });
+
+    return toContractResponse(updated, { includePassword: true });
+  }
+
+  /**
+   * Núcleo compartilhado entre preview e apply. Carrega contrato + plano,
+   * valida regras (status, mesmo plano, PREPAID), calcula o math de prorate.
+   */
+  private async prepareChangePlan(
+    tenantId: string,
+    contractId: string,
+    input: { planId: string; effectiveDate?: string; applyProration?: boolean },
+  ): Promise<{
+    contract: ContractWithRelations;
+    newPlan: {
+      id: string;
+      name: string;
+      monthlyPrice: Prisma.Decimal;
+      downloadMbps: number;
+      uploadMbps: number;
+    };
+    today: Date;
+    oldMonthlyValue: Prisma.Decimal;
+    math: {
+      cycleStart: Date;
+      cycleEnd: Date;
+      totalDays: number;
+      remainDays: number;
+      creditOld: Prisma.Decimal;
+      chargeNew: Prisma.Decimal;
+      delta: Prisma.Decimal;
+    };
+  }> {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, tenantId, deletedAt: null },
+      include: DEFAULT_INCLUDE,
+    });
+    if (!contract) throw new NotFoundException('Contrato não encontrado');
+    if (contract.status === PrismaContractStatus.CANCELLED) {
+      throw new BadRequestException('Contrato cancelado não pode trocar de plano');
+    }
+    if (contract.paymentMode === PrismaPaymentMode.PREPAID) {
+      throw new BadRequestException(
+        'Troca de plano em pré-pago não é suportada na v1 — cancele e recrie.',
+      );
+    }
+    if (input.planId === contract.planId) {
+      throw new BadRequestException('Plano informado é o mesmo do contrato atual');
+    }
+
+    const newPlan = await this.prisma.plan.findFirst({
+      where: { id: input.planId, tenantId, deletedAt: null, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        monthlyPrice: true,
+        downloadMbps: true,
+        uploadMbps: true,
+      },
+    });
+    if (!newPlan) throw new NotFoundException('Plano informado não encontrado ou inativo');
+
+    const today = input.effectiveDate
+      ? new Date(`${input.effectiveDate}T00:00:00.000Z`)
+      : utcMidnight(new Date());
+
+    const cycleStart = previousDueDateFor(contract.dueDay, today);
+    const cycleEnd = nextDueDateFor(contract.dueDay, today);
+    const totalDays = daysBetween(cycleStart, cycleEnd);
+    const remainDays = Math.max(0, daysBetween(today, cycleEnd));
+    const oldMonthlyValue = new Prisma.Decimal(contract.monthlyValue);
+    const newMonthlyValue = new Prisma.Decimal(newPlan.monthlyPrice);
+    const creditOld = prorate(oldMonthlyValue, remainDays, totalDays);
+    const chargeNew = prorate(newMonthlyValue, remainDays, totalDays);
+    const delta = chargeNew.minus(creditOld);
+
+    return {
+      contract,
+      newPlan: { ...newPlan, monthlyPrice: newMonthlyValue },
+      today,
+      oldMonthlyValue,
+      math: { cycleStart, cycleEnd, totalDays, remainDays, creditOld, chargeNew, delta },
+    };
+  }
+
   async cancel(
     tenantId: string,
     actorUserId: string,
@@ -658,6 +954,8 @@ export class ContractsService {
     //
     // Antes (bug observado): tudo numa tx só → enqueueSync lançava pra IPoE
     // sem identifier, rollback inteiro e 500 sem feedback claro.
+    const isPrepaid = existing.paymentMode === PrismaPaymentMode.PREPAID;
+
     const updated = await this.prisma.$transaction(async (tx) => {
       const c = await tx.contract.update({
         where: { id: existing.id },
@@ -668,10 +966,27 @@ export class ContractsService {
         },
         include: DEFAULT_INCLUDE,
       });
-      await tx.contractInvoice.updateMany({
-        where: { tenantId, contractId: c.id, status: { in: [InvoiceStatus.OPEN, InvoiceStatus.OVERDUE] } },
-        data: { status: InvoiceStatus.CANCELLED },
-      });
+      if (!isPrepaid) {
+        // POSTPAID: cancela faturas pendentes/vencidas — não faz sentido
+        // continuar cobrando contrato encerrado.
+        await tx.contractInvoice.updateMany({
+          where: {
+            tenantId,
+            contractId: c.id,
+            status: { in: [InvoiceStatus.OPEN, InvoiceStatus.OVERDUE] },
+          },
+          data: { status: InvoiceStatus.CANCELLED },
+        });
+      } else {
+        // PREPAID: cliente pagou adiantado — não há cobrança pendente a
+        // cancelar. Se existir uma INITIAL OPEN (ativou e não recebeu
+        // pagamento ainda), também não cancelamos: operador precisa decidir
+        // (cobrar fora do sistema ou marcar CANCELLED manualmente). Vide
+        // política "no cancelamento cliente não deve a última".
+        // OverdueScan.suspendExpiredPrepaid desativa quando prepaidUntil
+        // chega — fluxo: cliente usa até o fim do período pago, daí PERDE
+        // o serviço; sem dívida.
+      }
       await recalcCustomerStatus(tx, tenantId, c.customerId);
       return c;
     });
@@ -1169,6 +1484,13 @@ export class ContractsService {
 }
 
 // ---------------------------------------------------------------------------
+// HELPERS
+// ---------------------------------------------------------------------------
+function utcMidnight(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+// ---------------------------------------------------------------------------
 // MAPPER
 // ---------------------------------------------------------------------------
 function toContractResponse(
@@ -1196,6 +1518,14 @@ function toContractResponse(
     bandwidthMbps: c.bandwidthMbps,
     uploadMbps: c.uploadMbps,
     dueDay: c.dueDay,
+    paymentMode: c.paymentMode as PaymentMode,
+    blockAfterDays: c.blockAfterDays,
+    effectiveBlockAfterDays: resolveBlockAfterDays(
+      { blockAfterDays: c.blockAfterDays },
+      c.plan ? { blockAfterDays: c.plan.blockAfterDays } : null,
+    ),
+    prepaidUntil: c.prepaidUntil?.toISOString() ?? null,
+    cycleAnchorDay: c.cycleAnchorDay,
     status: c.status as ContractStatus,
     suspendReason: (c.suspendReason as ContractSuspendReason | null) ?? null,
     activatedAt: c.activatedAt?.toISOString() ?? null,

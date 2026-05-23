@@ -8,7 +8,9 @@ import {
 import {
   ContractStatus as PrismaContractStatus,
   ContractSuspendReason,
+  InvoiceKind as PrismaInvoiceKind,
   InvoiceStatus as PrismaInvoiceStatus,
+  PaymentMode as PrismaPaymentMode,
   Prisma,
 } from '@prisma/client';
 
@@ -17,11 +19,14 @@ import {
   type CancelContractInvoiceRequest,
   type ContractInvoiceResponse,
   type CreateContractInvoiceRequest,
+  type InvoiceKind,
   type InvoiceStatus,
   type ListContractInvoicesQuery,
   type Paginated,
   type PayContractInvoiceRequest,
 } from '@netx/shared';
+
+import { nextPrepaidDate } from './billing-period.util';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -244,6 +249,30 @@ export class ContractInvoicesService {
         actorUserId,
         occurredAt: paidAt,
       });
+    }
+
+    // PREPAID: avança o ciclo após pagamento confirmado de fatura cobrável.
+    // CREDIT/PRORATION não avançam o ciclo — são ajustes financeiros, não
+    // pagamento de mensalidade. Só REGULAR/INITIAL deslocam prepaidUntil.
+    if (
+      existing.contract.paymentMode === PrismaPaymentMode.PREPAID &&
+      (existing.kind === PrismaInvoiceKind.REGULAR ||
+        existing.kind === PrismaInvoiceKind.INITIAL)
+    ) {
+      // Base do próximo ciclo = periodEnd da fatura paga (se existir, é a
+      // fonte da verdade); fallback pra prepaidUntil atual; último fallback
+      // pra hoje (caso patológico).
+      const base =
+        existing.periodEnd ?? existing.contract.prepaidUntil ?? paidAt;
+      const newPrepaidUntil = nextPrepaidDate(base, 1);
+      await this.prisma.contract.update({
+        where: { id: existing.contractId },
+        data: { prepaidUntil: newPrepaidUntil },
+      });
+      this.logger.log(
+        `[invoice.pay] PREPAID contract=${existing.contractId} ` +
+          `prepaidUntil avançou pra ${newPrepaidUntil.toISOString().slice(0, 10)}`,
+      );
     }
 
     // Reativação automática (baixa é instantânea por requisito).
@@ -487,6 +516,9 @@ function toInvoiceResponse(i: InvoiceWithContract): ContractInvoiceResponse {
     amount: Number(i.amount),
     dueDate: i.dueDate.toISOString().slice(0, 10),
     issuedAt: i.issuedAt.toISOString(),
+    kind: i.kind as InvoiceKind,
+    periodStart: i.periodStart ? i.periodStart.toISOString().slice(0, 10) : null,
+    periodEnd: i.periodEnd ? i.periodEnd.toISOString().slice(0, 10) : null,
     status: i.status as InvoiceStatus,
     paidAt: i.paidAt?.toISOString() ?? null,
     paidAmount: i.paidAmount != null ? Number(i.paidAmount) : null,

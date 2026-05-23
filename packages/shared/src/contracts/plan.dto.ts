@@ -25,6 +25,12 @@ export const CreatePlanRequestSchema = z.object({
   uploadMbps: z.coerce.number().int().min(1).max(1_000_000),
   /** Preço mensal na moeda do tenant. */
   monthlyPrice: z.coerce.number().nonnegative().max(100_000_000),
+  /**
+   * Dias após o vencimento até o contrato ser suspenso por inadimplência.
+   * Default 5 (replica o comportamento histórico hardcoded em OverdueScan).
+   * Faixa 0..60. Pode ser sobrescrito por contrato em Contract.blockAfterDays.
+   */
+  blockAfterDays: z.coerce.number().int().min(0).max(60).default(5),
   isActive: z.coerce.boolean().default(true),
   order: z.coerce.number().int().min(0).default(0),
 });
@@ -48,6 +54,8 @@ export interface PlanResponse {
   uploadMbps: number;
   /** String pra preservar precisão decimal. */
   monthlyPrice: string;
+  /** Dias após vencimento até suspender (default 5). Override em Contract. */
+  blockAfterDays: number;
   isActive: boolean;
   order: number;
   /** Quantos contratos usam este plano (pra UI avisar antes de desativar). */

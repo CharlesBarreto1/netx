@@ -110,6 +110,9 @@ export function NewContractInline({
   const [initialStatus, setInitialStatus] = useState<'ACTIVE' | 'PENDING_INSTALL'>(
     'PENDING_INSTALL',
   );
+  // Modo de cobrança — default POSTPAID. PREPAID inverte: 1ª fatura na ativação,
+  // ciclo ancorado em activatedAt, cancelamento sem cobrança final.
+  const [paymentMode, setPaymentMode] = useState<'POSTPAID' | 'PREPAID'>('POSTPAID');
   // Operador editou o login à mão? Se sim, o auto-preenchimento (derivado do
   // nome do cliente) para de sobrescrever.
   const [pppoeUserEdited, setPppoeUserEdited] = useState(false);
@@ -136,6 +139,8 @@ export function NewContractInline({
       initial?.bandwidthMbps !== undefined ? String(initial.bandwidthMbps) : '',
     uploadMbps: '',
     dueDay: initial?.dueDay !== undefined ? String(initial.dueDay) : '10',
+    // Override per-contract dos dias até bloqueio. Vazio = usa do plano.
+    blockAfterDays: '',
     notes: initial?.notes ?? '',
     firstDueDate: initial?.firstDueDate ?? '',
   });
@@ -269,6 +274,11 @@ export function NewContractInline({
     if (!Number.isInteger(bw) || bw < 1) e.bandwidthMbps = 'Velocidade em Mbps';
     const dd = Number(form.dueDay);
     if (!Number.isInteger(dd) || dd < 1 || dd > 28) e.dueDay = 'Entre 1 e 28';
+    if (form.blockAfterDays.trim()) {
+      const bad = Number(form.blockAfterDays);
+      if (!Number.isInteger(bad) || bad < 0 || bad > 60)
+        e.blockAfterDays = 'Entre 0 e 60';
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   }
@@ -290,6 +300,8 @@ export function NewContractInline({
       bandwidthMbps: Number(form.bandwidthMbps),
       uploadMbps: form.uploadMbps.trim() ? Number(form.uploadMbps) : null,
       dueDay: Number(form.dueDay),
+      paymentMode,
+      blockAfterDays: form.blockAfterDays.trim() ? Number(form.blockAfterDays) : null,
       notes: form.notes || null,
       firstDueDate: form.firstDueDate || undefined,
       initialStatus,
@@ -582,6 +594,32 @@ export function NewContractInline({
         </FieldHelp>
       </div>
 
+      {/* ─── Modo de cobrança ─────────────────────────────────────────── */}
+      <div>
+        <Label>Modo de cobrança</Label>
+        <div className="flex flex-col gap-2 md:flex-row">
+          <AuthMethodTab
+            label="Pós-pago"
+            description="Cliente usa, paga no dia de vencimento (clássico)"
+            active={paymentMode === 'POSTPAID'}
+            onClick={() => setPaymentMode('POSTPAID')}
+          />
+          <AuthMethodTab
+            label="Pré-pago"
+            description="Cliente paga antes de usar (1ª fatura na ativação)"
+            active={paymentMode === 'PREPAID'}
+            onClick={() => setPaymentMode('PREPAID')}
+          />
+        </div>
+        {paymentMode === 'PREPAID' && (
+          <FieldHelp>
+            1ª fatura vence na data de ativação. Próximas cobranças saem 1 mês
+            depois (ciclo ancorado em activatedAt, não em dueDay). Cancelamento
+            não gera dívida — cliente usa até o fim do período pago.
+          </FieldHelp>
+        )}
+      </div>
+
       {/* ─── Plano de internet ─────────────────────────────────────────── */}
       {plans && plans.length > 0 && (
         <div>
@@ -676,9 +714,35 @@ export function NewContractInline({
             max="28"
             value={form.dueDay}
             onChange={(e) => update('dueDay', e.target.value)}
+            disabled={paymentMode === 'PREPAID'}
           />
           <FieldError>{errors.dueDay}</FieldError>
-          <FieldHelp>1 a 28</FieldHelp>
+          <FieldHelp>
+            {paymentMode === 'PREPAID' ? 'Não usado em pré-pago' : '1 a 28'}
+          </FieldHelp>
+        </div>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <div>
+          <Label htmlFor="contract-blockAfterDays">Dias para bloqueio</Label>
+          <Input
+            id="contract-blockAfterDays"
+            type="number"
+            min="0"
+            max="60"
+            value={form.blockAfterDays}
+            onChange={(e) => update('blockAfterDays', e.target.value)}
+            placeholder={
+              selectedPlan
+                ? `padrão do plano: ${selectedPlan.blockAfterDays}`
+                : 'em branco = usa o do plano'
+            }
+          />
+          <FieldError>{errors.blockAfterDays}</FieldError>
+          <FieldHelp>
+            Em branco = usa o do plano. Preencher sobrescreve só pra este contrato.
+          </FieldHelp>
         </div>
       </div>
 

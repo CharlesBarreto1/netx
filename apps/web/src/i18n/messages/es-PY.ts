@@ -202,10 +202,39 @@ const messages = {
       installationMapsUrl: 'Enlace de ubicación (Google Maps)',
       monthlyValue: 'Mensualidad',
       bandwidthMbps: 'Velocidad (Mbps)',
+      uploadMbps: 'Subida (Mbps)',
       dueDay: 'Día de vencimiento',
+      plan: 'Plan',
+      paymentMode: 'Modo de cobranza',
+      blockAfterDays: 'Días para bloqueo',
+      prepaidUntil: 'Pagado hasta',
       code: 'Código del contrato',
       firstDueDate: '1ª factura vence el',
       notes: 'Observaciones',
+    },
+    values: {
+      prepaid: 'Prepago',
+      postpaid: 'Pospago',
+    },
+    changePlan: {
+      label: 'Cambiar plan',
+      apply: 'Aplicar cambio de plan',
+      applyProration: 'Generar cobro/crédito proporcional de los días restantes',
+      blockedPrepaid:
+        'Cambio de plan en prepago no está soportado — cancelá y recreá el contrato.',
+      pendingInstallHint:
+        'Contrato en PENDING_INSTALL — cambio directo, sin factura de ajuste.',
+      cycle: 'Ciclo',
+      remaining: 'quedan',
+      days: 'días',
+      creditOld: 'Crédito plan anterior',
+      chargeNew: 'Cobro plan nuevo',
+      proration: 'Factura PRORRATEO',
+      credit: 'Nota de CRÉDITO',
+      neutral:
+        'Sin cobro extra — los planes tienen valor proporcional igual en el resto del ciclo.',
+      success: 'Plan cambiado',
+      failure: 'Falla en el cambio de plan',
     },
     helps: {
       mapsUrl:

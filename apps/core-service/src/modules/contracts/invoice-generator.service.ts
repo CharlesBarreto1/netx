@@ -1,17 +1,36 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InvoiceStatus, type Contract, type Prisma } from '@prisma/client';
+import {
+  InvoiceKind,
+  InvoiceStatus,
+  PaymentMode,
+  type Contract,
+  type Prisma,
+} from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  advanceOneMonth,
+  daysBetween,
+  InvoiceReference,
+  nextDueDateFor,
+  nextPrepaidDate,
+  prorate,
+} from './billing-period.util';
 
 /**
  * Geração automática de faturas.
  *
- * Regra de negócio (por ora):
- *   - Ao criar um contrato, geramos a PRÓXIMA fatura com dueDate = próximo dia `dueDay`.
- *   - Diariamente (cron), procuramos contratos ACTIVE cuja última fatura tem
- *     dueDate dentro de 15 dias e geramos a fatura do mês seguinte se ainda não existir.
+ * Modelos:
+ *  - POSTPAID (default histórico): fatura no dueDay do mês. Primeira é
+ *    pro-rata se ativou fora do dueDay (cobre activatedAt → nextDueDate).
+ *    Cron diário garante a próxima estar gerada dentro de LEAD_DAYS.
+ *  - PREPAID: cliente paga antes de usar. Primeira INITIAL vence HOJE.
+ *    Quando o pagamento é registrado (vide ContractInvoicesService.pay)
+ *    o sistema avança `prepaidUntil` 1 mês. Cron olha pra `prepaidUntil`
+ *    e enfileira REGULAR na janela LEAD_DAYS.
  *
- * Sempre em 1 fatura por mês por contrato. Idempotente (unique por contractId+referencia).
+ * Idempotente: chave unicidade lógica é (contractId, reference). Reference
+ * varia por tipo (mensal, inicial, ajuste de plano) — vide InvoiceReference.
  */
 @Injectable()
 export class InvoiceGeneratorService {
@@ -22,66 +41,116 @@ export class InvoiceGeneratorService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Calcula próxima data de vencimento para um dado `dueDay`:
-   *  - Se hoje <= dueDay do mês atual, vence este mês.
-   *  - Caso contrário, vence no próximo mês.
-   *  - `dueDay` é clamp-ado entre 1 e 28 (validado no DTO), então dias inválidos (ex. 31/02)
-   *    não acontecem.
-   */
-  static nextDueDate(dueDay: number, from = new Date()): Date {
-    const base = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 1));
-    const todayDay = from.getUTCDate();
-    // mês alvo: atual se ainda não passou dueDay; senão próximo
-    if (todayDay <= dueDay) {
-      return new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), dueDay));
-    }
-    return new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() + 1, dueDay));
-  }
-
-  /** Dada uma dueDate, retorna dueDate do MÊS SEGUINTE mantendo o mesmo dia. */
-  static advanceOneMonth(current: Date): Date {
-    return new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + 1, current.getUTCDate()));
-  }
-
-  /** Referência textual canônica para uma fatura: "Mensalidade MM/YYYY". */
-  static referenceFor(due: Date): string {
-    const mm = String(due.getUTCMonth() + 1).padStart(2, '0');
-    return `Mensalidade ${mm}/${due.getUTCFullYear()}`;
-  }
-
-  /**
-   * Cria a primeira fatura de um contrato recém-criado.
-   * Recebe a transaction client — chamado dentro do create do contrato.
+   * Cria a primeira fatura de um contrato recém-criado/ativado.
+   * Chamada dentro de uma transaction — o contrato já foi inserido/atualizado.
+   *
+   * POSTPAID:
+   *   - Calcula nextDueDate(dueDay).
+   *   - Se activatedAt cai antes do próximo dueDay (caso normal), gera INITIAL
+   *     pro-rata cobrindo [activatedAt, nextDueDate). DueDate = nextDueDate.
+   *   - Se activatedAt == nextDueDate (edge), gera INITIAL cheia.
+   *
+   * PREPAID:
+   *   - Gera INITIAL cheia vencendo HOJE (data de ativação).
+   *   - Atualiza o próprio contract: prepaidUntil = activatedAt + 1 mês,
+   *     cycleAnchorDay = activatedAt.getDate().
+   *   - Caller pode pular o pagamento — operador marca PAID manualmente
+   *     conforme política da operação (decisão do owner 2026-05-22).
    */
   async generateInitialInvoice(
     tx: Prisma.TransactionClient,
-    contract: Pick<Contract, 'id' | 'tenantId' | 'monthlyValue' | 'dueDay'>,
-    firstDueDate?: Date,
+    contract: Pick<
+      Contract,
+      | 'id'
+      | 'tenantId'
+      | 'monthlyValue'
+      | 'dueDay'
+      | 'paymentMode'
+      | 'activatedAt'
+    >,
+    opts?: { firstDueDate?: Date; activatedAt?: Date },
   ): Promise<void> {
-    const due = firstDueDate ?? InvoiceGeneratorService.nextDueDate(contract.dueDay);
+    const now = opts?.activatedAt ?? contract.activatedAt ?? new Date();
+
+    if (contract.paymentMode === PaymentMode.PREPAID) {
+      const due = utcMidnight(now);
+      const periodEnd = nextPrepaidDate(due, 1);
+      await tx.contractInvoice.create({
+        data: {
+          tenantId: contract.tenantId,
+          contractId: contract.id,
+          amount: contract.monthlyValue,
+          dueDate: due,
+          kind: InvoiceKind.INITIAL,
+          periodStart: due,
+          periodEnd,
+          status: InvoiceStatus.OPEN,
+          reference: InvoiceReference.initialPrepaid(due),
+        },
+      });
+      await tx.contract.update({
+        where: { id: contract.id },
+        data: {
+          // Cycle anchor é estável: dia do mês da ativação. Clamp 28/fev é
+          // tratado em nextPrepaidDate.
+          cycleAnchorDay: due.getUTCDate(),
+          // prepaidUntil só avança QUANDO a fatura é paga (vide
+          // ContractInvoicesService.pay). Inicializamos com a data prevista
+          // pra simplificar o cron de geração — se ficar OVERDUE, OverdueScan
+          // suspende.
+          prepaidUntil: periodEnd,
+        },
+      });
+      return;
+    }
+
+    // POSTPAID
+    const due = opts?.firstDueDate
+      ? utcMidnight(opts.firstDueDate)
+      : nextDueDateFor(contract.dueDay, now);
+    const periodStart = utcMidnight(now);
+    const isProrata = periodStart < due;
+    const totalDays = daysBetween(
+      // ciclo anterior = due - 1 mês (aproximado). Pra prorate basta saber
+      // a base do mês cobrado pra calcular a fração — usamos os dias entre
+      // activatedAt e dueDate como numerador, e dias do mês cobrado como
+      // denominador. Aproximação clássica de pro-rata pacotes recorrentes.
+      previousMonth(due),
+      due,
+    );
+    const days = daysBetween(periodStart, due);
+    const amount = isProrata
+      ? prorate(contract.monthlyValue, days, totalDays)
+      : contract.monthlyValue;
+
     await tx.contractInvoice.create({
       data: {
         tenantId: contract.tenantId,
         contractId: contract.id,
-        amount: contract.monthlyValue,
+        amount,
         dueDate: due,
+        kind: InvoiceKind.INITIAL,
+        periodStart,
+        periodEnd: due,
         status: InvoiceStatus.OPEN,
-        reference: InvoiceGeneratorService.referenceFor(due),
+        reference: InvoiceReference.initialPostpaid(due),
       },
     });
   }
 
   /**
-   * Rotina diária: para cada contrato ACTIVE, garante que a próxima fatura
-   * esteja gerada dentro da janela LEAD_DAYS.
-   * Retorna quantidade de faturas criadas.
+   * Cron diário (chamado por OverdueScanService.runOnce):
+   * Para cada contrato ACTIVE, garante que a próxima fatura esteja gerada
+   * dentro de LEAD_DAYS. Idempotente por (contractId, reference).
+   *
+   * POSTPAID: olha última fatura, avança 1 mês.
+   * PREPAID:  olha prepaidUntil — se entra na janela, gera REGULAR vencendo
+   *           no prepaidUntil atual (próxima cobrança).
    */
   async generateUpcoming(now: Date = new Date()): Promise<number> {
     const limitDate = new Date(now.getTime());
     limitDate.setUTCDate(limitDate.getUTCDate() + InvoiceGeneratorService.LEAD_DAYS);
 
-    // Contratos ativos com sua última fatura OPEN/PAID cuja dueDate <= limitDate
-    // (ou sem nenhuma fatura)
     const contracts = await this.prisma.contract.findMany({
       where: { status: 'ACTIVE', deletedAt: null },
       include: {
@@ -94,29 +163,68 @@ export class InvoiceGeneratorService {
 
     let created = 0;
     for (const c of contracts) {
+      if (c.paymentMode === PaymentMode.PREPAID) {
+        // PREPAID: próximo vencimento = prepaidUntil. Se ainda não tem,
+        // pula (deveria ter sido inicializado em generateInitialInvoice).
+        if (!c.prepaidUntil) continue;
+        const nextDue = utcMidnight(c.prepaidUntil);
+        if (nextDue > limitDate) continue;
+
+        const periodStart = nextDue;
+        const periodEnd = nextPrepaidDate(periodStart, 1);
+        const reference = InvoiceReference.initialPrepaid(nextDue);
+
+        const exists = await this.prisma.contractInvoice.findFirst({
+          where: { tenantId: c.tenantId, contractId: c.id, reference },
+          select: { id: true },
+        });
+        if (exists) continue;
+
+        await this.prisma.contractInvoice.create({
+          data: {
+            tenantId: c.tenantId,
+            contractId: c.id,
+            amount: c.monthlyValue,
+            dueDate: nextDue,
+            kind: InvoiceKind.REGULAR,
+            periodStart,
+            periodEnd,
+            status: InvoiceStatus.OPEN,
+            reference,
+          },
+        });
+        created++;
+        continue;
+      }
+
+      // POSTPAID
       const last = c.invoices[0];
       let nextDue: Date;
       if (!last) {
-        nextDue = InvoiceGeneratorService.nextDueDate(c.dueDay, now);
+        nextDue = nextDueDateFor(c.dueDay, now);
       } else {
-        nextDue = InvoiceGeneratorService.advanceOneMonth(last.dueDate);
+        nextDue = advanceOneMonth(last.dueDate);
       }
       if (nextDue > limitDate) continue;
 
-      const reference = InvoiceGeneratorService.referenceFor(nextDue);
-      // Idempotência: pula se já existe fatura com mesma reference neste contrato
+      const reference = InvoiceReference.regular(nextDue);
       const exists = await this.prisma.contractInvoice.findFirst({
         where: { tenantId: c.tenantId, contractId: c.id, reference },
         select: { id: true },
       });
       if (exists) continue;
 
+      const periodEnd = nextDue;
+      const periodStart = previousMonth(nextDue);
       await this.prisma.contractInvoice.create({
         data: {
           tenantId: c.tenantId,
           contractId: c.id,
           amount: c.monthlyValue,
           dueDate: nextDue,
+          kind: InvoiceKind.REGULAR,
+          periodStart,
+          periodEnd,
           status: InvoiceStatus.OPEN,
           reference,
         },
@@ -124,8 +232,18 @@ export class InvoiceGeneratorService {
       created++;
     }
     if (created > 0) {
-      this.logger.log(`Geradas ${created} faturas futuras (lead=${InvoiceGeneratorService.LEAD_DAYS}d)`);
+      this.logger.log(
+        `Geradas ${created} faturas futuras (lead=${InvoiceGeneratorService.LEAD_DAYS}d)`,
+      );
     }
     return created;
   }
+}
+
+function utcMidnight(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+function previousMonth(d: Date): Date {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - 1, d.getUTCDate()));
 }

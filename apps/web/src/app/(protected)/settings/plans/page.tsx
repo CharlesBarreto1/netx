@@ -76,6 +76,7 @@ export default function PlansPage() {
                 <th className="px-3 py-2 text-left font-medium">Download</th>
                 <th className="px-3 py-2 text-left font-medium">Upload</th>
                 <th className="px-3 py-2 text-left font-medium">Preço/mês</th>
+                <th className="px-3 py-2 text-left font-medium">Bloqueio</th>
                 <th className="px-3 py-2 text-left font-medium">Contratos</th>
                 <th className="px-3 py-2 text-left font-medium">Status</th>
                 <th className="px-3 py-2 text-right font-medium">Ações</th>
@@ -88,6 +89,7 @@ export default function PlansPage() {
                   <td className="px-3 py-2">{p.downloadMbps} Mbps</td>
                   <td className="px-3 py-2">{p.uploadMbps} Mbps</td>
                   <td className="px-3 py-2">{formatMoney(Number(p.monthlyPrice))}</td>
+                  <td className="px-3 py-2 text-slate-500">{p.blockAfterDays} dia(s)</td>
                   <td className="px-3 py-2 text-slate-500">{p.contractCount ?? 0}</td>
                   <td className="px-3 py-2">
                     <Badge tone={p.isActive ? 'success' : 'neutral'}>
@@ -161,6 +163,7 @@ function PlanFormModal({ plan, onClose, onSaved }: PlanFormModalProps) {
     downloadMbps: plan?.downloadMbps ?? 500,
     uploadMbps: plan?.uploadMbps ?? 500,
     monthlyPrice: plan ? Number(plan.monthlyPrice) : 0,
+    blockAfterDays: plan?.blockAfterDays ?? 5,
     isActive: plan?.isActive ?? true,
     order: plan?.order ?? 0,
   });
@@ -256,6 +259,22 @@ function PlanFormModal({ plan, onClose, onSaved }: PlanFormModalProps) {
               onChange={(e) => set('order', Number(e.target.value))}
             />
           </div>
+        </div>
+
+        <div>
+          <Label htmlFor="plan-block-after-days">Dias para bloqueio</Label>
+          <Input
+            id="plan-block-after-days"
+            type="number"
+            min={0}
+            max={60}
+            value={form.blockAfterDays ?? 5}
+            onChange={(e) => set('blockAfterDays', Number(e.target.value))}
+          />
+          <FieldHelp>
+            Dias após o vencimento até o contrato ser suspenso por
+            inadimplência. Padrão 5. Cada contrato pode sobrescrever esse valor.
+          </FieldHelp>
         </div>
 
         <div>
