@@ -28,6 +28,7 @@ export class ApiError extends Error {
 type Init = Omit<RequestInit, 'body'> & {
   body?: unknown;
   skipAuth?: boolean;
+  silentUnauthorized?: boolean;
   signal?: AbortSignal;
 };
 
@@ -97,7 +98,9 @@ export async function api<T = unknown>(path: string, init: Init = {}): Promise<T
     const newToken = await tryRefresh();
     if (newToken) {
       res = await rawFetch(path, init); // retry com novo token (rawFetch lê do storage)
-    } else {
+    } else if (!init.silentUnauthorized) {
+      // Endpoints opcionais (ex. /mobile/*) podem passar silentUnauthorized
+      // pra evitar desautenticar o user quando o backend ainda não tem o módulo.
       onUnauthorized?.();
     }
   }

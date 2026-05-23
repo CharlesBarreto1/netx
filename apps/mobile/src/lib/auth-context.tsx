@@ -98,11 +98,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
       user: data.user,
       tenant: data.tenant,
     });
-    // Best-effort pair em background; erro só vai pro console (não bloqueia UX)
-    pairThisDevice().catch((err) => {
-      // eslint-disable-next-line no-console
-      console.warn('[NetX Mobile] device pair falhou:', err);
-    });
+    // Pair device é OPT-IN no boot: enquanto o endpoint /v1/mobile/devices/pair
+    // não estiver deployado na VPS, qualquer chamada dá 404 e polui o flow.
+    // Reabilita removendo este check assim que rodar `sudo netx-update`.
+    const PAIR_ENABLED = false;
+    if (PAIR_ENABLED) {
+      pairThisDevice().catch((err) => {
+        // eslint-disable-next-line no-console
+        console.warn('[NetX Mobile] device pair falhou:', err);
+      });
+    }
   }, []);
 
   const value = useMemo<AuthContextValue>(
