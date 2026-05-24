@@ -29,10 +29,15 @@ import {
   Database,
   FileSignature,
   FileText,
+  GitBranch,
+  HardHat,
   KanbanSquare,
   LayoutDashboard,
   ListChecks,
   LogOut,
+  Map,
+  MapPin,
+  Network,
   Receipt,
   ScrollText,
   Search,
@@ -40,6 +45,7 @@ import {
   Settings,
   ShieldCheck,
   Tag,
+  Truck,
   Users,
   Wallet,
   Wrench,
@@ -92,6 +98,12 @@ const ICON_BY_KEY: Record<string, ComponentType<{ className?: string }>> = {
   fiscalDocuments: ScrollText,
   fiscalEmit: Send,
   sifenConfig: FileSignature,
+  // Mapeamento (Leaflet)
+  mappingCustomers: MapPin,
+  mappingNetwork: Network,
+  mappingBackbone: GitBranch,
+  mappingTechnicians: HardHat,
+  mappingVehicles: Truck,
 };
 
 const SIDEBAR_STORAGE_KEY = 'netx.sidebar.collapsed';

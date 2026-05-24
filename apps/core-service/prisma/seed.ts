@@ -191,6 +191,9 @@ const chatPermissions = [
   // poder mexer no certificado.
   { code: 'sifen.config.read',  module: 'sifen', resource: 'sifen_config', action: 'read'  },
   { code: 'sifen.config.write', module: 'sifen', resource: 'sifen_config', action: 'write' },
+
+  // Mapeamento — visualização geográfica de clientes/rede/técnicos/veículos
+  { code: 'mapping.read', module: 'mapping', resource: 'mapping', action: 'read' },
 ];
 
 // Role → permission mapping
@@ -287,6 +290,7 @@ const systemRoles = [
       'sifen.admin',
       'sifen.config.read',
       'sifen.config.write',
+      'mapping.read',
     ],
   },
   {
@@ -348,6 +352,7 @@ const systemRoles = [
       // Operador pode LER config (sabe se está habilitado/ambiente test/prod),
       // mas não pode mexer (sem .config.write).
       'sifen.config.read',
+      'mapping.read',
     ],
   },
   {
@@ -369,6 +374,7 @@ const systemRoles = [
       'stock.read',
       'provisioning.read',
       'sifen.read',
+      'mapping.read',
     ],
   },
 ];

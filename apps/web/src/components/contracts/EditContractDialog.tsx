@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
@@ -23,6 +24,15 @@ import {
 import { plansApi, type Plan } from '@/lib/plans-api';
 import { useTenantConfig } from '@/lib/tenant-config';
 import { useFormatMoney } from '@/lib/use-money';
+import type { LatLng } from '@/components/mapping/LocationPicker';
+
+// LocationPicker depende de Leaflet, que quebra no SSR (usa window).
+// Dynamic import client-only — modal só renderiza quando aberto, então
+// sem custo de carga inicial.
+const LocationPicker = dynamic(
+  () => import('@/components/mapping/LocationPicker').then((m) => m.LocationPicker),
+  { ssr: false, loading: () => <div className="h-[320px] animate-pulse rounded-md bg-surface-muted" /> },
+);
 
 /**
  * EditContractDialog — modal pra atualizar campos do contrato.
@@ -78,6 +88,13 @@ export function EditContractDialog({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
 
+  // Geolocalização (módulo Mapeamento). Salva no mesmo PATCH dos outros campos.
+  const [location, setLocation] = useState<LatLng | null>(
+    contract.latitude != null && contract.longitude != null
+      ? { latitude: contract.latitude, longitude: contract.longitude }
+      : null,
+  );
+
   // --- Plano e troca de plano (endpoint dedicado /change-plan) ---
   // Plano é tratado separadamente do PATCH normal: backend rejeita planId
   // no PATCH genérico pra forçar passar pelo cálculo de prorate.
@@ -113,6 +130,11 @@ export function EditContractDialog({
     setSelectedPlanId(contract.planId ?? '');
     setPlanPreview(null);
     setApplyProration(true);
+    setLocation(
+      contract.latitude != null && contract.longitude != null
+        ? { latitude: contract.latitude, longitude: contract.longitude }
+        : null,
+    );
     setErrors({});
   }, [open, contract]);
 
@@ -278,6 +300,9 @@ export function EditContractDialog({
       installationMapsUrl: form.installationMapsUrl.trim()
         ? normalizeMapsUrl(form.installationMapsUrl)
         : null,
+      // Geolocalização — null explícito limpa o pino no mapa.
+      latitude: location?.latitude ?? null,
+      longitude: location?.longitude ?? null,
       notes: form.notes || null,
     };
 
@@ -696,6 +721,17 @@ export function EditContractDialog({
             placeholder="https://maps.app.goo.gl/…"
           />
           <FieldError>{errors.installationMapsUrl}</FieldError>
+        </div>
+
+        {/* Geolocalização — pino no módulo Mapeamento */}
+        <div>
+          <Label>Localização (pino no mapa)</Label>
+          <LocationPicker value={location} onChange={setLocation} height="280px" />
+          <FieldHelp>
+            Marcar a localização faz o cliente aparecer em /mapping/customers
+            com pino colorido por status. Opcional — sem coordenadas, contrato
+            funciona normalmente, só não aparece no mapa.
+          </FieldHelp>
         </div>
 
         <div>

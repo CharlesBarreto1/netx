@@ -187,6 +187,9 @@ export class ContractsService {
             paymentMode: input.paymentMode as PrismaPaymentMode,
             // Override de dias até bloqueio (null = usa plan.blockAfterDays).
             blockAfterDays: input.blockAfterDays ?? null,
+            // Geolocalização (módulo Mapeamento).
+            latitude: input.latitude ?? null,
+            longitude: input.longitude ?? null,
             status: isPending
               ? PrismaContractStatus.PENDING_INSTALL
               : PrismaContractStatus.ACTIVE,
@@ -367,6 +370,10 @@ export class ContractsService {
     // Override de dias até bloqueio. `null` explícito limpa o override
     // (volta a usar plan.blockAfterDays).
     if (input.blockAfterDays !== undefined) data.blockAfterDays = input.blockAfterDays ?? null;
+    // Geolocalização (módulo Mapeamento) — operador marca via LocationPicker.
+    // null explícito limpa o pino do mapa.
+    if (input.latitude !== undefined) data.latitude = input.latitude ?? null;
+    if (input.longitude !== undefined) data.longitude = input.longitude ?? null;
     if (input.notes !== undefined) data.notes = input.notes ?? null;
 
     // Coerência: se trocar pra PPPOE, exige user+pass (existente ou novo).
@@ -1512,6 +1519,8 @@ function toContractResponse(
     vlanId: c.vlanId,
     installationAddress: c.installationAddress,
     installationMapsUrl: c.installationMapsUrl,
+    latitude: c.latitude != null ? Number(c.latitude) : null,
+    longitude: c.longitude != null ? Number(c.longitude) : null,
     planId: c.planId,
     planName: c.plan?.name ?? null,
     monthlyValue: Number(c.monthlyValue),
