@@ -9,16 +9,18 @@ import useSWR from 'swr';
 import { OsStockSection } from '@/components/service-orders/OsStockSection';
 import { ServiceOrderStatusBadge } from '@/components/service-orders/StatusBadge';
 import { Button } from '@/components/ui/Button';
-import { Input, Label, Textarea } from '@/components/ui/Input';
+import { Input, Label, Select, Textarea } from '@/components/ui/Input';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { PageLoader } from '@/components/ui/Spinner';
 import { toast } from '@/components/ui/sonner';
 import { ApiError } from '@/lib/api';
+import type { Paginated } from '@/lib/crm-types';
 import { hasPermission } from '@/lib/session';
 import {
   serviceOrdersApi,
   type ServiceOrderResponse,
 } from '@/lib/service-orders-api';
+import { usersApi, type UserResponse } from '@/lib/users-api';
 import { formatDateTime } from '@/lib/format';
 
 /**
@@ -43,11 +45,20 @@ export default function ServiceOrderDetailPage() {
   const key = id ? serviceOrdersApi.getPath(id) : null;
   const { data: os, isLoading, error, mutate } = useSWR<ServiceOrderResponse>(key);
 
+  // Lista de técnicos só carrega se user pode editar — evita request extra
+  // pra viewer.
+  const { data: usersResp } = useSWR<Paginated<UserResponse>>(
+    canWrite ? usersApi.listPath({ pageSize: 200 }) : null,
+  );
+  const users = usersResp?.data ?? [];
+
   const [completeOpen, setCompleteOpen] = useState(false);
   const [closeDescription, setCloseDescription] = useState('');
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState('');
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [reassignOpen, setReassignOpen] = useState(false);
+  const [reassignTo, setReassignTo] = useState('');
   const [busy, setBusy] = useState(false);
 
   if (isLoading || !os) return <PageLoader label={tCommon('loading')} />;
@@ -110,6 +121,24 @@ export default function ServiceOrderDetailPage() {
       toast.success(tDetail('cancelledToast'));
       setCancelOpen(false);
       setCancelReason('');
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.friendlyMessage : 'Erro';
+      toast.error(msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleReassign() {
+    if (!os) return;
+    setBusy(true);
+    try {
+      const updated = await serviceOrdersApi.update(os.id, {
+        assignedToId: reassignTo || null,
+      });
+      await mutate(updated, false);
+      toast.success(tDetail('reassignedToast'));
+      setReassignOpen(false);
     } catch (err) {
       const msg = err instanceof ApiError ? err.friendlyMessage : 'Erro';
       toast.error(msg);
@@ -248,12 +277,30 @@ export default function ServiceOrderDetailPage() {
                 }
               />
             )}
-            {os.assignedTo && (
-              <Row
-                label={tDetail('assignedTo')}
-                value={`${os.assignedTo.firstName} ${os.assignedTo.lastName}`}
-              />
-            )}
+            <Row
+              label={tDetail('assignedTo')}
+              value={
+                <span className="inline-flex items-center gap-2">
+                  <span>
+                    {os.assignedTo
+                      ? `${os.assignedTo.firstName} ${os.assignedTo.lastName}`
+                      : <em className="text-text-muted">{tDetail('assignedToUnset')}</em>}
+                  </span>
+                  {canWrite && os.status !== 'COMPLETED' && os.status !== 'CANCELLED' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReassignTo(os.assignedTo?.id ?? '');
+                        setReassignOpen(true);
+                      }}
+                      className="text-xs text-brand-500 hover:underline"
+                    >
+                      {tDetail('reassign')}
+                    </button>
+                  )}
+                </span>
+              }
+            />
           </dl>
         </div>
       </section>
@@ -375,6 +422,45 @@ export default function ServiceOrderDetailPage() {
         variant="danger"
         loading={busy}
       />
+
+      {/* Diálogo: Reatribuir técnico */}
+      {reassignOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+          <div className="w-full max-w-lg rounded-md border border-border bg-surface p-5 shadow-lg">
+            <h3 className="text-base font-semibold text-text">
+              {tDetail('reassignTitle')}
+            </h3>
+            <p className="mt-1 text-xs text-text-muted">{tDetail('reassignHelp')}</p>
+            <div className="mt-3">
+              <Label htmlFor="so-reassign">{tDetail('assignedTo')}</Label>
+              <Select
+                id="so-reassign"
+                value={reassignTo}
+                onChange={(e) => setReassignTo(e.target.value)}
+              >
+                <option value="">{tDetail('assignedToUnset')}</option>
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.firstName} {u.lastName} · {u.email}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                onClick={() => setReassignOpen(false)}
+                disabled={busy}
+              >
+                {tCommon('cancel')}
+              </Button>
+              <Button onClick={handleReassign} loading={busy}>
+                {tCommon('save')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

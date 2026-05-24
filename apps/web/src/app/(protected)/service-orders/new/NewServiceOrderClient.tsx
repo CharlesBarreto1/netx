@@ -32,6 +32,7 @@ import {
   serviceOrderReasonsApi,
   type ServiceOrderReasonResponse,
 } from '@/lib/service-orders-api';
+import { usersApi, type UserResponse } from '@/lib/users-api';
 
 export default function NewServiceOrderClient() {
   const router = useRouter();
@@ -56,6 +57,14 @@ export default function NewServiceOrderClient() {
   );
   const contracts = contractsResp?.data ?? [];
 
+  // Lista de técnicos pra atribuir (qualquer user do tenant pode ser atribuído).
+  // O backend filtra por tenantId no usersApi. Se a operação for grande, valor
+  // alto de pageSize evita paginação no cliente.
+  const { data: usersResp } = useSWR<Paginated<UserResponse>>(
+    usersApi.listPath({ pageSize: 200 }),
+  );
+  const users = usersResp?.data ?? [];
+
   const [contractId, setContractId] = useState(prefilledContractId ?? '');
 
   // Auto-select quando vier do hub do cliente e ele tem só 1 contrato.
@@ -68,6 +77,7 @@ export default function NewServiceOrderClient() {
     setContractId(contracts[0].id);
   }
   const [reasonId, setReasonId] = useState('');
+  const [assignedToId, setAssignedToId] = useState('');
   const [scheduledAt, setScheduledAt] = useState('');
   const [openDescription, setOpenDescription] = useState('');
   const [city, setCity] = useState('');
@@ -88,6 +98,7 @@ export default function NewServiceOrderClient() {
       const created = await serviceOrdersApi.create({
         contractId,
         reasonId,
+        assignedToId: assignedToId || null,
         scheduledAt: scheduledAt
           ? new Date(`${scheduledAt}:00`).toISOString()
           : null,
@@ -177,6 +188,23 @@ export default function NewServiceOrderClient() {
               </Link>
             </FieldHelp>
           )}
+        </div>
+
+        <div>
+          <Label htmlFor="so-assigned">{tForm('assignedTo')}</Label>
+          <Select
+            id="so-assigned"
+            value={assignedToId}
+            onChange={(e) => setAssignedToId(e.target.value)}
+          >
+            <option value="">{tForm('assignedToUnset')}</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.firstName} {u.lastName} · {u.email}
+              </option>
+            ))}
+          </Select>
+          <FieldHelp>{tForm('assignedToHelp')}</FieldHelp>
         </div>
 
         <div>

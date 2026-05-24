@@ -18,6 +18,8 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import type { Paginated } from '@netx/shared';
+
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 
@@ -40,13 +42,6 @@ interface ServiceOrderItem {
     customer: { id: string; displayName: string };
   } | null;
   city: string | null;
-}
-
-interface Paginated<T> {
-  items: T[];
-  page: number;
-  pageSize: number;
-  total: number;
 }
 
 const STATUS_LABEL: Record<ServiceOrderStatus, string> = {
@@ -76,10 +71,10 @@ export default function MyServiceOrdersScreen() {
     if (!user) return;
     setError(null);
     try {
-      const data = await api<Paginated<ServiceOrderItem>>(
+      const resp = await api<Paginated<ServiceOrderItem>>(
         `/service-orders?assignedToId=${user.id}&pageSize=50`,
       );
-      setItems(data.items);
+      setItems(resp.data ?? []);
     } catch (err) {
       const apiErr = err instanceof ApiError ? err : null;
       const msg = apiErr ? apiErr.message : 'Erro ao carregar O.S.';

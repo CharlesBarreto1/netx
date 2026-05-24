@@ -108,7 +108,12 @@ export const ListServiceOrdersQuerySchema = z.object({
   contractId: z.string().uuid().optional(),
   customerId: z.string().uuid().optional(),
   reasonId: z.string().uuid().optional(),
-  assignedToId: z.string().uuid().optional(),
+  /**
+   * UUID de um user → filtra as O.S desse técnico.
+   * `'unassigned'` (string literal) → filtra O.S sem técnico atribuído.
+   * `undefined` → sem filtro.
+   */
+  assignedToId: z.union([z.string().uuid(), z.literal('unassigned')]).optional(),
 
   /**
    * Filtro por status. Aceita os status persistidos OU o derivado OVERDUE.

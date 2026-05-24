@@ -174,7 +174,11 @@ export class ServiceOrdersService {
       deletedAt: null,
       ...(q.contractId ? { contractId: q.contractId } : {}),
       ...(q.reasonId ? { reasonId: q.reasonId } : {}),
-      ...(q.assignedToId ? { assignedToId: q.assignedToId } : {}),
+      ...(q.assignedToId === 'unassigned'
+        ? { assignedToId: null }
+        : q.assignedToId
+          ? { assignedToId: q.assignedToId }
+          : {}),
       ...(q.customerId
         ? { contract: { customerId: q.customerId } }
         : {}),

@@ -16,6 +16,7 @@ import {
   type ServiceOrderDisplayStatus,
   type ServiceOrderResponse,
 } from '@/lib/service-orders-api';
+import { usersApi, type UserResponse } from '@/lib/users-api';
 import type { Paginated } from '@/lib/crm-types';
 import { formatDate } from '@/lib/format';
 
@@ -42,10 +43,16 @@ export default function ServiceOrdersListPage() {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<ServiceOrderDisplayStatus | ''>('');
   const [city, setCity] = useState('');
+  const [assignedToId, setAssignedToId] = useState<string | 'unassigned' | ''>('');
   const [scheduledFrom, setScheduledFrom] = useState('');
   const [scheduledTo, setScheduledTo] = useState('');
   const [page, setPage] = useState(1);
   const pageSize = 50;
+
+  const { data: usersResp } = useSWR<Paginated<UserResponse>>(
+    usersApi.listPath({ pageSize: 200 }),
+  );
+  const users = usersResp?.data ?? [];
 
   const key = serviceOrdersApi.listPath({
     page,
@@ -53,6 +60,7 @@ export default function ServiceOrdersListPage() {
     status: status || undefined,
     city: city || undefined,
     search: search || undefined,
+    assignedToId: assignedToId || undefined,
     // Convertemos date (YYYY-MM-DD) pra ISO 8601 com offset.
     scheduledFrom: scheduledFrom
       ? new Date(`${scheduledFrom}T00:00:00`).toISOString()
@@ -74,6 +82,7 @@ export default function ServiceOrdersListPage() {
     setSearch('');
     setStatus('');
     setCity('');
+    setAssignedToId('');
     setScheduledFrom('');
     setScheduledTo('');
     setPage(1);
@@ -97,7 +106,7 @@ export default function ServiceOrdersListPage() {
       </header>
 
       {/* Filtros */}
-      <section className="grid grid-cols-1 gap-3 rounded-md border border-border bg-surface p-4 md:grid-cols-5">
+      <section className="grid grid-cols-1 gap-3 rounded-md border border-border bg-surface p-4 md:grid-cols-6">
         <div className="md:col-span-2">
           <Label htmlFor="so-search">{tCommon('search')}</Label>
           <Input
@@ -124,6 +133,25 @@ export default function ServiceOrdersListPage() {
             {STATUS_VALUES.map((s) => (
               <option key={s} value={s}>
                 {tStatus(s)}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div>
+          <Label htmlFor="so-assigned">{tList('assignedTo')}</Label>
+          <Select
+            id="so-assigned"
+            value={assignedToId}
+            onChange={(e) => {
+              setAssignedToId(e.target.value as string | 'unassigned' | '');
+              setPage(1);
+            }}
+          >
+            <option value="">{tCommon('all')}</option>
+            <option value="unassigned">{tList('assignedToUnassigned')}</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.firstName} {u.lastName}
               </option>
             ))}
           </Select>
@@ -166,7 +194,7 @@ export default function ServiceOrdersListPage() {
             />
           </div>
         </div>
-        <div className="flex items-end justify-end md:col-span-5">
+        <div className="flex items-end justify-end md:col-span-6">
           <Button type="button" variant="ghost" onClick={clearFilters}>
             {tCommon('clear')}
           </Button>
@@ -181,6 +209,7 @@ export default function ServiceOrdersListPage() {
               <th className="px-3 py-2">{tList('cols.code')}</th>
               <th className="px-3 py-2">{tList('cols.reason')}</th>
               <th className="px-3 py-2">{tList('cols.customer')}</th>
+              <th className="px-3 py-2">{tList('cols.assignedTo')}</th>
               <th className="px-3 py-2">{tList('cols.city')}</th>
               <th className="px-3 py-2">{tList('cols.scheduledAt')}</th>
               <th className="px-3 py-2">{tCommon('status')}</th>
@@ -190,7 +219,7 @@ export default function ServiceOrdersListPage() {
           <tbody className="divide-y divide-border">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-text-muted">
+                <td colSpan={8} className="px-3 py-6 text-center text-text-muted">
                   {tList('empty')}
                 </td>
               </tr>
@@ -216,6 +245,11 @@ export default function ServiceOrdersListPage() {
                         {o.contract.code}
                       </div>
                     )}
+                  </td>
+                  <td className="px-3 py-2 text-text-muted">
+                    {o.assignedTo
+                      ? `${o.assignedTo.firstName} ${o.assignedTo.lastName}`
+                      : <span className="text-text-subtle italic">{tList('assignedToUnassigned')}</span>}
                   </td>
                   <td className="px-3 py-2 text-text-muted">
                     {o.city ?? '—'}

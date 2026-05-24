@@ -119,7 +119,8 @@ export interface ListServiceOrdersParams {
   contractId?: string;
   customerId?: string;
   reasonId?: string;
-  assignedToId?: string;
+  /** UUID do técnico OU 'unassigned' pra filtrar O.S órfãs. */
+  assignedToId?: string | 'unassigned';
   status?: ServiceOrderDisplayStatus;
   city?: string;
   scheduledFrom?: string;
