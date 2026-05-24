@@ -178,6 +178,8 @@ source "${INSTALLER_DIR}/lib/postgres.sh"
 source "${INSTALLER_DIR}/lib/redis.sh"
 # shellcheck source=lib/rabbitmq.sh
 source "${INSTALLER_DIR}/lib/rabbitmq.sh"
+# shellcheck source=lib/minio.sh
+source "${INSTALLER_DIR}/lib/minio.sh"
 # shellcheck source=lib/freeradius.sh
 source "${INSTALLER_DIR}/lib/freeradius.sh"
 # shellcheck source=lib/chrony.sh
@@ -224,6 +226,7 @@ main() {
   step "postgres"            postgres_setup
   step "redis"               redis_setup
   step "rabbitmq"            rabbitmq_setup
+  step "minio"               minio_setup
   step "netx_app"            netx_app_setup
   step "freeradius"          freeradius_setup
   step "chrony"              chrony_setup

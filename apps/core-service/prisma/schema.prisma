@@ -112,6 +112,9 @@ model Tenant {
   tr069Tasks           Tr069Task[]
   provisioningEvents   ProvisioningEvent[]
 
+  // Mobile
+  mobileDevices        MobileDevice[]
+
   @@index([status])
   @@index([country])
   @@map("tenants")
@@ -238,6 +241,9 @@ model User {
   stockLocationAccess  StockLocationUser[]
   stockMovementsCreated StockMovement[] @relation("StockMovementCreatedBy")
   purchasesCreated      Purchase[]      @relation("PurchaseCreatedBy")
+
+  // Mobile (app do técnico em campo)
+  mobileDevices       MobileDevice[]
 
   @@unique([tenantId, email])
   @@index([tenantId, status])
@@ -2706,4 +2712,49 @@ model ProvisioningEvent {
   @@index([tenantId, ontId])
   @@index([tenantId, status, createdAt])
   @@map("provisioning_events")
+}
+
+// -----------------------------------------------------------------------------
+// MOBILE — app do técnico em campo (Expo + React Native)
+// -----------------------------------------------------------------------------
+// Cada instalação do app pareada com um User vira uma linha aqui. Permite
+// admin revogar acesso por device perdido sem invalidar a sessão web do
+// mesmo user. `lastPulledAt` será usado pelo endpoint /mobile/sync/pull
+// pra entregar só changes desde a última sincronização.
+//
+// `deviceId` vem de `expo-application` (Application.androidId em Android,
+// ios.identifierForVendor no iOS). Estável por install. Reinstalou app =
+// novo deviceId = nova linha (a antiga fica como histórico até revoked).
+enum MobilePlatform {
+  IOS
+  ANDROID
+}
+
+model MobileDevice {
+  id           String         @id @default(uuid()) @db.Uuid
+  tenantId     String         @map("tenant_id") @db.Uuid
+  userId       String         @map("user_id") @db.Uuid
+
+  deviceId     String         @map("device_id") @db.VarChar(128)
+  platform     MobilePlatform
+  model        String?        @db.VarChar(120)  // ex. "SM-G990B", "iPhone15,2"
+  osVersion    String?        @map("os_version") @db.VarChar(32)
+  appVersion   String         @map("app_version") @db.VarChar(32)
+  pushToken    String?        @map("push_token") @db.VarChar(255) // Expo push token
+
+  lastPulledAt DateTime?      @map("last_pulled_at")
+  lastSeenAt   DateTime       @default(now()) @map("last_seen_at")
+  revokedAt    DateTime?      @map("revoked_at")  // soft-delete (admin revoga)
+  revokedReason String?       @map("revoked_reason") @db.VarChar(255)
+
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, userId, deviceId])
+  @@index([tenantId, userId])
+  @@index([tenantId, lastSeenAt])
+  @@map("mobile_devices")
 }

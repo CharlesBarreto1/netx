@@ -19,6 +19,7 @@ import { HealthModule } from './modules/health/health.module';
 import { NetworkModule } from './modules/network/network.module';
 import { PortalModule } from './modules/portal/portal.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
+import { MobileModule } from './modules/mobile/mobile.module';
 import { ProvisioningModule } from './modules/provisioning/provisioning.module';
 import { RadiusModule } from './modules/radius/radius.module';
 import { RolesModule } from './modules/roles/roles.module';
@@ -88,6 +89,7 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
     MappingModule,
     StockModule,
     ProvisioningModule,
+    MobileModule,
     WhatsappModule,
   ],
 })

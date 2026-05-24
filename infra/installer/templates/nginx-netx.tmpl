@@ -15,6 +15,11 @@ upstream netx_api {
     keepalive 32;
 }
 
+upstream netx_minio {
+    server 127.0.0.1:9000;
+    keepalive 32;
+}
+
 server {
     # default_server: este vhost atende QUALQUER Host header (domain, IP,
     # subdomain) — fundamental enquanto DNS ainda não propagou ou pra acesso
@@ -41,6 +46,36 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_set_header Upgrade           $http_upgrade;
         proxy_set_header Connection        "upgrade";
+    }
+
+    # ---------------------------------------------------------------------
+    # MinIO (object storage — fotos do app mobile, anexos OS)
+    # ---------------------------------------------------------------------
+    # /minio/<bucket>/<key> → http://127.0.0.1:9000/<bucket>/<key>
+    #
+    # Mobile faz upload direto via presigned URL — o backend não trafega
+    # bytes. client_max_body_size 100M acomoda fotos JPG full-res.
+    # Buffering off pra upload streaming não estourar memória.
+    location /minio/ {
+        # Remove o prefixo /minio antes de proxy
+        rewrite ^/minio/(.*)$ /$1 break;
+
+        proxy_pass http://netx_minio;
+        proxy_http_version 1.1;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Upload streaming — não bufferiza body inteiro em disco
+        proxy_request_buffering off;
+        proxy_buffering off;
+        client_max_body_size 100M;
+        proxy_read_timeout 600s;
+        proxy_send_timeout 600s;
+
+        # Importante: o ETag/Authorization do S3 SDK deve passar limpo
+        proxy_set_header Connection "";
     }
 
     # ---------------------------------------------------------------------
