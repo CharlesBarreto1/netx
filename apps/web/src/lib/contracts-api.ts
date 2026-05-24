@@ -185,6 +185,9 @@ export interface UpdateContractInput {
   vlanId?: number | null;
   installationAddress?: string;
   installationMapsUrl?: string | null;
+  /** Coordenadas — preenchidas via app mobile ou form de edição. null limpa. */
+  latitude?: number | null;
+  longitude?: number | null;
   monthlyValue?: number;
   bandwidthMbps?: number;
   /** Upload em Mbps (opcional). */
