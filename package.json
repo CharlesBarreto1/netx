@@ -47,15 +47,7 @@
   "overrides": {
     "react-native": "0.76.9",
     "@react-native/virtualized-lists": "0.76.9",
-    "@react-native-async-storage/async-storage": "1.23.1",
-    "react-leaflet": {
-      "react": "$react",
-      "react-dom": "$react-dom"
-    },
-    "@react-leaflet/core": {
-      "react": "$react",
-      "react-dom": "$react-dom"
-    }
+    "@react-native-async-storage/async-storage": "1.23.1"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.6.1",

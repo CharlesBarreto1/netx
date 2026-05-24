@@ -34,7 +34,7 @@
     "next-intl": "^4.3.4",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "react-leaflet": "^4.2.1",
+    "react-leaflet": "^5.0.0",
     "sonner": "^2.0.5",
     "swr": "^2.3.4",
     "tailwind-merge": "^3.3.1",
