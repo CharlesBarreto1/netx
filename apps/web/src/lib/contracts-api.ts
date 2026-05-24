@@ -33,6 +33,9 @@ export interface Contract {
   vlanId: number | null;
   installationAddress: string;
   installationMapsUrl: string | null;
+  /** Coordenadas da casa do cliente — preenchidas via app mobile ou form de edição. */
+  latitude: number | null;
+  longitude: number | null;
   planId: string | null;
   /** Nome do plano (denormalizado pelo backend pra evitar N+1 na listagem). */
   planName?: string | null;

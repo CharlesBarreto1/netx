@@ -24,13 +24,6 @@
         "command": "npm run typecheck",
         "cwd": "apps/mobile"
       }
-    },
-    "build": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "npm run build:android:prod",
-        "cwd": "apps/mobile"
-      }
     }
   },
   "tags": ["scope:mobile", "type:app"]
