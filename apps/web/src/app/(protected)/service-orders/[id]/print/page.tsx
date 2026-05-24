@@ -273,21 +273,20 @@ export default function ServiceOrderPrintPage() {
         <span className="font-mono">{os.id}</span>
       </footer>
 
-      <style jsx global>{`
-        @media print {
-          @page {
-            size: A4 portrait;
-            margin: 14mm;
-          }
-          body {
-            background: #fff !important;
-          }
-          /* Evita quebrar seções no meio. */
-          section {
-            break-inside: avoid;
-          }
-        }
-      `}</style>
+      {/* Substituído `<style jsx global>` por dangerouslySetInnerHTML —
+          Next 16 não tipa a prop `jsx` da styled-jsx. CSS estático, seguro. */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            @media print {
+              @page { size: A4 portrait; margin: 14mm; }
+              body { background: #fff !important; }
+              /* Evita quebrar seções no meio. */
+              section { break-inside: avoid; }
+            }
+          `,
+        }}
+      />
     </div>
   );
 }

@@ -211,18 +211,21 @@ export default function InvoicePrintPage() {
         <span className="ml-1 font-mono">{invoice.id}</span>
       </footer>
 
-      {/* Reset de print: sem barras, sem header/footer do navegador padrão */}
-      <style jsx global>{`
-        @media print {
-          @page {
-            size: A4 portrait;
-            margin: 18mm;
-          }
-          body {
-            background: #fff !important;
-          }
-        }
-      `}</style>
+      {/* Reset de print: sem barras, sem header/footer do navegador padrão.
+          Antes usava `<style jsx global>` (styled-jsx) — Next 16 não tipa essa
+          prop nativamente. dangerouslySetInnerHTML evita dependência externa
+          e funciona idêntico no client (style global vaza pra <body> por
+          serem regras @media print + @page). */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            @media print {
+              @page { size: A4 portrait; margin: 18mm; }
+              body { background: #fff !important; }
+            }
+          `,
+        }}
+      />
     </div>
   );
 }

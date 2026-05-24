@@ -108,16 +108,36 @@ fi
 log "npm install (~1-2 min)"
 as_netx "cd ${NETX_HOME} && NODE_ENV=development npm_config_yes=true npm install --include=dev --no-audit --no-fund"
 
-# Sanity check binários críticos
+# Sanity check binários críticos.
+#
+# NPM com workspaces pode hoistar binários ou deixá-los dentro do workspace
+# que declara a devDep (depende de conflicts de versão entre subdeps).
+# `nest` é devDep dos 3 backends (core-service, api-gateway, cwmp-server)
+# todos pinados na MESMA versão `^11.0.7` — então hoist deveria acontecer.
+# Mas se alguma nova dep cria conflict de subdep, o npm pode desistir do
+# hoist e deixar o binário só dentro do workspace.
+#
+# O check antes só olhava na raiz e falhava nesse caso. Agora aceita
+# qualquer um dos dois lugares — o `nest build` funciona via Nx em ambos.
+bin_exists() {
+  # $1 = nome do binário
+  local name="$1"
+  [[ -x "${NETX_HOME}/node_modules/.bin/${name}" ]] && return 0
+  # Fallback: procura em qualquer workspace.
+  for ws in "${NETX_HOME}"/apps/* "${NETX_HOME}"/packages/*; do
+    [[ -x "${ws}/node_modules/.bin/${name}" ]] && return 0
+  done
+  return 1
+}
 local_check_bins() {
   local missing=()
-  [[ -x "${NETX_HOME}/node_modules/.bin/nx" ]]      || missing+=("nx")
-  [[ -x "${NETX_HOME}/node_modules/.bin/nest" ]]    || missing+=("nest")
-  [[ -x "${NETX_HOME}/node_modules/.bin/dotenv" ]]  || missing+=("dotenv-cli")
-  [[ -x "${NETX_HOME}/node_modules/.bin/prisma" ]]  || missing+=("prisma")
+  bin_exists nx      || missing+=("nx")
+  bin_exists nest    || missing+=("nest")
+  bin_exists dotenv  || missing+=("dotenv-cli")
+  bin_exists prisma  || missing+=("prisma")
   if [[ ${#missing[@]} -gt 0 ]]; then
-    err "Binários ausentes: ${missing[*]}"
-    err "Tente: rm -rf ${NETX_HOME}/node_modules && rerun"
+    err "Binários ausentes (nem na raiz, nem em workspaces): ${missing[*]}"
+    err "Tente: rm -rf ${NETX_HOME}/node_modules ${NETX_HOME}/apps/*/node_modules ${NETX_HOME}/packages/*/node_modules ${NETX_HOME}/package-lock.json && rerun"
     exit 1
   fi
 }
