@@ -211,44 +211,34 @@ export default function ReceiptPage() {
 
   return (
     <>
-      <style jsx global>{`
-        @page {
-          margin: 5mm;
-          size: 220mm auto;
-        }
-        body {
-          background: white;
-        }
-        @media screen {
-          .receipt {
-            margin: 1rem auto;
-            padding: 1rem;
-            border: 1px dashed #ccc;
-            background: #fff;
-            max-width: 80ch;
-          }
-          .actions {
-            text-align: center;
-            margin: 1rem;
-          }
-        }
-        @media print {
-          .actions {
-            display: none;
-          }
-          .receipt {
-            margin: 0;
-            padding: 0;
-          }
-        }
-        .receipt {
-          font-family: 'Courier New', Courier, monospace;
-          font-size: 12px;
-          line-height: 1.3;
-          white-space: pre;
-          color: #000;
-        }
-      `}</style>
+      {/* `<style jsx global>` (styled-jsx) não tipa no Next 16.
+          dangerouslySetInnerHTML preserva o mesmo comportamento global sem
+          dep extra. CSS é estático — sem risco de XSS. */}
+      <style
+        dangerouslySetInnerHTML={{
+          __html: `
+            @page { margin: 5mm; size: 220mm auto; }
+            body { background: white; }
+            @media screen {
+              .receipt {
+                margin: 1rem auto; padding: 1rem;
+                border: 1px dashed #ccc; background: #fff;
+                max-width: 80ch;
+              }
+              .actions { text-align: center; margin: 1rem; }
+            }
+            @media print {
+              .actions { display: none; }
+              .receipt { margin: 0; padding: 0; }
+            }
+            .receipt {
+              font-family: 'Courier New', Courier, monospace;
+              font-size: 12px; line-height: 1.3;
+              white-space: pre; color: #000;
+            }
+          `,
+        }}
+      />
 
       <div className="actions">
         <button
