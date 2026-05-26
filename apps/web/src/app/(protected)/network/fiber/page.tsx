@@ -36,6 +36,10 @@ import {
   type FiberCableType,
   type PathPoint,
 } from '@/lib/fiber-api';
+import {
+  opticalApi,
+  type OpticalEnclosure,
+} from '@/lib/optical-api';
 import { hasPermission } from '@/lib/session';
 
 const PolylineEditor = dynamic(
@@ -200,7 +204,10 @@ export default function FiberCablesPage() {
                     )}
                   </td>
                   <td className="px-3 py-2 text-text-muted text-xs">
-                    {c.path.length} vértices
+                    <div>{c.path.length} vértices</div>
+                    <div className="text-text-subtle">
+                      {c.endpointA?.code ?? '—'} → {c.endpointB?.code ?? '—'}
+                    </div>
                   </td>
                   <td className="px-3 py-2">
                     {c.isActive ? (
@@ -326,10 +333,22 @@ function CableFormDialog({
   const [lengthMeters, setLengthMeters] = useState<number>(
     initial?.lengthMeters ?? 0,
   );
+  const [endpointAId, setEndpointAId] = useState<string>(
+    initial?.endpointAId ?? '',
+  );
+  const [endpointBId, setEndpointBId] = useState<string>(
+    initial?.endpointBId ?? '',
+  );
   const [notes, setNotes] = useState(initial?.notes ?? '');
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Lista de caixas pra Selects de endpoint A/B (R4.5a).
+  const { data: enclosuresResp } = useSWR<Paginated<OpticalEnclosure>>(
+    opticalApi.listPath({ pageSize: 500 }),
+  );
+  const enclosures = enclosuresResp?.data ?? [];
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -344,6 +363,8 @@ function CableFormDialog({
         fiberCount,
         path,
         lengthMetersOverride: overrideLength ? lengthMeters : null,
+        endpointAId: endpointAId || null,
+        endpointBId: endpointBId || null,
         notes: notes || null,
         isActive,
       };
@@ -412,6 +433,42 @@ function CableFormDialog({
                 </option>
               ))}
             </Select>
+          </div>
+        </div>
+
+        {/* R4.5a — pontas físicas. Sem isso, cabo flutua sem topologia. */}
+        <div className="grid gap-3 md:grid-cols-2">
+          <div>
+            <Label htmlFor="cab-ep-a">Caixa de origem (A)</Label>
+            <Select
+              id="cab-ep-a"
+              value={endpointAId}
+              onChange={(e) => setEndpointAId(e.target.value)}
+            >
+              <option value="">— solto —</option>
+              {enclosures.map((en) => (
+                <option key={en.id} value={en.id}>
+                  {en.code} ({en.type})
+                </option>
+              ))}
+            </Select>
+            <FieldHelp>De onde o cabo sai (POP, CTO mãe…).</FieldHelp>
+          </div>
+          <div>
+            <Label htmlFor="cab-ep-b">Caixa de destino (B)</Label>
+            <Select
+              id="cab-ep-b"
+              value={endpointBId}
+              onChange={(e) => setEndpointBId(e.target.value)}
+            >
+              <option value="">— solto —</option>
+              {enclosures.map((en) => (
+                <option key={en.id} value={en.id}>
+                  {en.code} ({en.type})
+                </option>
+              ))}
+            </Select>
+            <FieldHelp>Onde o cabo termina (CTO, NAP…).</FieldHelp>
           </div>
         </div>
 

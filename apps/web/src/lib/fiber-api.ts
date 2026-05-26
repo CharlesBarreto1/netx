@@ -14,6 +14,12 @@ export interface PathPoint {
   longitude: number;
 }
 
+export interface FiberCableEndpointRef {
+  id: string;
+  code: string;
+  type: 'CTO' | 'NAP' | 'SPLITTER' | 'EMENDA';
+}
+
 export interface FiberCable {
   id: string;
   tenantId: string;
@@ -24,6 +30,10 @@ export interface FiberCable {
   lengthMeters: number;
   /** True se operador setou override; false se foi cálculo automático. */
   lengthOverridden: boolean;
+  endpointAId: string | null;
+  endpointA: FiberCableEndpointRef | null;
+  endpointBId: string | null;
+  endpointB: FiberCableEndpointRef | null;
   notes: string | null;
   isActive: boolean;
   createdAt: string;
@@ -36,6 +46,8 @@ export interface CreateFiberCableInput {
   fiberCount: number;
   path: PathPoint[];
   lengthMetersOverride?: number | null;
+  endpointAId?: string | null;
+  endpointBId?: string | null;
   notes?: string | null;
   isActive?: boolean;
 }
@@ -144,6 +156,84 @@ function qsSplice(p: ListFiberSplicesParams = {}): string {
   const s = u.toString();
   return s ? `?${s}` : '';
 }
+
+// ─── R4.5a: Topology (snapshot agregado de uma caixa) ─────────────────────
+export interface TopologyEnclosure {
+  id: string;
+  code: string;
+  type: 'CTO' | 'NAP' | 'SPLITTER' | 'EMENDA';
+  latitude: number;
+  longitude: number;
+  capacity: number;
+  splitterRatio:
+    | 'ONE_TO_2'
+    | 'ONE_TO_4'
+    | 'ONE_TO_8'
+    | 'ONE_TO_16'
+    | 'ONE_TO_32'
+    | 'ONE_TO_64'
+    | null;
+}
+
+export interface TopologyChildSplitter {
+  id: string;
+  code: string;
+  type: 'SPLITTER';
+  splitterRatio: TopologyEnclosure['splitterRatio'];
+  capacity: number;
+  portsUsed: number;
+  portsTotal: number;
+}
+
+export interface TopologyCable {
+  id: string;
+  code: string;
+  type: FiberCableType;
+  fiberCount: number;
+  endpointRole: 'A' | 'B';
+  otherEndpointId: string | null;
+  otherEndpointCode: string | null;
+  lengthMeters: number;
+}
+
+export interface TopologySplice {
+  id: string;
+  cableAId: string;
+  cableACode: string;
+  fiberAIndex: number;
+  fiberAColorHex: string;
+  cableBId: string;
+  cableBCode: string;
+  fiberBIndex: number;
+  fiberBColorHex: string;
+  lossDb: number | null;
+  lossClass: 'unmeasured' | 'good' | 'warning' | 'bad';
+}
+
+export interface TopologyPort {
+  id: string;
+  number: number;
+  status: 'FREE' | 'RESERVED' | 'USED' | 'DAMAGED';
+  contract: {
+    id: string;
+    code: string | null;
+    customerDisplayName: string;
+  } | null;
+}
+
+export interface EnclosureTopology {
+  enclosure: TopologyEnclosure;
+  childSplitters: TopologyChildSplitter[];
+  incomingCables: TopologyCable[];
+  splices: TopologySplice[];
+  ports: TopologyPort[];
+}
+
+export const enclosureTopologyApi = {
+  path: (id: string) => `/v1/optical/enclosures/${id}/topology`,
+  get: (id: string) =>
+    api.get<EnclosureTopology>(`/v1/optical/enclosures/${id}/topology`),
+};
 
 export const fiberSplicesApi = {
   listPath: (p: ListFiberSplicesParams = {}) =>

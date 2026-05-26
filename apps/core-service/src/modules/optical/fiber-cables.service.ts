@@ -16,6 +16,7 @@
  * folgado; vira gargalo se um dia precisar de queries "cabos dentro de bbox".
  */
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -80,7 +81,17 @@ function pathFromGeoJson(json: unknown): PathPoint[] {
     .map(([lng, lat]) => ({ latitude: lat, longitude: lng }));
 }
 
-type CableRow = Prisma.FiberCableGetPayload<Record<string, never>>;
+type CableRow = Prisma.FiberCableGetPayload<{
+  include: {
+    endpointA: { select: { id: true; code: true; type: true } };
+    endpointB: { select: { id: true; code: true; type: true } };
+  };
+}>;
+
+const CABLE_INCLUDE = {
+  endpointA: { select: { id: true, code: true, type: true } },
+  endpointB: { select: { id: true, code: true, type: true } },
+} satisfies Prisma.FiberCableInclude;
 
 function toResponse(c: CableRow, overridden: boolean): FiberCableResponse {
   return {
@@ -92,6 +103,10 @@ function toResponse(c: CableRow, overridden: boolean): FiberCableResponse {
     path: pathFromGeoJson(c.path),
     lengthMeters: Number(c.lengthMeters),
     lengthOverridden: overridden,
+    endpointAId: c.endpointAId,
+    endpointA: c.endpointA,
+    endpointBId: c.endpointBId,
+    endpointB: c.endpointB,
     notes: c.notes,
     isActive: c.isActive,
     createdAt: c.createdAt.toISOString(),
@@ -125,6 +140,7 @@ export class FiberCablesService {
       this.prisma.fiberCable.count({ where }),
       this.prisma.fiberCable.findMany({
         where,
+        include: CABLE_INCLUDE,
         orderBy: { code: 'asc' },
         skip: (q.page - 1) * q.pageSize,
         take: q.pageSize,
@@ -151,11 +167,39 @@ export class FiberCablesService {
   async findById(tenantId: string, id: string): Promise<FiberCableResponse> {
     const c = await this.prisma.fiberCable.findFirst({
       where: { id, tenantId, deletedAt: null },
+      include: CABLE_INCLUDE,
     });
     if (!c) throw new NotFoundException('Cabo não encontrado');
     const computed = calculatePathLength(pathFromGeoJson(c.path));
     const overridden = Math.abs(computed - Number(c.lengthMeters)) > 5;
     return toResponse(c, overridden);
+  }
+
+  /**
+   * Valida que as caixas referenciadas existem + pertencem ao tenant.
+   * Centralizado pra reuso entre create e update.
+   */
+  private async validateEndpoints(
+    tenantId: string,
+    endpointAId: string | null | undefined,
+    endpointBId: string | null | undefined,
+  ): Promise<void> {
+    const ids = [endpointAId, endpointBId].filter(
+      (v): v is string => typeof v === 'string',
+    );
+    if (ids.length === 0) return;
+    const found = await this.prisma.opticalEnclosure.findMany({
+      where: { tenantId, id: { in: ids }, deletedAt: null },
+      select: { id: true },
+    });
+    const foundIds = new Set(found.map((e) => e.id));
+    for (const id of ids) {
+      if (!foundIds.has(id)) {
+        throw new BadRequestException(
+          `Caixa ${id} não encontrada ou apagada`,
+        );
+      }
+    }
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -169,6 +213,8 @@ export class FiberCablesService {
     const computed = calculatePathLength(input.path);
     const lengthMeters = input.lengthMetersOverride ?? computed;
 
+    await this.validateEndpoints(tenantId, input.endpointAId, input.endpointBId);
+
     try {
       const created = await this.prisma.fiberCable.create({
         data: {
@@ -178,6 +224,8 @@ export class FiberCablesService {
           fiberCount: input.fiberCount,
           path: pathToGeoJson(input.path) as Prisma.InputJsonValue,
           lengthMeters,
+          endpointAId: input.endpointAId ?? null,
+          endpointBId: input.endpointBId ?? null,
           notes: input.notes ?? null,
           isActive: input.isActive ?? true,
           createdById: actorUserId,
@@ -233,6 +281,14 @@ export class FiberCablesService {
           ? computed
           : Number(existing.lengthMeters);
 
+    if (input.endpointAId !== undefined || input.endpointBId !== undefined) {
+      await this.validateEndpoints(
+        tenantId,
+        input.endpointAId === undefined ? existing.endpointAId : input.endpointAId,
+        input.endpointBId === undefined ? existing.endpointBId : input.endpointBId,
+      );
+    }
+
     try {
       await this.prisma.fiberCable.update({
         where: { id },
@@ -245,6 +301,10 @@ export class FiberCablesService {
               ? (pathToGeoJson(input.path) as Prisma.InputJsonValue)
               : undefined,
           lengthMeters: nextLength,
+          endpointAId:
+            input.endpointAId === undefined ? undefined : input.endpointAId ?? null,
+          endpointBId:
+            input.endpointBId === undefined ? undefined : input.endpointBId ?? null,
           notes: input.notes === undefined ? undefined : input.notes ?? null,
           isActive: input.isActive,
           updatedById: actorUserId,

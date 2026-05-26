@@ -2868,6 +2868,10 @@ model OpticalEnclosure {
   parent          OpticalEnclosure?     @relation("EnclosureChildren", fields: [parentId], references: [id], onDelete: SetNull)
   children        OpticalEnclosure[]    @relation("EnclosureChildren")
   ports           OpticalPort[]
+  // Cabos entrando nesta caixa (terminação física). Backend lista isso pra
+  // vista esquemática Tomodat-like (R4.5b).
+  cablesEndingHereA FiberCable[]        @relation("CableEndpointA")
+  cablesEndingHereB FiberCable[]        @relation("CableEndpointB")
   createdBy       User?                 @relation("OpticalEnclosureCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy       User?                 @relation("OpticalEnclosureUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
@@ -2940,6 +2944,15 @@ model FiberCable {
   // pode override (cabo "frouxo" no poste tem 10-15% a mais que a distância
   // em linha reta dos vértices).
   lengthMeters    Decimal          @map("length_meters") @db.Decimal(12, 2)
+
+  // Pontas físicas do cabo — onde ele TERMINA (R4.5a). Permite à vista
+  // esquemática da caixa (Tomodat-like) saber quais cabos entram nela.
+  // Nullable porque cabos antigos foram criados sem isso, e cabos "soltos"
+  // ainda não conectados existem na construção da planta. SetNull em delete
+  // da caixa: cabo continua existindo no banco, só perde o vínculo.
+  endpointAId     String?          @map("endpoint_a_id") @db.Uuid
+  endpointBId     String?          @map("endpoint_b_id") @db.Uuid
+
   notes           String?          @db.Text
   isActive        Boolean          @default(true) @map("is_active")
 
@@ -2952,11 +2965,15 @@ model FiberCable {
   tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdBy       User?            @relation("FiberCableCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy       User?            @relation("FiberCableUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  endpointA       OpticalEnclosure? @relation("CableEndpointA", fields: [endpointAId], references: [id], onDelete: SetNull)
+  endpointB       OpticalEnclosure? @relation("CableEndpointB", fields: [endpointBId], references: [id], onDelete: SetNull)
   splicesA        FiberSplice[]    @relation("SpliceCableA")
   splicesB        FiberSplice[]    @relation("SpliceCableB")
 
   @@unique([tenantId, code])
   @@index([tenantId, type])
+  @@index([tenantId, endpointAId])
+  @@index([tenantId, endpointBId])
   @@map("fiber_cables")
 }
 

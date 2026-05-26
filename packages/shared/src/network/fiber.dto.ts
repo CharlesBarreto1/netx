@@ -59,6 +59,13 @@ export const CreateFiberCableRequestSchema = z.object({
    * onde a metragem real é maior que a distância em linha reta.
    */
   lengthMetersOverride: z.coerce.number().min(0).max(1_000_000).nullish(),
+  /**
+   * Caixas onde o cabo TERMINA. Pré-requisito pra vista esquemática
+   * (R4.5b) e power budget (R5). Nullable — cabos podem ficar soltos
+   * durante a construção da planta.
+   */
+  endpointAId: z.string().uuid().nullish(),
+  endpointBId: z.string().uuid().nullish(),
   notes: optionalNullableString(2000),
   isActive: z.coerce.boolean().default(true),
 });
@@ -78,6 +85,12 @@ export type UpdateFiberCableRequest = z.infer<
 // =============================================================================
 // Response
 // =============================================================================
+export interface FiberCableEndpointRef {
+  id: string;
+  code: string;
+  type: 'CTO' | 'NAP' | 'SPLITTER' | 'EMENDA';
+}
+
 export interface FiberCableResponse {
   id: string;
   tenantId: string;
@@ -89,6 +102,10 @@ export interface FiberCableResponse {
   lengthMeters: number;
   /** True se operador setou override; false se foi cálculo automático. */
   lengthOverridden: boolean;
+  endpointAId: string | null;
+  endpointA: FiberCableEndpointRef | null;
+  endpointBId: string | null;
+  endpointB: FiberCableEndpointRef | null;
   notes: string | null;
   isActive: boolean;
   createdAt: string;

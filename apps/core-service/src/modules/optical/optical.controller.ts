@@ -46,6 +46,7 @@ import {
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { ZodBody } from '../../common/zod.pipe';
 import { ZodQueryPipe } from '../crm/zod-query.pipe';
+import { EnclosureTopologyService } from './enclosure-topology.service';
 import { FiberCablesService } from './fiber-cables.service';
 import { FiberSplicesService } from './fiber-splices.service';
 import { OpticalEnclosuresService } from './optical-enclosures.service';
@@ -58,6 +59,7 @@ export class OpticalController {
     private readonly enclosures: OpticalEnclosuresService,
     private readonly fiberCables: FiberCablesService,
     private readonly fiberSplices: FiberSplicesService,
+    private readonly topology: EnclosureTopologyService,
   ) {}
 
   // ───────────────────────────────────────────────────────────────────────
@@ -123,6 +125,19 @@ export class OpticalController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     return this.enclosures.listPorts(u.tenantId, id);
+  }
+
+  /**
+   * Snapshot agregado pra vista esquemática (R4.5b). 1 request retorna
+   * tudo que a UI precisa renderizar dentro de uma caixa.
+   */
+  @Get('enclosures/:id/topology')
+  @RequirePermissions('network.read')
+  getTopology(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.topology.getTopology(u.tenantId, id);
   }
 
   @Patch('ports/:portId')

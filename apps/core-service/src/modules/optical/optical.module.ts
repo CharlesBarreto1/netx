@@ -9,6 +9,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuditModule } from '../audit/audit.module';
+import { EnclosureTopologyService } from './enclosure-topology.service';
 import { FiberCablesService } from './fiber-cables.service';
 import { FiberSplicesService } from './fiber-splices.service';
 import { OpticalController } from './optical.controller';
@@ -17,7 +18,17 @@ import { OpticalEnclosuresService } from './optical-enclosures.service';
 @Module({
   imports: [AuditModule],
   controllers: [OpticalController],
-  providers: [OpticalEnclosuresService, FiberCablesService, FiberSplicesService],
-  exports: [OpticalEnclosuresService, FiberCablesService, FiberSplicesService],
+  providers: [
+    OpticalEnclosuresService,
+    FiberCablesService,
+    FiberSplicesService,
+    EnclosureTopologyService,
+  ],
+  exports: [
+    OpticalEnclosuresService,
+    FiberCablesService,
+    FiberSplicesService,
+    EnclosureTopologyService,
+  ],
 })
 export class OpticalModule {}
