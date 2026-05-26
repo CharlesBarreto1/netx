@@ -25,6 +25,7 @@ import {
 import L from 'leaflet';
 
 import type {
+  NetworkMapEvent,
   NetworkMapPoint,
   NetworkMapPointKind,
   NetworkMapSegment,
@@ -40,11 +41,13 @@ export interface NetworkMapProps {
   points: NetworkMapPoint[];
   segments?: NetworkMapSegment[];
   splices?: NetworkMapSplice[];
+  events?: NetworkMapEvent[];
   center?: [number, number];
   zoom?: number;
   onMarkerClick?: (point: NetworkMapPoint) => void;
   onSegmentClick?: (segment: NetworkMapSegment) => void;
   onSpliceClick?: (splice: NetworkMapSplice) => void;
+  onEventClick?: (event: NetworkMapEvent) => void;
   /** Modo ativo — controla cursor e o que acontece em map click. */
   mode?: NetworkMapMode;
   /** Click no canvas vazio (não em marker/polyline). Usado pra criar caixa/cabo. */
@@ -61,11 +64,13 @@ export function NetworkMap({
   points,
   segments = [],
   splices = [],
+  events = [],
   center,
   zoom = DEFAULT_ZOOM,
   onMarkerClick,
   onSegmentClick,
   onSpliceClick,
+  onEventClick,
   mode = 'select',
   onMapClick,
   pendingPath = [],
@@ -181,6 +186,21 @@ export function NetworkMap({
           >
             <Popup>
               <SplicePopupContent splice={s} />
+            </Popup>
+          </Marker>
+        ))}
+        {/* Eventos OTDR ativos — pinos vermelhos pulsantes pra chamar atenção. */}
+        {events.map((ev) => (
+          <Marker
+            key={`event-${ev.id}`}
+            position={[ev.latitude, ev.longitude]}
+            icon={iconForEvent(ev)}
+            eventHandlers={
+              onEventClick ? { click: () => onEventClick(ev) } : undefined
+            }
+          >
+            <Popup>
+              <EventPopupContent event={ev} />
             </Popup>
           </Marker>
         ))}
@@ -317,6 +337,83 @@ function colorForCableType(t: NetworkMapSegment['type']): string {
 function formatLength(meters: number): string {
   if (meters >= 1000) return `${(meters / 1000).toFixed(2)} km`;
   return `${meters.toFixed(0)} m`;
+}
+
+function iconForEvent(ev: NetworkMapEvent): L.DivIcon {
+  // Triângulo de alerta vermelho com símbolo do tipo. Pulsa via animação CSS.
+  const symbol =
+    ev.type === 'BREAK'
+      ? '✕'
+      : ev.type === 'BEND'
+        ? '↺'
+        : ev.type === 'REFLECTION'
+          ? '◊'
+          : ev.type === 'ATTENUATION'
+            ? '↘'
+            : ev.type === 'CONNECTOR'
+              ? '⚡'
+              : '!';
+  const html = `
+    <svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg">
+      <path d="M14 2 L26 24 L2 24 Z"
+            fill="#dc2626" stroke="#7f1d1d" stroke-width="1.5"
+            stroke-linejoin="round"/>
+      <text x="14" y="20" text-anchor="middle"
+            font-family="system-ui, sans-serif"
+            font-size="13" font-weight="700" fill="white">${symbol}</text>
+    </svg>
+  `;
+  return L.divIcon({
+    html,
+    iconSize: [28, 28],
+    iconAnchor: [14, 24],
+    popupAnchor: [0, -22],
+    className: '',
+  });
+}
+
+function EventPopupContent({ event }: { event: NetworkMapEvent }) {
+  const typeLabel =
+    event.type === 'BREAK'
+      ? 'Rompimento'
+      : event.type === 'BEND'
+        ? 'Curva excessiva'
+        : event.type === 'REFLECTION'
+          ? 'Reflexão'
+          : event.type === 'ATTENUATION'
+            ? 'Atenuação anormal'
+            : event.type === 'CONNECTOR'
+              ? 'Conector ruim'
+              : 'Outro';
+  const km = event.distanceMeters / 1000;
+  return (
+    <div style={{ minWidth: 220 }}>
+      <div style={{ fontWeight: 700, color: '#dc2626' }}>
+        ⚠ {typeLabel}
+      </div>
+      <div style={{ fontSize: 12, marginTop: 4 }}>
+        <strong>Cabo:</strong> {event.cableCode}
+        {event.fiberIndex ? ` · fibra ${event.fiberIndex}` : ''}
+      </div>
+      <div style={{ fontSize: 12 }}>
+        <strong>Distância:</strong>{' '}
+        {km >= 1 ? `${km.toFixed(3)} km` : `${event.distanceMeters} m`}
+      </div>
+      {event.lossDb != null && (
+        <div style={{ fontSize: 12 }}>
+          <strong>Loss:</strong> {event.lossDb.toFixed(2)} dB
+        </div>
+      )}
+      <div style={{ fontSize: 11, color: '#666', marginTop: 4 }}>
+        Reportado em {new Date(event.reportedAt).toLocaleString('pt-BR')}
+      </div>
+      <div style={{ fontSize: 12, marginTop: 8 }}>
+        <a href="/network/otdr" style={{ color: '#2563eb' }}>
+          Abrir OTDR →
+        </a>
+      </div>
+    </div>
+  );
 }
 
 function SplicePopupContent({ splice }: { splice: NetworkMapSplice }) {

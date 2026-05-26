@@ -15,6 +15,7 @@ import {
   classifyLoss,
   fiberColor,
   type ListNetworkMapQuery,
+  type NetworkMapEvent,
   type NetworkMapPoint,
   type NetworkMapPointKind,
   type NetworkMapResponse,
@@ -35,6 +36,7 @@ export class NetworkMapService {
     const points: NetworkMapPoint[] = [];
     const segments: NetworkMapSegment[] = [];
     const splices: NetworkMapSplice[] = [];
+    const events: NetworkMapEvent[] = [];
 
     // ── Stats: contamos "withoutGeo" por tipo, separado da response principal.
     let popsCount = 0;
@@ -43,6 +45,7 @@ export class NetworkMapService {
     let enclosuresCount = 0;
     let cablesCount = 0;
     let splicesCount = 0;
+    let eventsCount = 0;
     let withoutGeo = 0;
 
     if (query.includePops !== false) {
@@ -310,18 +313,54 @@ export class NetworkMapService {
       }
     }
 
+    if (query.includeEvents !== false) {
+      const allEvents = await this.prisma.fiberEvent.findMany({
+        where: { tenantId, deletedAt: null, resolvedAt: null },
+        select: {
+          id: true,
+          cableId: true,
+          latitude: true,
+          longitude: true,
+          type: true,
+          distanceMeters: true,
+          fiberIndex: true,
+          lossDb: true,
+          reportedAt: true,
+          cable: { select: { code: true } },
+        },
+      });
+      for (const ev of allEvents) {
+        events.push({
+          id: ev.id,
+          cableId: ev.cableId,
+          cableCode: ev.cable.code,
+          latitude: Number(ev.latitude),
+          longitude: Number(ev.longitude),
+          type: ev.type,
+          distanceMeters: Number(ev.distanceMeters),
+          fiberIndex: ev.fiberIndex,
+          lossDb: ev.lossDb != null ? Number(ev.lossDb) : null,
+          reportedAt: ev.reportedAt.toISOString(),
+        });
+        eventsCount++;
+      }
+    }
+
     return {
       points,
       segments,
       splices,
+      events,
       stats: {
-        total: points.length + segments.length + splices.length,
+        total:
+          points.length + segments.length + splices.length + events.length,
         pops: popsCount,
         equipment: equipmentCount,
         olts: oltsCount,
         enclosures: enclosuresCount,
         cables: cablesCount,
         splices: splicesCount,
+        events: eventsCount,
         withoutGeo,
       },
     };

@@ -89,6 +89,7 @@ export default function MappingNetworkPage() {
     includeEnclosures: true,
     includeCables: true,
     includeSplices: true,
+    includeEvents: true,
   });
 
   // R4.5e — pastas + visibilidade (controlled). undefined = primeira render
@@ -177,6 +178,7 @@ export default function MappingNetworkPage() {
   const points: NetworkMapPoint[] = data?.points ?? [];
   const segments = data?.segments ?? [];
   const splices = data?.splices ?? [];
+  const events = data?.events ?? [];
   const stats = data?.stats;
 
   function toggle(key: keyof ListNetworkMapParams) {
@@ -245,6 +247,12 @@ export default function MappingNetworkPage() {
           active={filters.includeSplices ?? true}
           onClick={() => toggle('includeSplices')}
         />
+        <FilterChip
+          label={`⚠ Eventos (${stats?.events ?? 0})`}
+          color="#dc2626"
+          active={filters.includeEvents ?? true}
+          onClick={() => toggle('includeEvents')}
+        />
         <div className="ml-auto text-xs text-text-muted">
           {stats?.withoutGeo ? (
             <span className="text-amber-600">
@@ -284,6 +292,7 @@ export default function MappingNetworkPage() {
             points={points}
             segments={segments}
             splices={splices}
+            events={events}
             mode={mode}
             onMapClick={handleMapClick}
             pendingPath={draftPath}

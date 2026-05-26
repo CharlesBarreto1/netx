@@ -94,6 +94,7 @@ model Tenant {
   opticalPorts         OpticalPort[]
   fiberCables          FiberCable[]
   fiberSplices         FiberSplice[]
+  fiberEvents          FiberEvent[]
   networkFolders       NetworkFolder[]
 
   // WhatsApp / Atendimento
@@ -244,6 +245,8 @@ model User {
   fiberSplicesUpdated  FiberSplice[]  @relation("FiberSpliceUpdatedBy")
   fiberSplicesMeasured FiberSplice[]  @relation("FiberSpliceMeasuredBy")
   networkFoldersCreated NetworkFolder[] @relation("NetworkFolderCreatedBy")
+  fiberEventsReported   FiberEvent[]    @relation("FiberEventReportedBy")
+  fiberEventsResolved   FiberEvent[]    @relation("FiberEventResolvedBy")
 
   // WhatsApp / Atendimento
   whatsappConversationsAssigned WhatsappConversation[] @relation("WaConversationAssignee")
@@ -2977,6 +2980,7 @@ model FiberCable {
   endpointB       OpticalEnclosure? @relation("CableEndpointB", fields: [endpointBId], references: [id], onDelete: SetNull)
   splicesA        FiberSplice[]    @relation("SpliceCableA")
   splicesB        FiberSplice[]    @relation("SpliceCableB")
+  events          FiberEvent[]
 
   // R4.5e — pasta opcional.
   folderId        String?          @map("folder_id") @db.Uuid
@@ -3051,6 +3055,72 @@ model FiberSplice {
   @@index([tenantId, cableAId, fiberAIndex])
   @@index([tenantId, cableBId, fiberBIndex])
   @@map("fiber_splices")
+}
+
+// =============================================================================
+// Rede óptica (OSP) — R6: Eventos OTDR (rompimentos / atenuações)
+// =============================================================================
+// Cada evento é uma anomalia detectada pelo OTDR ao longo de UM cabo:
+// rompimento físico, curva exagerada, perda inesperada, conector ruim, etc.
+// Operador informa a distância (km) reportada pelo aparelho; backend
+// calcula lat/lng exato caminhando pela polyline do cabo (@turf/along
+// implementado inline via Haversine — sem dep externa).
+//
+// Status: ativo (resolvedAt = null) ou resolvido (resolvedAt preenchido).
+// Pino vermelho no mapa = ativo. Pino cinza = resolvido (histórico).
+
+enum FiberEventType {
+  BREAK         // rompimento físico (fibra cortada)
+  BEND          // curva excessiva (macro/micro-bending)
+  REFLECTION    // reflexão alta (conector ruim, ponto sujo)
+  ATTENUATION   // atenuação anormal (degradação)
+  CONNECTOR     // conector com problema
+  OTHER
+}
+
+model FiberEvent {
+  id              String          @id @default(uuid()) @db.Uuid
+  tenantId        String          @map("tenant_id") @db.Uuid
+  cableId         String          @map("cable_id") @db.Uuid
+
+  // Distância do evento a partir da origem do cabo (em metros). Decimal
+  // pra preservar precisão das medidas OTDR (típico: ~0.01 m).
+  distanceMeters  Decimal         @map("distance_meters") @db.Decimal(12, 2)
+  // Fibra específica (opcional — algumas OTDR não isolam, reportam o cabo).
+  fiberIndex      Int?            @map("fiber_index")
+
+  // Coordenadas calculadas pelo backend ao criar/editar (a partir do path
+  // do cabo + distância). Reescritas se cabo muda de path.
+  latitude        Decimal         @db.Decimal(9, 6)
+  longitude       Decimal         @db.Decimal(9, 6)
+
+  type            FiberEventType
+  // Loss medido pelo OTDR no ponto do evento (opcional).
+  lossDb          Decimal?        @map("loss_db") @db.Decimal(4, 2)
+
+  // Quando + quem reportou. resolvedAt = null → evento ativo (precisa atenção).
+  reportedAt      DateTime        @default(now()) @map("reported_at")
+  reportedById    String?         @map("reported_by_id") @db.Uuid
+  resolvedAt      DateTime?       @map("resolved_at")
+  resolvedById    String?         @map("resolved_by_id") @db.Uuid
+
+  // URL externa de foto (gráfico do OTDR, foto da área, etc).
+  photoUrl        String?         @map("photo_url") @db.VarChar(2000)
+  notes           String?         @db.Text
+
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  deletedAt       DateTime?       @map("deleted_at")
+
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cable           FiberCable      @relation(fields: [cableId], references: [id], onDelete: Cascade)
+  reportedBy      User?           @relation("FiberEventReportedBy", fields: [reportedById], references: [id], onDelete: SetNull)
+  resolvedBy      User?           @relation("FiberEventResolvedBy", fields: [resolvedById], references: [id], onDelete: SetNull)
+
+  // Eventos ativos do mapa filtram por (tenantId + resolvedAt IS NULL).
+  @@index([tenantId, cableId])
+  @@index([tenantId, resolvedAt])
+  @@map("fiber_events")
 }
 
 // =============================================================================

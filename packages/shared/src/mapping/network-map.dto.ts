@@ -25,6 +25,9 @@ export const ListNetworkMapQuerySchema = z.object({
   includeCables: z.coerce.boolean().optional().default(true),
   /** Inclui pontos de fusão/emenda (R4). Default true. */
   includeSplices: z.coerce.boolean().optional().default(true),
+  /** Inclui eventos OTDR ativos (R6). Default true — operador quer ver
+   *  rompimentos primeiro. Resolvidos NÃO entram, ficam só no /events. */
+  includeEvents: z.coerce.boolean().optional().default(true),
   /**
    * Filtra caixas/cabos por pasta (R4.5e). CSV de UUIDs. Aceita também a
    * string literal `unassigned` pra incluir itens sem pasta. Default
@@ -97,6 +100,26 @@ export interface NetworkMapSegment {
   isActive: boolean;
 }
 
+/** Evento OTDR ativo (rompimento / atenuação) — R6. */
+export interface NetworkMapEvent {
+  id: string;
+  cableId: string;
+  cableCode: string;
+  latitude: number;
+  longitude: number;
+  type:
+    | 'BREAK'
+    | 'BEND'
+    | 'REFLECTION'
+    | 'ATTENUATION'
+    | 'CONNECTOR'
+    | 'OTHER';
+  distanceMeters: number;
+  fiberIndex: number | null;
+  lossDb: number | null;
+  reportedAt: string;
+}
+
 /** Ponto de fusão / emenda — R4. */
 export interface NetworkMapSplice {
   id: string;
@@ -120,6 +143,7 @@ export interface NetworkMapResponse {
   points: NetworkMapPoint[];
   segments: NetworkMapSegment[];
   splices: NetworkMapSplice[];
+  events: NetworkMapEvent[];
   stats: {
     total: number;
     pops: number;
@@ -128,6 +152,7 @@ export interface NetworkMapResponse {
     enclosures: number;
     cables: number;
     splices: number;
+    events: number;
     withoutGeo: number;
   };
 }

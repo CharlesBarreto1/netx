@@ -1,5 +1,6 @@
 export * from './equipment.dto';
 export * from './fiber.dto';
+export * from './fiber-event.dto';
 export * from './folder.dto';
 export * from './kml.dto';
 export * from './optical.dto';

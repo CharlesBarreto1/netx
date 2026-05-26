@@ -11,6 +11,7 @@ import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
 import { EnclosureTopologyService } from './enclosure-topology.service';
 import { FiberCablesService } from './fiber-cables.service';
+import { FiberEventsService } from './fiber-events.service';
 import { FiberSplicesService } from './fiber-splices.service';
 import { KmlService } from './kml.service';
 import { NetworkFoldersService } from './network-folders.service';
@@ -25,6 +26,7 @@ import { PowerBudgetService } from './power-budget.service';
     OpticalEnclosuresService,
     FiberCablesService,
     FiberSplicesService,
+    FiberEventsService,
     EnclosureTopologyService,
     PowerBudgetService,
     KmlService,
@@ -34,6 +36,7 @@ import { PowerBudgetService } from './power-budget.service';
     OpticalEnclosuresService,
     FiberCablesService,
     FiberSplicesService,
+    FiberEventsService,
     EnclosureTopologyService,
     PowerBudgetService,
     KmlService,

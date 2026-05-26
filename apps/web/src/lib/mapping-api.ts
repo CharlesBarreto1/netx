@@ -108,10 +108,30 @@ export interface NetworkMapSplice {
   lossClass: 'unmeasured' | 'good' | 'warning' | 'bad';
 }
 
+export interface NetworkMapEvent {
+  id: string;
+  cableId: string;
+  cableCode: string;
+  latitude: number;
+  longitude: number;
+  type:
+    | 'BREAK'
+    | 'BEND'
+    | 'REFLECTION'
+    | 'ATTENUATION'
+    | 'CONNECTOR'
+    | 'OTHER';
+  distanceMeters: number;
+  fiberIndex: number | null;
+  lossDb: number | null;
+  reportedAt: string;
+}
+
 export interface NetworkMapResponse {
   points: NetworkMapPoint[];
   segments: NetworkMapSegment[];
   splices: NetworkMapSplice[];
+  events: NetworkMapEvent[];
   stats: {
     total: number;
     pops: number;
@@ -120,6 +140,7 @@ export interface NetworkMapResponse {
     enclosures: number;
     cables: number;
     splices: number;
+    events: number;
     withoutGeo: number;
   };
 }
@@ -131,6 +152,7 @@ export interface ListNetworkMapParams {
   includeEnclosures?: boolean;
   includeCables?: boolean;
   includeSplices?: boolean;
+  includeEvents?: boolean;
   /**
    * Filtra por pasta (R4.5e). Array de UUIDs + opcional 'unassigned'.
    * undefined = sem filtro (default).
@@ -146,6 +168,7 @@ function qsNetwork(p: ListNetworkMapParams = {}): string {
   if (p.includeEnclosures === false) usp.set('includeEnclosures', 'false');
   if (p.includeCables === false) usp.set('includeCables', 'false');
   if (p.includeSplices === false) usp.set('includeSplices', 'false');
+  if (p.includeEvents === false) usp.set('includeEvents', 'false');
   if (p.folderIds && p.folderIds.length > 0) {
     usp.set('folderIds', p.folderIds.join(','));
   }

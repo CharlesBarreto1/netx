@@ -31,13 +31,17 @@ import {
   CalculatePowerBudgetRequestSchema,
   ConfirmKmlImportRequestSchema,
   CreateFiberCableRequestSchema,
+  CreateFiberEventRequestSchema,
   CreateFiberSpliceRequestSchema,
   CreateNetworkFolderRequestSchema,
   CreateOpticalEnclosureRequestSchema,
   ListFiberCablesQuerySchema,
+  ListFiberEventsQuerySchema,
   ListFiberSplicesQuerySchema,
   ListOpticalEnclosuresQuerySchema,
+  ResolveFiberEventRequestSchema,
   UpdateFiberCableRequestSchema,
+  UpdateFiberEventRequestSchema,
   UpdateFiberSpliceRequestSchema,
   UpdateNetworkFolderRequestSchema,
   UpdateOpticalEnclosureRequestSchema,
@@ -47,13 +51,17 @@ import {
   type CalculatePowerBudgetRequest,
   type ConfirmKmlImportRequest,
   type CreateFiberCableRequest,
+  type CreateFiberEventRequest,
   type CreateFiberSpliceRequest,
   type CreateNetworkFolderRequest,
   type CreateOpticalEnclosureRequest,
   type ListFiberCablesQuery,
+  type ListFiberEventsQuery,
   type ListFiberSplicesQuery,
   type ListOpticalEnclosuresQuery,
+  type ResolveFiberEventRequest,
   type UpdateFiberCableRequest,
+  type UpdateFiberEventRequest,
   type UpdateFiberSpliceRequest,
   type UpdateNetworkFolderRequest,
   type UpdateOpticalEnclosureRequest,
@@ -65,6 +73,7 @@ import { ZodBody } from '../../common/zod.pipe';
 import { ZodQueryPipe } from '../crm/zod-query.pipe';
 import { EnclosureTopologyService } from './enclosure-topology.service';
 import { FiberCablesService } from './fiber-cables.service';
+import { FiberEventsService } from './fiber-events.service';
 import { FiberSplicesService } from './fiber-splices.service';
 import { KmlService } from './kml.service';
 import { NetworkFoldersService } from './network-folders.service';
@@ -79,6 +88,7 @@ export class OpticalController {
     private readonly enclosures: OpticalEnclosuresService,
     private readonly fiberCables: FiberCablesService,
     private readonly fiberSplices: FiberSplicesService,
+    private readonly fiberEvents: FiberEventsService,
     private readonly topology: EnclosureTopologyService,
     private readonly powerBudget: PowerBudgetService,
     private readonly kml: KmlService,
@@ -406,5 +416,75 @@ export class OpticalController {
   ) {
     const folderId = id === 'unassigned' ? null : id;
     return this.folders.assignItems(u.tenantId, u.sub, folderId, body);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Eventos OTDR (R6)
+  // ───────────────────────────────────────────────────────────────────────
+  @Get('events')
+  @RequirePermissions('network.read')
+  listEvents(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Query(new ZodQueryPipe(ListFiberEventsQuerySchema))
+    q: ListFiberEventsQuery,
+  ) {
+    return this.fiberEvents.list(u.tenantId, q);
+  }
+
+  @Get('events/:id')
+  @RequirePermissions('network.read')
+  getEvent(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.fiberEvents.findById(u.tenantId, id);
+  }
+
+  @Post('events')
+  @RequirePermissions('network.write')
+  createEvent(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @ZodBody(CreateFiberEventRequestSchema) body: CreateFiberEventRequest,
+  ) {
+    return this.fiberEvents.create(u.tenantId, u.sub, body);
+  }
+
+  @Patch('events/:id')
+  @RequirePermissions('network.write')
+  updateEvent(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(UpdateFiberEventRequestSchema) body: UpdateFiberEventRequest,
+  ) {
+    return this.fiberEvents.update(u.tenantId, u.sub, id, body);
+  }
+
+  @Post('events/:id/resolve')
+  @RequirePermissions('network.write')
+  resolveEvent(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(ResolveFiberEventRequestSchema) body: ResolveFiberEventRequest,
+  ) {
+    return this.fiberEvents.resolve(u.tenantId, u.sub, id, body);
+  }
+
+  @Post('events/:id/reopen')
+  @RequirePermissions('network.write')
+  reopenEvent(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.fiberEvents.reopen(u.tenantId, u.sub, id);
+  }
+
+  @Delete('events/:id')
+  @HttpCode(204)
+  @RequirePermissions('network.delete')
+  async removeEvent(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    await this.fiberEvents.remove(u.tenantId, u.sub, id);
   }
 }
