@@ -93,6 +93,7 @@ model Tenant {
   opticalEnclosures    OpticalEnclosure[]
   opticalPorts         OpticalPort[]
   fiberCables          FiberCable[]
+  fiberSplices         FiberSplice[]
 
   // WhatsApp / Atendimento
   whatsappInstances    WhatsappInstance[]
@@ -238,6 +239,9 @@ model User {
   opticalEnclosuresUpdated OpticalEnclosure[] @relation("OpticalEnclosureUpdatedBy")
   fiberCablesCreated   FiberCable[]   @relation("FiberCableCreatedBy")
   fiberCablesUpdated   FiberCable[]   @relation("FiberCableUpdatedBy")
+  fiberSplicesCreated  FiberSplice[]  @relation("FiberSpliceCreatedBy")
+  fiberSplicesUpdated  FiberSplice[]  @relation("FiberSpliceUpdatedBy")
+  fiberSplicesMeasured FiberSplice[]  @relation("FiberSpliceMeasuredBy")
 
   // WhatsApp / Atendimento
   whatsappConversationsAssigned WhatsappConversation[] @relation("WaConversationAssignee")
@@ -2948,8 +2952,73 @@ model FiberCable {
   tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdBy       User?            @relation("FiberCableCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy       User?            @relation("FiberCableUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  splicesA        FiberSplice[]    @relation("SpliceCableA")
+  splicesB        FiberSplice[]    @relation("SpliceCableB")
 
   @@unique([tenantId, code])
   @@index([tenantId, type])
   @@map("fiber_cables")
+}
+
+// =============================================================================
+// Rede óptica (OSP) — R4: Fusões / emendas (FiberSplice)
+// =============================================================================
+// Cada fusão é um ponto físico onde 2 fibras se encontram: cabo A fibra X
+// fundida com cabo B fibra Y. lossDb é a atenuação medida (machine fusora /
+// OTDR puxa esse número). Modelo permite a MESMA fibra aparecer em até 2
+// splices ativas (representando as 2 pontas — fundida nas extremidades em
+// emendas distintas), com warning na UI quando >2. Não bloqueamos no banco
+// pra preservar flexibilidade operacional — anel de proteção viola essa
+// regra propositadamente, por exemplo.
+
+model FiberSplice {
+  id              String          @id @default(uuid()) @db.Uuid
+  tenantId        String          @map("tenant_id") @db.Uuid
+
+  // Ponto físico da fusão. Pode ou não coincidir com uma OpticalEnclosure
+  // existente (caixa de emenda). Por enquanto não FK — operador pode marcar
+  // qualquer ponto. Evolução futura: enclosureId opcional pra associar.
+  latitude        Decimal         @db.Decimal(9, 6)
+  longitude       Decimal         @db.Decimal(9, 6)
+
+  // Lado A
+  cableAId        String          @map("cable_a_id") @db.Uuid
+  // Índice 1..cableA.fiberCount. Validado no service.
+  fiberAIndex     Int             @map("fiber_a_index")
+
+  // Lado B
+  cableBId        String          @map("cable_b_id") @db.Uuid
+  fiberBIndex     Int             @map("fiber_b_index")
+
+  // Atenuação medida em dB. Default 0.1 (ITU-T G.652 típico em campo). Operador
+  // sobrescreve com leitura do OTDR/fusora. nullable pra "não medido ainda".
+  lossDb          Decimal?        @map("loss_db") @db.Decimal(4, 2)
+
+  // URL externa de foto (operador hospeda onde quiser; futura iteração:
+  // upload integrado via StorageModule + MinIO). nullable.
+  photoUrl        String?         @map("photo_url") @db.VarChar(2000)
+
+  // Quando + quem fez a medição. measuredAt nulo = não medido.
+  measuredAt      DateTime?       @map("measured_at")
+  measuredById    String?         @map("measured_by_id") @db.Uuid
+
+  notes           String?         @db.Text
+
+  createdById     String?         @map("created_by_id") @db.Uuid
+  updatedById     String?         @map("updated_by_id") @db.Uuid
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  deletedAt       DateTime?       @map("deleted_at")
+
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cableA          FiberCable      @relation("SpliceCableA", fields: [cableAId], references: [id], onDelete: Restrict)
+  cableB          FiberCable      @relation("SpliceCableB", fields: [cableBId], references: [id], onDelete: Restrict)
+  measuredBy      User?           @relation("FiberSpliceMeasuredBy", fields: [measuredById], references: [id], onDelete: SetNull)
+  createdBy       User?           @relation("FiberSpliceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy       User?           @relation("FiberSpliceUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  // Busca rápida por cabo (R5 power budget traversa o grafo de splices).
+  @@index([tenantId, cableAId, fiberAIndex])
+  @@index([tenantId, cableBId, fiberBIndex])
+  @@map("fiber_splices")
 }

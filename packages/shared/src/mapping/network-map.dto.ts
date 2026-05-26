@@ -23,6 +23,8 @@ export const ListNetworkMapQuerySchema = z.object({
   includeEnclosures: z.coerce.boolean().optional().default(true),
   /** Inclui cabos de fibra (polylines — R3). Default true. */
   includeCables: z.coerce.boolean().optional().default(true),
+  /** Inclui pontos de fusão/emenda (R4). Default true. */
+  includeSplices: z.coerce.boolean().optional().default(true),
 });
 export type ListNetworkMapQuery = z.infer<typeof ListNetworkMapQuerySchema>;
 
@@ -78,9 +80,29 @@ export interface NetworkMapSegment {
   isActive: boolean;
 }
 
+/** Ponto de fusão / emenda — R4. */
+export interface NetworkMapSplice {
+  id: string;
+  latitude: number;
+  longitude: number;
+  /** "CABO-BB-001 f3 ↔ CABO-DIST-007 f5" pra popup. */
+  label: string;
+  cableACode: string;
+  cableBCode: string;
+  fiberAIndex: number;
+  fiberBIndex: number;
+  /** Cor TIA-598 da fibra A (hex). */
+  fiberAColor: string;
+  fiberBColor: string;
+  lossDb: number | null;
+  /** Classificação visual da perda. */
+  lossClass: 'unmeasured' | 'good' | 'warning' | 'bad';
+}
+
 export interface NetworkMapResponse {
   points: NetworkMapPoint[];
   segments: NetworkMapSegment[];
+  splices: NetworkMapSplice[];
   stats: {
     total: number;
     pops: number;
@@ -88,6 +110,7 @@ export interface NetworkMapResponse {
     olts: number;
     enclosures: number;
     cables: number;
+    splices: number;
     withoutGeo: number;
   };
 }

@@ -27,6 +27,7 @@ import type {
   NetworkMapPoint,
   NetworkMapPointKind,
   NetworkMapSegment,
+  NetworkMapSplice,
 } from '@/lib/mapping-api';
 
 import 'leaflet/dist/leaflet.css';
@@ -34,10 +35,12 @@ import 'leaflet/dist/leaflet.css';
 export interface NetworkMapProps {
   points: NetworkMapPoint[];
   segments?: NetworkMapSegment[];
+  splices?: NetworkMapSplice[];
   center?: [number, number];
   zoom?: number;
   onMarkerClick?: (point: NetworkMapPoint) => void;
   onSegmentClick?: (segment: NetworkMapSegment) => void;
+  onSpliceClick?: (splice: NetworkMapSplice) => void;
   height?: string;
 }
 
@@ -47,10 +50,12 @@ const DEFAULT_ZOOM = 13;
 export function NetworkMap({
   points,
   segments = [],
+  splices = [],
   center,
   zoom = DEFAULT_ZOOM,
   onMarkerClick,
   onSegmentClick,
+  onSpliceClick,
   height = '600px',
 }: NetworkMapProps) {
   const initialCenter: [number, number] =
@@ -59,7 +64,9 @@ export function NetworkMap({
       ? [points[0].latitude, points[0].longitude]
       : segments.length > 0 && segments[0].path.length > 0
         ? [segments[0].path[0].latitude, segments[0].path[0].longitude]
-        : DEFAULT_CENTER);
+        : splices.length > 0
+          ? [splices[0].latitude, splices[0].longitude]
+          : DEFAULT_CENTER);
 
   return (
     <div
@@ -80,6 +87,7 @@ export function NetworkMap({
         <FitBoundsToFeatures
           points={points}
           segments={segments}
+          splices={splices}
           initialCenter={initialCenter}
         />
         {/* Cabos primeiro pra ficarem ABAIXO dos pinos no z-order. */}
@@ -116,6 +124,21 @@ export function NetworkMap({
             </Popup>
           </Marker>
         ))}
+        {/* Fusões por cima de tudo — pino-estrela pequeno mas distinto. */}
+        {splices.map((s) => (
+          <Marker
+            key={`splice-${s.id}`}
+            position={[s.latitude, s.longitude]}
+            icon={iconForSplice(s)}
+            eventHandlers={
+              onSpliceClick ? { click: () => onSpliceClick(s) } : undefined
+            }
+          >
+            <Popup>
+              <SplicePopupContent splice={s} />
+            </Popup>
+          </Marker>
+        ))}
       </MapContainer>
     </div>
   );
@@ -124,10 +147,12 @@ export function NetworkMap({
 function FitBoundsToFeatures({
   points,
   segments,
+  splices,
   initialCenter,
 }: {
   points: NetworkMapPoint[];
   segments: NetworkMapSegment[];
+  splices: NetworkMapSplice[];
   initialCenter: [number, number];
 }) {
   const map = useMap();
@@ -137,6 +162,7 @@ function FitBoundsToFeatures({
     segments.forEach((s) =>
       s.path.forEach((p) => all.push([p.latitude, p.longitude])),
     );
+    splices.forEach((s) => all.push([s.latitude, s.longitude]));
     if (all.length === 0) {
       map.setView(initialCenter, DEFAULT_ZOOM);
       return;
@@ -151,8 +177,47 @@ function FitBoundsToFeatures({
   }, [
     points.map((p) => `${p.kind}-${p.id}`).join(','),
     segments.map((s) => s.id).join(','),
+    splices.map((s) => s.id).join(','),
   ]);
   return null;
+}
+
+// Cor do ícone da fusão por classe da perda.
+function colorForSpliceLoss(loss: NetworkMapSplice['lossClass']): string {
+  switch (loss) {
+    case 'unmeasured':
+      return '#9ca3af'; // gray-400
+    case 'good':
+      return '#059669'; // emerald-600
+    case 'warning':
+      return '#f59e0b'; // amber-500
+    case 'bad':
+      return '#dc2626'; // red-600
+  }
+}
+
+function iconForSplice(s: NetworkMapSplice): L.DivIcon {
+  const color = colorForSpliceLoss(s.lossClass);
+  // Pino-estrela: dois semicírculos com as cores TIA das fibras A e B,
+  // borda colorida por classe de perda. Fica chamativo no mapa.
+  const html = `
+    <svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <clipPath id="halfA-${s.id}"><rect x="0" y="0" width="11" height="22"/></clipPath>
+        <clipPath id="halfB-${s.id}"><rect x="11" y="0" width="11" height="22"/></clipPath>
+      </defs>
+      <circle cx="11" cy="11" r="9" fill="${s.fiberAColor}" clip-path="url(#halfA-${s.id})"/>
+      <circle cx="11" cy="11" r="9" fill="${s.fiberBColor}" clip-path="url(#halfB-${s.id})"/>
+      <circle cx="11" cy="11" r="9" fill="none" stroke="${color}" stroke-width="3"/>
+    </svg>
+  `;
+  return L.divIcon({
+    html,
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+    popupAnchor: [0, -11],
+    className: '',
+  });
 }
 
 function colorForCableType(t: NetworkMapSegment['type']): string {
@@ -169,6 +234,63 @@ function colorForCableType(t: NetworkMapSegment['type']): string {
 function formatLength(meters: number): string {
   if (meters >= 1000) return `${(meters / 1000).toFixed(2)} km`;
   return `${meters.toFixed(0)} m`;
+}
+
+function SplicePopupContent({ splice }: { splice: NetworkMapSplice }) {
+  const lossLabel =
+    splice.lossClass === 'unmeasured'
+      ? 'Não medido'
+      : splice.lossClass === 'good'
+        ? 'OK'
+        : splice.lossClass === 'warning'
+          ? 'Atenção'
+          : 'Refazer';
+  const lossColor = colorForSpliceLoss(splice.lossClass);
+  return (
+    <div style={{ minWidth: 220 }}>
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>Fusão</div>
+      <div style={{ fontSize: 12 }}>
+        <strong>A:</strong> {splice.cableACode} ·{' '}
+        <span
+          style={{
+            display: 'inline-block',
+            width: 10,
+            height: 10,
+            backgroundColor: splice.fiberAColor,
+            border: '1px solid #94a3b8',
+            borderRadius: '50%',
+            verticalAlign: 'middle',
+          }}
+        />{' '}
+        f{splice.fiberAIndex}
+      </div>
+      <div style={{ fontSize: 12 }}>
+        <strong>B:</strong> {splice.cableBCode} ·{' '}
+        <span
+          style={{
+            display: 'inline-block',
+            width: 10,
+            height: 10,
+            backgroundColor: splice.fiberBColor,
+            border: '1px solid #94a3b8',
+            borderRadius: '50%',
+            verticalAlign: 'middle',
+          }}
+        />{' '}
+        f{splice.fiberBIndex}
+      </div>
+      <div style={{ fontSize: 12, marginTop: 6 }}>
+        <strong>Loss:</strong>{' '}
+        {splice.lossDb != null ? `${splice.lossDb.toFixed(2)} dB` : '—'}{' '}
+        <span style={{ color: lossColor, fontWeight: 600 }}>· {lossLabel}</span>
+      </div>
+      <div style={{ fontSize: 12, marginTop: 8 }}>
+        <a href="/network/splices" style={{ color: '#2563eb' }}>
+          Abrir CRUD →
+        </a>
+      </div>
+    </div>
+  );
 }
 
 function CablePopupContent({ segment }: { segment: NetworkMapSegment }) {

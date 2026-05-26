@@ -82,6 +82,7 @@ const messages = {
     equipment: 'Equipment',
     opticalEnclosures: 'Optical enclosures',
     fiberCables: 'Fiber cables',
+    fiberSplices: 'Splices',
     radiusLog: 'RADIUS Log',
     chat: 'Chat',
     whatsappAdmin: 'WhatsApp',

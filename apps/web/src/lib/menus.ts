@@ -129,6 +129,7 @@ export const MENU_GROUPS: MenuGroup[] = [
       { key: 'equipment', href: '/network/equipment', labelKey: 'equipment', permission: 'network.read' },
       { key: 'opticalEnclosures', href: '/network/optical', labelKey: 'opticalEnclosures', permission: 'network.read' },
       { key: 'fiberCables', href: '/network/fiber', labelKey: 'fiberCables', permission: 'network.read' },
+      { key: 'fiberSplices', href: '/network/splices', labelKey: 'fiberSplices', permission: 'network.read' },
       { key: 'radiusLog', href: '/network/radius-log', labelKey: 'radiusLog', permission: 'audit.read' },
     ],
   },

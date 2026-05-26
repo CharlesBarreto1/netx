@@ -93,9 +93,25 @@ export interface NetworkMapSegment {
   isActive: boolean;
 }
 
+export interface NetworkMapSplice {
+  id: string;
+  latitude: number;
+  longitude: number;
+  label: string;
+  cableACode: string;
+  cableBCode: string;
+  fiberAIndex: number;
+  fiberBIndex: number;
+  fiberAColor: string;
+  fiberBColor: string;
+  lossDb: number | null;
+  lossClass: 'unmeasured' | 'good' | 'warning' | 'bad';
+}
+
 export interface NetworkMapResponse {
   points: NetworkMapPoint[];
   segments: NetworkMapSegment[];
+  splices: NetworkMapSplice[];
   stats: {
     total: number;
     pops: number;
@@ -103,6 +119,7 @@ export interface NetworkMapResponse {
     olts: number;
     enclosures: number;
     cables: number;
+    splices: number;
     withoutGeo: number;
   };
 }
@@ -113,6 +130,7 @@ export interface ListNetworkMapParams {
   includeOlts?: boolean;
   includeEnclosures?: boolean;
   includeCables?: boolean;
+  includeSplices?: boolean;
 }
 
 function qsNetwork(p: ListNetworkMapParams = {}): string {
@@ -122,6 +140,7 @@ function qsNetwork(p: ListNetworkMapParams = {}): string {
   if (p.includeOlts === false) usp.set('includeOlts', 'false');
   if (p.includeEnclosures === false) usp.set('includeEnclosures', 'false');
   if (p.includeCables === false) usp.set('includeCables', 'false');
+  if (p.includeSplices === false) usp.set('includeSplices', 'false');
   const s = usp.toString();
   return s ? `?${s}` : '';
 }

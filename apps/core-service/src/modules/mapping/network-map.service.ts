@@ -11,12 +11,15 @@
  * sugerir "X equipamentos sem coordenada — marcar no mapa").
  */
 import { Injectable } from '@nestjs/common';
-import type {
-  ListNetworkMapQuery,
-  NetworkMapPoint,
-  NetworkMapPointKind,
-  NetworkMapResponse,
-  NetworkMapSegment,
+import {
+  classifyLoss,
+  fiberColor,
+  type ListNetworkMapQuery,
+  type NetworkMapPoint,
+  type NetworkMapPointKind,
+  type NetworkMapResponse,
+  type NetworkMapSegment,
+  type NetworkMapSplice,
 } from '@netx/shared';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -31,6 +34,7 @@ export class NetworkMapService {
   ): Promise<NetworkMapResponse> {
     const points: NetworkMapPoint[] = [];
     const segments: NetworkMapSegment[] = [];
+    const splices: NetworkMapSplice[] = [];
 
     // ── Stats: contamos "withoutGeo" por tipo, separado da response principal.
     let popsCount = 0;
@@ -38,6 +42,7 @@ export class NetworkMapService {
     let oltsCount = 0;
     let enclosuresCount = 0;
     let cablesCount = 0;
+    let splicesCount = 0;
     let withoutGeo = 0;
 
     if (query.includePops !== false) {
@@ -244,16 +249,54 @@ export class NetworkMapService {
       }
     }
 
+    if (query.includeSplices !== false) {
+      const allSplices = await this.prisma.fiberSplice.findMany({
+        where: { tenantId, deletedAt: null },
+        select: {
+          id: true,
+          latitude: true,
+          longitude: true,
+          fiberAIndex: true,
+          fiberBIndex: true,
+          lossDb: true,
+          cableA: { select: { code: true } },
+          cableB: { select: { code: true } },
+        },
+      });
+      for (const s of allSplices) {
+        const lossDb = s.lossDb != null ? Number(s.lossDb) : null;
+        const colorA = fiberColor(s.fiberAIndex);
+        const colorB = fiberColor(s.fiberBIndex);
+        splices.push({
+          id: s.id,
+          latitude: Number(s.latitude),
+          longitude: Number(s.longitude),
+          label: `${s.cableA.code} f${s.fiberAIndex} ↔ ${s.cableB.code} f${s.fiberBIndex}`,
+          cableACode: s.cableA.code,
+          cableBCode: s.cableB.code,
+          fiberAIndex: s.fiberAIndex,
+          fiberBIndex: s.fiberBIndex,
+          fiberAColor: colorA.hex,
+          fiberBColor: colorB.hex,
+          lossDb,
+          lossClass: classifyLoss(lossDb),
+        });
+        splicesCount++;
+      }
+    }
+
     return {
       points,
       segments,
+      splices,
       stats: {
-        total: points.length + segments.length,
+        total: points.length + segments.length + splices.length,
         pops: popsCount,
         equipment: equipmentCount,
         olts: oltsCount,
         enclosures: enclosuresCount,
         cables: cablesCount,
+        splices: splicesCount,
         withoutGeo,
       },
     };

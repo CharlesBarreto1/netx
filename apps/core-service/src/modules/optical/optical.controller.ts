@@ -21,18 +21,24 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   CreateFiberCableRequestSchema,
+  CreateFiberSpliceRequestSchema,
   CreateOpticalEnclosureRequestSchema,
   ListFiberCablesQuerySchema,
+  ListFiberSplicesQuerySchema,
   ListOpticalEnclosuresQuerySchema,
   UpdateFiberCableRequestSchema,
+  UpdateFiberSpliceRequestSchema,
   UpdateOpticalEnclosureRequestSchema,
   UpdateOpticalPortRequestSchema,
   type AuthenticatedPrincipal,
   type CreateFiberCableRequest,
+  type CreateFiberSpliceRequest,
   type CreateOpticalEnclosureRequest,
   type ListFiberCablesQuery,
+  type ListFiberSplicesQuery,
   type ListOpticalEnclosuresQuery,
   type UpdateFiberCableRequest,
+  type UpdateFiberSpliceRequest,
   type UpdateOpticalEnclosureRequest,
   type UpdateOpticalPortRequest,
 } from '@netx/shared';
@@ -41,6 +47,7 @@ import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { ZodBody } from '../../common/zod.pipe';
 import { ZodQueryPipe } from '../crm/zod-query.pipe';
 import { FiberCablesService } from './fiber-cables.service';
+import { FiberSplicesService } from './fiber-splices.service';
 import { OpticalEnclosuresService } from './optical-enclosures.service';
 
 @ApiTags('optical')
@@ -50,6 +57,7 @@ export class OpticalController {
   constructor(
     private readonly enclosures: OpticalEnclosuresService,
     private readonly fiberCables: FiberCablesService,
+    private readonly fiberSplices: FiberSplicesService,
   ) {}
 
   // ───────────────────────────────────────────────────────────────────────
@@ -176,5 +184,56 @@ export class OpticalController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     await this.fiberCables.remove(u.tenantId, u.sub, id);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Fusões / emendas (R4)
+  // ───────────────────────────────────────────────────────────────────────
+  @Get('splices')
+  @RequirePermissions('network.read')
+  listSplices(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Query(new ZodQueryPipe(ListFiberSplicesQuerySchema))
+    q: ListFiberSplicesQuery,
+  ) {
+    return this.fiberSplices.list(u.tenantId, q);
+  }
+
+  @Get('splices/:id')
+  @RequirePermissions('network.read')
+  getSplice(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.fiberSplices.findById(u.tenantId, id);
+  }
+
+  @Post('splices')
+  @RequirePermissions('network.write')
+  createSplice(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @ZodBody(CreateFiberSpliceRequestSchema) body: CreateFiberSpliceRequest,
+  ) {
+    return this.fiberSplices.create(u.tenantId, u.sub, body);
+  }
+
+  @Patch('splices/:id')
+  @RequirePermissions('network.write')
+  updateSplice(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(UpdateFiberSpliceRequestSchema) body: UpdateFiberSpliceRequest,
+  ) {
+    return this.fiberSplices.update(u.tenantId, u.sub, id, body);
+  }
+
+  @Delete('splices/:id')
+  @HttpCode(204)
+  @RequirePermissions('network.delete')
+  async removeSplice(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    await this.fiberSplices.remove(u.tenantId, u.sub, id);
   }
 }
