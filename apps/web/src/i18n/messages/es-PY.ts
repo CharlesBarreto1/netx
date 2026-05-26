@@ -80,6 +80,7 @@ const messages = {
     security: 'Mi seguridad',
     pops: 'POPs',
     equipment: 'Equipamientos',
+    opticalEnclosures: 'Cajas ópticas',
     radiusLog: 'Log RADIUS',
     chat: 'Atención',
     whatsappAdmin: 'WhatsApp',

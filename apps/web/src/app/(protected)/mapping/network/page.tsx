@@ -41,6 +41,7 @@ export default function MappingNetworkPage() {
     includePops: true,
     includeEquipment: true,
     includeOlts: true,
+    includeEnclosures: true,
   });
 
   const { data, isLoading } = useSWR<NetworkMapResponse>(
@@ -77,6 +78,9 @@ export default function MappingNetworkPage() {
           <Link href="/olts">
             <Button variant="outline">OLTs</Button>
           </Link>
+          <Link href="/network/optical">
+            <Button variant="outline">Caixas ópticas</Button>
+          </Link>
         </div>
       </header>
 
@@ -99,6 +103,12 @@ export default function MappingNetworkPage() {
           color="#7c3aed"
           active={filters.includeOlts ?? true}
           onClick={() => toggle('includeOlts')}
+        />
+        <FilterChip
+          label={`Caixas ópticas (${stats?.enclosures ?? 0})`}
+          color="#0d9488"
+          active={filters.includeEnclosures ?? true}
+          onClick={() => toggle('includeEnclosures')}
         />
         <div className="ml-auto text-xs text-text-muted">
           Total visível: <strong>{stats?.total ?? 0}</strong>

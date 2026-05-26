@@ -34,6 +34,7 @@ export class NetworkMapService {
     let popsCount = 0;
     let equipmentCount = 0;
     let oltsCount = 0;
+    let enclosuresCount = 0;
     let withoutGeo = 0;
 
     if (query.includePops !== false) {
@@ -154,6 +155,49 @@ export class NetworkMapService {
       }
     }
 
+    if (query.includeEnclosures !== false) {
+      const allEnc = await this.prisma.opticalEnclosure.findMany({
+        where: { tenantId, deletedAt: null },
+        select: {
+          id: true,
+          code: true,
+          type: true,
+          isActive: true,
+          capacity: true,
+          latitude: true,
+          longitude: true,
+          ports: { select: { status: true } },
+        },
+      });
+      for (const e of allEnc) {
+        if (e.latitude == null || e.longitude == null) {
+          withoutGeo++;
+          continue;
+        }
+        const used = e.ports.filter(
+          (p) => p.status === 'USED' || p.status === 'RESERVED',
+        ).length;
+        const occupancyPct =
+          e.capacity > 0 ? Math.round((used / e.capacity) * 100) : 0;
+        points.push({
+          id: e.id,
+          kind: e.type, // enum bate com NetworkMapPointKind (CTO/NAP/SPLITTER/EMENDA)
+          name: e.code,
+          code: e.code,
+          latitude: Number(e.latitude),
+          longitude: Number(e.longitude),
+          popId: null,
+          isActive: e.isActive,
+          vendor: null,
+          model: null,
+          ipAddress: null,
+          capacity: e.capacity,
+          occupancyPct,
+        });
+        enclosuresCount++;
+      }
+    }
+
     return {
       points,
       stats: {
@@ -161,6 +205,7 @@ export class NetworkMapService {
         pops: popsCount,
         equipment: equipmentCount,
         olts: oltsCount,
+        enclosures: enclosuresCount,
         withoutGeo,
       },
     };

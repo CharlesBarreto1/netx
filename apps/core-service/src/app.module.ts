@@ -17,6 +17,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { BackupsModule } from './modules/backups/backups.module';
 import { HealthModule } from './modules/health/health.module';
 import { NetworkModule } from './modules/network/network.module';
+import { OpticalModule } from './modules/optical/optical.module';
 import { PortalModule } from './modules/portal/portal.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { MobileModule } from './modules/mobile/mobile.module';
@@ -83,6 +84,7 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
     ReportsModule,
     BackupsModule,
     NetworkModule,
+    OpticalModule,
     PortalModule,
     RadiusModule,
     SifenModule,

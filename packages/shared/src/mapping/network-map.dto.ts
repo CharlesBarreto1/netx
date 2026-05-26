@@ -19,6 +19,8 @@ export const ListNetworkMapQuerySchema = z.object({
   includeEquipment: z.coerce.boolean().optional().default(true),
   /** Inclui OLTs do módulo Provisioning (modelo rico, separado de network_equipment). Default true. */
   includeOlts: z.coerce.boolean().optional().default(true),
+  /** Inclui caixas ópticas (CTO/NAP/Splitter/Emenda — R2). Default true. */
+  includeEnclosures: z.coerce.boolean().optional().default(true),
 });
 export type ListNetworkMapQuery = z.infer<typeof ListNetworkMapQuerySchema>;
 
@@ -26,14 +28,24 @@ export type ListNetworkMapQuery = z.infer<typeof ListNetworkMapQuerySchema>;
  * Discriminator pra renderização: cada `kind` mapeia pra um ícone/cor no
  * frontend (ver `mapping/network/page.tsx`).
  */
-export type NetworkMapPointKind = 'POP' | 'BNG' | 'OLT' | 'ROUTER' | 'SWITCH' | 'OTHER';
+export type NetworkMapPointKind =
+  | 'POP'
+  | 'BNG'
+  | 'OLT'
+  | 'ROUTER'
+  | 'SWITCH'
+  | 'OTHER'
+  | 'CTO'
+  | 'NAP'
+  | 'SPLITTER'
+  | 'EMENDA';
 
 export interface NetworkMapPoint {
   id: string;
   kind: NetworkMapPointKind;
-  /** Nome humano: "POP-Centro", "BNG-MK-01", "OLT MA5800". */
+  /** Nome humano: "POP-Centro", "BNG-MK-01", "OLT MA5800", "CTO-001". */
   name: string;
-  /** Código curto (NetworkPop.code) ou null. */
+  /** Código curto (NetworkPop.code, OpticalEnclosure.code) ou null. */
   code: string | null;
   latitude: number;
   longitude: number;
@@ -45,6 +57,10 @@ export interface NetworkMapPoint {
   vendor: string | null;
   model: string | null;
   ipAddress: string | null;
+  /** Ocupação % (USED+RESERVED / capacity) — só preenchido pra caixas ópticas. */
+  occupancyPct?: number;
+  /** Capacidade total de portas — só preenchido pra caixas ópticas. */
+  capacity?: number;
 }
 
 export interface NetworkMapResponse {
@@ -54,6 +70,7 @@ export interface NetworkMapResponse {
     pops: number;
     equipment: number;
     olts: number;
+    enclosures: number;
     withoutGeo: number;
   };
 }

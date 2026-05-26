@@ -109,14 +109,23 @@ function NetworkPopupContent({ point }: { point: NetworkMapPoint }) {
   ) : (
     <span style={{ color: '#dc2626', fontWeight: 600 }}>Inativo</span>
   );
-  // Linkar pro CRUD certo dependendo do kind. OLT vai pra /olts; POP+Equipment
-  // pra /network/{pops,equipment}.
+  // Linkar pro CRUD certo dependendo do kind.
   const detailHref =
     point.kind === 'POP'
       ? `/network/pops`
       : point.kind === 'OLT'
         ? `/olts`
-        : `/network/equipment`;
+        : point.kind === 'CTO' ||
+            point.kind === 'NAP' ||
+            point.kind === 'SPLITTER' ||
+            point.kind === 'EMENDA'
+          ? `/network/optical`
+          : `/network/equipment`;
+  const isOptical =
+    point.kind === 'CTO' ||
+    point.kind === 'NAP' ||
+    point.kind === 'SPLITTER' ||
+    point.kind === 'EMENDA';
   return (
     <div style={{ minWidth: 220 }}>
       <div style={{ fontWeight: 600, marginBottom: 4 }}>{point.name}</div>
@@ -135,6 +144,12 @@ function NetworkPopupContent({ point }: { point: NetworkMapPoint }) {
           <strong>IP:</strong> <code>{point.ipAddress}</code>
         </div>
       )}
+      {isOptical && point.capacity != null && (
+        <div style={{ fontSize: 12, marginTop: 6 }}>
+          <strong>Ocupação:</strong> {point.occupancyPct ?? 0}% · {point.capacity}{' '}
+          portas
+        </div>
+      )}
       <div style={{ fontSize: 12, marginTop: 8 }}>
         <a href={detailHref} style={{ color: '#2563eb' }}>
           Abrir CRUD →
@@ -151,11 +166,19 @@ const KIND_LABEL: Record<NetworkMapPointKind, string> = {
   ROUTER: 'Router',
   SWITCH: 'Switch',
   OTHER: 'Outro',
+  CTO: 'CTO',
+  NAP: 'NAP',
+  SPLITTER: 'Splitter',
+  EMENDA: 'Emenda',
 };
 
 // ─── Cores e ícones por tipo ────────────────────────────────────────────────
 // Paleta intencionalmente distinta da do CustomerMap (status RADIUS) pra
 // não confundir admin que olha 2 mapas seguidos.
+//
+// Caixas ópticas (CTO/NAP/Splitter) ganham cor BASE neutra (verde-azul-cinza)
+// que é sobrescrita por uma cor de ocupação quando >0% — admin vê de relance
+// quais CTOs estão lotadas.
 function colorForKind(kind: NetworkMapPointKind): string {
   switch (kind) {
     case 'POP':
@@ -168,25 +191,60 @@ function colorForKind(kind: NetworkMapPointKind): string {
       return '#0891b2'; // cyan-600
     case 'SWITCH':
       return '#475569'; // slate-600
+    case 'CTO':
+    case 'NAP':
+      return '#0d9488'; // teal-600 — caixa de cliente
+    case 'SPLITTER':
+      return '#0f766e'; // teal-700 — só passivo
+    case 'EMENDA':
+      return '#525252'; // neutral-600 — sem cliente
     case 'OTHER':
       return '#6b7280'; // gray-500
   }
 }
 
+// Quando é caixa óptica com ocupação, cor reflete saturação (verde → vermelho).
+function colorForOccupancy(pct: number): string {
+  if (pct >= 80) return '#dc2626'; // red-600
+  if (pct >= 50) return '#f59e0b'; // amber-500
+  return '#059669'; // emerald-600
+}
+
 function iconForPoint(p: NetworkMapPoint): L.DivIcon {
-  const base = colorForKind(p.kind);
-  // Inativo: desaturado + opacity menor
+  const isOptical =
+    p.kind === 'CTO' ||
+    p.kind === 'NAP' ||
+    p.kind === 'SPLITTER' ||
+    p.kind === 'EMENDA';
+  // Pra caixas com ocupação, usa cor de saturação. Pras outras (e EMENDA
+  // que não tem porta), usa a cor base do kind.
+  const base =
+    isOptical && p.kind !== 'EMENDA' && (p.occupancyPct ?? 0) > 0
+      ? colorForOccupancy(p.occupancyPct ?? 0)
+      : colorForKind(p.kind);
   const color = p.isActive ? base : '#9ca3af';
   const opacity = p.isActive ? 1 : 0.6;
-  // Ícone quadrado com letra do kind dentro — diferencia rápido de cliente
-  // (que é drop-pin) sem precisar olhar legenda.
-  const letter = p.kind === 'POP' ? 'P' : p.kind[0];
+  // Letra do kind dentro do quadrado. CTO/NAP/SPLITTER usam 2 letras pra
+  // distinguir (CT/NA/SP/EM).
+  const letter =
+    p.kind === 'POP'
+      ? 'P'
+      : p.kind === 'CTO'
+        ? 'CT'
+        : p.kind === 'NAP'
+          ? 'NA'
+          : p.kind === 'SPLITTER'
+            ? 'SP'
+            : p.kind === 'EMENDA'
+              ? 'EM'
+              : p.kind[0];
+  const fontSize = letter.length === 2 ? 11 : 14;
   const html = `
     <svg width="30" height="30" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg" style="opacity:${opacity}">
       <rect x="1" y="1" width="28" height="28" rx="4" ry="4"
             fill="${color}" stroke="#1f2937" stroke-width="1.5"/>
       <text x="15" y="20" text-anchor="middle" font-family="system-ui, sans-serif"
-            font-size="14" font-weight="700" fill="white">${letter}</text>
+            font-size="${fontSize}" font-weight="700" fill="white">${letter}</text>
     </svg>
   `;
   return L.divIcon({

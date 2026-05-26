@@ -52,14 +52,18 @@ function qs(params: ListCustomerMapParams = {}): string {
   return s ? `?${s}` : '';
 }
 
-// ─── Network map (R1 — POPs + Equipamentos + OLTs) ─────────────────────────
+// ─── Network map (R1 + R2 — POPs, Equipamentos, OLTs, Caixas ópticas) ─────
 export type NetworkMapPointKind =
   | 'POP'
   | 'BNG'
   | 'OLT'
   | 'ROUTER'
   | 'SWITCH'
-  | 'OTHER';
+  | 'OTHER'
+  | 'CTO'
+  | 'NAP'
+  | 'SPLITTER'
+  | 'EMENDA';
 
 export interface NetworkMapPoint {
   id: string;
@@ -73,6 +77,10 @@ export interface NetworkMapPoint {
   vendor: string | null;
   model: string | null;
   ipAddress: string | null;
+  /** Ocupação % — só caixas ópticas. */
+  occupancyPct?: number;
+  /** Capacidade de portas — só caixas ópticas. */
+  capacity?: number;
 }
 
 export interface NetworkMapResponse {
@@ -82,6 +90,7 @@ export interface NetworkMapResponse {
     pops: number;
     equipment: number;
     olts: number;
+    enclosures: number;
     withoutGeo: number;
   };
 }
@@ -90,6 +99,7 @@ export interface ListNetworkMapParams {
   includePops?: boolean;
   includeEquipment?: boolean;
   includeOlts?: boolean;
+  includeEnclosures?: boolean;
 }
 
 function qsNetwork(p: ListNetworkMapParams = {}): string {
@@ -97,6 +107,7 @@ function qsNetwork(p: ListNetworkMapParams = {}): string {
   if (p.includePops === false) usp.set('includePops', 'false');
   if (p.includeEquipment === false) usp.set('includeEquipment', 'false');
   if (p.includeOlts === false) usp.set('includeOlts', 'false');
+  if (p.includeEnclosures === false) usp.set('includeEnclosures', 'false');
   const s = usp.toString();
   return s ? `?${s}` : '';
 }

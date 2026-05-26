@@ -90,6 +90,8 @@ model Tenant {
   backups              Backup[]
   networkPops          NetworkPop[]
   networkEquipment     NetworkEquipment[]
+  opticalEnclosures    OpticalEnclosure[]
+  opticalPorts         OpticalPort[]
 
   // WhatsApp / Atendimento
   whatsappInstances    WhatsappInstance[]
@@ -231,6 +233,8 @@ model User {
   networkPopsUpdated   NetworkPop[]   @relation("NetworkPopUpdatedBy")
   networkEqCreated     NetworkEquipment[] @relation("NetworkEquipmentCreatedBy")
   networkEqUpdated     NetworkEquipment[] @relation("NetworkEquipmentUpdatedBy")
+  opticalEnclosuresCreated OpticalEnclosure[] @relation("OpticalEnclosureCreatedBy")
+  opticalEnclosuresUpdated OpticalEnclosure[] @relation("OpticalEnclosureUpdatedBy")
 
   // WhatsApp / Atendimento
   whatsappConversationsAssigned WhatsappConversation[] @relation("WaConversationAssignee")
@@ -1176,6 +1180,12 @@ model Contract {
   stockMovements      StockMovement[]
   // Provisionamento
   ont                 Ont?
+
+  // Rede óptica (R2 OSP) — porta de splitter/CTO onde este contrato é
+  // atendido. 1 contrato pode ocupar 1 porta (1:1). Quando contrato é
+  // cancelado: relação é desfeita (SetNull no OpticalPort.contractId)
+  // pra liberar a porta — mantém histórico via audit log.
+  opticalPort         OpticalPort?
 
   // pppoeUsername é unique por tenant quando preenchido (Postgres trata
   // múltiplos NULLs como distintos por padrão, então o unique normal funciona
@@ -2770,4 +2780,121 @@ model MobileDevice {
   @@index([tenantId, userId])
   @@index([tenantId, lastSeenAt])
   @@map("mobile_devices")
+}
+
+// =============================================================================
+// Rede óptica (OSP) — R2: Caixas ópticas + portas
+// =============================================================================
+// Modelos pra planta FTTH externa. Doc de visão: docs/architecture/osp-network.md
+//
+// Estrutura típica:
+//   OLT → cabo backbone → CTO (parent) → cabo distribuição → CTO/Splitter →
+//   cabo drop → cliente
+//
+// `parentId` em OpticalEnclosure permite cascateamento (CTO mãe → CTOs filhas).
+// `splitterRatio` só faz sentido pra SPLITTER (ratio óptico — afeta loss em dB
+// no R5 power budget).
+
+enum OpticalEnclosureType {
+  CTO       // Caixa Terminal Óptica — atende clientes diretamente
+  NAP       // Network Access Point — ponto de derivação
+  SPLITTER  // Caixa só com splitter óptico (sem porta de cliente)
+  EMENDA    // Caixa de emenda (sem splitter, só fusões)
+}
+
+enum SplitterRatio {
+  ONE_TO_2
+  ONE_TO_4
+  ONE_TO_8
+  ONE_TO_16
+  ONE_TO_32
+  ONE_TO_64
+}
+
+enum OpticalMountType {
+  POSTE
+  AEREO
+  SUBTERRANEO
+  PAREDE
+  RACK
+}
+
+enum OpticalPortStatus {
+  FREE       // disponível pra atribuir
+  RESERVED   // reservada (instalação agendada)
+  USED       // ocupada por contrato (contractId preenchido)
+  DAMAGED    // queimada/quebrada — não pode usar
+}
+
+model OpticalEnclosure {
+  id              String                @id @default(uuid()) @db.Uuid
+  tenantId        String                @map("tenant_id") @db.Uuid
+  // Código humano: CTO-001, NAP-A-12, SP-3F-007
+  code            String                @db.VarChar(40)
+  type            OpticalEnclosureType
+  // null = standalone; preenchido = cascateado a partir desta caixa-pai
+  parentId        String?               @map("parent_id") @db.Uuid
+  // Geo obrigatória — caixa sem coord não aparece no mapa, então não vale
+  // muito. Operador marca via LocationPicker no form.
+  latitude        Decimal               @db.Decimal(9, 6)
+  longitude       Decimal               @db.Decimal(9, 6)
+  mountType       OpticalMountType?     @map("mount_type")
+  // Splitter ratio (loss) — só faz sentido em type=SPLITTER OU em CTO/NAP
+  // que tenha splitter embutido (modelo de mercado). null = não há splitter
+  // óptico (caixa puramente passiva de derivação ou emenda).
+  splitterRatio   SplitterRatio?        @map("splitter_ratio")
+  // Capacidade total = número de portas físicas. Geralmente bate com o ratio
+  // (1:16 → 16 portas), mas separamos pra suportar caixas híbridas.
+  capacity        Int
+  // Endereço descritivo livre (poste #, rua, marco) pra técnico achar em campo.
+  locationLabel   String?               @map("location_label") @db.VarChar(255)
+  notes           String?               @db.Text
+  isActive        Boolean               @default(true) @map("is_active")
+
+  createdById     String?               @map("created_by_id") @db.Uuid
+  updatedById     String?               @map("updated_by_id") @db.Uuid
+  createdAt       DateTime              @default(now()) @map("created_at")
+  updatedAt       DateTime              @updatedAt @map("updated_at")
+  deletedAt       DateTime?             @map("deleted_at")
+
+  tenant          Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent          OpticalEnclosure?     @relation("EnclosureChildren", fields: [parentId], references: [id], onDelete: SetNull)
+  children        OpticalEnclosure[]    @relation("EnclosureChildren")
+  ports           OpticalPort[]
+  createdBy       User?                 @relation("OpticalEnclosureCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy       User?                 @relation("OpticalEnclosureUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, type])
+  @@index([tenantId, parentId])
+  @@map("optical_enclosures")
+}
+
+model OpticalPort {
+  id              String              @id @default(uuid()) @db.Uuid
+  tenantId        String              @map("tenant_id") @db.Uuid
+  enclosureId     String              @map("enclosure_id") @db.Uuid
+  // Número da porta 1..enclosure.capacity. Validado no service no create/update.
+  number          Int
+  status          OpticalPortStatus   @default(FREE)
+  // FK pro contrato atendido. SetNull permite contrato cancelar sem perder
+  // o histórico da porta (porta volta a FREE). Audit log mantém quem ocupou.
+  // @unique aqui (não compound) porque Prisma exige unique simples no lado
+  // owning de relação 1:1. Como contractId já é UUID globalmente único e o
+  // Contract já carrega tenantId, o constraint cross-tenant é redundante.
+  contractId      String?             @unique @map("contract_id") @db.Uuid
+  // Observação livre — ex: "fibra 3 do cabo BB-001", "fundida em 2026-04-12".
+  notes           String?             @db.Text
+
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  enclosure       OpticalEnclosure    @relation(fields: [enclosureId], references: [id], onDelete: Cascade)
+  contract        Contract?           @relation(fields: [contractId], references: [id], onDelete: SetNull)
+
+  // Uma porta por (enclosure, número) — evita duplicar slot físico.
+  @@unique([enclosureId, number])
+  @@index([tenantId, status])
+  @@map("optical_ports")
 }
