@@ -326,23 +326,21 @@ function NetworkPopupContent({ point }: { point: NetworkMapPoint }) {
   ) : (
     <span style={{ color: '#dc2626', fontWeight: 600 }}>Inativo</span>
   );
-  // Linkar pro CRUD certo dependendo do kind.
-  const detailHref =
-    point.kind === 'POP'
-      ? `/network/pops`
-      : point.kind === 'OLT'
-        ? `/olts`
-        : point.kind === 'CTO' ||
-            point.kind === 'NAP' ||
-            point.kind === 'SPLITTER' ||
-            point.kind === 'EMENDA'
-          ? `/network/optical`
-          : `/network/equipment`;
+  // Linkar pro CRUD certo dependendo do kind. Caixas ópticas vão direto
+  // pra a VISTA ESQUEMÁTICA da caixa (R4.5b) — não pra a lista genérica.
   const isOptical =
     point.kind === 'CTO' ||
     point.kind === 'NAP' ||
     point.kind === 'SPLITTER' ||
     point.kind === 'EMENDA';
+  const detailHref =
+    point.kind === 'POP'
+      ? `/network/pops`
+      : point.kind === 'OLT'
+        ? `/olts`
+        : isOptical
+          ? `/network/optical/${point.id}`
+          : `/network/equipment`;
   return (
     <div style={{ minWidth: 220 }}>
       <div style={{ fontWeight: 600, marginBottom: 4 }}>{point.name}</div>
@@ -369,7 +367,7 @@ function NetworkPopupContent({ point }: { point: NetworkMapPoint }) {
       )}
       <div style={{ fontSize: 12, marginTop: 8 }}>
         <a href={detailHref} style={{ color: '#2563eb' }}>
-          Abrir CRUD →
+          {isOptical ? 'Abrir vista esquemática →' : 'Abrir CRUD →'}
         </a>
       </div>
     </div>

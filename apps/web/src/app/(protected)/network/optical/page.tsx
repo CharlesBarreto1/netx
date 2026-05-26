@@ -11,7 +11,8 @@
  * de POPs/Equipment — caixas ópticas ainda são "rede física").
  */
 import dynamic from 'next/dynamic';
-import { Plus, Pencil, Trash2, Layers } from 'lucide-react';
+import Link from 'next/link';
+import { Plus, Pencil, Trash2, Layers, Eye } from 'lucide-react';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -191,7 +192,9 @@ export default function OpticalEnclosuresPage() {
                 <tr
                   key={e.id}
                   className="cursor-pointer hover:bg-surface-hover"
-                  onClick={() => setShowingPorts(e)}
+                  onClick={() => {
+                    window.location.href = `/network/optical/${e.id}`;
+                  }}
                 >
                   <td className="px-3 py-2 font-medium text-text">{e.code}</td>
                   <td className="px-3 py-2 text-text-muted">
@@ -217,12 +220,20 @@ export default function OpticalEnclosuresPage() {
                   </td>
                   <td className="px-3 py-2 text-right">
                     <div className="flex justify-end gap-1">
+                      <Link
+                        href={`/network/optical/${e.id}`}
+                        onClick={(ev) => ev.stopPropagation()}
+                        title="Ver vista esquemática"
+                        className="p-1 text-text-muted hover:text-text"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Link>
                       <button
                         onClick={(ev) => {
                           ev.stopPropagation();
                           setShowingPorts(e);
                         }}
-                        title="Ver portas"
+                        title="Ver portas (modal)"
                         className="p-1 text-text-muted hover:text-text"
                       >
                         <Layers className="h-4 w-4" />
