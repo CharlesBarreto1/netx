@@ -103,6 +103,7 @@ const messages = {
     sifenConfig: 'Configuración SIFEN',
     mappingCustomers: 'Clientes',
     mappingNetwork: 'Red',
+    mapStudio: 'Estudio de Mapeo',
     mappingBackbone: 'Backbone',
     mappingTechnicians: 'Técnicos',
     mappingVehicles: 'Flota',

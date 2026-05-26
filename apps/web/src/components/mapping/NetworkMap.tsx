@@ -35,7 +35,11 @@ import type {
 import 'leaflet/dist/leaflet.css';
 
 /** Modos de interação suportados pelo mapa hub. */
-export type NetworkMapMode = 'select' | 'create-enclosure' | 'draw-cable';
+export type NetworkMapMode =
+  | 'select'
+  | 'create-enclosure'
+  | 'draw-cable'
+  | 'ruler';
 
 export interface NetworkMapProps {
   points: NetworkMapPoint[];
@@ -93,7 +97,9 @@ export function NetworkMap({
       ? 'cursor-crosshair'
       : mode === 'draw-cable'
         ? 'cursor-cell'
-        : '';
+        : mode === 'ruler'
+          ? 'cursor-crosshair'
+          : '';
 
   return (
     <div

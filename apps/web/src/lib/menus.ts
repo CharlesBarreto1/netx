@@ -100,6 +100,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     items: [
       { key: 'mappingCustomers',   href: '/mapping/customers',   labelKey: 'mappingCustomers',   permission: 'mapping.read' },
       { key: 'mappingNetwork',     href: '/mapping/network',     labelKey: 'mappingNetwork',     permission: 'mapping.read' },
+      { key: 'mapStudio',          href: '/mapa',                labelKey: 'mapStudio',          permission: 'network.read' },
       { key: 'mappingBackbone',    href: '/mapping/backbone',    labelKey: 'mappingBackbone',    permission: 'mapping.read' },
       { key: 'mappingTechnicians', href: '/mapping/technicians', labelKey: 'mappingTechnicians', permission: 'mapping.read' },
       { key: 'mappingVehicles',    href: '/mapping/vehicles',    labelKey: 'mappingVehicles',    permission: 'mapping.read' },
