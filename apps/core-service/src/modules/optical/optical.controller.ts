@@ -78,6 +78,7 @@ import { FiberSplicesService } from './fiber-splices.service';
 import { KmlService } from './kml.service';
 import { NetworkFoldersService } from './network-folders.service';
 import { OpticalEnclosuresService } from './optical-enclosures.service';
+import { PonTreeService } from './pon-tree.service';
 import { PowerBudgetService } from './power-budget.service';
 
 @ApiTags('optical')
@@ -93,6 +94,7 @@ export class OpticalController {
     private readonly powerBudget: PowerBudgetService,
     private readonly kml: KmlService,
     private readonly folders: NetworkFoldersService,
+    private readonly ponTree: PonTreeService,
   ) {}
 
   // ───────────────────────────────────────────────────────────────────────
@@ -486,5 +488,23 @@ export class OpticalController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     await this.fiberEvents.remove(u.tenantId, u.sub, id);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Árvore PON (R7) — vista lógica do grafo
+  // ───────────────────────────────────────────────────────────────────────
+  @Get('pon-tree/roots')
+  @RequirePermissions('network.read')
+  listPonTreeRoots(@CurrentUser() u: AuthenticatedPrincipal) {
+    return this.ponTree.listRootCandidates(u.tenantId);
+  }
+
+  @Get('pon-tree/:enclosureId')
+  @RequirePermissions('network.read')
+  getPonTree(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('enclosureId', new ParseUUIDPipe()) enclosureId: string,
+  ) {
+    return this.ponTree.buildTree(u.tenantId, enclosureId);
   }
 }

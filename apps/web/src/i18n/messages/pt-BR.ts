@@ -95,6 +95,7 @@ const messages = {
     fiberSplices: 'Fusões / emendas',
     powerBudget: 'Power budget',
     otdrEvents: 'OTDR / Eventos',
+    ponTree: 'Árvore PON',
     kmlImport: 'Importar / exportar (KML)',
     radiusLog: 'Log RADIUS',
     chat: 'Atendimento',

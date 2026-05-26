@@ -132,6 +132,7 @@ export const MENU_GROUPS: MenuGroup[] = [
       { key: 'fiberSplices', href: '/network/splices', labelKey: 'fiberSplices', permission: 'network.read' },
       { key: 'powerBudget', href: '/network/power-budget', labelKey: 'powerBudget', permission: 'network.read' },
       { key: 'otdrEvents', href: '/network/otdr', labelKey: 'otdrEvents', permission: 'network.read' },
+      { key: 'ponTree', href: '/network/pon-tree', labelKey: 'ponTree', permission: 'network.read' },
       { key: 'kmlImport', href: '/network/import-export', labelKey: 'kmlImport', permission: 'network.read' },
       { key: 'radiusLog', href: '/network/radius-log', labelKey: 'radiusLog', permission: 'audit.read' },
     ],
