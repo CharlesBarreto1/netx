@@ -27,29 +27,35 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import {
+  AssignItemsToFolderRequestSchema,
   CalculatePowerBudgetRequestSchema,
   ConfirmKmlImportRequestSchema,
   CreateFiberCableRequestSchema,
   CreateFiberSpliceRequestSchema,
+  CreateNetworkFolderRequestSchema,
   CreateOpticalEnclosureRequestSchema,
   ListFiberCablesQuerySchema,
   ListFiberSplicesQuerySchema,
   ListOpticalEnclosuresQuerySchema,
   UpdateFiberCableRequestSchema,
   UpdateFiberSpliceRequestSchema,
+  UpdateNetworkFolderRequestSchema,
   UpdateOpticalEnclosureRequestSchema,
   UpdateOpticalPortRequestSchema,
+  type AssignItemsToFolderRequest,
   type AuthenticatedPrincipal,
   type CalculatePowerBudgetRequest,
   type ConfirmKmlImportRequest,
   type CreateFiberCableRequest,
   type CreateFiberSpliceRequest,
+  type CreateNetworkFolderRequest,
   type CreateOpticalEnclosureRequest,
   type ListFiberCablesQuery,
   type ListFiberSplicesQuery,
   type ListOpticalEnclosuresQuery,
   type UpdateFiberCableRequest,
   type UpdateFiberSpliceRequest,
+  type UpdateNetworkFolderRequest,
   type UpdateOpticalEnclosureRequest,
   type UpdateOpticalPortRequest,
 } from '@netx/shared';
@@ -61,6 +67,7 @@ import { EnclosureTopologyService } from './enclosure-topology.service';
 import { FiberCablesService } from './fiber-cables.service';
 import { FiberSplicesService } from './fiber-splices.service';
 import { KmlService } from './kml.service';
+import { NetworkFoldersService } from './network-folders.service';
 import { OpticalEnclosuresService } from './optical-enclosures.service';
 import { PowerBudgetService } from './power-budget.service';
 
@@ -75,6 +82,7 @@ export class OpticalController {
     private readonly topology: EnclosureTopologyService,
     private readonly powerBudget: PowerBudgetService,
     private readonly kml: KmlService,
+    private readonly folders: NetworkFoldersService,
   ) {}
 
   // ───────────────────────────────────────────────────────────────────────
@@ -335,5 +343,68 @@ export class OpticalController {
   ) {
     const xml = await this.kml.exportKml(u.tenantId);
     res.send(xml);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Pastas (R4.5e) — organização administrativa
+  // ───────────────────────────────────────────────────────────────────────
+  @Get('folders')
+  @RequirePermissions('network.read')
+  listFolders(@CurrentUser() u: AuthenticatedPrincipal) {
+    return this.folders.list(u.tenantId);
+  }
+
+  @Get('folders/:id')
+  @RequirePermissions('network.read')
+  getFolder(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.folders.findById(u.tenantId, id);
+  }
+
+  @Post('folders')
+  @RequirePermissions('network.write')
+  createFolder(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @ZodBody(CreateNetworkFolderRequestSchema) body: CreateNetworkFolderRequest,
+  ) {
+    return this.folders.create(u.tenantId, u.sub, body);
+  }
+
+  @Patch('folders/:id')
+  @RequirePermissions('network.write')
+  updateFolder(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(UpdateNetworkFolderRequestSchema) body: UpdateNetworkFolderRequest,
+  ) {
+    return this.folders.update(u.tenantId, u.sub, id, body);
+  }
+
+  @Delete('folders/:id')
+  @HttpCode(204)
+  @RequirePermissions('network.delete')
+  async removeFolder(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    await this.folders.remove(u.tenantId, u.sub, id);
+  }
+
+  /**
+   * Atribui itens (caixas + cabos) a uma pasta. `id` no path é o folderId
+   * destino, ou a string `unassigned` pra desatribuir (folderId = null).
+   */
+  @Post('folders/:id/items')
+  @RequirePermissions('network.write')
+  assignItems(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id') id: string,
+    @ZodBody(AssignItemsToFolderRequestSchema)
+    body: AssignItemsToFolderRequest,
+  ) {
+    const folderId = id === 'unassigned' ? null : id;
+    return this.folders.assignItems(u.tenantId, u.sub, folderId, body);
   }
 }

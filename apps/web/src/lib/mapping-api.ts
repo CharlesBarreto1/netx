@@ -131,6 +131,11 @@ export interface ListNetworkMapParams {
   includeEnclosures?: boolean;
   includeCables?: boolean;
   includeSplices?: boolean;
+  /**
+   * Filtra por pasta (R4.5e). Array de UUIDs + opcional 'unassigned'.
+   * undefined = sem filtro (default).
+   */
+  folderIds?: string[];
 }
 
 function qsNetwork(p: ListNetworkMapParams = {}): string {
@@ -141,6 +146,9 @@ function qsNetwork(p: ListNetworkMapParams = {}): string {
   if (p.includeEnclosures === false) usp.set('includeEnclosures', 'false');
   if (p.includeCables === false) usp.set('includeCables', 'false');
   if (p.includeSplices === false) usp.set('includeSplices', 'false');
+  if (p.folderIds && p.folderIds.length > 0) {
+    usp.set('folderIds', p.folderIds.join(','));
+  }
   const s = usp.toString();
   return s ? `?${s}` : '';
 }

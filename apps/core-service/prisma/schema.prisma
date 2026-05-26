@@ -94,6 +94,7 @@ model Tenant {
   opticalPorts         OpticalPort[]
   fiberCables          FiberCable[]
   fiberSplices         FiberSplice[]
+  networkFolders       NetworkFolder[]
 
   // WhatsApp / Atendimento
   whatsappInstances    WhatsappInstance[]
@@ -242,6 +243,7 @@ model User {
   fiberSplicesCreated  FiberSplice[]  @relation("FiberSpliceCreatedBy")
   fiberSplicesUpdated  FiberSplice[]  @relation("FiberSpliceUpdatedBy")
   fiberSplicesMeasured FiberSplice[]  @relation("FiberSpliceMeasuredBy")
+  networkFoldersCreated NetworkFolder[] @relation("NetworkFolderCreatedBy")
 
   // WhatsApp / Atendimento
   whatsappConversationsAssigned WhatsappConversation[] @relation("WaConversationAssignee")
@@ -2875,9 +2877,15 @@ model OpticalEnclosure {
   createdBy       User?                 @relation("OpticalEnclosureCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy       User?                 @relation("OpticalEnclosureUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
+  // R4.5e — organização administrativa (pasta opcional). Permite operador
+  // agrupar por região/projeto/cliente sem mexer na topologia técnica.
+  folderId        String?               @map("folder_id") @db.Uuid
+  folder          NetworkFolder?        @relation(fields: [folderId], references: [id], onDelete: SetNull)
+
   @@unique([tenantId, code])
   @@index([tenantId, type])
   @@index([tenantId, parentId])
+  @@index([tenantId, folderId])
   @@map("optical_enclosures")
 }
 
@@ -2970,10 +2978,15 @@ model FiberCable {
   splicesA        FiberSplice[]    @relation("SpliceCableA")
   splicesB        FiberSplice[]    @relation("SpliceCableB")
 
+  // R4.5e — pasta opcional.
+  folderId        String?          @map("folder_id") @db.Uuid
+  folder          NetworkFolder?   @relation(fields: [folderId], references: [id], onDelete: SetNull)
+
   @@unique([tenantId, code])
   @@index([tenantId, type])
   @@index([tenantId, endpointAId])
   @@index([tenantId, endpointBId])
+  @@index([tenantId, folderId])
   @@map("fiber_cables")
 }
 
@@ -3038,4 +3051,42 @@ model FiberSplice {
   @@index([tenantId, cableAId, fiberAIndex])
   @@index([tenantId, cableBId, fiberBIndex])
   @@map("fiber_splices")
+}
+
+// =============================================================================
+// Rede óptica (OSP) — R4.5e: Pastas (organização administrativa)
+// =============================================================================
+// Estrutura paralela à topologia técnica. Operador agrupa caixas/cabos por
+// região, projeto, cliente, equipe — qualquer eixo que faça sentido na ISP.
+// Cada item pode estar em UMA pasta (ou nenhuma). Pasta tem hierarquia
+// (parentId) pra refletir organograma de operação.
+//
+// Tomodat usa esse padrão (CampoNet/NDC/Parceiros/ZUX no print) — permite
+// equipes diferentes verem só "a região delas" sem mexer na planta global.
+
+model NetworkFolder {
+  id              String          @id @default(uuid()) @db.Uuid
+  tenantId        String          @map("tenant_id") @db.Uuid
+  parentId        String?         @map("parent_id") @db.Uuid
+  name            String          @db.VarChar(120)
+  // Cor opcional pra UI distinguir pastas no mapa (hex com #).
+  color           String?         @db.VarChar(7)
+  // Ordem entre irmãos (drag-drop preserva). null = appended.
+  position        Int             @default(0)
+  notes           String?         @db.Text
+
+  createdById     String?         @map("created_by_id") @db.Uuid
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  deletedAt       DateTime?       @map("deleted_at")
+
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent          NetworkFolder?  @relation("FolderChildren", fields: [parentId], references: [id], onDelete: SetNull)
+  children        NetworkFolder[] @relation("FolderChildren")
+  createdBy       User?           @relation("NetworkFolderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  enclosures      OpticalEnclosure[]
+  cables          FiberCable[]
+
+  @@index([tenantId, parentId])
+  @@map("network_folders")
 }

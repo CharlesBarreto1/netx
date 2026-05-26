@@ -25,6 +25,23 @@ export const ListNetworkMapQuerySchema = z.object({
   includeCables: z.coerce.boolean().optional().default(true),
   /** Inclui pontos de fusão/emenda (R4). Default true. */
   includeSplices: z.coerce.boolean().optional().default(true),
+  /**
+   * Filtra caixas/cabos por pasta (R4.5e). CSV de UUIDs. Aceita também a
+   * string literal `unassigned` pra incluir itens sem pasta. Default
+   * (omitido) = mostra tudo, igual ao comportamento antes do R4.5e.
+   * Ex.: "uuid1,uuid2,unassigned" → 2 pastas específicas + órfãos.
+   */
+  folderIds: z
+    .string()
+    .optional()
+    .transform((v) =>
+      v
+        ? v
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined,
+    ),
 });
 export type ListNetworkMapQuery = z.infer<typeof ListNetworkMapQuerySchema>;
 

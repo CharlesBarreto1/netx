@@ -163,9 +163,34 @@ export class NetworkMapService {
       }
     }
 
+    // Folder filter: parseia CSV de IDs. `unassigned` é um sentinel
+    // (não-UUID) que vira condição `folderId IS NULL` no Prisma.
+    const folderFilterIds = query.folderIds ?? null;
+    const hasFolderFilter =
+      folderFilterIds !== null && folderFilterIds.length > 0;
+    const folderUuids = hasFolderFilter
+      ? folderFilterIds!.filter((id) => id !== 'unassigned')
+      : [];
+    const includeUnassigned = hasFolderFilter
+      ? folderFilterIds!.includes('unassigned')
+      : true;
+
+    function folderWhere<T extends { folderId?: unknown }>(): Record<
+      string,
+      unknown
+    > | undefined {
+      if (!hasFolderFilter) return undefined;
+      // Operador escolheu pastas específicas. Inclui as escolhidas E,
+      // opcionalmente, órfãos (unassigned).
+      const ors: Record<string, unknown>[] = [];
+      if (folderUuids.length > 0) ors.push({ folderId: { in: folderUuids } });
+      if (includeUnassigned) ors.push({ folderId: null });
+      return { OR: ors };
+    }
+
     if (query.includeEnclosures !== false) {
       const allEnc = await this.prisma.opticalEnclosure.findMany({
-        where: { tenantId, deletedAt: null },
+        where: { tenantId, deletedAt: null, ...folderWhere() },
         select: {
           id: true,
           code: true,
@@ -208,7 +233,7 @@ export class NetworkMapService {
 
     if (query.includeCables !== false) {
       const allCables = await this.prisma.fiberCable.findMany({
-        where: { tenantId, deletedAt: null, isActive: true },
+        where: { tenantId, deletedAt: null, isActive: true, ...folderWhere() },
         select: {
           id: true,
           code: true,

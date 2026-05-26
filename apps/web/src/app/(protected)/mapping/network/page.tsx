@@ -60,7 +60,14 @@ import {
   type OpticalEnclosureType,
   type SplitterRatio,
 } from '@/lib/optical-api';
+import {
+  networkFoldersApi,
+  type NetworkFolder,
+} from '@/lib/network-folders-api';
 import { hasPermission } from '@/lib/session';
+import { ApiError as _ApiError } from '@/lib/api';
+import { ConfirmDialog } from '@/components/ui/Modal';
+import { FolderTree } from '@/components/optical/FolderTree';
 
 const NetworkMap = dynamic(
   () => import('@/components/mapping/NetworkMap').then((m) => m.NetworkMap),
@@ -84,9 +91,44 @@ export default function MappingNetworkPage() {
     includeSplices: true,
   });
 
+  // R4.5e — pastas + visibilidade (controlled). undefined = primeira render
+  // antes do fetch carregar; substitui por "tudo visível" assim que recebe.
+  const [visibleFolderIds, setVisibleFolderIds] = useState<Set<string> | null>(
+    null,
+  );
+  const { data: foldersData, mutate: mutateFolders } = useSWR<NetworkFolder[]>(
+    networkFoldersApi.listPath(),
+  );
+  const folders = foldersData ?? [];
+
+  // Inicializa visibilidade quando pastas carregam pela primeira vez.
+  useEffect(() => {
+    if (visibleFolderIds === null && foldersData) {
+      const all = new Set<string>(foldersData.map((f) => f.id));
+      all.add('unassigned');
+      setVisibleFolderIds(all);
+    }
+  }, [foldersData, visibleFolderIds]);
+
+  // folderIds vai pro filtro quando ALGUMA pasta foi DESLIGADA. Se está tudo
+  // visível, omite o filtro pra evitar query desnecessária no backend.
+  const totalSelectable = folders.length + 1; // +1 = unassigned
+  const folderFilter =
+    visibleFolderIds && visibleFolderIds.size < totalSelectable
+      ? Array.from(visibleFolderIds)
+      : undefined;
+
   const { data, isLoading, mutate } = useSWR<NetworkMapResponse>(
-    mappingApi.networkPath(filters),
+    mappingApi.networkPath({ ...filters, folderIds: folderFilter }),
     { refreshInterval: 60_000 },
+  );
+
+  // CRUD de pasta — modais simples.
+  const [folderEditing, setFolderEditing] = useState<
+    NetworkFolder | { parentId: string | null } | null
+  >(null);
+  const [folderDeleting, setFolderDeleting] = useState<NetworkFolder | null>(
+    null,
   );
 
   // ─── Modos de criação ─────────────────────────────────────────────────────
@@ -212,38 +254,91 @@ export default function MappingNetworkPage() {
         </div>
       </section>
 
-      {/* Mapa + Toolbar de modos */}
-      <div className="relative">
-        {canWrite && (
-          <ModeToolbar
-            mode={mode}
-            onChange={(m) => {
-              setMode(m);
-              setDraftPath([]); // reset em troca de modo
-            }}
-            pathLength={draftPath.length}
+      {/* Mapa + Sidebar de pastas + Toolbar de modos */}
+      <div className="grid gap-3 lg:grid-cols-[260px_1fr]">
+        {/* Sidebar de pastas (R4.5e) */}
+        <aside className="h-[600px] rounded-md border border-border bg-surface">
+          <FolderTree
+            folders={folders}
+            visibleIds={visibleFolderIds ?? new Set()}
+            onVisibleChange={setVisibleFolderIds}
+            onCreate={(parentId) => setFolderEditing({ parentId })}
+            onEdit={(f) => setFolderEditing(f)}
+            onDelete={(f) => setFolderDeleting(f)}
+            canWrite={canWrite}
           />
-        )}
-        <NetworkMap
-          points={points}
-          segments={segments}
-          splices={splices}
-          mode={mode}
-          onMapClick={handleMapClick}
-          pendingPath={draftPath}
-        />
-        {mode !== 'select' && (
-          <div className="pointer-events-none absolute bottom-3 left-3 right-3 z-[400] rounded-md bg-amber-500/95 px-3 py-2 text-center text-xs font-medium text-white shadow-lg">
-            {mode === 'create-enclosure' && '📍 Clique no mapa pra marcar a caixa · ESC pra cancelar'}
-            {mode === 'draw-cable' &&
-              draftPath.length < 2 &&
-              '✏️ Clique pra adicionar pontos do cabo · ESC pra cancelar'}
-            {mode === 'draw-cable' &&
-              draftPath.length >= 2 &&
-              `✏️ ${draftPath.length} pontos · ENTER pra finalizar · BACKSPACE remove último · ESC cancela`}
-          </div>
-        )}
+        </aside>
+
+        <div className="relative">
+          {canWrite && (
+            <ModeToolbar
+              mode={mode}
+              onChange={(m) => {
+                setMode(m);
+                setDraftPath([]);
+              }}
+              pathLength={draftPath.length}
+            />
+          )}
+          <NetworkMap
+            points={points}
+            segments={segments}
+            splices={splices}
+            mode={mode}
+            onMapClick={handleMapClick}
+            pendingPath={draftPath}
+          />
+          {mode !== 'select' && (
+            <div className="pointer-events-none absolute bottom-3 left-3 right-3 z-[400] rounded-md bg-amber-500/95 px-3 py-2 text-center text-xs font-medium text-white shadow-lg">
+              {mode === 'create-enclosure' && '📍 Clique no mapa pra marcar a caixa · ESC pra cancelar'}
+              {mode === 'draw-cable' &&
+                draftPath.length < 2 &&
+                '✏️ Clique pra adicionar pontos do cabo · ESC pra cancelar'}
+              {mode === 'draw-cable' &&
+                draftPath.length >= 2 &&
+                `✏️ ${draftPath.length} pontos · ENTER pra finalizar · BACKSPACE remove último · ESC cancela`}
+            </div>
+          )}
+        </div>
       </div>
+
+      {folderEditing && (
+        <FolderEditDialog
+          initial={
+            'id' in folderEditing
+              ? folderEditing
+              : { parentId: folderEditing.parentId }
+          }
+          onClose={() => setFolderEditing(null)}
+          onSaved={async () => {
+            await mutateFolders();
+            setFolderEditing(null);
+          }}
+        />
+      )}
+      {folderDeleting && (
+        <ConfirmDialog
+          open
+          onClose={() => setFolderDeleting(null)}
+          onConfirm={async () => {
+            try {
+              await networkFoldersApi.remove(folderDeleting.id);
+              toast.success('Pasta excluída');
+              await mutateFolders();
+              await mutate();
+              setFolderDeleting(null);
+            } catch (err) {
+              toast.error(
+                err instanceof _ApiError ? err.friendlyMessage : 'Erro',
+              );
+            }
+          }}
+          title={`Excluir "${folderDeleting.name}"?`}
+          message="Itens dentro voltam pra órfãos. Subpastas viram raízes."
+          confirmLabel="Excluir"
+          variant="danger"
+        />
+      )}
 
       {enclosureDraft && (
         <CreateEnclosureQuickDialog
@@ -611,6 +706,107 @@ function CreateCableQuickDialog({
           Endpoints A/B (caixas onde o cabo termina) podem ser definidos
           depois em <code className="text-2xs">/network/fiber</code>.
         </FieldHelp>
+        {error && <p className="text-xs text-red-600">{error}</p>}
+      </form>
+    </Modal>
+  );
+}
+
+// ─── Diálogo: criar / editar pasta ──────────────────────────────────────────
+function FolderEditDialog({
+  initial,
+  onClose,
+  onSaved,
+}: {
+  initial: NetworkFolder | { parentId: string | null };
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const isNew = !('id' in initial);
+  const [name, setName] = useState('id' in initial ? initial.name : '');
+  const [color, setColor] = useState<string>(
+    ('id' in initial && initial.color) || '#64748b',
+  );
+  const [notes, setNotes] = useState(
+    'id' in initial ? initial.notes ?? '' : '',
+  );
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return setError('Nome obrigatório');
+    setSubmitting(true);
+    try {
+      if (isNew) {
+        await networkFoldersApi.create({
+          parentId: (initial as { parentId: string | null }).parentId,
+          name: name.trim(),
+          color,
+          notes: notes || null,
+        });
+      } else {
+        await networkFoldersApi.update((initial as NetworkFolder).id, {
+          name: name.trim(),
+          color,
+          notes: notes || null,
+        });
+      }
+      toast.success(isNew ? 'Pasta criada' : 'Pasta atualizada');
+      onSaved();
+    } catch (err) {
+      setError(err instanceof _ApiError ? err.friendlyMessage : 'Erro');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={isNew ? 'Nova pasta' : `Editar "${(initial as NetworkFolder).name}"`}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={submitting}>
+            Cancelar
+          </Button>
+          <Button onClick={handleSubmit} loading={submitting}>
+            Salvar
+          </Button>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div>
+          <Label required>Nome</Label>
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="ex.: Centro, Cooperativa COTO, Equipe Sul…"
+            autoFocus
+          />
+        </div>
+        <div>
+          <Label>Cor (opcional)</Label>
+          <div className="flex items-center gap-2">
+            <input
+              type="color"
+              value={color}
+              onChange={(e) => setColor(e.target.value)}
+              className="h-9 w-12 rounded border border-border bg-transparent"
+            />
+            <span className="font-mono text-xs text-text-muted">{color}</span>
+          </div>
+        </div>
+        <div>
+          <Label>Notas</Label>
+          <Textarea
+            rows={2}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+          />
+        </div>
         {error && <p className="text-xs text-red-600">{error}</p>}
       </form>
     </Modal>

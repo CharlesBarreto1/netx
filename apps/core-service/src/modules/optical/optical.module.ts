@@ -13,6 +13,7 @@ import { EnclosureTopologyService } from './enclosure-topology.service';
 import { FiberCablesService } from './fiber-cables.service';
 import { FiberSplicesService } from './fiber-splices.service';
 import { KmlService } from './kml.service';
+import { NetworkFoldersService } from './network-folders.service';
 import { OpticalController } from './optical.controller';
 import { OpticalEnclosuresService } from './optical-enclosures.service';
 import { PowerBudgetService } from './power-budget.service';
@@ -27,6 +28,7 @@ import { PowerBudgetService } from './power-budget.service';
     EnclosureTopologyService,
     PowerBudgetService,
     KmlService,
+    NetworkFoldersService,
   ],
   exports: [
     OpticalEnclosuresService,
@@ -35,6 +37,7 @@ import { PowerBudgetService } from './power-budget.service';
     EnclosureTopologyService,
     PowerBudgetService,
     KmlService,
+    NetworkFoldersService,
   ],
 })
 export class OpticalModule {}
