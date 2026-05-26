@@ -92,6 +92,7 @@ model Tenant {
   networkEquipment     NetworkEquipment[]
   opticalEnclosures    OpticalEnclosure[]
   opticalPorts         OpticalPort[]
+  fiberCables          FiberCable[]
 
   // WhatsApp / Atendimento
   whatsappInstances    WhatsappInstance[]
@@ -235,6 +236,8 @@ model User {
   networkEqUpdated     NetworkEquipment[] @relation("NetworkEquipmentUpdatedBy")
   opticalEnclosuresCreated OpticalEnclosure[] @relation("OpticalEnclosureCreatedBy")
   opticalEnclosuresUpdated OpticalEnclosure[] @relation("OpticalEnclosureUpdatedBy")
+  fiberCablesCreated   FiberCable[]   @relation("FiberCableCreatedBy")
+  fiberCablesUpdated   FiberCable[]   @relation("FiberCableUpdatedBy")
 
   // WhatsApp / Atendimento
   whatsappConversationsAssigned WhatsappConversation[] @relation("WaConversationAssignee")
@@ -2897,4 +2900,56 @@ model OpticalPort {
   @@unique([enclosureId, number])
   @@index([tenantId, status])
   @@map("optical_ports")
+}
+
+// =============================================================================
+// Rede óptica (OSP) — R3: Cabos de fibra
+// =============================================================================
+// FiberCable modela um trecho de cabo geo-localizado por uma LineString
+// (sequência de pontos lat/lng). Backend calcula comprimento via @turf/length
+// se `lengthMeters` não for explicitado.
+//
+// Conceito de "fibra individual" não vira tabela aqui — fica implícito no
+// fiberCount + índice (1..fiberCount). R4 (FiberSplice) referencia fibra por
+// `(cableId, fiberIndex)`.
+
+enum FiberCableType {
+  BACKBONE       // OLT → primeiro splitter de distribuição
+  DISTRIBUTION   // splitter intermediário → caixa de cliente
+  DROP           // CTO/NAP → ONT do cliente (última milha)
+}
+
+model FiberCable {
+  id              String           @id @default(uuid()) @db.Uuid
+  tenantId        String           @map("tenant_id") @db.Uuid
+  code            String           @db.VarChar(40)
+  type            FiberCableType
+  // Quantidade de fibras dentro do cabo. Valores comuns FTTH:
+  // 2/6/12/24/48/96/144/288. Validado no DTO Zod (multipliers do ITU/TIA).
+  fiberCount      Int              @map("fiber_count")
+  // Geometria como LineString GeoJSON: array de [longitude, latitude].
+  // Atenção: ordem GeoJSON oficial é [LNG, LAT] (RFC 7946). Mas no resto
+  // do app usamos {latitude, longitude}; o service serializa/desserializa
+  // pra manter a API consistente — o JSON puro só fica nesse modelo.
+  path            Json
+  // Comprimento em metros. Backend calcula via Haversine ao salvar; operador
+  // pode override (cabo "frouxo" no poste tem 10-15% a mais que a distância
+  // em linha reta dos vértices).
+  lengthMeters    Decimal          @map("length_meters") @db.Decimal(12, 2)
+  notes           String?          @db.Text
+  isActive        Boolean          @default(true) @map("is_active")
+
+  createdById     String?          @map("created_by_id") @db.Uuid
+  updatedById     String?          @map("updated_by_id") @db.Uuid
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  deletedAt       DateTime?        @map("deleted_at")
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy       User?            @relation("FiberCableCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy       User?            @relation("FiberCableUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, code])
+  @@index([tenantId, type])
+  @@map("fiber_cables")
 }

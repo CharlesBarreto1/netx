@@ -16,6 +16,7 @@ import type {
   NetworkMapPoint,
   NetworkMapPointKind,
   NetworkMapResponse,
+  NetworkMapSegment,
 } from '@netx/shared';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -29,12 +30,14 @@ export class NetworkMapService {
     query: ListNetworkMapQuery,
   ): Promise<NetworkMapResponse> {
     const points: NetworkMapPoint[] = [];
+    const segments: NetworkMapSegment[] = [];
 
     // ── Stats: contamos "withoutGeo" por tipo, separado da response principal.
     let popsCount = 0;
     let equipmentCount = 0;
     let oltsCount = 0;
     let enclosuresCount = 0;
+    let cablesCount = 0;
     let withoutGeo = 0;
 
     if (query.includePops !== false) {
@@ -198,14 +201,59 @@ export class NetworkMapService {
       }
     }
 
+    if (query.includeCables !== false) {
+      const allCables = await this.prisma.fiberCable.findMany({
+        where: { tenantId, deletedAt: null, isActive: true },
+        select: {
+          id: true,
+          code: true,
+          type: true,
+          path: true,
+          fiberCount: true,
+          lengthMeters: true,
+          isActive: true,
+        },
+      });
+      for (const c of allCables) {
+        // Path armazenado como [[lng, lat], ...]. Convertemos pra
+        // {latitude, longitude} pro formato do app (resto do mundo).
+        const path = Array.isArray(c.path)
+          ? (c.path as unknown[])
+              .filter(
+                (p): p is [number, number] =>
+                  Array.isArray(p) &&
+                  typeof p[0] === 'number' &&
+                  typeof p[1] === 'number',
+              )
+              .map(([lng, lat]) => ({ latitude: lat, longitude: lng }))
+          : [];
+        if (path.length < 2) {
+          withoutGeo++;
+          continue;
+        }
+        segments.push({
+          id: c.id,
+          code: c.code,
+          type: c.type,
+          path,
+          fiberCount: c.fiberCount,
+          lengthMeters: Number(c.lengthMeters),
+          isActive: c.isActive,
+        });
+        cablesCount++;
+      }
+    }
+
     return {
       points,
+      segments,
       stats: {
-        total: points.length,
+        total: points.length + segments.length,
         pops: popsCount,
         equipment: equipmentCount,
         olts: oltsCount,
         enclosures: enclosuresCount,
+        cables: cablesCount,
         withoutGeo,
       },
     };

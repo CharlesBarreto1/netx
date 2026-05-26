@@ -42,6 +42,7 @@ export default function MappingNetworkPage() {
     includeEquipment: true,
     includeOlts: true,
     includeEnclosures: true,
+    includeCables: true,
   });
 
   const { data, isLoading } = useSWR<NetworkMapResponse>(
@@ -52,6 +53,7 @@ export default function MappingNetworkPage() {
   if (isLoading && !data) return <PageLoader label="Carregando rede…" />;
 
   const points: NetworkMapPoint[] = data?.points ?? [];
+  const segments = data?.segments ?? [];
   const stats = data?.stats;
 
   function toggle(key: keyof ListNetworkMapParams) {
@@ -80,6 +82,9 @@ export default function MappingNetworkPage() {
           </Link>
           <Link href="/network/optical">
             <Button variant="outline">Caixas ópticas</Button>
+          </Link>
+          <Link href="/network/fiber">
+            <Button variant="outline">Cabos de fibra</Button>
           </Link>
         </div>
       </header>
@@ -110,6 +115,12 @@ export default function MappingNetworkPage() {
           active={filters.includeEnclosures ?? true}
           onClick={() => toggle('includeEnclosures')}
         />
+        <FilterChip
+          label={`Cabos (${stats?.cables ?? 0})`}
+          color="#1d4ed8"
+          active={filters.includeCables ?? true}
+          onClick={() => toggle('includeCables')}
+        />
         <div className="ml-auto text-xs text-text-muted">
           Total visível: <strong>{stats?.total ?? 0}</strong>
           {stats?.withoutGeo ? (
@@ -120,7 +131,7 @@ export default function MappingNetworkPage() {
         </div>
       </section>
 
-      <NetworkMap points={points} />
+      <NetworkMap points={points} segments={segments} />
     </div>
   );
 }

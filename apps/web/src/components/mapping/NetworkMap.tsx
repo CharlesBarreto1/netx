@@ -13,18 +13,31 @@
  * (`dynamic(() => import('./NetworkMap'), { ssr: false })`).
  */
 import { useEffect } from 'react';
-import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
+import {
+  MapContainer,
+  Marker,
+  Polyline,
+  Popup,
+  TileLayer,
+  useMap,
+} from 'react-leaflet';
 import L from 'leaflet';
 
-import type { NetworkMapPoint, NetworkMapPointKind } from '@/lib/mapping-api';
+import type {
+  NetworkMapPoint,
+  NetworkMapPointKind,
+  NetworkMapSegment,
+} from '@/lib/mapping-api';
 
 import 'leaflet/dist/leaflet.css';
 
 export interface NetworkMapProps {
   points: NetworkMapPoint[];
+  segments?: NetworkMapSegment[];
   center?: [number, number];
   zoom?: number;
   onMarkerClick?: (point: NetworkMapPoint) => void;
+  onSegmentClick?: (segment: NetworkMapSegment) => void;
   height?: string;
 }
 
@@ -33,14 +46,20 @@ const DEFAULT_ZOOM = 13;
 
 export function NetworkMap({
   points,
+  segments = [],
   center,
   zoom = DEFAULT_ZOOM,
   onMarkerClick,
+  onSegmentClick,
   height = '600px',
 }: NetworkMapProps) {
   const initialCenter: [number, number] =
     center ??
-    (points.length > 0 ? [points[0].latitude, points[0].longitude] : DEFAULT_CENTER);
+    (points.length > 0
+      ? [points[0].latitude, points[0].longitude]
+      : segments.length > 0 && segments[0].path.length > 0
+        ? [segments[0].path[0].latitude, segments[0].path[0].longitude]
+        : DEFAULT_CENTER);
 
   return (
     <div
@@ -58,7 +77,31 @@ export function NetworkMap({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           maxZoom={19}
         />
-        <FitBoundsToPoints points={points} initialCenter={initialCenter} />
+        <FitBoundsToFeatures
+          points={points}
+          segments={segments}
+          initialCenter={initialCenter}
+        />
+        {/* Cabos primeiro pra ficarem ABAIXO dos pinos no z-order. */}
+        {segments.map((s) => (
+          <Polyline
+            key={`cable-${s.id}`}
+            positions={s.path.map((p) => [p.latitude, p.longitude])}
+            pathOptions={{
+              color: colorForCableType(s.type),
+              weight: s.type === 'BACKBONE' ? 4 : s.type === 'DISTRIBUTION' ? 3 : 2,
+              opacity: s.isActive ? 0.85 : 0.4,
+              dashArray: s.type === 'DROP' ? '4 4' : undefined,
+            }}
+            eventHandlers={
+              onSegmentClick ? { click: () => onSegmentClick(s) } : undefined
+            }
+          >
+            <Popup>
+              <CablePopupContent segment={s} />
+            </Popup>
+          </Polyline>
+        ))}
         {points.map((p) => (
           <Marker
             key={`${p.kind}-${p.id}`}
@@ -78,28 +121,80 @@ export function NetworkMap({
   );
 }
 
-function FitBoundsToPoints({
+function FitBoundsToFeatures({
   points,
+  segments,
   initialCenter,
 }: {
   points: NetworkMapPoint[];
+  segments: NetworkMapSegment[];
   initialCenter: [number, number];
 }) {
   const map = useMap();
   useEffect(() => {
-    if (points.length === 0) {
+    const all: Array<[number, number]> = [];
+    points.forEach((p) => all.push([p.latitude, p.longitude]));
+    segments.forEach((s) =>
+      s.path.forEach((p) => all.push([p.latitude, p.longitude])),
+    );
+    if (all.length === 0) {
       map.setView(initialCenter, DEFAULT_ZOOM);
       return;
     }
-    if (points.length === 1) {
-      map.setView([points[0].latitude, points[0].longitude], 15);
+    if (all.length === 1) {
+      map.setView(all[0], 15);
       return;
     }
-    const bounds = L.latLngBounds(points.map((p) => [p.latitude, p.longitude]));
+    const bounds = L.latLngBounds(all);
     map.fitBounds(bounds, { padding: [40, 40], maxZoom: 16 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [points.map((p) => `${p.kind}-${p.id}`).join(',')]);
+  }, [
+    points.map((p) => `${p.kind}-${p.id}`).join(','),
+    segments.map((s) => s.id).join(','),
+  ]);
   return null;
+}
+
+function colorForCableType(t: NetworkMapSegment['type']): string {
+  switch (t) {
+    case 'BACKBONE':
+      return '#1d4ed8'; // blue-700 — espinha dorsal
+    case 'DISTRIBUTION':
+      return '#9333ea'; // purple-600
+    case 'DROP':
+      return '#0d9488'; // teal-600 — última milha
+  }
+}
+
+function formatLength(meters: number): string {
+  if (meters >= 1000) return `${(meters / 1000).toFixed(2)} km`;
+  return `${meters.toFixed(0)} m`;
+}
+
+function CablePopupContent({ segment }: { segment: NetworkMapSegment }) {
+  const typeLabel =
+    segment.type === 'BACKBONE'
+      ? 'Backbone'
+      : segment.type === 'DISTRIBUTION'
+        ? 'Distribuição'
+        : 'Drop (cliente)';
+  return (
+    <div style={{ minWidth: 220 }}>
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>{segment.code}</div>
+      <div style={{ fontSize: 12, color: '#666' }}>{typeLabel}</div>
+      <div style={{ fontSize: 12, marginTop: 6 }}>
+        <strong>Fibras:</strong> {segment.fiberCount}
+      </div>
+      <div style={{ fontSize: 12 }}>
+        <strong>Comprimento:</strong> {formatLength(segment.lengthMeters)}
+      </div>
+      <div style={{ fontSize: 12, marginTop: 8 }}>
+        <a href="/network/fiber" style={{ color: '#2563eb' }}>
+          Abrir CRUD →
+        </a>
+      </div>
+    </div>
+  );
 }
 
 function NetworkPopupContent({ point }: { point: NetworkMapPoint }) {

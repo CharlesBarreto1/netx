@@ -83,14 +83,26 @@ export interface NetworkMapPoint {
   capacity?: number;
 }
 
+export interface NetworkMapSegment {
+  id: string;
+  code: string;
+  type: 'BACKBONE' | 'DISTRIBUTION' | 'DROP';
+  path: Array<{ latitude: number; longitude: number }>;
+  fiberCount: number;
+  lengthMeters: number;
+  isActive: boolean;
+}
+
 export interface NetworkMapResponse {
   points: NetworkMapPoint[];
+  segments: NetworkMapSegment[];
   stats: {
     total: number;
     pops: number;
     equipment: number;
     olts: number;
     enclosures: number;
+    cables: number;
     withoutGeo: number;
   };
 }
@@ -100,6 +112,7 @@ export interface ListNetworkMapParams {
   includeEquipment?: boolean;
   includeOlts?: boolean;
   includeEnclosures?: boolean;
+  includeCables?: boolean;
 }
 
 function qsNetwork(p: ListNetworkMapParams = {}): string {
@@ -108,6 +121,7 @@ function qsNetwork(p: ListNetworkMapParams = {}): string {
   if (p.includeEquipment === false) usp.set('includeEquipment', 'false');
   if (p.includeOlts === false) usp.set('includeOlts', 'false');
   if (p.includeEnclosures === false) usp.set('includeEnclosures', 'false');
+  if (p.includeCables === false) usp.set('includeCables', 'false');
   const s = usp.toString();
   return s ? `?${s}` : '';
 }

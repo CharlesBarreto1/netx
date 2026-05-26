@@ -81,6 +81,7 @@ const messages = {
     pops: 'POPs',
     equipment: 'Equipment',
     opticalEnclosures: 'Optical enclosures',
+    fiberCables: 'Fiber cables',
     radiusLog: 'RADIUS Log',
     chat: 'Chat',
     whatsappAdmin: 'WhatsApp',

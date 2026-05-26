@@ -21,6 +21,8 @@ export const ListNetworkMapQuerySchema = z.object({
   includeOlts: z.coerce.boolean().optional().default(true),
   /** Inclui caixas ópticas (CTO/NAP/Splitter/Emenda — R2). Default true. */
   includeEnclosures: z.coerce.boolean().optional().default(true),
+  /** Inclui cabos de fibra (polylines — R3). Default true. */
+  includeCables: z.coerce.boolean().optional().default(true),
 });
 export type ListNetworkMapQuery = z.infer<typeof ListNetworkMapQuerySchema>;
 
@@ -63,14 +65,29 @@ export interface NetworkMapPoint {
   capacity?: number;
 }
 
+/** Trecho geográfico (cabo de fibra) — R3. */
+export interface NetworkMapSegment {
+  id: string;
+  /** Código humano (CABO-BB-001). */
+  code: string;
+  type: 'BACKBONE' | 'DISTRIBUTION' | 'DROP';
+  /** Polyline lat/lng — mesmo formato consumido pelo Leaflet. */
+  path: Array<{ latitude: number; longitude: number }>;
+  fiberCount: number;
+  lengthMeters: number;
+  isActive: boolean;
+}
+
 export interface NetworkMapResponse {
   points: NetworkMapPoint[];
+  segments: NetworkMapSegment[];
   stats: {
     total: number;
     pops: number;
     equipment: number;
     olts: number;
     enclosures: number;
+    cables: number;
     withoutGeo: number;
   };
 }
