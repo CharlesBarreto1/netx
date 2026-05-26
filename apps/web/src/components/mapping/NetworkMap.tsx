@@ -20,6 +20,7 @@ import {
   Popup,
   TileLayer,
   useMap,
+  useMapEvents,
 } from 'react-leaflet';
 import L from 'leaflet';
 
@@ -32,6 +33,9 @@ import type {
 
 import 'leaflet/dist/leaflet.css';
 
+/** Modos de interação suportados pelo mapa hub. */
+export type NetworkMapMode = 'select' | 'create-enclosure' | 'draw-cable';
+
 export interface NetworkMapProps {
   points: NetworkMapPoint[];
   segments?: NetworkMapSegment[];
@@ -41,6 +45,12 @@ export interface NetworkMapProps {
   onMarkerClick?: (point: NetworkMapPoint) => void;
   onSegmentClick?: (segment: NetworkMapSegment) => void;
   onSpliceClick?: (splice: NetworkMapSplice) => void;
+  /** Modo ativo — controla cursor e o que acontece em map click. */
+  mode?: NetworkMapMode;
+  /** Click no canvas vazio (não em marker/polyline). Usado pra criar caixa/cabo. */
+  onMapClick?: (latlng: { latitude: number; longitude: number }) => void;
+  /** Path em construção no modo draw-cable — renderizado como polyline tracejada. */
+  pendingPath?: Array<{ latitude: number; longitude: number }>;
   height?: string;
 }
 
@@ -56,6 +66,9 @@ export function NetworkMap({
   onMarkerClick,
   onSegmentClick,
   onSpliceClick,
+  mode = 'select',
+  onMapClick,
+  pendingPath = [],
   height = '600px',
 }: NetworkMapProps) {
   const initialCenter: [number, number] =
@@ -68,10 +81,19 @@ export function NetworkMap({
           ? [splices[0].latitude, splices[0].longitude]
           : DEFAULT_CENTER);
 
+  // Cursor por modo — controla via classe CSS no container, não inline porque
+  // Leaflet sobrescreve cursor do canvas via .leaflet-grab.
+  const cursorClass =
+    mode === 'create-enclosure'
+      ? 'cursor-crosshair'
+      : mode === 'draw-cable'
+        ? 'cursor-cell'
+        : '';
+
   return (
     <div
       style={{ height, width: '100%' }}
-      className="rounded-lg overflow-hidden border border-border"
+      className={`rounded-lg overflow-hidden border border-border ${cursorClass}`}
     >
       <MapContainer
         center={initialCenter}
@@ -84,6 +106,29 @@ export function NetworkMap({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           maxZoom={19}
         />
+        <MapClickHandler mode={mode} onMapClick={onMapClick} />
+        {pendingPath.length >= 1 && (
+          <>
+            {pendingPath.length >= 2 && (
+              <Polyline
+                positions={pendingPath.map((p) => [p.latitude, p.longitude])}
+                pathOptions={{
+                  color: '#f59e0b',
+                  weight: 3,
+                  opacity: 0.9,
+                  dashArray: '6 4',
+                }}
+              />
+            )}
+            {pendingPath.map((p, i) => (
+              <Marker
+                key={`pending-${i}`}
+                position={[p.latitude, p.longitude]}
+                icon={pendingVertexIcon(i === 0 || i === pendingPath.length - 1)}
+              />
+            ))}
+          </>
+        )}
         <FitBoundsToFeatures
           points={points}
           segments={segments}
@@ -142,6 +187,44 @@ export function NetworkMap({
       </MapContainer>
     </div>
   );
+}
+
+/**
+ * Captura click no canvas (não em marker/polyline — Leaflet propaga só quando
+ * ninguém parou). Só dispara se o modo permitir.
+ */
+function MapClickHandler({
+  mode,
+  onMapClick,
+}: {
+  mode: NetworkMapMode;
+  onMapClick?: NetworkMapProps['onMapClick'];
+}) {
+  useMapEvents({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    click(e: any) {
+      if (mode === 'select' || !onMapClick) return;
+      onMapClick({ latitude: e.latlng.lat, longitude: e.latlng.lng });
+    },
+  });
+  return null;
+}
+
+function pendingVertexIcon(isEnd: boolean): L.DivIcon {
+  const size = isEnd ? 16 : 10;
+  const color = isEnd ? '#d97706' : '#f59e0b';
+  const html = `
+    <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="${size / 2}" cy="${size / 2}" r="${size / 2 - 1}"
+              fill="${color}" stroke="white" stroke-width="2"/>
+    </svg>
+  `;
+  return L.divIcon({
+    html,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    className: '',
+  });
 }
 
 function FitBoundsToFeatures({
