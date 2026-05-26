@@ -20,6 +20,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
+  CalculatePowerBudgetRequestSchema,
   CreateFiberCableRequestSchema,
   CreateFiberSpliceRequestSchema,
   CreateOpticalEnclosureRequestSchema,
@@ -31,6 +32,7 @@ import {
   UpdateOpticalEnclosureRequestSchema,
   UpdateOpticalPortRequestSchema,
   type AuthenticatedPrincipal,
+  type CalculatePowerBudgetRequest,
   type CreateFiberCableRequest,
   type CreateFiberSpliceRequest,
   type CreateOpticalEnclosureRequest,
@@ -50,6 +52,7 @@ import { EnclosureTopologyService } from './enclosure-topology.service';
 import { FiberCablesService } from './fiber-cables.service';
 import { FiberSplicesService } from './fiber-splices.service';
 import { OpticalEnclosuresService } from './optical-enclosures.service';
+import { PowerBudgetService } from './power-budget.service';
 
 @ApiTags('optical')
 @ApiBearerAuth()
@@ -60,6 +63,7 @@ export class OpticalController {
     private readonly fiberCables: FiberCablesService,
     private readonly fiberSplices: FiberSplicesService,
     private readonly topology: EnclosureTopologyService,
+    private readonly powerBudget: PowerBudgetService,
   ) {}
 
   // ───────────────────────────────────────────────────────────────────────
@@ -250,5 +254,19 @@ export class OpticalController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     await this.fiberSplices.remove(u.tenantId, u.sub, id);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Power budget (R5) — calculadora manual
+  // ───────────────────────────────────────────────────────────────────────
+  // POST porque o input é grande/estruturado; idempotente (sem efeito
+  // colateral) então cache HTTP é permitido pelos clientes.
+  @Post('power-budget/calculate')
+  @RequirePermissions('network.read')
+  calculatePowerBudget(
+    @ZodBody(CalculatePowerBudgetRequestSchema)
+    body: CalculatePowerBudgetRequest,
+  ) {
+    return this.powerBudget.calculate(body);
   }
 }

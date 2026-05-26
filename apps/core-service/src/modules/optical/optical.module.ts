@@ -14,6 +14,7 @@ import { FiberCablesService } from './fiber-cables.service';
 import { FiberSplicesService } from './fiber-splices.service';
 import { OpticalController } from './optical.controller';
 import { OpticalEnclosuresService } from './optical-enclosures.service';
+import { PowerBudgetService } from './power-budget.service';
 
 @Module({
   imports: [AuditModule],
@@ -23,12 +24,14 @@ import { OpticalEnclosuresService } from './optical-enclosures.service';
     FiberCablesService,
     FiberSplicesService,
     EnclosureTopologyService,
+    PowerBudgetService,
   ],
   exports: [
     OpticalEnclosuresService,
     FiberCablesService,
     FiberSplicesService,
     EnclosureTopologyService,
+    PowerBudgetService,
   ],
 })
 export class OpticalModule {}
