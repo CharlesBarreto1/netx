@@ -84,6 +84,7 @@ const messages = {
     fiberCables: 'Fiber cables',
     fiberSplices: 'Splices',
     powerBudget: 'Power budget',
+    kmlImport: 'Import / export (KML)',
     radiusLog: 'RADIUS Log',
     chat: 'Chat',
     whatsappAdmin: 'WhatsApp',

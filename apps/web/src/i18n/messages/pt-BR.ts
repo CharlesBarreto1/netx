@@ -94,6 +94,7 @@ const messages = {
     fiberCables: 'Cabos de fibra',
     fiberSplices: 'Fusões / emendas',
     powerBudget: 'Power budget',
+    kmlImport: 'Importar / exportar (KML)',
     radiusLog: 'Log RADIUS',
     chat: 'Atendimento',
     whatsappAdmin: 'WhatsApp',

@@ -12,6 +12,7 @@ import { AuditModule } from '../audit/audit.module';
 import { EnclosureTopologyService } from './enclosure-topology.service';
 import { FiberCablesService } from './fiber-cables.service';
 import { FiberSplicesService } from './fiber-splices.service';
+import { KmlService } from './kml.service';
 import { OpticalController } from './optical.controller';
 import { OpticalEnclosuresService } from './optical-enclosures.service';
 import { PowerBudgetService } from './power-budget.service';
@@ -25,6 +26,7 @@ import { PowerBudgetService } from './power-budget.service';
     FiberSplicesService,
     EnclosureTopologyService,
     PowerBudgetService,
+    KmlService,
   ],
   exports: [
     OpticalEnclosuresService,
@@ -32,6 +34,7 @@ import { PowerBudgetService } from './power-budget.service';
     FiberSplicesService,
     EnclosureTopologyService,
     PowerBudgetService,
+    KmlService,
   ],
 })
 export class OpticalModule {}

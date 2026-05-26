@@ -8,19 +8,27 @@
  * mexe em CTO geralmente é o mesmo perfil que mexe em POP/Equipment.
  */
 import {
+  BadRequestException,
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
   Query,
+  Res,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import type { Response } from 'express';
 import {
   CalculatePowerBudgetRequestSchema,
+  ConfirmKmlImportRequestSchema,
   CreateFiberCableRequestSchema,
   CreateFiberSpliceRequestSchema,
   CreateOpticalEnclosureRequestSchema,
@@ -33,6 +41,7 @@ import {
   UpdateOpticalPortRequestSchema,
   type AuthenticatedPrincipal,
   type CalculatePowerBudgetRequest,
+  type ConfirmKmlImportRequest,
   type CreateFiberCableRequest,
   type CreateFiberSpliceRequest,
   type CreateOpticalEnclosureRequest,
@@ -51,6 +60,7 @@ import { ZodQueryPipe } from '../crm/zod-query.pipe';
 import { EnclosureTopologyService } from './enclosure-topology.service';
 import { FiberCablesService } from './fiber-cables.service';
 import { FiberSplicesService } from './fiber-splices.service';
+import { KmlService } from './kml.service';
 import { OpticalEnclosuresService } from './optical-enclosures.service';
 import { PowerBudgetService } from './power-budget.service';
 
@@ -64,6 +74,7 @@ export class OpticalController {
     private readonly fiberSplices: FiberSplicesService,
     private readonly topology: EnclosureTopologyService,
     private readonly powerBudget: PowerBudgetService,
+    private readonly kml: KmlService,
   ) {}
 
   // ───────────────────────────────────────────────────────────────────────
@@ -268,5 +279,61 @@ export class OpticalController {
     body: CalculatePowerBudgetRequest,
   ) {
     return this.powerBudget.calculate(body);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Import / export KML/KMZ (R4.5d)
+  // ───────────────────────────────────────────────────────────────────────
+  /**
+   * Faz parse do arquivo enviado e retorna preview. Não cria nada ainda —
+   * operador confere o que SERIA criado e depois chama /confirm.
+   * Aceita .kml (XML) ou .kmz (zip contendo doc.kml).
+   */
+  @Post('import/kml/preview')
+  @RequirePermissions('network.write')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB suficiente pra plantas grandes
+    }),
+  )
+  async previewKml(
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Anexe um arquivo .kml ou .kmz');
+    }
+    return this.kml.parsePreview(file.buffer);
+  }
+
+  /**
+   * Confirma o import: cria entidades em transação. Retorna contadores +
+   * erros (item-a-item; alguns podem falhar sem desfazer o resto).
+   */
+  @Post('import/kml/confirm')
+  @RequirePermissions('network.write')
+  confirmKml(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @ZodBody(ConfirmKmlImportRequestSchema) body: ConfirmKmlImportRequest,
+  ) {
+    return this.kml.commitImport(u.tenantId, u.sub, body);
+  }
+
+  /**
+   * Export da planta inteira como KML 2.2. Abre direto no Google Earth/QGIS.
+   * Content-Type: application/vnd.google-earth.kml+xml.
+   */
+  @Get('export/kml')
+  @RequirePermissions('network.read')
+  @Header('Content-Type', 'application/vnd.google-earth.kml+xml')
+  @Header(
+    'Content-Disposition',
+    'attachment; filename="netx-planta.kml"',
+  )
+  async exportKml(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Res() res: Response,
+  ) {
+    const xml = await this.kml.exportKml(u.tenantId);
+    res.send(xml);
   }
 }
