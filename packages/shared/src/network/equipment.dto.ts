@@ -112,6 +112,11 @@ export const CreateNetworkEquipmentRequestSchema = z.object({
   sshKeyName: optionalNullableString(128),
   sshDisconnectCmd: optionalNullableString(2000),
 
+  // Geolocalização pro mapa de Rede. Pode diferir do POP — equipamento
+  // dentro de rack específico tem coord ligeiramente distinta.
+  latitude: z.coerce.number().min(-90).max(90).nullish(),
+  longitude: z.coerce.number().min(-180).max(180).nullish(),
+
   notes: optionalNullableString(2000),
   isActive: z.coerce.boolean().default(true),
 });
@@ -170,6 +175,9 @@ export const NetworkEquipmentResponseSchema = z.object({
 
   lastReachableAt: z.string().datetime().nullable(),
   lastReachError: z.string().nullable(),
+
+  latitude: z.number().nullable(),
+  longitude: z.number().nullable(),
 
   notes: z.string().nullable(),
   isActive: z.boolean(),

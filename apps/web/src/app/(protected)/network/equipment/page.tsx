@@ -1,9 +1,11 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { CheckCircle2, Plus, Plug, RefreshCw, XCircle } from 'lucide-react';
 import { useState } from 'react';
 import useSWR from 'swr';
 
+import type { LatLng } from '@/components/mapping/LocationPicker';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
@@ -22,6 +24,17 @@ import {
   type TestConnectionStrategyResult,
 } from '@/lib/network-api';
 import { hasPermission } from '@/lib/session';
+
+const LocationPicker = dynamic(
+  () =>
+    import('@/components/mapping/LocationPicker').then((m) => m.LocationPicker),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-[320px] animate-pulse rounded-md bg-surface-muted" />
+    ),
+  },
+);
 
 const DISCONNECT_STRATEGIES: { value: DisconnectStrategy; label: string; help: string }[] = [
   {
@@ -262,6 +275,13 @@ function EquipmentFormDialog({
     notes: initial?.notes ?? '',
     isActive: initial?.isActive ?? true,
   });
+  // Geolocalização do equipamento (módulo Rede). Independente do POP — admin
+  // pode marcar coord exata mesmo que o POP-pai tenha outra.
+  const [location, setLocation] = useState<LatLng | null>(
+    initial?.latitude != null && initial?.longitude != null
+      ? { latitude: initial.latitude, longitude: initial.longitude }
+      : null,
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
@@ -302,6 +322,8 @@ function EquipmentFormDialog({
         ...form,
         apiPassword: form.apiPassword || undefined,
         sshPassword: form.sshPassword || undefined,
+        latitude: location?.latitude ?? null,
+        longitude: location?.longitude ?? null,
       };
 
       if (isNew) {
@@ -769,6 +791,15 @@ function EquipmentFormDialog({
             )}
           </div>
         )}
+
+        <div>
+          <Label>Ubicación en el mapa</Label>
+          <FieldHelp>
+            Clic en el mapa para fijar el equipo, o &quot;Mi ubicación&quot;
+            si estás físicamente en el sitio. Puede diferir de la del POP-padre.
+          </FieldHelp>
+          <LocationPicker value={location} onChange={setLocation} />
+        </div>
 
         <div>
           <Label>Observaciones</Label>

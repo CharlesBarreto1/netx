@@ -52,10 +52,65 @@ function qs(params: ListCustomerMapParams = {}): string {
   return s ? `?${s}` : '';
 }
 
+// ─── Network map (R1 — POPs + Equipamentos + OLTs) ─────────────────────────
+export type NetworkMapPointKind =
+  | 'POP'
+  | 'BNG'
+  | 'OLT'
+  | 'ROUTER'
+  | 'SWITCH'
+  | 'OTHER';
+
+export interface NetworkMapPoint {
+  id: string;
+  kind: NetworkMapPointKind;
+  name: string;
+  code: string | null;
+  latitude: number;
+  longitude: number;
+  popId: string | null;
+  isActive: boolean;
+  vendor: string | null;
+  model: string | null;
+  ipAddress: string | null;
+}
+
+export interface NetworkMapResponse {
+  points: NetworkMapPoint[];
+  stats: {
+    total: number;
+    pops: number;
+    equipment: number;
+    olts: number;
+    withoutGeo: number;
+  };
+}
+
+export interface ListNetworkMapParams {
+  includePops?: boolean;
+  includeEquipment?: boolean;
+  includeOlts?: boolean;
+}
+
+function qsNetwork(p: ListNetworkMapParams = {}): string {
+  const usp = new URLSearchParams();
+  if (p.includePops === false) usp.set('includePops', 'false');
+  if (p.includeEquipment === false) usp.set('includeEquipment', 'false');
+  if (p.includeOlts === false) usp.set('includeOlts', 'false');
+  const s = usp.toString();
+  return s ? `?${s}` : '';
+}
+
 export const mappingApi = {
   customersPath: (params: ListCustomerMapParams = {}) =>
     `/v1/mapping/customers${qs(params)}`,
   listCustomers(params: ListCustomerMapParams = {}) {
     return api.get<CustomerMapResponse>(this.customersPath(params));
+  },
+
+  networkPath: (params: ListNetworkMapParams = {}) =>
+    `/v1/mapping/network${qsNetwork(params)}`,
+  listNetwork(params: ListNetworkMapParams = {}) {
+    return api.get<NetworkMapResponse>(this.networkPath(params));
   },
 };

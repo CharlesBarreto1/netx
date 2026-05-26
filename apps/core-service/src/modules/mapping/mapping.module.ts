@@ -5,8 +5,8 @@
  *
  * Subprodutos (5 telas no UI):
  *   - Clientes   ✅ (v1) — mapa com pinos coloridos por status RADIUS
- *   - Rede       ⏳ placeholder
- *   - Backbone   ⏳ placeholder
+ *   - Rede       ✅ (R1) — POPs + Equipamentos + OLTs
+ *   - Backbone   ⏳ R3   — cabos de fibra (polylines)
  *   - Técnicos   ⏳ placeholder
  *   - Veículos   ⏳ placeholder
  *
@@ -16,10 +16,11 @@ import { Module } from '@nestjs/common';
 
 import { CustomerMapService } from './customer-map.service';
 import { MappingController } from './mapping.controller';
+import { NetworkMapService } from './network-map.service';
 
 @Module({
   controllers: [MappingController],
-  providers: [CustomerMapService],
-  exports: [CustomerMapService],
+  providers: [CustomerMapService, NetworkMapService],
+  exports: [CustomerMapService, NetworkMapService],
 })
 export class MappingModule {}

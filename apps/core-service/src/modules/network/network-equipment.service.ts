@@ -64,6 +64,9 @@ export interface CreateEquipmentInput {
   sshPassword?: string | null; // plaintext no input
   sshKeyName?: string | null;
   sshDisconnectCmd?: string | null;
+  /** Coordenadas pro mapa de Rede. */
+  latitude?: number | null;
+  longitude?: number | null;
   notes?: string | null;
   isActive?: boolean;
 }
@@ -119,15 +122,24 @@ export class NetworkEquipmentService {
   private maskCredentials<T extends {
     apiPasswordEnc?: string | null;
     sshPasswordEnc?: string | null;
+    latitude?: unknown;
+    longitude?: unknown;
   }>(eq: T): Omit<T, 'apiPasswordEnc' | 'sshPasswordEnc'> & {
     hasApiPassword: boolean;
     hasSshPassword: boolean;
   } {
-    const { apiPasswordEnc, sshPasswordEnc, ...rest } = eq;
+    const { apiPasswordEnc, sshPasswordEnc, latitude, longitude, ...rest } = eq;
     return {
       ...rest,
       hasApiPassword: !!apiPasswordEnc,
       hasSshPassword: !!sshPasswordEnc,
+      // Prisma retorna Decimal; convertemos pra number pra bater com DTO
+      // Response do @netx/shared (latitude: number | null).
+      latitude: latitude != null ? Number(latitude) : null,
+      longitude: longitude != null ? Number(longitude) : null,
+    } as Omit<T, 'apiPasswordEnc' | 'sshPasswordEnc'> & {
+      hasApiPassword: boolean;
+      hasSshPassword: boolean;
     };
   }
 
@@ -202,6 +214,8 @@ export class NetworkEquipmentService {
           radiusNasType: input.type === 'BNG' ? input.radiusNasType ?? 'mikrotik' : null,
           snmpCommunity: input.snmpCommunity ?? null,
           snmpVersion: input.snmpVersion ?? null,
+          latitude: input.latitude ?? null,
+          longitude: input.longitude ?? null,
           notes: input.notes ?? null,
           isActive: input.isActive ?? true,
           createdById: actorUserId,
@@ -303,6 +317,10 @@ export class NetworkEquipmentService {
             input.sshDisconnectCmd === undefined
               ? undefined
               : input.sshDisconnectCmd ?? null,
+          latitude:
+            input.latitude === undefined ? undefined : input.latitude ?? null,
+          longitude:
+            input.longitude === undefined ? undefined : input.longitude ?? null,
           notes: input.notes === undefined ? undefined : input.notes ?? null,
           isActive: input.isActive,
           updatedById: actorUserId,

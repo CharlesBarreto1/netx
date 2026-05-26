@@ -1,9 +1,11 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { Plus, Server } from 'lucide-react';
 import { useState } from 'react';
 import useSWR from 'swr';
 
+import type { LatLng } from '@/components/mapping/LocationPicker';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
@@ -17,6 +19,18 @@ import {
   type CreatePopInput,
 } from '@/lib/network-api';
 import { hasPermission } from '@/lib/session';
+
+// LocationPicker (Leaflet) só client-side — SSR quebra (depende de window).
+const LocationPicker = dynamic(
+  () =>
+    import('@/components/mapping/LocationPicker').then((m) => m.LocationPicker),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-[320px] animate-pulse rounded-md bg-surface-muted" />
+    ),
+  },
+);
 
 export default function PopsPage() {
   const canWrite = hasPermission('network.write');
@@ -162,6 +176,12 @@ function PopFormDialog({
     notes: initial?.notes ?? '',
     isActive: initial?.isActive ?? true,
   });
+  // Geolocalização do POP (módulo Rede). null = sem coord ainda.
+  const [location, setLocation] = useState<LatLng | null>(
+    initial?.latitude != null && initial?.longitude != null
+      ? { latitude: initial.latitude, longitude: initial.longitude }
+      : null,
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -170,10 +190,15 @@ function PopFormDialog({
     if (!form.name.trim()) return setError('Nombre obligatorio');
     setSubmitting(true);
     try {
+      const payload: CreatePopInput = {
+        ...form,
+        latitude: location?.latitude ?? null,
+        longitude: location?.longitude ?? null,
+      };
       if (isNew) {
-        await networkApi.createPop(form);
+        await networkApi.createPop(payload);
       } else {
-        await networkApi.updatePop(initial!.id, form);
+        await networkApi.updatePop(initial!.id, payload);
       }
       toast.success(isNew ? 'POP creado' : 'POP actualizado');
       onSaved();
@@ -240,6 +265,14 @@ function PopFormDialog({
             value={form.address}
             onChange={(e) => setForm({ ...form, address: e.target.value })}
           />
+        </div>
+        <div>
+          <Label>Ubicación en el mapa</Label>
+          <FieldHelp>
+            Clic en el mapa para fijar el POP, o usa &quot;Mi ubicación&quot;
+            si estás físicamente en el sitio.
+          </FieldHelp>
+          <LocationPicker value={location} onChange={setLocation} />
         </div>
         <div>
           <Label>Observaciones</Label>

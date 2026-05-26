@@ -7,15 +7,28 @@
  * Suporta dois modos: DIRECT (SSH em OLT real) e ORCHESTRATOR (API tipo
  * Ufinet). Form troca campos visíveis baseado no providerMode.
  */
+import dynamic from 'next/dynamic';
 import { useState } from 'react';
 import useSWR from 'swr';
 
+import type { LatLng } from '@/components/mapping/LocationPicker';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
-import { Input, Label, Select } from '@/components/ui/Input';
+import { FieldHelp, Input, Label, Select } from '@/components/ui/Input';
 import { PageLoader } from '@/components/ui/Spinner';
 import { ApiError } from '@/lib/api';
 import { hasPermission } from '@/lib/session';
+
+const LocationPicker = dynamic(
+  () =>
+    import('@/components/mapping/LocationPicker').then((m) => m.LocationPicker),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-[320px] animate-pulse rounded-md bg-surface-muted" />
+    ),
+  },
+);
 import {
   oltsApi,
   type CreateOltRequest,
@@ -193,6 +206,12 @@ function OltFormModal({ olt, onClose, onSaved }: OltFormModalProps) {
     defaultUpProfile: olt?.defaultUpProfile ?? null,
     defaultDownProfile: olt?.defaultDownProfile ?? null,
   });
+  // Geolocalização — null se ainda não marcada no mapa.
+  const [location, setLocation] = useState<LatLng | null>(
+    olt?.latitude != null && olt?.longitude != null
+      ? { latitude: olt.latitude, longitude: olt.longitude }
+      : null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -202,7 +221,11 @@ function OltFormModal({ olt, onClose, onSaved }: OltFormModalProps) {
     setError(null);
     try {
       // Strip senha vazia em edit (não sobrescreve a existente)
-      const payload = { ...form };
+      const payload: CreateOltRequest = {
+        ...form,
+        latitude: location?.latitude ?? null,
+        longitude: location?.longitude ?? null,
+      };
       if (olt && (payload.sshPassword === '' || payload.sshPassword == null)) {
         delete (payload as Partial<CreateOltRequest>).sshPassword;
       }
@@ -330,6 +353,15 @@ function OltFormModal({ olt, onClose, onSaved }: OltFormModalProps) {
           <div>
             <Label htmlFor="defaultDownProfile">Profile download</Label>
             <Input id="defaultDownProfile" value={form.defaultDownProfile ?? ''} onChange={(e) => set('defaultDownProfile', e.target.value || null)} />
+          </div>
+
+          <div className="sm:col-span-2"><h3 className="text-xs font-semibold uppercase text-slate-500">Ubicación</h3></div>
+          <div className="sm:col-span-2">
+            <FieldHelp>
+              Clic en el mapa para fijar la OLT, o &quot;Mi ubicación&quot;
+              si estás físicamente en el POP. Aparece en /mapping/network.
+            </FieldHelp>
+            <LocationPicker value={location} onChange={setLocation} />
           </div>
         </div>
 

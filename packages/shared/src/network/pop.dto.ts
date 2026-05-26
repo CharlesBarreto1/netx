@@ -20,6 +20,10 @@ export const CreateNetworkPopRequestSchema = z.object({
   city: optionalNullableString(120),
   state: optionalNullableString(120),
   address: optionalNullableString(255),
+  // Coordenadas pro mapa de Rede (módulo Mapeamento → Rede). Nullable
+  // pra POPs antigos. Bounds globais; admin marca no LocationPicker.
+  latitude: z.coerce.number().min(-90).max(90).nullish(),
+  longitude: z.coerce.number().min(-180).max(180).nullish(),
   notes: optionalNullableString(2000),
   isActive: z.coerce.boolean().default(true),
 });

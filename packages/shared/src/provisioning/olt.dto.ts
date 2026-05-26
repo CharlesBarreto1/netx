@@ -54,6 +54,11 @@ export const CreateOltRequestSchema = z
     serviceVlanId: z.coerce.number().int().min(1).max(4094).nullish(),
     defaultUpProfile: optionalString(64),
     defaultDownProfile: optionalString(64),
+
+    // Geolocalização pro mapa de Rede (módulo OSP). Pode diferir do POP
+    // — admin marca no LocationPicker dentro do form de OLT.
+    latitude: z.coerce.number().min(-90).max(90).nullish(),
+    longitude: z.coerce.number().min(-180).max(180).nullish(),
   })
   .superRefine((data, ctx) => {
     // Coerência de provider mode vs campos obrigatórios.
@@ -98,6 +103,8 @@ export const UpdateOltRequestSchema = z
     serviceVlanId: z.coerce.number().int().min(1).max(4094).nullish().optional(),
     defaultUpProfile: optionalString(64).optional(),
     defaultDownProfile: optionalString(64).optional(),
+    latitude: z.coerce.number().min(-90).max(90).nullish().optional(),
+    longitude: z.coerce.number().min(-180).max(180).nullish().optional(),
   })
   .strict();
 export type UpdateOltRequest = z.infer<typeof UpdateOltRequestSchema>;
@@ -138,6 +145,8 @@ export interface OltResponse {
   status: OltStatus;
   lastSeenAt: string | null;
   lastError: string | null;
+  latitude: number | null;
+  longitude: number | null;
   createdAt: string;
   updatedAt: string;
 }

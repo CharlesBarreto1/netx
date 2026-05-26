@@ -64,6 +64,8 @@ export interface Olt {
   status: OltStatus;
   lastSeenAt: string | null;
   lastError: string | null;
+  latitude: number | null;
+  longitude: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -85,6 +87,8 @@ export interface CreateOltRequest {
   serviceVlanId?: number | null;
   defaultUpProfile?: string | null;
   defaultDownProfile?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export type UpdateOltRequest = Partial<CreateOltRequest>;

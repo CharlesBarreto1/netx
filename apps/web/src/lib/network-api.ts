@@ -36,6 +36,8 @@ export interface NetworkPop {
   city: string | null;
   state: string | null;
   address: string | null;
+  latitude: number | null;
+  longitude: number | null;
   notes: string | null;
   isActive: boolean;
   createdAt: string;
@@ -73,6 +75,8 @@ export interface NetworkEquipment {
   hasSshPassword?: boolean;
   lastReachableAt: string | null;
   lastReachError: string | null;
+  latitude: number | null;
+  longitude: number | null;
   notes: string | null;
   isActive: boolean;
   createdAt: string;
@@ -86,6 +90,8 @@ export interface CreatePopInput {
   city?: string;
   state?: string;
   address?: string;
+  latitude?: number | null;
+  longitude?: number | null;
   notes?: string;
   isActive?: boolean;
 }
@@ -117,6 +123,8 @@ export interface CreateEquipmentInput {
   sshPassword?: string | null;
   sshKeyName?: string | null;
   sshDisconnectCmd?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   notes?: string;
   isActive?: boolean;
 }

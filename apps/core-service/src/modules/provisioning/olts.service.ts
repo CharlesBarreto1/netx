@@ -60,6 +60,8 @@ function toResponse(o: OltRow): OltResponse {
     status: o.status,
     lastSeenAt: o.lastSeenAt?.toISOString() ?? null,
     lastError: o.lastError,
+    latitude: o.latitude != null ? Number(o.latitude) : null,
+    longitude: o.longitude != null ? Number(o.longitude) : null,
     createdAt: o.createdAt.toISOString(),
     updatedAt: o.updatedAt.toISOString(),
   };
@@ -103,6 +105,8 @@ export class OltsService {
           serviceVlanId: input.serviceVlanId ?? null,
           defaultUpProfile: input.defaultUpProfile ?? null,
           defaultDownProfile: input.defaultDownProfile ?? null,
+          latitude: input.latitude ?? null,
+          longitude: input.longitude ?? null,
         },
       });
       await this.audit.log({
@@ -214,6 +218,8 @@ export class OltsService {
       data.defaultUpProfile = input.defaultUpProfile ?? null;
     if (input.defaultDownProfile !== undefined)
       data.defaultDownProfile = input.defaultDownProfile ?? null;
+    if (input.latitude !== undefined) data.latitude = input.latitude ?? null;
+    if (input.longitude !== undefined) data.longitude = input.longitude ?? null;
 
     const updated = await this.prisma.olt.update({ where: { id }, data });
     await this.audit.log({

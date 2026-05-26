@@ -1642,6 +1642,10 @@ model NetworkPop {
   city        String?  @db.VarChar(120)
   state       String?  @db.VarChar(120)
   address     String?  @db.VarChar(500)
+  // Geolocalização (módulo Rede/Mapeamento). DECIMAL(9,6) = <11cm erro,
+  // mesmo padrão de Contract.latitude/longitude.
+  latitude    Decimal? @db.Decimal(9, 6)
+  longitude   Decimal? @db.Decimal(9, 6)
   notes       String?  @db.Text
 
   isActive    Boolean  @default(true) @map("is_active")
@@ -1748,6 +1752,11 @@ model NetworkEquipment {
   // Última verificação de conectividade (Test connection)
   lastReachableAt    DateTime?          @map("last_reachable_at")
   lastReachError     String?            @map("last_reach_error")      @db.Text
+
+  // Geolocalização (módulo Rede/Mapeamento). Pode diferir da lat/lng do POP
+  // — equipamento dentro de rack específico tem coord ligeiramente distinta.
+  latitude    Decimal? @db.Decimal(9, 6)
+  longitude   Decimal? @db.Decimal(9, 6)
 
   notes       String?  @db.Text
   isActive    Boolean  @default(true) @map("is_active")
@@ -2446,6 +2455,10 @@ model Olt {
   status              OltStatus       @default(UNKNOWN)
   lastSeenAt          DateTime?       @map("last_seen_at")
   lastError           String?         @map("last_error") @db.Text
+
+  // ── Geolocalização (módulo Rede/Mapeamento) ──────────────────────────────
+  latitude            Decimal?        @db.Decimal(9, 6)
+  longitude           Decimal?        @db.Decimal(9, 6)
 
   createdAt           DateTime        @default(now()) @map("created_at")
   updatedAt           DateTime        @updatedAt @map("updated_at")

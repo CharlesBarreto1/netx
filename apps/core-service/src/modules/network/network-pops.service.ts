@@ -14,11 +14,28 @@ export interface CreatePopInput {
   city?: string | null;
   state?: string | null;
   address?: string | null;
+  /** Coordenadas pro mapa de Rede. Aceita number | null | undefined. */
+  latitude?: number | null;
+  longitude?: number | null;
   notes?: string | null;
   isActive?: boolean;
 }
 
 export type UpdatePopInput = Partial<CreatePopInput>;
+
+/**
+ * Converte Decimal (Prisma) em number puro pro JSON. Pra os outros campos
+ * o spread vale, mas Decimal precisa de unwrap pra bater com DTO Response.
+ */
+function toResponse<T extends { latitude?: unknown; longitude?: unknown }>(
+  pop: T,
+): T & { latitude: number | null; longitude: number | null } {
+  return {
+    ...pop,
+    latitude: pop.latitude != null ? Number(pop.latitude) : null,
+    longitude: pop.longitude != null ? Number(pop.longitude) : null,
+  } as T & { latitude: number | null; longitude: number | null };
+}
 
 @Injectable()
 export class NetworkPopsService {
@@ -28,11 +45,12 @@ export class NetworkPopsService {
   ) {}
 
   async list(tenantId: string) {
-    return this.prisma.networkPop.findMany({
+    const rows = await this.prisma.networkPop.findMany({
       where: { tenantId, deletedAt: null },
       include: { _count: { select: { equipment: true } } },
       orderBy: { name: 'asc' },
     });
+    return rows.map(toResponse);
   }
 
   async findById(tenantId: string, id: string) {
@@ -41,7 +59,7 @@ export class NetworkPopsService {
       include: { equipment: { where: { deletedAt: null } } },
     });
     if (!pop) throw new NotFoundException('POP não encontrado');
-    return pop;
+    return toResponse(pop);
   }
 
   async create(tenantId: string, actorUserId: string, input: CreatePopInput) {
@@ -54,6 +72,8 @@ export class NetworkPopsService {
           city: input.city?.trim() || null,
           state: input.state?.trim() || null,
           address: input.address?.trim() || null,
+          latitude: input.latitude ?? null,
+          longitude: input.longitude ?? null,
           notes: input.notes ?? null,
           isActive: input.isActive ?? true,
           createdById: actorUserId,
@@ -68,7 +88,7 @@ export class NetworkPopsService {
         resourceId: pop.id,
         afterState: { name: pop.name, code: pop.code, city: pop.city },
       });
-      return pop;
+      return toResponse(pop);
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw new ConflictException('Já existe POP com esse nome ou código');
@@ -94,6 +114,9 @@ export class NetworkPopsService {
           state: input.state === undefined ? undefined : input.state?.trim() || null,
           address:
             input.address === undefined ? undefined : input.address?.trim() || null,
+          latitude: input.latitude === undefined ? undefined : input.latitude ?? null,
+          longitude:
+            input.longitude === undefined ? undefined : input.longitude ?? null,
           notes: input.notes === undefined ? undefined : input.notes ?? null,
           isActive: input.isActive,
           updatedById: actorUserId,
@@ -106,7 +129,7 @@ export class NetworkPopsService {
         resource: 'network_pops',
         resourceId: pop.id,
       });
-      return pop;
+      return toResponse(pop);
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
         throw new ConflictException('Já existe POP com esse nome ou código');
