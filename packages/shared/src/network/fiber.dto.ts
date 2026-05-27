@@ -88,7 +88,7 @@ export type UpdateFiberCableRequest = z.infer<
 export interface FiberCableEndpointRef {
   id: string;
   code: string;
-  type: 'CTO' | 'NAP' | 'SPLITTER' | 'EMENDA';
+  type: 'CTO' | 'NAP' | 'SPLITTER' | 'EMENDA' | 'RESERVA';
 }
 
 export interface FiberCableResponse {

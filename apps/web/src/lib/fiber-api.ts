@@ -17,7 +17,7 @@ export interface PathPoint {
 export interface FiberCableEndpointRef {
   id: string;
   code: string;
-  type: 'CTO' | 'NAP' | 'SPLITTER' | 'EMENDA';
+  type: 'CTO' | 'NAP' | 'SPLITTER' | 'EMENDA' | 'RESERVA';
 }
 
 export interface FiberCable {
@@ -161,7 +161,7 @@ function qsSplice(p: ListFiberSplicesParams = {}): string {
 export interface TopologyEnclosure {
   id: string;
   code: string;
-  type: 'CTO' | 'NAP' | 'SPLITTER' | 'EMENDA';
+  type: 'CTO' | 'NAP' | 'SPLITTER' | 'EMENDA' | 'RESERVA';
   latitude: number;
   longitude: number;
   capacity: number;

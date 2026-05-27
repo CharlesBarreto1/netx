@@ -23,7 +23,7 @@ import type { FiberCableType } from './fiber.dto';
 export interface TopologyEnclosure {
   id: string;
   code: string;
-  type: 'CTO' | 'NAP' | 'SPLITTER' | 'EMENDA';
+  type: 'CTO' | 'NAP' | 'SPLITTER' | 'EMENDA' | 'RESERVA';
   latitude: number;
   longitude: number;
   capacity: number;

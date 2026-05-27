@@ -35,7 +35,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { OltDriverFactory } from './drivers/olt-driver.factory';
 import { buildConnectionContext } from './olt-context.util';
 
-type OltRow = Prisma.OltGetPayload<Record<string, never>>;
+type OltRow = Prisma.OltGetPayload<{
+  include: { pop: { select: { id: true; name: true; code: true } } };
+}>;
 
 function toResponse(o: OltRow): OltResponse {
   return {
@@ -62,6 +64,8 @@ function toResponse(o: OltRow): OltResponse {
     lastError: o.lastError,
     latitude: o.latitude != null ? Number(o.latitude) : null,
     longitude: o.longitude != null ? Number(o.longitude) : null,
+    popId: o.popId,
+    pop: o.pop,
     createdAt: o.createdAt.toISOString(),
     updatedAt: o.updatedAt.toISOString(),
   };
@@ -107,7 +111,9 @@ export class OltsService {
           defaultDownProfile: input.defaultDownProfile ?? null,
           latitude: input.latitude ?? null,
           longitude: input.longitude ?? null,
+          popId: input.popId ?? null,
         },
+        include: { pop: { select: { id: true, name: true, code: true } } },
       });
       await this.audit.log({
         tenantId,
@@ -131,6 +137,11 @@ export class OltsService {
       deletedAt: null,
       ...(q.vendor && { vendor: q.vendor }),
       ...(q.status && { status: q.status }),
+      ...(q.popId === 'none'
+        ? { popId: null }
+        : q.popId
+          ? { popId: q.popId }
+          : {}),
       ...(q.search && {
         OR: [
           { name: { contains: q.search, mode: 'insensitive' } },
@@ -146,6 +157,7 @@ export class OltsService {
         orderBy: { name: 'asc' },
         skip,
         take: q.pageSize,
+        include: { pop: { select: { id: true, name: true, code: true } } },
       }),
       this.prisma.olt.count({ where }),
     ]);
@@ -158,6 +170,7 @@ export class OltsService {
   async findById(tenantId: string, id: string): Promise<OltResponse> {
     const row = await this.prisma.olt.findFirst({
       where: { id, tenantId, deletedAt: null },
+      include: { pop: { select: { id: true, name: true, code: true } } },
     });
     if (!row) throw new NotFoundException('OLT não encontrada');
     return toResponse(row);
@@ -220,8 +233,19 @@ export class OltsService {
       data.defaultDownProfile = input.defaultDownProfile ?? null;
     if (input.latitude !== undefined) data.latitude = input.latitude ?? null;
     if (input.longitude !== undefined) data.longitude = input.longitude ?? null;
+    // Pop usa relação Prisma (não popId direto). connect = vincular,
+    // disconnect = desvincular.
+    if (input.popId !== undefined) {
+      data.pop = input.popId
+        ? { connect: { id: input.popId } }
+        : { disconnect: true };
+    }
 
-    const updated = await this.prisma.olt.update({ where: { id }, data });
+    const updated = await this.prisma.olt.update({
+      where: { id },
+      data,
+      include: { pop: { select: { id: true, name: true, code: true } } },
+    });
     await this.audit.log({
       tenantId,
       userId: actorUserId,

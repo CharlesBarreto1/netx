@@ -1682,6 +1682,7 @@ model NetworkPop {
   createdBy   User?  @relation("NetworkPopCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy   User?  @relation("NetworkPopUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   equipment   NetworkEquipment[]
+  olts        Olt[]
 
   @@unique([tenantId, name])
   @@unique([tenantId, code])
@@ -2482,16 +2483,22 @@ model Olt {
   latitude            Decimal?        @db.Decimal(9, 6)
   longitude           Decimal?        @db.Decimal(9, 6)
 
+  // R8.2 — POP onde a OLT está fisicamente instalada. SetNull pra não
+  // quebrar a OLT se o POP for apagado (admin re-vincula depois).
+  popId               String?         @map("pop_id") @db.Uuid
+
   createdAt           DateTime        @default(now()) @map("created_at")
   updatedAt           DateTime        @updatedAt @map("updated_at")
   deletedAt           DateTime?       @map("deleted_at")
 
   tenant              Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pop                 NetworkPop?     @relation(fields: [popId], references: [id], onDelete: SetNull)
   onts                Ont[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
   @@index([tenantId, status])
+  @@index([tenantId, popId])
   @@map("olts")
 }
 
@@ -2812,6 +2819,7 @@ enum OpticalEnclosureType {
   NAP       // Network Access Point — ponto de derivação
   SPLITTER  // Caixa só com splitter óptico (sem porta de cliente)
   EMENDA    // Caixa de emenda (sem splitter, só fusões)
+  RESERVA   // Reserva técnica — sobra de cabo enrolada (poste/caixa pequena)
 }
 
 enum SplitterRatio {

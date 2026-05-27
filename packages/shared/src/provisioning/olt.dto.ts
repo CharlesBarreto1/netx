@@ -59,6 +59,9 @@ export const CreateOltRequestSchema = z
     // — admin marca no LocationPicker dentro do form de OLT.
     latitude: z.coerce.number().min(-90).max(90).nullish(),
     longitude: z.coerce.number().min(-180).max(180).nullish(),
+
+    // R8.2 — vínculo com POP físico (estúdio de mapeamento).
+    popId: z.string().uuid().nullish(),
   })
   .superRefine((data, ctx) => {
     // Coerência de provider mode vs campos obrigatórios.
@@ -105,6 +108,7 @@ export const UpdateOltRequestSchema = z
     defaultDownProfile: optionalString(64).optional(),
     latitude: z.coerce.number().min(-90).max(90).nullish().optional(),
     longitude: z.coerce.number().min(-180).max(180).nullish().optional(),
+    popId: z.string().uuid().nullish().optional(),
   })
   .strict();
 export type UpdateOltRequest = z.infer<typeof UpdateOltRequestSchema>;
@@ -115,6 +119,8 @@ export const ListOltsQuerySchema = z.object({
   vendor: OltVendorSchema.optional(),
   status: OltStatusSchema.optional(),
   search: z.string().max(120).optional(),
+  /** Filtra OLTs de um POP específico (R8.2). 'none' = só órfãs. */
+  popId: z.union([z.string().uuid(), z.literal('none')]).optional(),
 });
 export type ListOltsQuery = z.infer<typeof ListOltsQuerySchema>;
 
@@ -147,6 +153,8 @@ export interface OltResponse {
   lastError: string | null;
   latitude: number | null;
   longitude: number | null;
+  popId: string | null;
+  pop?: { id: string; name: string; code: string | null } | null;
   createdAt: string;
   updatedAt: string;
 }

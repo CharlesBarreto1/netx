@@ -62,7 +62,8 @@ export type NetworkMapPointKind =
   | 'CTO'
   | 'NAP'
   | 'SPLITTER'
-  | 'EMENDA';
+  | 'EMENDA'
+  | 'RESERVA';
 
 export interface NetworkMapPoint {
   id: string;

@@ -32,7 +32,7 @@ export interface PonTreeNode {
   enclosure: {
     id: string;
     code: string;
-    type: 'CTO' | 'NAP' | 'SPLITTER' | 'EMENDA';
+    type: 'CTO' | 'NAP' | 'SPLITTER' | 'EMENDA' | 'RESERVA';
     splitterRatio:
       | 'ONE_TO_2'
       | 'ONE_TO_4'
@@ -63,7 +63,7 @@ export interface PonTreeResponse {
 export interface PonTreeRootCandidate {
   id: string;
   code: string;
-  type: 'CTO' | 'NAP' | 'SPLITTER' | 'EMENDA';
+  type: 'CTO' | 'NAP' | 'SPLITTER' | 'EMENDA' | 'RESERVA';
   /**
    * True se é candidato natural a raiz: caixa SEM cabo apontando pra ela
    * como endpointB (i.e., não recebe cabo de outra caixa — é cabeça da árvore).

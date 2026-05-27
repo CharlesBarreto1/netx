@@ -19,6 +19,7 @@ export const OpticalEnclosureTypeSchema = z.enum([
   'NAP',
   'SPLITTER',
   'EMENDA',
+  'RESERVA',
 ]);
 export type OpticalEnclosureType = z.infer<typeof OpticalEnclosureTypeSchema>;
 

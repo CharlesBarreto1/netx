@@ -38,6 +38,7 @@ import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 
 import { FolderTree } from '@/components/optical/FolderTree';
+import { PopDetailDrawer } from '@/components/optical/PopDetailDrawer';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
@@ -147,6 +148,9 @@ export default function MapStudioPage() {
 
   // Régua: lista de vértices só no client, não persiste.
   const [rulerPath, setRulerPath] = useState<PathPoint[]>([]);
+
+  // POP selecionado pra drawer lateral (R8.2).
+  const [selectedPopId, setSelectedPopId] = useState<string | null>(null);
 
   // ── Filtros / camadas ─────────────────────────────────────────────────────
   const [filters, setFilters] = useState<ListNetworkMapParams>({
@@ -327,6 +331,13 @@ export default function MapStudioPage() {
             events={events}
             mode={toMapMode(mode)}
             onMapClick={handleMapClick}
+            onMarkerClick={(p) => {
+              // Click num POP abre drawer lateral (R8.2). Outros tipos
+              // mantêm comportamento default do popup.
+              if (p.kind === 'POP' && mode === 'select') {
+                setSelectedPopId(p.id);
+              }
+            }}
             pendingPath={
               mode === 'cable'
                 ? draftPath
@@ -448,6 +459,13 @@ export default function MapStudioPage() {
             setPopDraft(null);
             toast.success('POP marcado · vincule OLTs em Rede › POPs');
           }}
+        />
+      )}
+
+      {selectedPopId && (
+        <PopDetailDrawer
+          popId={selectedPopId}
+          onClose={() => setSelectedPopId(null)}
         />
       )}
 

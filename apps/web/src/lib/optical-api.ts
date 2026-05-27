@@ -5,7 +5,12 @@
 import { api } from './api';
 import type { Paginated } from './crm-types';
 
-export type OpticalEnclosureType = 'CTO' | 'NAP' | 'SPLITTER' | 'EMENDA';
+export type OpticalEnclosureType =
+  | 'CTO'
+  | 'NAP'
+  | 'SPLITTER'
+  | 'EMENDA'
+  | 'RESERVA';
 
 export type SplitterRatio =
   | 'ONE_TO_2'

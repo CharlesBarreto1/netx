@@ -571,6 +571,7 @@ const KIND_LABEL: Record<NetworkMapPointKind, string> = {
   NAP: 'NAP',
   SPLITTER: 'Splitter',
   EMENDA: 'Emenda',
+  RESERVA: 'Reserva',
 };
 
 // ─── Cores e ícones por tipo ────────────────────────────────────────────────
@@ -599,6 +600,8 @@ function colorForKind(kind: NetworkMapPointKind): string {
       return '#0f766e'; // teal-700 — só passivo
     case 'EMENDA':
       return '#525252'; // neutral-600 — sem cliente
+    case 'RESERVA':
+      return '#a855f7'; // purple-500 — sobra técnica
     case 'OTHER':
       return '#6b7280'; // gray-500
   }
@@ -616,7 +619,8 @@ function iconForPoint(p: NetworkMapPoint): L.DivIcon {
     p.kind === 'CTO' ||
     p.kind === 'NAP' ||
     p.kind === 'SPLITTER' ||
-    p.kind === 'EMENDA';
+    p.kind === 'EMENDA' ||
+    p.kind === 'RESERVA';
   // Pra caixas com ocupação, usa cor de saturação. Pras outras (e EMENDA
   // que não tem porta), usa a cor base do kind.
   const base =
@@ -638,7 +642,9 @@ function iconForPoint(p: NetworkMapPoint): L.DivIcon {
             ? 'SP'
             : p.kind === 'EMENDA'
               ? 'EM'
-              : p.kind[0];
+              : p.kind === 'RESERVA'
+                ? '↻' // símbolo de loop pra reserva (cabo enrolado)
+                : p.kind[0];
   const fontSize = letter.length === 2 ? 11 : 14;
   const html = `
     <svg width="30" height="30" viewBox="0 0 30 30" xmlns="http://www.w3.org/2000/svg" style="opacity:${opacity}">
