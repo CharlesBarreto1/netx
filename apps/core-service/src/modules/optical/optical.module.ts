@@ -17,8 +17,10 @@ import { KmlService } from './kml.service';
 import { NetworkFoldersService } from './network-folders.service';
 import { OpticalController } from './optical.controller';
 import { OpticalEnclosuresService } from './optical-enclosures.service';
+import { PonPortsService } from './pon-ports.service';
 import { PonTreeService } from './pon-tree.service';
 import { PowerBudgetService } from './power-budget.service';
+import { PowerBudgetTraversalService } from './power-budget-traversal.service';
 
 @Module({
   imports: [AuditModule],
@@ -33,6 +35,8 @@ import { PowerBudgetService } from './power-budget.service';
     KmlService,
     NetworkFoldersService,
     PonTreeService,
+    PonPortsService,
+    PowerBudgetTraversalService,
   ],
   exports: [
     OpticalEnclosuresService,
@@ -44,6 +48,8 @@ import { PowerBudgetService } from './power-budget.service';
     KmlService,
     NetworkFoldersService,
     PonTreeService,
+    PonPortsService,
+    PowerBudgetTraversalService,
   ],
 })
 export class OpticalModule {}

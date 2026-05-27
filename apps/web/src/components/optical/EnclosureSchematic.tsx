@@ -26,7 +26,8 @@
  * Layout responsivo: SVG cresce com o container; portas ficam empilhadas
  * verticalmente com PORT_HEIGHT fixo. Cilindro mais longo determina altura.
  */
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import useSWR from 'swr';
 
 import { fiberColorClient } from '@/lib/fiber-api';
 import type {
@@ -35,6 +36,10 @@ import type {
   TopologyChildSplitter,
   TopologySplice,
 } from '@/lib/fiber-api';
+import {
+  powerBudgetTraversalApi,
+  type PowerBudgetAtResult,
+} from '@/lib/pon-port-api';
 
 // ─── Constantes de layout ───────────────────────────────────────────────────
 const PORT_HEIGHT = 22;
@@ -107,6 +112,27 @@ export function EnclosureSchematic({
 
   // Estado: porta selecionada (1ª click); 2ª click numa porta livre cria splice.
   const [selectedPort, setSelectedPort] = useState<PortPosition | null>(null);
+
+  // R8.3 — hover numa porta de cabo dispara fetch do power budget AUTOMÁTICO.
+  const [hoverPort, setHoverPort] = useState<PortPosition | null>(null);
+  // Debounce simples: só pede 400ms depois de parar de mover.
+  const [budgetKey, setBudgetKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (!hoverPort || hoverPort.source.kind !== 'cable') {
+      setBudgetKey(null);
+      return;
+    }
+    const t = setTimeout(() => {
+      setBudgetKey(
+        powerBudgetTraversalApi.atPath({
+          cableId: hoverPort.source.id,
+          fiberIndex: hoverPort.source.index,
+        }),
+      );
+    }, 400);
+    return () => clearTimeout(t);
+  }, [hoverPort]);
+  const { data: powerBudget } = useSWR<PowerBudgetAtResult>(budgetKey);
 
   // Map de porta → fusão (se houver). Permite saber rapidamente se uma porta
   // já está fundida (e qual fusão).
@@ -189,11 +215,15 @@ export function EnclosureSchematic({
             isSelected={selectedPort?.key === p.key}
             isSpliced={portToSplice.has(p.key)}
             onClick={() => handlePortClick(p)}
+            onHover={setHoverPort}
           />
         ))}
 
         {selectedPort && (
           <SelectedHint port={selectedPort} />
+        )}
+        {hoverPort && hoverPort.source.kind === 'cable' && (
+          <PowerTooltip port={hoverPort} budget={powerBudget ?? null} />
         )}
       </svg>
     </div>
@@ -602,11 +632,13 @@ function PortHotzone({
   isSelected,
   isSpliced,
   onClick,
+  onHover,
 }: {
   port: PortPosition;
   isSelected: boolean;
   isSpliced: boolean;
   onClick: () => void;
+  onHover?: (p: PortPosition | null) => void;
 }) {
   const w = 60;
   const h = PORT_HEIGHT;
@@ -614,6 +646,8 @@ function PortHotzone({
   return (
     <g
       onClick={onClick}
+      onMouseEnter={() => onHover?.(port)}
+      onMouseLeave={() => onHover?.(null)}
       style={{ cursor: isSpliced ? 'pointer' : 'crosshair' }}
     >
       <rect
@@ -649,6 +683,102 @@ function SelectedHint({ port }: { port: PortPosition }) {
       <text textAnchor="middle" y={4} fontSize={11} fontWeight={600} fill="#0f172a">
         Clique outra porta livre →
       </text>
+    </g>
+  );
+}
+
+// ─── PowerTooltip: badge flutuante com potência calculada (R8.3) ───────────
+function PowerTooltip({
+  port,
+  budget,
+}: {
+  port: PortPosition;
+  budget: PowerBudgetAtResult | null;
+}) {
+  // Posiciona ao lado da porta (oposto da direção do cilindro).
+  const x = port.x + (port.side === 'left' ? 90 : -90);
+  const y = port.y + 36;
+  const W = 220;
+  const H = budget?.resolved ? 84 : budget ? 62 : 46;
+
+  let title = 'Calculando…';
+  let bodyLines: { text: string; bold?: boolean; color?: string }[] = [];
+
+  if (budget) {
+    if (budget.resolved && budget.predictedDbm != null && budget.origin) {
+      title = `OLT ${budget.origin.oltName} · PON ${budget.origin.ponIndex}`;
+      const dbm = budget.predictedDbm;
+      const status =
+        dbm < -28
+          ? { color: '#dc2626', label: 'CRÍTICO — sem link' }
+          : dbm < -25
+            ? { color: '#f59e0b', label: 'ATENÇÃO — margem baixa' }
+            : { color: '#059669', label: 'OK' };
+      bodyLines = [
+        { text: `Loss total: ${budget.totalLossDb.toFixed(2)} dB` },
+        {
+          text: `Pot. prevista: ${dbm.toFixed(2)} dBm`,
+          bold: true,
+          color: status.color,
+        },
+        { text: status.label, color: status.color },
+      ];
+    } else {
+      title = '⚠ Topologia incompleta';
+      bodyLines = [
+        { text: budget.unresolvedReason ?? 'Caminho não resolvido' },
+      ];
+    }
+  }
+
+  return (
+    <g pointerEvents="none" transform={`translate(${x}, ${y})`}>
+      <rect
+        x={-W / 2}
+        y={-H / 2}
+        width={W}
+        height={H}
+        rx={4}
+        fill="white"
+        stroke="#0f172a"
+        strokeWidth={1}
+        opacity={0.97}
+      />
+      <text
+        x={0}
+        y={-H / 2 + 16}
+        textAnchor="middle"
+        fontSize={11}
+        fontWeight={700}
+        fill="#0f172a"
+      >
+        {title}
+      </text>
+      {bodyLines.map((ln, i) => (
+        <text
+          key={i}
+          x={0}
+          y={-H / 2 + 32 + i * 14}
+          textAnchor="middle"
+          fontSize={10}
+          fontWeight={ln.bold ? 700 : 400}
+          fill={ln.color ?? '#475569'}
+          fontFamily={ln.bold ? 'ui-monospace, monospace' : undefined}
+        >
+          {ln.text}
+        </text>
+      ))}
+      {!budget && (
+        <text
+          x={0}
+          y={-H / 2 + 30}
+          textAnchor="middle"
+          fontSize={10}
+          fill="#94a3b8"
+        >
+          Calculando potência…
+        </text>
+      )}
     </g>
   );
 }

@@ -6,5 +6,6 @@ export * from './kml.dto';
 export * from './optical.dto';
 export * from './pop.dto';
 export * from './power-budget.dto';
+export * from './pon-port.dto';
 export * from './pon-tree.dto';
 export * from './topology.dto';

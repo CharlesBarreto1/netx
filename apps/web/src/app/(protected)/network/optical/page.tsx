@@ -50,13 +50,20 @@ const LocationPicker = dynamic(
   },
 );
 
-const TYPES: OpticalEnclosureType[] = ['CTO', 'NAP', 'SPLITTER', 'EMENDA'];
+const TYPES: OpticalEnclosureType[] = [
+  'CTO',
+  'NAP',
+  'SPLITTER',
+  'EMENDA',
+  'RESERVA',
+];
 
 const TYPE_LABEL: Record<OpticalEnclosureType, string> = {
   CTO: 'CTO',
   NAP: 'NAP',
   SPLITTER: 'Splitter',
   EMENDA: 'Emenda',
+  RESERVA: 'Reserva',
 };
 
 const STATUS_LABEL: Record<OpticalPortStatus, string> = {

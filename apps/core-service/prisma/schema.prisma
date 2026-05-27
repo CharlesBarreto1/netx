@@ -96,6 +96,7 @@ model Tenant {
   fiberSplices         FiberSplice[]
   fiberEvents          FiberEvent[]
   networkFolders       NetworkFolder[]
+  ponPorts             PonPort[]
 
   // WhatsApp / Atendimento
   whatsappInstances    WhatsappInstance[]
@@ -2494,12 +2495,58 @@ model Olt {
   tenant              Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   pop                 NetworkPop?     @relation(fields: [popId], references: [id], onDelete: SetNull)
   onts                Ont[]
+  ponPorts            PonPort[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([tenantId, popId])
   @@map("olts")
+}
+
+// =============================================================================
+// Rede óptica (OSP) — R8.3: PonPort (porta PON da OLT)
+// =============================================================================
+// Cada OLT tem N portas PON (1..16 típico GPON), cada uma sai por UM cabo
+// óptico backbone e ocupa UMA fibra específica desse cabo. Esse vínculo é o
+// que permite o power budget AUTOMÁTICO: dado uma fibra/porta da CTO, o
+// algoritmo traversa o grafo até encontrar a PonPort de origem.
+//
+// txPowerDbm: potência da porta. Quando null, usa default GPON Class B+
+// (+3 dBm). Operador override por OLT/porta quando o transceiver é diferente.
+
+model PonPort {
+  id              String          @id @default(uuid()) @db.Uuid
+  tenantId        String          @map("tenant_id") @db.Uuid
+  oltId           String          @map("olt_id") @db.Uuid
+
+  // Índice da porta — 1-based. Validação no service: <= 16 pra GPON típico
+  // (operador override pra XGS-PON etc).
+  ponIndex        Int             @map("pon_index")
+
+  // Cabo backbone saindo desta porta + qual fibra desse cabo.
+  cableId         String?         @map("cable_id") @db.Uuid
+  fiberIndex      Int?            @map("fiber_index")
+
+  // Potência de saída em dBm. null = default da tabela de coeficientes (+3).
+  txPowerDbm      Decimal?        @map("tx_power_dbm") @db.Decimal(4, 2)
+
+  notes           String?         @db.Text
+
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  olt             Olt             @relation(fields: [oltId], references: [id], onDelete: Cascade)
+  cable           FiberCable?     @relation(fields: [cableId], references: [id], onDelete: SetNull)
+
+  // Uma porta por (olt, ponIndex). Garante unicidade física.
+  @@unique([oltId, ponIndex])
+  // Uma fibra do cabo só atende UMA PON port. Se aparecer 2x, é erro de
+  // cadastro — power budget retornaria valores inconsistentes.
+  @@unique([cableId, fiberIndex])
+  @@index([tenantId, oltId])
+  @@map("pon_ports")
 }
 
 // Estado da ONT no ciclo de vida:
@@ -2989,6 +3036,7 @@ model FiberCable {
   splicesA        FiberSplice[]    @relation("SpliceCableA")
   splicesB        FiberSplice[]    @relation("SpliceCableB")
   events          FiberEvent[]
+  ponPorts        PonPort[]
 
   // R4.5e — pasta opcional.
   folderId        String?          @map("folder_id") @db.Uuid

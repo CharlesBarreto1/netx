@@ -35,6 +35,9 @@ import {
   CreateFiberSpliceRequestSchema,
   CreateNetworkFolderRequestSchema,
   CreateOpticalEnclosureRequestSchema,
+  CreatePonPortRequestSchema,
+  PowerBudgetAtSchema,
+  UpdatePonPortRequestSchema,
   ListFiberCablesQuerySchema,
   ListFiberEventsQuerySchema,
   ListFiberSplicesQuerySchema,
@@ -55,6 +58,9 @@ import {
   type CreateFiberSpliceRequest,
   type CreateNetworkFolderRequest,
   type CreateOpticalEnclosureRequest,
+  type CreatePonPortRequest,
+  type PowerBudgetAtQuery,
+  type UpdatePonPortRequest,
   type ListFiberCablesQuery,
   type ListFiberEventsQuery,
   type ListFiberSplicesQuery,
@@ -78,8 +84,10 @@ import { FiberSplicesService } from './fiber-splices.service';
 import { KmlService } from './kml.service';
 import { NetworkFoldersService } from './network-folders.service';
 import { OpticalEnclosuresService } from './optical-enclosures.service';
+import { PonPortsService } from './pon-ports.service';
 import { PonTreeService } from './pon-tree.service';
 import { PowerBudgetService } from './power-budget.service';
+import { PowerBudgetTraversalService } from './power-budget-traversal.service';
 
 @ApiTags('optical')
 @ApiBearerAuth()
@@ -95,6 +103,8 @@ export class OpticalController {
     private readonly kml: KmlService,
     private readonly folders: NetworkFoldersService,
     private readonly ponTree: PonTreeService,
+    private readonly ponPorts: PonPortsService,
+    private readonly traversal: PowerBudgetTraversalService,
   ) {}
 
   // ───────────────────────────────────────────────────────────────────────
@@ -506,5 +516,65 @@ export class OpticalController {
     @Param('enclosureId', new ParseUUIDPipe()) enclosureId: string,
   ) {
     return this.ponTree.buildTree(u.tenantId, enclosureId);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // PON Ports (R8.3) — porta PON da OLT ligada a cabo+fibra
+  // ───────────────────────────────────────────────────────────────────────
+  @Get('olts/:oltId/pon-ports')
+  @RequirePermissions('network.read')
+  listPonPorts(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('oltId', new ParseUUIDPipe()) oltId: string,
+  ) {
+    return this.ponPorts.listByOlt(u.tenantId, oltId);
+  }
+
+  @Post('pon-ports')
+  @RequirePermissions('network.write')
+  createPonPort(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @ZodBody(CreatePonPortRequestSchema) body: CreatePonPortRequest,
+  ) {
+    return this.ponPorts.create(u.tenantId, body);
+  }
+
+  @Patch('pon-ports/:id')
+  @RequirePermissions('network.write')
+  updatePonPort(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(UpdatePonPortRequestSchema) body: UpdatePonPortRequest,
+  ) {
+    return this.ponPorts.update(u.tenantId, id, body);
+  }
+
+  @Delete('pon-ports/:id')
+  @HttpCode(204)
+  @RequirePermissions('network.write')
+  async removePonPort(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    await this.ponPorts.remove(u.tenantId, id);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Power budget AUTOMÁTICO — traversal do grafo
+  // ───────────────────────────────────────────────────────────────────────
+  /**
+   * GET /v1/optical/power-budget/at?cableId=X&fiberIndex=Y[&distanceMeters=Z]
+   * Retorna potência prevista no PONTO consultado + path completo da OLT
+   * até esse ponto. Quando topologia incompleta, retorna resolved=false +
+   * razão (operador entende o que falta cadastrar).
+   */
+  @Get('power-budget/at')
+  @RequirePermissions('network.read')
+  powerBudgetAt(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Query(new ZodQueryPipe(PowerBudgetAtSchema))
+    q: PowerBudgetAtQuery,
+  ) {
+    return this.traversal.measureAt(u.tenantId, q);
   }
 }
