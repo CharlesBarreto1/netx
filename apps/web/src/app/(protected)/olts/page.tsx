@@ -8,6 +8,7 @@
  * Ufinet). Form troca campos visíveis baseado no providerMode.
  */
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -149,6 +150,11 @@ export default function OltsPage() {
                           Testar
                         </Button>
                       )}
+                      <Link href={`/olts/${o.id}`}>
+                        <Button size="sm" variant="outline">
+                          Portas PON
+                        </Button>
+                      </Link>
                       {canAdmin && (
                         <Button size="sm" variant="ghost" onClick={() => setEditing(o)}>
                           Editar
