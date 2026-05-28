@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -15,7 +14,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiError } from '@/lib/api';
 import { MfaRequiredError } from '@/lib/auth';
 import { useAuth } from '@/lib/auth-context';
-import { config } from '@/lib/config';
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -43,16 +41,6 @@ export default function LoginScreen() {
       } else if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        // Debug Fase 0: mostra erro técnico completo em Alert pra
-        // diagnosticar cleartext / DNS / TLS issues. Remover quando
-        // app estiver estável.
-        const errAny = err as { name?: string; message?: string; stack?: string };
-        const detail = [
-          `URL: ${config.apiBaseUrl}`,
-          `name: ${errAny?.name ?? 'unknown'}`,
-          `message: ${errAny?.message ?? String(err)}`,
-        ].join('\n');
-        Alert.alert('Debug: erro de rede', detail);
         setError('Erro inesperado. Verifique sua conexão.');
       }
     } finally {

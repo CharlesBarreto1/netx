@@ -8,7 +8,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Pressable,
   RefreshControl,
@@ -77,17 +76,7 @@ export default function MyServiceOrdersScreen() {
       setItems(resp.data ?? []);
     } catch (err) {
       const apiErr = err instanceof ApiError ? err : null;
-      const msg = apiErr ? apiErr.message : 'Erro ao carregar O.S.';
-      setError(msg);
-      // Debug Fase 0: mostra detalhes pra diagnosticar permissão/rede.
-      Alert.alert(
-        'Debug: erro ao carregar O.S.',
-        [
-          `status: ${apiErr?.status ?? 'n/a'}`,
-          `message: ${msg}`,
-          `payload: ${JSON.stringify(apiErr?.payload ?? err)?.slice(0, 300)}`,
-        ].join('\n'),
-      );
+      setError(apiErr ? apiErr.message : 'Erro ao carregar O.S.');
     } finally {
       setLoading(false);
       setRefreshing(false);
