@@ -23,6 +23,7 @@ import {
   type Paginated,
   type RetryUfinetServiceRequest,
   type UfinetServiceResponse,
+  type UfinetTraceEntry,
 } from '@netx/shared';
 
 import { AuditService } from '../audit/audit.service';
@@ -30,6 +31,7 @@ import { CryptoService } from '../crypto/crypto.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { UfinetClientService, UfinetApiError } from './ufinet-client.service';
+import { ufinetTrace } from './ufinet-trace';
 import {
   extractOrder,
   extractOrderId,
@@ -397,10 +399,47 @@ export class UfinetOrdersService {
     };
   }
 
+  /**
+   * Trace completo (request/response) das chamadas à Ufinet desse serviço —
+   * evidência pra abrir chamado com eles. Correlacionado por externalId.
+   */
+  async getTrace(tenantId: string, serviceId: string): Promise<UfinetTraceEntry[]> {
+    const svc = await this.prisma.ufinetService.findFirst({
+      where: { id: serviceId, tenantId },
+      select: { externalId: true },
+    });
+    if (!svc) throw new NotFoundException('Serviço Ufinet não encontrado');
+    const logs = await this.prisma.ufinetRequestLog.findMany({
+      where: { tenantId, externalId: svc.externalId },
+      orderBy: { createdAt: 'asc' },
+      take: 2000,
+    });
+    return logs.map((l) => ({
+      id: l.id,
+      method: l.method,
+      path: l.path,
+      status: l.status,
+      durationMs: l.durationMs,
+      requestBody: l.requestBody,
+      responseBody: l.responseBody,
+      error: l.error,
+      createdAt: l.createdAt.toISOString(),
+    }));
+  }
+
   // ===========================================================================
   // Poller entrypoint
   // ===========================================================================
   async advance(service: UfinetService): Promise<void> {
+    // Propaga tenant+externalId pro cliente HTTP persistir o trace de cada
+    // request/response deste serviço (evidência pra chamados com a Ufinet).
+    return ufinetTrace.run(
+      { tenantId: service.tenantId, externalId: service.externalId },
+      () => this.advanceInner(service),
+    );
+  }
+
+  private async advanceInner(service: UfinetService): Promise<void> {
     const olt = await this.prisma.olt.findUnique({ where: { id: service.oltId } });
     if (!olt) return this.fail(service, 'OLT não encontrada');
 

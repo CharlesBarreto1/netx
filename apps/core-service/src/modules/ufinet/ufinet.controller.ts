@@ -48,6 +48,16 @@ export class UfinetController {
     return this.orders.findByContractForApi(user.tenantId, contractId);
   }
 
+  /** Trace completo de requests/responses NetX↔Ufinet — evidência pra chamados. */
+  @Get(':id/trace')
+  @RequirePermissions('ufinet.orders.read')
+  trace(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.orders.getTrace(user.tenantId, id);
+  }
+
   @Post(':id/retry')
   @RequirePermissions('ufinet.orders.retry')
   retry(

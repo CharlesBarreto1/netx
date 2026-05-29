@@ -5,6 +5,7 @@
  * Hub do Atendente: read-only + botão "reprocessar" quando FAILED.
  * Não renderiza nada se o contrato não tem serviço Ufinet.
  */
+import { useState } from 'react';
 import useSWR from 'swr';
 
 import { Button } from '@/components/ui/Button';
@@ -55,6 +56,8 @@ export function UfinetStatusPanel({ contractId }: { contractId: string }) {
     () => ufinetApi.byContract(contractId),
   );
 
+  const [downloading, setDownloading] = useState(false);
+
   if (isLoading || !data) return null;
   const svc = data;
   const canRetry = hasPermission('ufinet.orders.retry');
@@ -67,6 +70,33 @@ export function UfinetStatusPanel({ contractId }: { contractId: string }) {
     } catch (err) {
       const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
       toast.error(`Falha ao reprocessar: ${msg}`);
+    }
+  }
+
+  async function handleDownloadTrace() {
+    setDownloading(true);
+    try {
+      const entries = await ufinetApi.trace(svc.id);
+      const doc = {
+        externalId: svc.externalId,
+        contractId,
+        oltName: svc.oltName,
+        serviceOrderId: svc.serviceOrderId,
+        generatedAt: new Date().toISOString(),
+        entries,
+      };
+      const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `ufinet-trace-${svc.externalId}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
+      toast.error(`Falha ao baixar trace: ${msg}`);
+    } finally {
+      setDownloading(false);
     }
   }
 
@@ -96,13 +126,16 @@ export function UfinetStatusPanel({ contractId }: { contractId: string }) {
           {svc.error}
         </p>
       )}
-      {svc.lifecycle === 'FAILED' && canRetry && (
-        <div className="mt-3 flex justify-end">
+      <div className="mt-3 flex justify-end gap-2">
+        <Button size="sm" variant="outline" loading={downloading} onClick={handleDownloadTrace}>
+          Baixar trace (evidência)
+        </Button>
+        {svc.lifecycle === 'FAILED' && canRetry && (
           <Button size="sm" variant="secondary" onClick={handleRetry}>
             Reprocessar
           </Button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

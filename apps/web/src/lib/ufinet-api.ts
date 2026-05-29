@@ -45,10 +45,23 @@ export interface UfinetService {
   updatedAt: string;
 }
 
+export interface UfinetTraceEntry {
+  id: string;
+  method: string;
+  path: string;
+  status: number | null;
+  durationMs: number;
+  requestBody: unknown;
+  responseBody: unknown;
+  error: string | null;
+  createdAt: string;
+}
+
 export const ufinetApi = {
   byContractPath: (contractId: string) => `/v1/ufinet/services/contract/${contractId}`,
   byContract: (contractId: string) =>
     api.get<UfinetService | null>(`/v1/ufinet/services/contract/${contractId}`),
   retry: (id: string) =>
     api.post<UfinetService>(`/v1/ufinet/services/${id}/retry`, { resetAttempts: true }),
+  trace: (id: string) => api.get<UfinetTraceEntry[]>(`/v1/ufinet/services/${id}/trace`),
 };

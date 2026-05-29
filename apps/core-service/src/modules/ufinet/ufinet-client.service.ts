@@ -13,8 +13,12 @@
  * Stateless exceto o cache de token em memória → instanciável fora do Nest
  * (usado por scripts de smoke test contra QA).
  */
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 
+import { PrismaService } from '../prisma/prisma.service';
+
+import { ufinetTrace } from './ufinet-trace';
 import type {
   UfinetConnection,
   UfinetInventoryService,
@@ -43,6 +47,41 @@ export class UfinetApiError extends Error {
 export class UfinetClientService {
   private readonly logger = new Logger(UfinetClientService.name);
   private readonly tokenCache = new Map<string, { token: string; expiresAt: number }>();
+
+  // @Optional: scripts de smoke contra QA instanciam o cliente sem Nest (sem
+  // Prisma) — nesse caso o trace só não é persistido.
+  constructor(@Optional() private readonly prisma?: PrismaService) {}
+
+  /** Persiste 1 linha de trace (best-effort, nunca quebra a chamada). */
+  private async persistTrace(entry: {
+    method: string;
+    path: string;
+    status: number | null;
+    durationMs: number;
+    requestBody?: unknown;
+    responseBody?: unknown;
+    error?: string | null;
+  }): Promise<void> {
+    const ctx = ufinetTrace.getStore();
+    if (!ctx || !this.prisma) return;
+    try {
+      await this.prisma.ufinetRequestLog.create({
+        data: {
+          tenantId: ctx.tenantId,
+          externalId: ctx.externalId,
+          method: entry.method,
+          path: entry.path.slice(0, 255),
+          status: entry.status ?? null,
+          durationMs: entry.durationMs,
+          requestBody: toJsonInput(entry.requestBody),
+          responseBody: toJsonInput(entry.responseBody),
+          error: entry.error?.slice(0, 2000) ?? null,
+        },
+      });
+    } catch {
+      /* trace é evidência best-effort — nunca propaga erro */
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // Auth
@@ -135,16 +174,26 @@ export class UfinetClientService {
       }
       this.logger.log(`${method} ${path} → ${res.status} (${ms}ms)`);
       this.logger.debug(`← ${method} ${path} resp=${truncate(text)}`);
+      await this.persistTrace({
+        method, path, status: res.status, durationMs: ms, requestBody: body, responseBody: parsed,
+      });
       return parsed as T;
     } catch (err) {
       const ms = Date.now() - startedAt;
       if (err instanceof UfinetApiError) {
         this.logger.warn(`${method} ${path} → ${err.status || 'ERRO'} (${ms}ms): ${err.message}`);
         this.logger.debug(`← ${method} ${path} erro-body=${truncate(JSON.stringify(err.body))}`);
+        await this.persistTrace({
+          method, path, status: err.status || null, durationMs: ms,
+          requestBody: body, responseBody: err.body, error: err.message,
+        });
         throw err;
       }
       const message = err instanceof Error ? err.message : String(err);
       this.logger.warn(`${method} ${path} → FALHA (${ms}ms): ${message}`);
+      await this.persistTrace({
+        method, path, status: null, durationMs: ms, requestBody: body, error: message,
+      });
       throw new UfinetApiError(`Ufinet ${method} ${path} falhou: ${message}`, 0, null);
     } finally {
       clearTimeout(timer);
@@ -213,4 +262,15 @@ function safeJson(text: string): unknown {
 function truncate(s: string | null | undefined, max = 4000): string {
   if (!s) return '';
   return s.length > max ? `${s.slice(0, max)}…[+${s.length - max} chars]` : s;
+}
+
+/** Normaliza um corpo pra coluna JSONB do trace (undefined = NULL). */
+function toJsonInput(v: unknown): Prisma.InputJsonValue | undefined {
+  if (v === undefined || v === null) return undefined;
+  try {
+    JSON.stringify(v);
+    return v as Prisma.InputJsonValue;
+  } catch {
+    return String(v);
+  }
 }

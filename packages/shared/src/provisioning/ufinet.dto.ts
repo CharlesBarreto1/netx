@@ -97,6 +97,19 @@ export const UfinetOltConfigSchema = z.object({
 });
 export type UfinetOltConfig = z.infer<typeof UfinetOltConfigSchema>;
 
+/** Uma linha do trace de request/response NetX↔Ufinet (evidência/auditoria). */
+export interface UfinetTraceEntry {
+  id: string;
+  method: string;
+  path: string;
+  status: number | null;
+  durationMs: number;
+  requestBody: unknown;
+  responseBody: unknown;
+  error: string | null;
+  createdAt: string;
+}
+
 // -----------------------------------------------------------------------------
 // Status do serviço Ufinet de um contrato (read-only pra UI / Hub do Atendente)
 // -----------------------------------------------------------------------------

@@ -2922,6 +2922,26 @@ model UfinetService {
   @@map("ufinet_services")
 }
 
+// Trilha completa de request/response NetX↔Ufinet por serviço (externalId).
+// NUNCA guarda token nem o header Access — só método/rota/corpos de negócio.
+// Serve de EVIDÊNCIA pra abrir chamado com a Ufinet (export por serviço).
+model UfinetRequestLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  externalId   String   @map("external_id") @db.VarChar(80)
+  method       String   @db.VarChar(8)
+  path         String   @db.VarChar(255)
+  status       Int?     // null = erro de transporte (timeout/conexão)
+  durationMs   Int      @map("duration_ms")
+  requestBody  Json?    @map("request_body")
+  responseBody Json?    @map("response_body")
+  error        String?  @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([tenantId, externalId, createdAt])
+  @@map("ufinet_request_logs")
+}
+
 // -----------------------------------------------------------------------------
 // MOBILE — app do técnico em campo (Expo + React Native)
 // -----------------------------------------------------------------------------
