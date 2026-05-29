@@ -117,7 +117,7 @@ export interface FiberCableResponse {
 // =============================================================================
 export const ListFiberCablesQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(200).default(50),
+  pageSize: z.coerce.number().int().min(1).max(500).default(50),
   type: FiberCableTypeSchema.optional(),
   search: z.string().max(120).optional(),
 });
