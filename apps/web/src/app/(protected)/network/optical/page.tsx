@@ -139,9 +139,31 @@ export default function OpticalEnclosuresPage() {
     }
   }
 
+  async function selectAllFiltered() {
+    try {
+      const ids = await opticalApi.listIds({
+        type: type || undefined,
+        search: search || undefined,
+      });
+      setSelected(new Set(ids));
+      toast.success(`${ids.length} caixa(s) selecionada(s)`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+    }
+  }
+
   if (isLoading && !data) return <PageLoader label="Carregando caixas…" />;
 
   const rows = data?.data ?? [];
+  const total = data?.pagination.total ?? 0;
+  const allVisibleSelected = rows.length > 0 && rows.every((r) => selected.has(r.id));
+  const toggleAllVisible = () =>
+    setSelected((s) => {
+      const n = new Set(s);
+      if (allVisibleSelected) rows.forEach((r) => n.delete(r.id));
+      else rows.forEach((r) => n.add(r.id));
+      return n;
+    });
 
   return (
     <div className="space-y-5">
@@ -230,6 +252,11 @@ export default function OpticalEnclosuresPage() {
           <Button type="button" loading={bulkBusy} onClick={handleBulkAssign}>
             Atribuir a {selected.size}
           </Button>
+          {total > selected.size && (
+            <Button type="button" variant="secondary" onClick={selectAllFiltered}>
+              Selecionar todas as {total}
+            </Button>
+          )}
           <Button type="button" variant="ghost" onClick={() => setSelected(new Set())}>
             Limpar seleção
           </Button>
@@ -241,7 +268,16 @@ export default function OpticalEnclosuresPage() {
         <table className="min-w-full text-sm">
           <thead className="bg-surface-muted text-left text-[11px] font-semibold uppercase tracking-wider text-text-muted">
             <tr>
-              <th className="w-8 px-3 py-2"></th>
+              <th className="w-8 px-3 py-2">
+                {canWrite && rows.length > 0 && (
+                  <input
+                    type="checkbox"
+                    aria-label="Selecionar todas as visíveis"
+                    checked={allVisibleSelected}
+                    onChange={toggleAllVisible}
+                  />
+                )}
+              </th>
               <th className="px-3 py-2">Código</th>
               <th className="px-3 py-2">Tipo</th>
               <th className="px-3 py-2">Splitter</th>

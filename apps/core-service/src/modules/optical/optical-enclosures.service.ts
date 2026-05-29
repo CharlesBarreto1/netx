@@ -168,6 +168,30 @@ export class OpticalEnclosuresService {
     };
   }
 
+  /** Só os IDs que casam com o filtro (pra "selecionar todas" na UI, sem paginar). */
+  async listIds(tenantId: string, q: ListOpticalEnclosuresQuery): Promise<string[]> {
+    const where: Prisma.OpticalEnclosureWhereInput = {
+      tenantId,
+      deletedAt: null,
+      ...(q.type ? { type: q.type } : {}),
+      ...(q.parentId ? { parentId: q.parentId } : {}),
+      ...(q.oltId ? { oltId: q.oltId } : {}),
+      ...(q.search
+        ? {
+            OR: [
+              { code: { contains: q.search, mode: 'insensitive' } },
+              { locationLabel: { contains: q.search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+    const rows = await this.prisma.opticalEnclosure.findMany({
+      where,
+      select: { id: true },
+    });
+    return rows.map((r) => r.id);
+  }
+
   async findById(tenantId: string, id: string): Promise<OpticalEnclosureResponse> {
     const e = await this.prisma.opticalEnclosure.findFirst({
       where: { id, tenantId, deletedAt: null },

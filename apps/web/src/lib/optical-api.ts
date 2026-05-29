@@ -147,6 +147,9 @@ export const opticalApi = {
   listPath: (p: ListEnclosuresParams = {}) => `/v1/optical/enclosures${qs(p)}`,
   list: (p: ListEnclosuresParams = {}) =>
     api.get<Paginated<OpticalEnclosure>>(`/v1/optical/enclosures${qs(p)}`),
+  /** Só os IDs que casam com o filtro — pra "selecionar todas". */
+  listIds: (p: ListEnclosuresParams = {}) =>
+    api.get<string[]>(`/v1/optical/enclosures/ids${qs(p)}`),
   getPath: (id: string) => `/v1/optical/enclosures/${id}`,
   get: (id: string) => api.get<OpticalEnclosure>(`/v1/optical/enclosures/${id}`),
   create: (input: CreateEnclosureInput) =>

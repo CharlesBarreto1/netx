@@ -122,6 +122,17 @@ export class OpticalController {
     return this.enclosures.list(u.tenantId, q);
   }
 
+  /** IDs que casam com o filtro — pra "selecionar todas" na UI. ANTES de :id. */
+  @Get('enclosures/ids')
+  @RequirePermissions('network.read')
+  listIds(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Query(new ZodQueryPipe(ListOpticalEnclosuresQuerySchema))
+    q: ListOpticalEnclosuresQuery,
+  ) {
+    return this.enclosures.listIds(u.tenantId, q);
+  }
+
   @Get('enclosures/:id')
   @RequirePermissions('network.read')
   findById(
