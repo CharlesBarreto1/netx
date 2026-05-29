@@ -84,6 +84,16 @@ export class ProxyService {
       forwardedHeaders['x-real-ip'] = clientIp;
     }
 
+    // Multipart (uploads, ex.: import KMZ/KML, fotos): o Express do gateway NÃO
+    // parseia multipart, então `req.body` fica vazio. Re-enviar `req.body` aqui
+    // mandaria um corpo vazio com o header `multipart/...; boundary=...`, e o
+    // busboy do core estoura "Multipart: Unexpected end of form". Pra esses, o
+    // gateway transmite o STREAM cru do request (o body ainda não foi consumido,
+    // pois json/urlencoded só leem seus próprios content-types). Demais
+    // requests seguem com o body já parseado (JSON/urlencoded).
+    const contentType = (req.headers['content-type'] ?? '').toString().toLowerCase();
+    const isMultipart = contentType.includes('multipart/form-data');
+
     try {
       const res = await firstValueFrom(
         this.http.request({
@@ -96,9 +106,13 @@ export class ProxyService {
           // o que o Express do core parseia como `{ page: ['1','1'] }`. Aí o
           // `z.coerce.number()` recebe array e devolve `NaN`, retornando 400
           // "Expected number, received nan".
-          data: req.body,
+          data: isMultipart ? req : req.body,
+          // Streams de upload não devem ser limitados pelo axios (o core aplica
+          // o limite real via multer). Sem buffering — o stream é repassado.
+          maxBodyLength: Infinity,
+          maxContentLength: Infinity,
           validateStatus: () => true, // never throw on 4xx/5xx
-          timeout: 15_000,
+          timeout: isMultipart ? 60_000 : 15_000,
         }),
       );
       return { status: res.status, headers: res.headers as any, body: res.data };
