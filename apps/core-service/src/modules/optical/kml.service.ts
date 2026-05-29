@@ -169,11 +169,20 @@ export class KmlService {
     let enclosuresCreated = 0;
     let cablesCreated = 0;
 
-    await this.prisma.$transaction(async (tx) => {
-      // Caixas primeiro: cabos podem ainda não ter endpoints, mas se
-      // operador editar depois precisará das caixas existindo.
-      for (const e of preview.enclosures) {
-        try {
+    // IMPORTANTE: NÃO usar uma transação única pro lote inteiro. No Postgres,
+    // o primeiro create que falha (ex.: `code` duplicado) aborta a transação;
+    // os catch por-item escondem o erro mas todos os inserts seguintes falham
+    // com "current transaction is aborted" e o COMMIT vira ROLLBACK — resultado:
+    // "importou N" mas nada persiste. Em vez disso, cada item é uma transação
+    // própria: a falha de um desfaz só aquele item; os demais persistem.
+
+    // Caixas primeiro: cabos podem ainda não ter endpoints, mas se o operador
+    // editar depois precisará das caixas existindo.
+    for (const e of preview.enclosures) {
+      try {
+        // Caixa + portas atômicas POR ITEM (se as portas falharem, não fica
+        // caixa órfã sem portas).
+        await this.prisma.$transaction(async (tx) => {
           const enclosure = await tx.opticalEnclosure.create({
             data: {
               tenantId,
@@ -199,37 +208,37 @@ export class KmlService {
               }),
             ),
           });
-          enclosuresCreated++;
-        } catch (err) {
-          errors.push(
-            `Caixa "${e.name}": ${err instanceof Error ? err.message : 'erro'}`,
-          );
-        }
+        });
+        enclosuresCreated++;
+      } catch (err) {
+        errors.push(
+          `Caixa "${e.name}": ${importErrMsg(err)}`,
+        );
       }
+    }
 
-      for (const c of preview.cables) {
-        try {
-          await tx.fiberCable.create({
-            data: {
-              tenantId,
-              code: c.name.slice(0, 40),
-              type: defaults.cableType,
-              fiberCount: defaults.cableFiberCount,
-              path: c.path.map((p) => [p.longitude, p.latitude]),
-              lengthMeters: c.lengthMeters,
-              notes: c.description ?? null,
-              createdById: actorUserId,
-              updatedById: actorUserId,
-            },
-          });
-          cablesCreated++;
-        } catch (err) {
-          errors.push(
-            `Cabo "${c.name}": ${err instanceof Error ? err.message : 'erro'}`,
-          );
-        }
+    for (const c of preview.cables) {
+      try {
+        await this.prisma.fiberCable.create({
+          data: {
+            tenantId,
+            code: c.name.slice(0, 40),
+            type: defaults.cableType,
+            fiberCount: defaults.cableFiberCount,
+            path: c.path.map((p) => [p.longitude, p.latitude]),
+            lengthMeters: c.lengthMeters,
+            notes: c.description ?? null,
+            createdById: actorUserId,
+            updatedById: actorUserId,
+          },
+        });
+        cablesCreated++;
+      } catch (err) {
+        errors.push(
+          `Cabo "${c.name}": ${importErrMsg(err)}`,
+        );
       }
-    });
+    }
 
     await this.audit.log({
       tenantId,
@@ -387,6 +396,14 @@ function collectPlacemarks(node: unknown, out: unknown[]): void {
     if (key === 'Placemark') continue;
     collectPlacemarks(obj[key], out);
   }
+}
+
+/** Mensagem de erro amigável por item do import (esconde o ruído do Prisma). */
+function importErrMsg(err: unknown): string {
+  const code = (err as { code?: string } | null)?.code;
+  if (code === 'P2002') return 'código duplicado (nome repetido no arquivo ou já importado)';
+  if (code === 'P2000') return 'valor longo demais pra um campo';
+  return err instanceof Error ? err.message : 'erro';
 }
 
 /** KML coordinate format: "lng,lat[,alt]" — pega o primeiro. */
