@@ -446,10 +446,11 @@ export default function InstallPage() {
               Ufinet — caixa &amp; porta (rede neutra)
             </h2>
             <p className="text-xs text-slate-500">
-              Informe a <strong>caixa (CTO) e porta REAIS</strong> onde você conectou
-              o drop. Vão pra Ufinet na confirmação como <code>CTO_PORT</code> e
-              sobrescrevem a caixa que eles sugerem (que normalmente não é a usada).
-              Deixe vazio pra usar a caixa sugerida pela Ufinet.
+              Informe a <strong>caixa (CTO) REAL</strong> onde você conectou o drop —
+              ela vai pra Ufinet na confirmação e sobrescreve a caixa que eles
+              sugerem (que normalmente não é a usada). A <strong>porta</strong> é só
+              controle interno do NetX (não vai pra Ufinet). Caixa vazia = usa a
+              sugerida pela Ufinet.
             </p>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
@@ -458,11 +459,11 @@ export default function InstallPage() {
                   id="ufinetCto"
                   value={ufinetCto}
                   onChange={(e) => setUfinetCto(e.target.value)}
-                  placeholder="ex.: CTO-MALLORQUIN-014"
+                  placeholder="ex.: FTTXPY13695"
                 />
               </div>
               <div>
-                <Label htmlFor="ufinetPort">Porta</Label>
+                <Label htmlFor="ufinetPort">Porta (1–16, uso interno)</Label>
                 <Input
                   id="ufinetPort"
                   value={ufinetPort}

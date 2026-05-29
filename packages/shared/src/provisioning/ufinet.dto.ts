@@ -114,7 +114,10 @@ export interface UfinetServiceResponse {
   serviceOrderId: string | null;
   parentServiceId: string | null;
   resPonAccessServiceId: string | null;
+  /** Caixa (CTO) enviada à Ufinet. */
   ctoPort: string | null;
+  /** Porta do drop (1..16) — controle interno do NetX, não vai pra Ufinet. */
+  dropPort: string | null;
   serialNumber: string | null;
   /** Operação em voo / diagnóstico. */
   ufinetState: string | null;

@@ -34,6 +34,7 @@ export interface UfinetService {
   parentServiceId: string | null;
   resPonAccessServiceId: string | null;
   ctoPort: string | null;
+  dropPort: string | null;
   serialNumber: string | null;
   ufinetState: string | null;
   waitingCode: string | null;

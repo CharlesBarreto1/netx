@@ -2891,7 +2891,11 @@ model UfinetService {
   fiberAccessServiceId  String?         @map("fiber_access_service_id") @db.VarChar(32)
   hsdServiceId          String?         @map("hsd_service_id") @db.VarChar(32)
   resPonAccessServiceId String?         @map("res_pon_access_service_id") @db.VarChar(32)
+  // ctoPort = CAIXA (CTO) enviada à Ufinet como CTO_PORT — eles controlam só a
+  // caixa, não a porta. dropPort = porta (1..16) que o técnico usou, guardada
+  // SÓ pra doc interna do NetX (não vai pra Ufinet).
   ctoPort               String?         @map("cto_port") @db.VarChar(64)
+  dropPort              String?         @map("drop_port") @db.VarChar(16)
   serialNumber          String?         @map("serial_number") @db.VarChar(32)       // SN GPON da ONT confirmada
 
   // ── Operação em voo (consumida pelo poller) ──────────────────────────────

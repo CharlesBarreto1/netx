@@ -524,13 +524,11 @@ export class ProvisioningService {
           oltId: olt.id,
           actorUserId,
         });
-        // Caixa/porta REAIS que o técnico conectou em campo → vira o CTO_PORT
-        // enviado na confirmação (sobrescreve o sugerido pela Ufinet).
-        const ctoPort = input.ufinetCto?.trim()
-          ? `${input.ufinetCto.trim()}${input.ufinetPort?.trim() ? `/${input.ufinetPort.trim()}` : ''}`
-          : null;
+        // A Ufinet controla só a CAIXA → ctoPort = caixa real do técnico
+        // (sobrescreve a sugerida). A porta é só doc interna do NetX.
         await this.ufinet.requestConfirmOnt(tenantId, contractId, resolvedSnGpon, {
-          ctoPort,
+          ctoPort: input.ufinetCto?.trim() || null,
+          dropPort: input.ufinetPort?.trim() || null,
           actorUserId,
         });
         pushEvent('OLT_AUTHORIZE', 'SUCCESS', 'ONT confirmada na fila Ufinet (poller conclui em background)');

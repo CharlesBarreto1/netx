@@ -214,12 +214,15 @@ export class UfinetOrdersService {
     tenantId: string,
     contractId: string,
     serialNumber: string,
-    opts?: { ctoPort?: string | null; actorUserId?: string | null },
+    opts?: { ctoPort?: string | null; dropPort?: string | null; actorUserId?: string | null },
   ): Promise<UfinetService> {
     const actorUserId = opts?.actorUserId ?? null;
-    // Caixa/porta REAIS do técnico — sobrescrevem o CTO_PORT sugerido pela
-    // Ufinet na confirmação do serviço. null/'' = mantém o que já houver.
-    const ctoOverride = opts?.ctoPort?.trim() ? { ctoPort: opts.ctoPort.trim() } : {};
+    // ctoPort = CAIXA real do técnico → sobrescreve a CTO sugerida na confirmação
+    // (vai pra Ufinet). dropPort = porta, só doc interna. null/'' = mantém.
+    const ctoOverride = {
+      ...(opts?.ctoPort?.trim() ? { ctoPort: opts.ctoPort.trim() } : {}),
+      ...(opts?.dropPort?.trim() ? { dropPort: opts.dropPort.trim() } : {}),
+    };
     const svc = await this.getByContract(tenantId, contractId);
     if (svc.lifecycle === 'RESERVED' || svc.lifecycle === 'CONFIRMING_ONT') {
       return this.transition(
@@ -382,6 +385,7 @@ export class UfinetOrdersService {
       parentServiceId: s.parentServiceId,
       resPonAccessServiceId: s.resPonAccessServiceId,
       ctoPort: s.ctoPort,
+      dropPort: s.dropPort,
       serialNumber: s.serialNumber,
       ufinetState: s.ufinetState,
       waitingCode: s.waitingCode,

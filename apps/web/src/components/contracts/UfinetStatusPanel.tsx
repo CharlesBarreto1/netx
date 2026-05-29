@@ -83,7 +83,8 @@ export function UfinetStatusPanel({ contractId }: { contractId: string }) {
         <Row label="Polígono / OLT" value={svc.oltName} />
         <Row label="Perfil de banda" value={svc.bandwidthProfile} />
         <Row label="Ordem (serviceOrderId)" value={svc.serviceOrderId} />
-        <Row label="CTO / porta" value={svc.ctoPort} />
+        <Row label="Caixa (CTO)" value={svc.ctoPort} />
+        <Row label="Porta (interno)" value={svc.dropPort} />
         <Row label="ONT (SN)" value={svc.serialNumber} />
         <Row label="Estado Ufinet" value={svc.ufinetState} />
         {svc.waitingCode && svc.waitingCode !== '0' && (
