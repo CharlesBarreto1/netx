@@ -45,6 +45,9 @@ const SEND_RETRY_MS = 8_000; // logo após enviar, faz o 1º poll rápido
 const POLL_MIN_MS = 15_000;
 const POLL_MAX_MS = 5 * 60_000;
 const MAX_ATTEMPTS = 240; // ~horas de poll antes de desistir (FAILED)
+// Ufinet 426 "Tareas pendientes": aprovisionamento ainda em trabalho de campo/
+// infra. NÃO é erro — espera calma, sem contar pro limite de FAILED.
+const PENDING_RETRY_MS = 60_000;
 
 @Injectable()
 export class UfinetOrdersService {
@@ -384,6 +387,22 @@ export class UfinetOrdersService {
           return; // estado de repouso
       }
     } catch (err) {
+      // 426 "Tareas pendientes / Aprovisionamiento en proceso": a Ufinet ainda
+      // executa trabalho de campo/infra. É ESPERA, não erro — re-tenta calmo,
+      // sem marcar erro nem contar pro limite de FAILED.
+      if (this.isProvisioningPending(err)) {
+        this.logger.log(
+          `[ufinet] ${service.externalId} aguardando Ufinet concluir aprovisionamento ` +
+            `(tareas pendientes) — re-tenta em ${PENDING_RETRY_MS / 1000}s`,
+        );
+        await this.save(service.id, {
+          ufinetState: 'aprovisionando',
+          error: null,
+          nextAttemptAt: new Date(Date.now() + PENDING_RETRY_MS),
+          ...(err instanceof UfinetApiError ? { lastResponse: toJson(err.body) } : {}),
+        });
+        return;
+      }
       // Erro de transporte/HTTP: backoff e tenta de novo; só FAILED no limite.
       const attempts = service.attempts + 1;
       const fatal = attempts >= MAX_ATTEMPTS;
@@ -841,6 +860,15 @@ export class UfinetOrdersService {
   private backoff(attempts: number): Date {
     const ms = Math.min(POLL_MIN_MS * Math.max(1, attempts), POLL_MAX_MS);
     return new Date(Date.now() + ms);
+  }
+
+  /** 426 / "tareas pendientes" / "en proceso" = aprovisionamento ainda rodando. */
+  private isProvisioningPending(err: unknown): boolean {
+    if (!(err instanceof UfinetApiError)) return false;
+    if (err.status === 426) return true;
+    const body = err.body as { reason?: string; message?: string } | null;
+    const txt = `${body?.reason ?? ''} ${body?.message ?? ''}`.toLowerCase();
+    return /pendiente|en proceso|in process|provisioning/.test(txt);
   }
 
   private errText(order: UfinetOrderResponse): string | null {
