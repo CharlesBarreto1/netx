@@ -4,28 +4,27 @@
  * Copyright (c) 2024-2026 NETX DESENVOLVIMENTO E TECNOLOGIA LTDA — proprietary.
  * @provenance Y2hhcmxlc2JhcnJldG86MDg0NzI5Njg5MDE=
  *
- * Fontes carregadas via `next/font/google` — Inter Variable (UI) + JetBrains
- * Mono Variable (números, código). Os CSS vars `--font-sans` e `--font-mono`
- * são consumidos por `globals.css` no `@theme`.
+ * Fontes SELF-HOSTED via `@fontsource-variable/*` — Inter Variable (UI) +
+ * JetBrains Mono Variable (números, código). Vêm pelo `npm ci` (sem fetch ao
+ * Google Fonts no build — a VP de produção não tem saída pro googleapis e o
+ * `next/font/google` quebrava o build com timeout). Os CSS vars `--font-sans` e
+ * `--font-mono` são setados no <html> e consumidos por `globals.css` no `@theme`.
  *
  * Density default = `cozy`. Cookie/localStorage do user pode trocar pra
  * `compact` ou `comfortable` em runtime via DensityProvider no ProtectedLayout.
  */
 import type { Metadata } from 'next';
-import { Inter, JetBrains_Mono } from 'next/font/google';
+import type { CSSProperties } from 'react';
+import '@fontsource-variable/inter';
+import '@fontsource-variable/jetbrains-mono';
 import './globals.css';
 
-const fontSans = Inter({
-  subsets: ['latin'],
-  variable: '--font-sans',
-  display: 'swap',
-});
-
-const fontMono = JetBrains_Mono({
-  subsets: ['latin'],
-  variable: '--font-mono',
-  display: 'swap',
-});
+// Mesmos CSS vars que o `next/font` setava — agora apontando pras famílias
+// self-hosted, com fallback de sistema.
+const FONT_VARS = {
+  '--font-sans': "'Inter Variable', system-ui, -apple-system, Segoe UI, sans-serif",
+  '--font-mono': "'JetBrains Mono Variable', ui-monospace, SFMono-Regular, monospace",
+} as CSSProperties;
 
 export const metadata: Metadata = {
   title: 'NetX',
@@ -60,7 +59,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="pt-BR"
-      className={`${fontSans.variable} ${fontMono.variable}`}
+      style={FONT_VARS}
       data-density="cozy"
       suppressHydrationWarning
     >
