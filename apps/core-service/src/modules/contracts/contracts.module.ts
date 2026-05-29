@@ -4,6 +4,7 @@ import { AuditModule } from '../audit/audit.module';
 import { DisconnectModule } from '../disconnect/disconnect.module';
 import { FinanceModule } from '../finance/finance.module';
 import { RadiusModule } from '../radius/radius.module';
+import { UfinetModule } from '../ufinet/ufinet.module';
 
 import { ContractsController } from './contracts.controller';
 import { ContractsService } from './contracts.service';
@@ -29,7 +30,7 @@ import { RadiusSyncService } from './radius-sync.service';
  * Cron diário (06:00): gera próximas faturas e suspende contratos c/ fatura > 5 dias.
  */
 @Module({
-  imports: [AuditModule, FinanceModule, RadiusModule, DisconnectModule],
+  imports: [AuditModule, FinanceModule, RadiusModule, DisconnectModule, UfinetModule],
   controllers: [ContractsController, ContractInvoicesController, PlansController],
   providers: [
     ContractsService,

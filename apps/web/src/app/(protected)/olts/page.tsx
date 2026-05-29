@@ -218,6 +218,31 @@ function OltFormModal({ olt, onClose, onSaved }: OltFormModalProps) {
       ? { latitude: olt.latitude, longitude: olt.longitude }
       : null,
   );
+  // Config estruturada da Ufinet (apiConfig, não-secreta) — cada polígono Ufinet
+  // é uma OLT. Segredos (clientId/clientSecret/accessKey) vão em apiCredentials.
+  const initCfg = (olt?.apiConfig ?? {}) as Record<string, string | undefined>;
+  const [ufinet, setUfinet] = useState({
+    operator: initCfg.operator ?? '',
+    region: initCfg.region ?? '',
+    contractId: initCfg.contractId ?? '',
+    polygonAlias: initCfg.polygonAlias ?? '',
+    userName: initCfg.userName ?? '',
+    country: initCfg.country ?? 'Paraguay',
+    city: initCfg.city ?? '',
+    nms: initCfg.nms ?? 'HUAWEI-NCE',
+    nmsId: initCfg.nmsId ?? '2',
+    bandwidthProfile: initCfg.bandwidthProfile ?? 'ZUX 1G',
+    bandwidthProfileId: initCfg.bandwidthProfileId ?? '499',
+    scope: initCfg.scope ?? '',
+    tokenUrl:
+      initCfg.tokenUrl ??
+      'https://login.microsoftonline.com/7820112f-0e93-4eca-9b2f-88061e82e876/oauth2/v2.0/token',
+  });
+  const [ufinetCreds, setUfinetCreds] = useState({ clientId: '', clientSecret: '', accessKey: '' });
+  const setUf = (k: keyof typeof ufinet, v: string) => setUfinet((s) => ({ ...s, [k]: v }));
+  const setCred = (k: keyof typeof ufinetCreds, v: string) =>
+    setUfinetCreds((s) => ({ ...s, [k]: v }));
+  const isUfinet = form.vendor === 'UFINET' && form.providerMode === 'ORCHESTRATOR';
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -234,6 +259,17 @@ function OltFormModal({ olt, onClose, onSaved }: OltFormModalProps) {
       };
       if (olt && (payload.sshPassword === '' || payload.sshPassword == null)) {
         delete (payload as Partial<CreateOltRequest>).sshPassword;
+      }
+      if (isUfinet) {
+        payload.apiAuthType = 'OAUTH2';
+        payload.apiConfig = { ...ufinet };
+        // Credenciais: só envia se preencheu (em edit, vazio = mantém as atuais).
+        const hasCreds = ufinetCreds.clientId || ufinetCreds.clientSecret || ufinetCreds.accessKey;
+        if (hasCreds) {
+          payload.apiCredentials = { ...ufinetCreds };
+        } else {
+          delete (payload as Partial<CreateOltRequest>).apiCredentials;
+        }
       }
       if (olt) {
         await oltsApi.update(olt.id, payload);
@@ -316,33 +352,113 @@ function OltFormModal({ olt, onClose, onSaved }: OltFormModalProps) {
               <div className="sm:col-span-2"><h3 className="text-xs font-semibold uppercase text-slate-500">API orquestrador</h3></div>
               <div className="sm:col-span-2">
                 <Label htmlFor="apiEndpoint">Endpoint *</Label>
-                <Input id="apiEndpoint" required value={form.apiEndpoint ?? ''} onChange={(e) => set('apiEndpoint', e.target.value)} placeholder="https://api.ufinet.com/v1" />
+                <Input id="apiEndpoint" required value={form.apiEndpoint ?? ''} onChange={(e) => set('apiEndpoint', e.target.value)} placeholder="https://apim-ufinet-qa.azure-api.net/multiop/" />
               </div>
-              <div>
-                <Label htmlFor="apiAuthType">Auth *</Label>
-                <Select id="apiAuthType" value={form.apiAuthType ?? 'API_KEY'} onChange={(e) => set('apiAuthType', e.target.value as 'OAUTH2' | 'API_KEY' | 'MTLS')}>
-                  <option value="API_KEY">API_KEY</option>
-                  <option value="OAUTH2">OAUTH2</option>
-                  <option value="MTLS">MTLS</option>
-                </Select>
-              </div>
-              <div className="sm:col-span-2">
-                <Label htmlFor="apiCredentialsJson">Credenciais (JSON)</Label>
-                <textarea
-                  id="apiCredentialsJson"
-                  rows={3}
-                  className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-xs shadow-sm dark:border-slate-700 dark:bg-slate-800"
-                  placeholder='{ "apiKey": "..." } ou { "clientId":"...", "clientSecret":"..." }'
-                  onChange={(e) => {
-                    try {
-                      set('apiCredentials', e.target.value ? JSON.parse(e.target.value) : null);
-                      setError(null);
-                    } catch {
-                      setError('JSON inválido');
-                    }
-                  }}
-                />
-              </div>
+
+              {isUfinet ? (
+                <>
+                  <div className="sm:col-span-2">
+                    <FieldHelp>
+                      Rede neutra Ufinet (TMF). Cada <strong>polígono</strong> Ufinet é uma OLT.
+                      As credenciais são criptografadas; em edição, deixe-as vazias pra manter.
+                    </FieldHelp>
+                  </div>
+                  <div>
+                    <Label htmlFor="uf-operator">Operator *</Label>
+                    <Input id="uf-operator" required value={ufinet.operator} onChange={(e) => setUf('operator', e.target.value)} placeholder="ZUX_PY" />
+                  </div>
+                  <div>
+                    <Label htmlFor="uf-region">Region *</Label>
+                    <Input id="uf-region" required value={ufinet.region} onChange={(e) => setUf('region', e.target.value)} placeholder="MQN-PY" />
+                  </div>
+                  <div>
+                    <Label htmlFor="uf-contractId">contractId TMF *</Label>
+                    <Input id="uf-contractId" required value={ufinet.contractId} onChange={(e) => setUf('contractId', e.target.value)} placeholder="FTTH_ZUX_PY" />
+                  </div>
+                  <div>
+                    <Label htmlFor="uf-polygon">Polygon alias</Label>
+                    <Input id="uf-polygon" value={ufinet.polygonAlias} onChange={(e) => setUf('polygonAlias', e.target.value)} placeholder="JLMPY-MALLORQUIN" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Label htmlFor="uf-userName">Usuário API (username) *</Label>
+                    <Input id="uf-userName" required value={ufinet.userName} onChange={(e) => setUf('userName', e.target.value)} placeholder="ufinet.api@multiopufinet.onmicrosoft.com" />
+                  </div>
+                  <div>
+                    <Label htmlFor="uf-country">País</Label>
+                    <Input id="uf-country" value={ufinet.country} onChange={(e) => setUf('country', e.target.value)} />
+                  </div>
+                  <div>
+                    <Label htmlFor="uf-city">Cidade</Label>
+                    <Input id="uf-city" value={ufinet.city} onChange={(e) => setUf('city', e.target.value)} placeholder="MALLORQUIN" />
+                  </div>
+                  <div>
+                    <Label htmlFor="uf-nms">NMS</Label>
+                    <Input id="uf-nms" value={ufinet.nms} onChange={(e) => setUf('nms', e.target.value)} />
+                  </div>
+                  <div>
+                    <Label htmlFor="uf-nmsId">NMS id</Label>
+                    <Input id="uf-nmsId" value={ufinet.nmsId} onChange={(e) => setUf('nmsId', e.target.value)} />
+                  </div>
+                  <div>
+                    <Label htmlFor="uf-bw">Bandwidth profile</Label>
+                    <Input id="uf-bw" value={ufinet.bandwidthProfile} onChange={(e) => setUf('bandwidthProfile', e.target.value)} />
+                  </div>
+                  <div>
+                    <Label htmlFor="uf-bwId">Bandwidth profile id</Label>
+                    <Input id="uf-bwId" value={ufinet.bandwidthProfileId} onChange={(e) => setUf('bandwidthProfileId', e.target.value)} />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Label htmlFor="uf-scope">OAuth scope *</Label>
+                    <Input id="uf-scope" required value={ufinet.scope} onChange={(e) => setUf('scope', e.target.value)} placeholder="api://ufinet.com/ZuxNet/qa/.default" />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Label htmlFor="uf-tokenUrl">Token URL (OAuth)</Label>
+                    <Input id="uf-tokenUrl" value={ufinet.tokenUrl} onChange={(e) => setUf('tokenUrl', e.target.value)} />
+                  </div>
+
+                  <div className="sm:col-span-2"><h3 className="text-xs font-semibold uppercase text-slate-500">Credenciais (cifradas)</h3></div>
+                  <div className="sm:col-span-2">
+                    <Label htmlFor="uf-clientId">client_id {olt ? '(vazio = manter)' : '*'}</Label>
+                    <Input id="uf-clientId" value={ufinetCreds.clientId} onChange={(e) => setCred('clientId', e.target.value)} />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Label htmlFor="uf-clientSecret">client_secret {olt ? '(vazio = manter)' : '*'}</Label>
+                    <Input id="uf-clientSecret" type="password" value={ufinetCreds.clientSecret} onChange={(e) => setCred('clientSecret', e.target.value)} />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Label htmlFor="uf-accessKey">Access key {olt ? '(vazio = manter)' : '*'}</Label>
+                    <Input id="uf-accessKey" type="password" value={ufinetCreds.accessKey} onChange={(e) => setCred('accessKey', e.target.value)} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <Label htmlFor="apiAuthType">Auth *</Label>
+                    <Select id="apiAuthType" value={form.apiAuthType ?? 'API_KEY'} onChange={(e) => set('apiAuthType', e.target.value as 'OAUTH2' | 'API_KEY' | 'MTLS')}>
+                      <option value="API_KEY">API_KEY</option>
+                      <option value="OAUTH2">OAUTH2</option>
+                      <option value="MTLS">MTLS</option>
+                    </Select>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Label htmlFor="apiCredentialsJson">Credenciais (JSON)</Label>
+                    <textarea
+                      id="apiCredentialsJson"
+                      rows={3}
+                      className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 font-mono text-xs shadow-sm dark:border-slate-700 dark:bg-slate-800"
+                      placeholder='{ "apiKey": "..." } ou { "clientId":"...", "clientSecret":"..." }'
+                      onChange={(e) => {
+                        try {
+                          set('apiCredentials', e.target.value ? JSON.parse(e.target.value) : null);
+                          setError(null);
+                        } catch {
+                          setError('JSON inválido');
+                        }
+                      }}
+                    />
+                  </div>
+                </>
+              )}
             </>
           )}
 

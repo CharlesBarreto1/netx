@@ -49,6 +49,9 @@ import {
   Users,
   Wallet,
   Wrench,
+  IdCard,
+  Fuel,
+  Navigation,
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
@@ -103,7 +106,12 @@ const ICON_BY_KEY: Record<string, ComponentType<{ className?: string }>> = {
   mappingNetwork: Network,
   mappingBackbone: GitBranch,
   mappingTechnicians: HardHat,
-  mappingVehicles: Truck,
+  // Frota
+  fleetVehicles: Truck,
+  fleetDrivers: IdCard,
+  fleetExpenses: Fuel,
+  fleetMaintenance: Wrench,
+  fleetLive: Navigation,
 };
 
 const SIDEBAR_STORAGE_KEY = 'netx.sidebar.collapsed';

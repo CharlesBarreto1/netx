@@ -32,6 +32,7 @@ import { ContractComodatoCard } from '@/components/contracts/ContractComodatoCar
 import { ContractSessionCard } from '@/components/contracts/ContractSessionCard';
 import { ContractWifiCard } from '@/components/contracts/ContractWifiCard';
 import { ContractUsageChart } from '@/components/contracts/ContractUsageChart';
+import { UfinetStatusPanel } from '@/components/contracts/UfinetStatusPanel';
 import { EditContractDialog } from '@/components/contracts/EditContractDialog';
 import { PaymentDialog } from '@/components/finance/PaymentDialog';
 
@@ -465,6 +466,9 @@ export default function ContractDetailPage() {
       {/* Wi-Fi (TR-069 ACS) — só faz sentido pra contratos com ONT vinculada,
           mas o próprio card renderiza um aviso quando não há TR-069 device. */}
       <ContractWifiCard contractId={contract.id} />
+
+      {/* Rede neutra Ufinet (PY) — só renderiza se o contrato tem serviço Ufinet */}
+      <UfinetStatusPanel contractId={contract.id} />
 
       {/* Equipamentos em comodato (Estoque Fase 2) */}
       <InfoCard title="Equipamentos em comodato">

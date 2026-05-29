@@ -14,6 +14,7 @@ export const CashMovementSourceSchema = z.enum([
   'CHARGE',
   'TRANSFER',
   'MANUAL',
+  'FLEET_EXPENSE',
 ]);
 export type CashMovementSource = z.infer<typeof CashMovementSourceSchema>;
 

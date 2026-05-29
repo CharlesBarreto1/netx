@@ -103,7 +103,19 @@ export const MENU_GROUPS: MenuGroup[] = [
       { key: 'mapStudio',          href: '/mapa',                labelKey: 'mapStudio',          permission: 'network.read' },
       { key: 'mappingBackbone',    href: '/mapping/backbone',    labelKey: 'mappingBackbone',    permission: 'mapping.read' },
       { key: 'mappingTechnicians', href: '/mapping/technicians', labelKey: 'mappingTechnicians', permission: 'mapping.read' },
-      { key: 'mappingVehicles',    href: '/mapping/vehicles',    labelKey: 'mappingVehicles',    permission: 'mapping.read' },
+    ],
+  },
+
+  // Frota — veículos, motoristas, despesas, manutenções + rastreamento ao vivo.
+  {
+    key: 'fleet',
+    labelKey: 'group.fleet',
+    items: [
+      { key: 'fleetVehicles',    href: '/fleet/vehicles',    labelKey: 'fleetVehicles',    permission: 'fleet.read' },
+      { key: 'fleetDrivers',     href: '/fleet/drivers',      labelKey: 'fleetDrivers',     permission: 'fleet.read' },
+      { key: 'fleetExpenses',    href: '/fleet/expenses',     labelKey: 'fleetExpenses',    permission: 'fleet.read' },
+      { key: 'fleetMaintenance', href: '/fleet/maintenance',  labelKey: 'fleetMaintenance', permission: 'fleet.read' },
+      { key: 'fleetLive',        href: '/fleet/live',         labelKey: 'fleetLive',        permission: 'fleet.live.read' },
     ],
   },
 

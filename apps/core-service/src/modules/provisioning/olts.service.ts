@@ -56,6 +56,7 @@ function toResponse(o: OltRow): OltResponse {
     apiAuthType: (o.apiAuthType as 'OAUTH2' | 'API_KEY' | 'MTLS' | null) ?? null,
     hasApiCredentials: !!o.apiCredentialsEnc,
     hasApiWebhookSecret: !!o.apiWebhookSecret,
+    apiConfig: (o.apiConfig as Record<string, unknown> | null) ?? null,
     serviceVlanId: o.serviceVlanId,
     defaultUpProfile: o.defaultUpProfile,
     defaultDownProfile: o.defaultDownProfile,
@@ -106,6 +107,10 @@ export class OltsService {
             ? this.crypto.encrypt(JSON.stringify(input.apiCredentials))
             : null,
           apiWebhookSecret: input.apiWebhookSecret ?? null,
+          apiConfig:
+            input.apiConfig == null
+              ? Prisma.DbNull
+              : (input.apiConfig as Prisma.InputJsonValue),
           serviceVlanId: input.serviceVlanId ?? null,
           defaultUpProfile: input.defaultUpProfile ?? null,
           defaultDownProfile: input.defaultDownProfile ?? null,
@@ -226,6 +231,10 @@ export class OltsService {
     }
     if (input.apiWebhookSecret !== undefined)
       data.apiWebhookSecret = input.apiWebhookSecret ?? null;
+    if (input.apiConfig !== undefined) {
+      data.apiConfig =
+        input.apiConfig == null ? Prisma.DbNull : (input.apiConfig as Prisma.InputJsonValue);
+    }
     if (input.serviceVlanId !== undefined) data.serviceVlanId = input.serviceVlanId ?? null;
     if (input.defaultUpProfile !== undefined)
       data.defaultUpProfile = input.defaultUpProfile ?? null;

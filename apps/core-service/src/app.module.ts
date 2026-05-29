@@ -27,6 +27,8 @@ import { RolesModule } from './modules/roles/roles.module';
 import { MappingModule } from './modules/mapping/mapping.module';
 import { SifenModule } from './modules/sifen/sifen.module';
 import { StockModule } from './modules/stock/stock.module';
+import { FleetModule } from './modules/fleet/fleet.module';
+import { UfinetModule } from './modules/ufinet/ufinet.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { UsersModule } from './modules/users/users.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
@@ -90,6 +92,8 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
     SifenModule,
     MappingModule,
     StockModule,
+    FleetModule,
+    UfinetModule,
     ProvisioningModule,
     MobileModule,
     WhatsappModule,

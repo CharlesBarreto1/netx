@@ -23,6 +23,8 @@ volumes:
   postgres_data:
   redis_data:
   rabbitmq_data:
+  traccar_data:
+  traccar_logs:
 
 services:
   postgres:
@@ -107,5 +109,29 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - netx
+
+  # Traccar — plataforma de rastreamento GPS (fonte do "Ao vivo" da Frota).
+  # Web/API em http://localhost:8082 (default admin/admin no primeiro acesso).
+  # O core-service consome /api/devices + /api/positions (ver TRACCAR_* no .env).
+  #
+  # Para INJETAR posições de teste sem hardware, use o protocolo OsmAnd (5055):
+  #   curl "http://localhost:5055/?id=<IMEI>&lat=-23.561&lon=-46.656&speed=0"
+  # onde <IMEI> = trackerUniqueId do veículo cadastrado no NetX (e o device
+  # precisa existir no Traccar com esse mesmo uniqueId).
+  traccar:
+    image: traccar/traccar:5.12
+    container_name: netx-traccar
+    restart: unless-stopped
+    ports:
+      - '8082:8082'        # Web UI + REST API
+      - '5055:5055'        # OsmAnd (HTTP) — útil pra simular posições em dev
+      - '5011:5011'        # Suntech
+      - '5023:5023'        # GT06 / Concox
+      - '5013:5013'        # Meiligao
+    volumes:
+      - traccar_data:/opt/traccar/data
+      - traccar_logs:/opt/traccar/logs
     networks:
       - netx

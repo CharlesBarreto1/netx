@@ -22,6 +22,7 @@ import {
 } from '@/lib/contracts-api';
 import type { Customer, Paginated } from '@/lib/crm-types';
 import { plansApi, type Plan } from '@/lib/plans-api';
+import { oltsApi, type Olt } from '@/lib/provisioning-api';
 import { useTenantConfig } from '@/lib/tenant-config';
 import { pppoeLoginCandidates } from '@netx/shared';
 
@@ -143,6 +144,9 @@ export function NewContractInline({
     blockAfterDays: '',
     notes: initial?.notes ?? '',
     firstDueDate: initial?.firstDueDate ?? '',
+    // Rede neutra Ufinet (PY): polígono/OLT que atende o contrato. Vazio = sem
+    // alta automática na Ufinet.
+    ufinetOltId: '',
   });
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -150,6 +154,14 @@ export function NewContractInline({
   // Catálogo de planos — opera ativos por padrão.
   const { data: plans } = useSWR<Plan[]>(plansApi.listPath(false), () =>
     plansApi.list(false),
+  );
+
+  // OLTs Ufinet (polígonos) — só aparece o seletor se houver alguma cadastrada.
+  const { data: oltsResp } = useSWR('olts:ufinet', () =>
+    oltsApi.list({ vendor: 'UFINET', pageSize: 100 }),
+  );
+  const ufinetOlts: Olt[] = (oltsResp?.data ?? []).filter(
+    (o) => o.providerMode === 'ORCHESTRATOR',
   );
   const selectedPlan = (plans ?? []).find((p) => p.id === form.planId);
   // Diferença entre o valor cobrado e o preço do plano (mostra
@@ -305,6 +317,7 @@ export function NewContractInline({
       notes: form.notes || null,
       firstDueDate: form.firstDueDate || undefined,
       initialStatus,
+      ufinetOltId: form.ufinetOltId || null,
     };
 
     const payload: CreateContractInput =
@@ -657,6 +670,33 @@ export function NewContractInline({
                 vs plano
               </span>
             )}
+          </FieldHelp>
+        </div>
+      )}
+
+      {/* ─── Rede neutra Ufinet (PY) ───────────────────────────────────────── */}
+      {ufinetOlts.length > 0 && (
+        <div>
+          <Label htmlFor="contract-ufinetOlt">Polígono Ufinet (rede neutra)</Label>
+          <Select
+            id="contract-ufinetOlt"
+            value={form.ufinetOltId}
+            onChange={(e) => setForm((s) => ({ ...s, ufinetOltId: e.target.value }))}
+          >
+            <option value="">— sem provisão Ufinet —</option>
+            {ufinetOlts.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+                {typeof o.apiConfig?.polygonAlias === 'string'
+                  ? ` · ${o.apiConfig.polygonAlias}`
+                  : ''}
+              </option>
+            ))}
+          </Select>
+          <FieldHelp>
+            Selecione o polígono que atende o endereço pra o NetX reservar a porta
+            na Ufinet (alta) já na criação do contrato. A confirmação da ONT
+            acontece na instalação em campo.
           </FieldHelp>
         </div>
       )}

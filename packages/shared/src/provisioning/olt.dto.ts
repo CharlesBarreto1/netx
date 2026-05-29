@@ -46,9 +46,11 @@ export const CreateOltRequestSchema = z
     // ORCHESTRATOR
     apiEndpoint: optionalString(255),
     apiAuthType: z.enum(['OAUTH2', 'API_KEY', 'MTLS']).nullish(),
-    /** JSON serializável com credenciais (depende do authType). */
+    /** JSON serializável com credenciais SECRETAS (depende do authType). */
     apiCredentials: z.record(z.string(), z.unknown()).nullish(),
     apiWebhookSecret: optionalString(128),
+    /** Config NÃO-secreta do orquestrador (ex. Ufinet: operator/region/polygon). */
+    apiConfig: z.record(z.string(), z.unknown()).nullish(),
 
     // Defaults
     serviceVlanId: z.coerce.number().int().min(1).max(4094).nullish(),
@@ -103,6 +105,7 @@ export const UpdateOltRequestSchema = z
     apiAuthType: z.enum(['OAUTH2', 'API_KEY', 'MTLS']).nullish().optional(),
     apiCredentials: z.record(z.string(), z.unknown()).nullish().optional(),
     apiWebhookSecret: optionalString(128).optional(),
+    apiConfig: z.record(z.string(), z.unknown()).nullish().optional(),
     serviceVlanId: z.coerce.number().int().min(1).max(4094).nullish().optional(),
     defaultUpProfile: optionalString(64).optional(),
     defaultDownProfile: optionalString(64).optional(),
@@ -145,6 +148,8 @@ export interface OltResponse {
   apiAuthType: 'OAUTH2' | 'API_KEY' | 'MTLS' | null;
   hasApiCredentials: boolean;
   hasApiWebhookSecret: boolean;
+  /** Config NÃO-secreta do orquestrador (ex. Ufinet). Seguro retornar. */
+  apiConfig: Record<string, unknown> | null;
   serviceVlanId: number | null;
   defaultUpProfile: string | null;
   defaultDownProfile: string | null;

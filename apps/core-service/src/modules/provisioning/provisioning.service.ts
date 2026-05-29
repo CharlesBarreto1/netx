@@ -61,6 +61,8 @@ import { CryptoService } from '../crypto/crypto.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ComodatoService } from '../stock/comodato.service';
 
+import { UfinetOrdersService } from '../ufinet/ufinet-orders.service';
+
 import { OltDriverFactory } from './drivers/olt-driver.factory';
 import { buildConnectionContext } from './olt-context.util';
 import { Tr069TasksService } from './tr069-tasks.service';
@@ -77,6 +79,7 @@ export class ProvisioningService {
     private readonly tr069: Tr069TasksService,
     private readonly drivers: OltDriverFactory,
     private readonly comodato: ComodatoService,
+    private readonly ufinet: UfinetOrdersService,
   ) {}
 
   /**
@@ -508,6 +511,29 @@ export class ProvisioningService {
       const msg = err instanceof Error ? err.message : String(err);
       this.logger.warn(`[PROV] TR-069 enqueue falhou: ${msg}`);
       pushEvent('TR069_TASK_ENQUEUE', 'FAILED', 'Wi-Fi não enfileirado', null, msg);
+    }
+
+    // ── 6. Ufinet (ORCHESTRATOR): confirma a ONT na rede neutra (async) ──────
+    // Garante o serviço Ufinet (idempotente — auto-cura se a alta não foi
+    // enfileirada na criação do contrato) e manda o SN. O poller leva
+    // alta→reserva→confirmar-ONT→confirmação→ACTIVE; o RADIUS/PPPoE local já
+    // autoriza o tráfego (Caso A), então a confirmação óptica é assíncrona.
+    if (olt.vendor === 'UFINET' && olt.providerMode === 'ORCHESTRATOR') {
+      try {
+        await this.ufinet.enqueueProvide({
+          tenantId,
+          contractId,
+          oltId: olt.id,
+          externalId: `ZUX-${updatedContract.code ?? contractId}`,
+          actorUserId,
+        });
+        await this.ufinet.requestConfirmOnt(tenantId, contractId, resolvedSnGpon, actorUserId);
+        pushEvent('OLT_AUTHORIZE', 'SUCCESS', 'ONT confirmada na fila Ufinet (poller conclui em background)');
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`[PROV] Ufinet confirm-ONT falhou: ${m}`);
+        pushEvent('OLT_AUTHORIZE', 'FAILED', 'Confirmação Ufinet não enfileirada', null, m);
+      }
     }
 
     // Audit log de alto nível

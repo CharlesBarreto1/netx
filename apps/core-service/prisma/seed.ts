@@ -153,6 +153,24 @@ const stockPermissions = [
 ];
 
 // -----------------------------------------------------------------------------
+// Permission catalog — Frota (veículos, motoristas, despesas, manutenção, GPS)
+// -----------------------------------------------------------------------------
+const fleetPermissions = [
+  // fleet.read: ver veículos, motoristas, despesas, manutenções
+  { code: 'fleet.read',                module: 'fleet', resource: 'fleet',       action: 'read'   },
+  // fleet.write: criar/editar veículos e motoristas
+  { code: 'fleet.write',               module: 'fleet', resource: 'fleet',       action: 'write'  },
+  // fleet.delete: remover (soft) veículo/motorista — decisão administrativa
+  { code: 'fleet.delete',              module: 'fleet', resource: 'fleet',       action: 'delete' },
+  // fleet.expense.create: lançar/editar/remover despesa (integra no caixa)
+  { code: 'fleet.expense.create',      module: 'fleet', resource: 'expenses',    action: 'create' },
+  // fleet.maintenance.manage: gerenciar planos preventivos + registrar manutenção
+  { code: 'fleet.maintenance.manage',  module: 'fleet', resource: 'maintenance', action: 'manage' },
+  // fleet.live.read: ver o mapa "Ao vivo" (posições GPS via Traccar)
+  { code: 'fleet.live.read',           module: 'fleet', resource: 'live',        action: 'read'   },
+];
+
+// -----------------------------------------------------------------------------
 // Permission catalog — Provisionamento (OLT/ONT + TR-069 ACS)
 // -----------------------------------------------------------------------------
 const provisioningPermissions = [
@@ -164,6 +182,17 @@ const provisioningPermissions = [
   { code: 'provisioning.write',  module: 'provisioning', resource: 'provisioning', action: 'write' },
   // tr069.admin: gerenciar ACS, cancelar tasks, ver devices (admin)
   { code: 'tr069.admin',         module: 'provisioning', resource: 'tr069',         action: 'admin' },
+];
+
+// -----------------------------------------------------------------------------
+// Permission catalog — Ufinet (rede neutra PY, API TMF)
+// -----------------------------------------------------------------------------
+const ufinetPermissions = [
+  // config da OLT-orquestradora (credenciais) já é olts.admin; aqui só o estado
+  // ufinet.orders.read: ver status dos serviços Ufinet (Hub do Atendente)
+  { code: 'ufinet.orders.read',  module: 'ufinet', resource: 'ufinet_services', action: 'read'  },
+  // ufinet.orders.retry: reprocessar um serviço FAILED
+  { code: 'ufinet.orders.retry', module: 'ufinet', resource: 'ufinet_services', action: 'retry' },
 ];
 
 // -----------------------------------------------------------------------------
@@ -272,11 +301,21 @@ const systemRoles = [
       'stock.purchase.create',
       'stock.adjust',
       'stock.admin',
+      // Frota (admin tem tudo)
+      'fleet.read',
+      'fleet.write',
+      'fleet.delete',
+      'fleet.expense.create',
+      'fleet.maintenance.manage',
+      'fleet.live.read',
       // Provisionamento (admin gerencia OLTs e ACS)
       'olts.admin',
       'provisioning.read',
       'provisioning.write',
       'tr069.admin',
+      // Ufinet — status + reprocessar serviços ópticos
+      'ufinet.orders.read',
+      'ufinet.orders.retry',
       // Chat / Atendimento (admin tem tudo, inclusive auditoria)
       'chat.read',
       'chat.send',
@@ -337,10 +376,19 @@ const systemRoles = [
       'stock.write',
       'stock.purchase.create',
       'stock.adjust',
+      // Frota — operação cuida de veículos, despesas e manutenção; sem delete.
+      'fleet.read',
+      'fleet.write',
+      'fleet.expense.create',
+      'fleet.maintenance.manage',
+      'fleet.live.read',
       // Provisionamento — técnico ativa cliente em campo, lê pendentes.
       // Sem `olts.admin` (creds SSH/API ficam só com admin) nem `tr069.admin`.
       'provisioning.read',
       'provisioning.write',
+      // Ufinet — operador acompanha e reprocessa serviços ópticos (Hub do Atendente)
+      'ufinet.orders.read',
+      'ufinet.orders.retry',
       // Chat (operador atende: lê, envia, atribui — sem auditar terceiros nem admin)
       'chat.read',
       'chat.send',
@@ -372,6 +420,8 @@ const systemRoles = [
       'reports.read',
       'network.read',
       'stock.read',
+      'fleet.read',
+      'fleet.live.read',
       'provisioning.read',
       'sifen.read',
       'mapping.read',
@@ -394,7 +444,9 @@ async function main() {
     ...backupsPermissions,
     ...networkPermissions,
     ...stockPermissions,
+    ...fleetPermissions,
     ...provisioningPermissions,
+    ...ufinetPermissions,
     ...chatPermissions,
   ]) {
     await prisma.permission.upsert({

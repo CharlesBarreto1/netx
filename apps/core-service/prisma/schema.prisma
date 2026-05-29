@@ -118,9 +118,18 @@ model Tenant {
   tr069Devices         Tr069Device[]
   tr069Tasks           Tr069Task[]
   provisioningEvents   ProvisioningEvent[]
+  ufinetServices       UfinetService[]
 
   // Mobile
   mobileDevices        MobileDevice[]
+
+  // Frota (Fleet)
+  vehicles             Vehicle[]
+  drivers              Driver[]
+  fleetExpenses        FleetExpense[]
+  maintenancePlans     MaintenancePlan[]
+  maintenanceRecords   MaintenanceRecord[]
+  vehiclePositions     VehiclePosition[]
 
   @@index([status])
   @@index([country])
@@ -261,6 +270,16 @@ model User {
 
   // Mobile (app do técnico em campo)
   mobileDevices       MobileDevice[]
+
+  // Frota (Fleet)
+  driverProfiles            Driver[]            @relation("DriverUser")
+  vehiclesCreated           Vehicle[]           @relation("VehicleCreatedBy")
+  vehiclesUpdated           Vehicle[]           @relation("VehicleUpdatedBy")
+  driversCreated            Driver[]            @relation("DriverCreatedBy")
+  driversUpdated            Driver[]            @relation("DriverUpdatedBy")
+  fleetExpensesCreated      FleetExpense[]      @relation("FleetExpenseCreatedBy")
+  maintenancePlansCreated   MaintenancePlan[]   @relation("MaintenancePlanCreatedBy")
+  maintenanceRecordsCreated MaintenanceRecord[] @relation("MaintenanceRecordCreatedBy")
 
   @@unique([tenantId, email])
   @@index([tenantId, status])
@@ -1193,6 +1212,8 @@ model Contract {
   stockMovements      StockMovement[]
   // Provisionamento
   ont                 Ont?
+  // Rede neutra Ufinet (PY) — serviço óptico provisionado via API TMF.
+  ufinetService       UfinetService?
 
   // Rede óptica (R2 OSP) — porta de splitter/CTO onde este contrato é
   // atendido. 1 contrato pode ocupar 1 porta (1:1). Quando contrato é
@@ -1486,6 +1507,7 @@ model CashRegister {
   contractInvoices ContractInvoice[]
   oneTimeCharges OneTimeCharge[]
   movements      CashMovement[]
+  fleetExpenses  FleetExpense[]
 
   @@unique([tenantId, name])
   @@index([tenantId, isActive])
@@ -1575,6 +1597,7 @@ enum CashMovementSource {
   CHARGE
   TRANSFER
   MANUAL
+  FLEET_EXPENSE   // Despesa de frota (combustível, manutenção, multa, etc.)
 }
 
 model CashMovement {
@@ -2467,8 +2490,13 @@ model Olt {
   // ── ORCHESTRATOR mode (API REST) ─────────────────────────────────────────
   apiEndpoint         String?         @map("api_endpoint") @db.VarChar(255)
   apiAuthType         String?         @map("api_auth_type") @db.VarChar(32)  // "OAUTH2"|"API_KEY"|"MTLS"
-  apiCredentialsEnc   String?         @map("api_credentials_enc") @db.Text   // JSON encrypted
+  apiCredentialsEnc   String?         @map("api_credentials_enc") @db.Text   // JSON encrypted (segredos)
   apiWebhookSecret    String?         @map("api_webhook_secret") @db.VarChar(128)
+  // Config NÃO-secreta do orquestrador (Ufinet): operator/region/contractId/
+  // polygonAlias/nms/nmsId/bandwidthProfile/scope/tokenUrl. Cada polígono da
+  // Ufinet é cadastrado como UMA OLT. Segredos (clientId/clientSecret/
+  // accessKey) ficam em apiCredentialsEnc.
+  apiConfig           Json?           @map("api_config")
 
   // ── Defaults aplicados nas provisões (override por contrato possível) ────
   serviceVlanId       Int?            @map("service_vlan_id")
@@ -2496,6 +2524,7 @@ model Olt {
   pop                 NetworkPop?     @relation(fields: [popId], references: [id], onDelete: SetNull)
   onts                Ont[]
   ponPorts            PonPort[]
+  ufinetServices      UfinetService[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -2801,6 +2830,89 @@ model ProvisioningEvent {
   @@index([tenantId, ontId])
   @@index([tenantId, status, createdAt])
   @@map("provisioning_events")
+}
+
+// -----------------------------------------------------------------------------
+// UFINET — rede neutra PY (API TM Forum, assíncrona). Task #29.
+// -----------------------------------------------------------------------------
+// 1 contrato = 1 serviço óptico Ufinet (1:1). A Ufinet provisiona SÓ a camada
+// óptica; o RADIUS/PPPoE local do NetX continua autorizando o tráfego e o QoS
+// (Caso A — todo cliente é "ZUX 1G" na Ufinet, banda real vem do Mikrotik).
+//
+// O ciclo de vida é uma sequência de ORDENS TMF assíncronas (cada POST/PATCH
+// cria uma ordem com `serviceOrderId` que se faz poll via GET até
+// state=completed/Failed). Esta tabela guarda a IDENTIDADE estável do serviço
+// (externalId, ids dos 4 sub-serviços, CTO_PORT) + a OPERAÇÃO em voo
+// (currentOrderId/attempts), e o `lifecycle` é a fonte de verdade de onde o
+// contrato está no mundo Ufinet. O poller (cron) avança os estados transientes.
+//
+// Bundle de 4 sub-serviços por serviço (mapeado ao vivo em QA):
+//   spec 10 Datos        → serviço-pai (parentServiceId / idService de sync)
+//   spec  3 Fiber Access → camada óptica
+//   spec  5 HSD          → sinaliza Active/Inactive em suspend/reactivate
+//   spec  4 Res Pon Access → IdResponAccess do "Confirmar ONT" (PATCH + SN)
+enum UfinetLifecycle {
+  PENDING_PROVIDE     // criada no NetX; alta (provide) ainda não enviada
+  PROVIDING           // alta enviada; aguardando reserva de porta
+  RESERVED            // porta reservada; aguarda técnico confirmar ONT em campo
+  CONFIRMING_ONT      // PATCH Res Pon Access (SN) + sync enviados; aguardando
+  CONFIRMING_SERVICE  // PATCH order (CTO_PORT + LABEL_DROP) enviado; aguardando
+  ACTIVE              // todos os sub-serviços Active
+  SUSPENDING
+  SUSPENDED
+  REACTIVATING
+  CEASING             // baja enviada
+  CEASED
+  CANCELLING          // cancelación enviada (só se ONT não confirmada)
+  CANCELLED
+  FAILED              // erro terminal — requer ação manual (retry)
+}
+
+model UfinetService {
+  id                    String          @id @default(uuid()) @db.Uuid
+  tenantId              String          @map("tenant_id") @db.Uuid
+  contractId            String          @map("contract_id") @db.Uuid
+  oltId                 String          @map("olt_id") @db.Uuid
+
+  // ZUX-{code do contrato} — usado como externalId, LABEL_DROP e etiqueta do
+  // técnico em campo (decisão da operação). Único por tenant.
+  externalId            String          @map("external_id") @db.VarChar(80)
+  labelDrop             String          @map("label_drop") @db.VarChar(80)
+  bandwidthProfile      String          @default("ZUX 1G") @map("bandwidth_profile") @db.VarChar(64)
+
+  lifecycle             UfinetLifecycle @default(PENDING_PROVIDE)
+
+  // ── Identificadores do lado Ufinet (preenchidos conforme o fluxo avança) ──
+  ufinetContractId      String?         @map("ufinet_contract_id") @db.VarChar(32)  // idContrato
+  serviceOrderId        String?         @map("service_order_id") @db.VarChar(32)    // ordem de alta (provide)
+  parentServiceId       String?         @map("parent_service_id") @db.VarChar(32)   // Datos (idService p/ sync)
+  fiberAccessServiceId  String?         @map("fiber_access_service_id") @db.VarChar(32)
+  hsdServiceId          String?         @map("hsd_service_id") @db.VarChar(32)
+  resPonAccessServiceId String?         @map("res_pon_access_service_id") @db.VarChar(32)
+  ctoPort               String?         @map("cto_port") @db.VarChar(64)
+  serialNumber          String?         @map("serial_number") @db.VarChar(32)       // SN GPON da ONT confirmada
+
+  // ── Operação em voo (consumida pelo poller) ──────────────────────────────
+  currentOrderId        String?         @map("current_order_id") @db.VarChar(32)    // serviceOrderId do passo atual
+  ufinetState           String?         @map("ufinet_state") @db.VarChar(32)        // initial/inProgress/completed/Failed
+  waitingCode           String?         @map("waiting_code") @db.VarChar(16)        // !=0 = precisa trabalho de campo
+  attempts              Int             @default(0)
+  nextAttemptAt         DateTime?       @map("next_attempt_at")
+  lastResponse          Json?           @map("last_response")
+  error                 String?         @db.Text
+
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  tenant                Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contract              Contract        @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  olt                   Olt             @relation(fields: [oltId], references: [id], onDelete: Restrict)
+
+  @@unique([contractId])
+  @@unique([tenantId, externalId])
+  @@index([tenantId, lifecycle])
+  @@index([nextAttemptAt])
+  @@map("ufinet_services")
 }
 
 // -----------------------------------------------------------------------------
@@ -3215,4 +3327,265 @@ model NetworkFolder {
 
   @@index([tenantId, parentId])
   @@map("network_folders")
+}
+
+// =============================================================================
+// FROTA (Fleet) — veículos, motoristas, despesas, manutenções, rastreamento GPS
+//
+// Extraído do antigo placeholder em /mapping/vehicles. O "Ao vivo" consome
+// posições de um Traccar self-hosted: cada Vehicle.trackerUniqueId casa com o
+// device.uniqueId (IMEI) no Traccar; o NetX filtra por tenantId e é a
+// autoridade de multi-tenancy (Traccar é uma instância única do deploy).
+// =============================================================================
+
+enum VehicleType {
+  CAR
+  MOTORCYCLE
+  TRUCK
+  VAN
+  PICKUP
+  OTHER
+}
+
+enum VehicleStatus {
+  ACTIVE
+  MAINTENANCE
+  INACTIVE
+}
+
+enum DriverStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum FleetExpenseType {
+  FUEL
+  TOLL
+  FINE
+  INSURANCE
+  REPAIR
+  TAX
+  OTHER
+}
+
+enum MaintenanceKind {
+  OIL_CHANGE
+  REVISION
+  TIRES
+  BRAKES
+  FILTERS
+  ALIGNMENT
+  OTHER
+}
+
+model Vehicle {
+  id              String        @id @default(uuid()) @db.Uuid
+  tenantId        String        @map("tenant_id") @db.Uuid
+
+  plate           String        @db.VarChar(16) // placa (Mercosul BR / chapa PY)
+  brand           String?       @db.VarChar(80)
+  model           String?       @db.VarChar(80)
+  year            Int?
+  type            VehicleType   @default(CAR)
+  color           String?       @db.VarChar(40)
+  renavam         String?       @db.VarChar(32)
+  chassis         String?       @db.VarChar(40)
+  status          VehicleStatus @default(ACTIVE)
+
+  // IMEI / uniqueId do rastreador no Traccar. Null = veículo sem rastreador.
+  trackerUniqueId String?       @map("tracker_unique_id") @db.VarChar(64)
+
+  odometer        Int           @default(0) // km atual
+  notes           String?       @db.Text
+
+  currentDriverId String?       @map("current_driver_id") @db.Uuid
+
+  createdById     String?       @map("created_by_id") @db.Uuid
+  updatedById     String?       @map("updated_by_id") @db.Uuid
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  deletedAt       DateTime?     @map("deleted_at")
+
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  currentDriver   Driver?       @relation("VehicleCurrentDriver", fields: [currentDriverId], references: [id], onDelete: SetNull)
+  createdBy       User?         @relation("VehicleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy       User?         @relation("VehicleUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  expenses           FleetExpense[]
+  maintenancePlans   MaintenancePlan[]
+  maintenanceRecords MaintenanceRecord[]
+  position           VehiclePosition?
+
+  @@unique([tenantId, plate])
+  // Impede dois veículos no mesmo tracker. NULLs são distintos no Postgres,
+  // então veículos sem rastreador não colidem.
+  @@unique([tenantId, trackerUniqueId])
+  @@index([tenantId, status])
+  @@index([tenantId, currentDriverId])
+  @@map("vehicles")
+}
+
+model Driver {
+  id              String       @id @default(uuid()) @db.Uuid
+  tenantId        String       @map("tenant_id") @db.Uuid
+
+  name            String       @db.VarChar(160)
+  document        String?      @db.VarChar(32) // CPF / CI
+  licenseNumber   String?      @map("license_number") @db.VarChar(32) // CNH
+  licenseCategory String?      @map("license_category") @db.VarChar(8) // A, B, AB, D...
+  licenseExpiry   DateTime?    @map("license_expiry") @db.Date // base de alerta de vencimento
+  phone           String?      @db.VarChar(32)
+  status          DriverStatus @default(ACTIVE)
+
+  // Vínculo opcional a um usuário do sistema (técnico que tem login).
+  userId          String?      @map("user_id") @db.Uuid
+
+  notes           String?      @db.Text
+
+  createdById     String?      @map("created_by_id") @db.Uuid
+  updatedById     String?      @map("updated_by_id") @db.Uuid
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  deletedAt       DateTime?    @map("deleted_at")
+
+  tenant          Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user            User?        @relation("DriverUser", fields: [userId], references: [id], onDelete: SetNull)
+  createdBy       User?        @relation("DriverCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy       User?        @relation("DriverUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  vehicles        Vehicle[]      @relation("VehicleCurrentDriver")
+  expenses        FleetExpense[]
+
+  @@index([tenantId, status])
+  @@map("drivers")
+}
+
+model FleetExpense {
+  id             String           @id @default(uuid()) @db.Uuid
+  tenantId       String           @map("tenant_id") @db.Uuid
+  vehicleId      String           @map("vehicle_id") @db.Uuid
+  driverId       String?          @map("driver_id") @db.Uuid
+
+  type           FleetExpenseType @default(FUEL)
+  amount         Decimal          @db.Decimal(12, 2)
+  occurredAt     DateTime         @map("occurred_at")
+  odometer       Int?
+  description    String?          @db.VarChar(500)
+
+  // Integração financeira: caixa que pagou + movimento OUTCOME gerado.
+  // cashMovementId é FK polimórfica simples (não relation) — igual padrão
+  // de CashMovement.sourceId. Indexado pra lookup reverso.
+  cashRegisterId String?          @map("cash_register_id") @db.Uuid
+  cashMovementId String?          @map("cash_movement_id") @db.Uuid
+
+  createdById    String?          @map("created_by_id") @db.Uuid
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  deletedAt      DateTime?        @map("deleted_at")
+
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle        Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  driver         Driver?       @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  cashRegister   CashRegister? @relation(fields: [cashRegisterId], references: [id], onDelete: SetNull)
+  createdBy      User?         @relation("FleetExpenseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, vehicleId])
+  @@index([tenantId, occurredAt])
+  @@index([tenantId, type])
+  @@index([cashMovementId])
+  @@map("fleet_expenses")
+}
+
+// Plano de manutenção preventiva: dispara alertas ("trocar óleo", "revisão
+// próxima") quando o veículo se aproxima do próximo vencimento por KM ou data.
+// Pelo menos um de intervalKm/intervalDays deve estar preenchido (validado no
+// service). O nextDue* é recalculado no service ao criar/editar/registrar.
+model MaintenancePlan {
+  id                  String          @id @default(uuid()) @db.Uuid
+  tenantId            String          @map("tenant_id") @db.Uuid
+  vehicleId           String          @map("vehicle_id") @db.Uuid
+
+  kind                MaintenanceKind @default(OIL_CHANGE)
+  description         String?         @db.VarChar(255)
+
+  intervalKm          Int?            @map("interval_km")
+  intervalDays        Int?            @map("interval_days")
+
+  lastServiceOdometer Int?            @map("last_service_odometer")
+  lastServiceDate     DateTime?       @map("last_service_date") @db.Date
+
+  nextDueOdometer     Int?            @map("next_due_odometer")
+  nextDueDate         DateTime?       @map("next_due_date") @db.Date
+
+  active              Boolean         @default(true)
+
+  createdById         String?         @map("created_by_id") @db.Uuid
+  createdAt           DateTime        @default(now()) @map("created_at")
+  updatedAt           DateTime        @updatedAt @map("updated_at")
+  deletedAt           DateTime?       @map("deleted_at")
+
+  tenant              Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle             Vehicle         @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  createdBy           User?           @relation("MaintenancePlanCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  records             MaintenanceRecord[]
+
+  @@index([tenantId, vehicleId])
+  @@index([tenantId, active, nextDueDate])
+  @@map("maintenance_plans")
+}
+
+// Registro de manutenção executada. Avança o lastService* do plano vinculado
+// (e recalcula o próximo vencimento) no service. Custo é informativo — saída
+// de caixa de verdade é lançada como FleetExpense (REPAIR), não aqui.
+model MaintenanceRecord {
+  id             String           @id @default(uuid()) @db.Uuid
+  tenantId       String           @map("tenant_id") @db.Uuid
+  vehicleId      String           @map("vehicle_id") @db.Uuid
+  planId         String?          @map("plan_id") @db.Uuid
+
+  kind           MaintenanceKind  @default(OIL_CHANGE)
+  performedAt    DateTime         @map("performed_at") @db.Date
+  odometer       Int?
+  cost           Decimal?         @db.Decimal(12, 2)
+  workshop       String?          @db.VarChar(160)
+  description    String?          @db.VarChar(500)
+
+  createdById    String?          @map("created_by_id") @db.Uuid
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  deletedAt      DateTime?        @map("deleted_at")
+
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle        Vehicle          @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  plan           MaintenancePlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+  createdBy      User?            @relation("MaintenanceRecordCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, vehicleId])
+  @@index([tenantId, performedAt])
+  @@map("maintenance_records")
+}
+
+// Última posição conhecida de cada veículo (1:1). Atualizada (upsert) a cada
+// poll/sync do Traccar. Histórico de rotas, se necessário, vira tabela própria
+// no futuro — aqui guardamos só o "agora" pro mapa Ao Vivo.
+model VehiclePosition {
+  vehicleId   String   @id @map("vehicle_id") @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+
+  latitude    Float
+  longitude   Float
+  speed       Float?   // km/h
+  course      Float?   // heading em graus
+  altitude    Float?
+  address     String?  @db.VarChar(500)
+  deviceTime  DateTime @map("device_time")  // horário reportado pelo rastreador
+  serverTime  DateTime @default(now()) @map("server_time") // quando o NetX gravou
+  attributes  Json?    // payload extra do Traccar (ignition, battery, motion...)
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vehicle     Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, deviceTime])
+  @@map("vehicle_positions")
 }

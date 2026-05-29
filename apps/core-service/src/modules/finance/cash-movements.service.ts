@@ -76,6 +76,54 @@ export class CashMovementsService {
   }
 
   // ---------------------------------------------------------------------------
+  // RECORD EXPENSE (interno — saída de caixa por despesa de frota)
+  // Aceita um tx opcional pra rodar dentro da transação de quem chamou.
+  // Retorna o id do movimento criado.
+  // ---------------------------------------------------------------------------
+  async recordExpense(opts: {
+    tenantId: string;
+    cashRegisterId: string;
+    amount: number;
+    sourceId: string;
+    description?: string | null;
+    actorUserId: string;
+    occurredAt?: Date;
+    tx?: Prisma.TransactionClient;
+  }): Promise<string> {
+    const client = opts.tx ?? this.prisma;
+    const m = await client.cashMovement.create({
+      data: {
+        tenantId: opts.tenantId,
+        cashRegisterId: opts.cashRegisterId,
+        type: PrismaMovementType.OUTCOME,
+        source: PrismaMovementSource.FLEET_EXPENSE,
+        sourceId: opts.sourceId,
+        amount: new Prisma.Decimal(opts.amount),
+        description: opts.description ?? null,
+        occurredAt: opts.occurredAt ?? new Date(),
+        createdById: opts.actorUserId,
+      },
+    });
+    return m.id;
+  }
+
+  // ---------------------------------------------------------------------------
+  // REMOVE MOVEMENT (interno — reverte um movimento automático, ex. despesa
+  // de frota apagada/editada). Hard-delete: CashMovement é linha de extrato sem
+  // soft-delete; removê-la reverte o saldo. Aceita tx opcional.
+  // ---------------------------------------------------------------------------
+  async removeMovement(
+    tenantId: string,
+    movementId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<void> {
+    const client = tx ?? this.prisma;
+    await client.cashMovement.deleteMany({
+      where: { id: movementId, tenantId },
+    });
+  }
+
+  // ---------------------------------------------------------------------------
   // CREATE MANUAL (sangria, ajuste)
   // ---------------------------------------------------------------------------
   async createManual(

@@ -188,6 +188,8 @@ source "${INSTALLER_DIR}/lib/chrony.sh"
 source "${INSTALLER_DIR}/lib/firewall.sh"
 # shellcheck source=lib/evolution.sh
 source "${INSTALLER_DIR}/lib/evolution.sh"
+# shellcheck source=lib/traccar.sh
+source "${INSTALLER_DIR}/lib/traccar.sh"
 # shellcheck source=lib/netx_app.sh
 source "${INSTALLER_DIR}/lib/netx_app.sh"
 # shellcheck source=lib/systemd.sh
@@ -238,6 +240,13 @@ main() {
   else
     log_dim "→ evolution: pulado (NETX_SKIP_EVOLUTION=1)"
     : > "${NETX_STATE_DIR}/evolution.done"
+  fi
+  # Traccar (GPS da Frota) é opt-in — só instala com NETX_ENABLE_TRACCAR=1.
+  if [[ "${NETX_ENABLE_TRACCAR:-0}" == "1" ]]; then
+    step "traccar"             traccar_setup
+  else
+    log_dim "→ traccar: pulado (defina NETX_ENABLE_TRACCAR=1 pra instalar)"
+    : > "${NETX_STATE_DIR}/traccar.done"
   fi
   step "systemd"             systemd_setup
   step "nginx"               nginx_setup

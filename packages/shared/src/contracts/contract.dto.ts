@@ -86,6 +86,11 @@ const commonContractFields = {
   latitude: z.coerce.number().min(-90).max(90).nullish(),
   longitude: z.coerce.number().min(-180).max(180).nullish(),
   notes: z.string().max(10_000).nullish(),
+  // Rede neutra Ufinet (PY): OLT-orquestradora (= polígono Ufinet) que atende
+  // este contrato. Quando preenchida e a OLT é UFINET/ORCHESTRATOR, a criação
+  // do contrato enfileira a ALTA (reserva de porta) na Ufinet. Cada polígono
+  // Ufinet é cadastrado como uma OLT no NetX.
+  ufinetOltId: z.string().uuid().nullish(),
 };
 
 // Bloco PPPoE.

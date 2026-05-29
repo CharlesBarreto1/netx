@@ -44,6 +44,7 @@ import { AuditService } from '../audit/audit.service';
 import { CryptoService } from '../crypto/crypto.service';
 import { DisconnectService } from '../disconnect/disconnect.service';
 import { HUAWEI_EG8145_PATHS, ssid5gFor } from '../provisioning/tr069-paths.huawei';
+import { UfinetOrdersService } from '../ufinet/ufinet-orders.service';
 import {
   daysBetween,
   InvoiceReference,
@@ -97,7 +98,67 @@ export class ContractsService {
     private readonly radius: RadiusSyncService,
     private readonly disconnect: DisconnectService,
     private readonly crypto: CryptoService,
+    private readonly ufinet: UfinetOrdersService,
   ) {}
+
+  /**
+   * Enfileira a ALTA Ufinet quando o contrato nasce com uma OLT-orquestradora
+   * (vendor=UFINET, ORCHESTRATOR). Best-effort: falhar aqui NÃO quebra a
+   * criação do contrato (o operador pode reprocessar). externalId = LABEL_DROP
+   * = `ZUX-{code do contrato}` (decisão da operação).
+   */
+  private async tryEnqueueUfinetProvide(
+    tenantId: string,
+    actorUserId: string,
+    contract: ContractWithRelations,
+    ufinetOltId: string | null | undefined,
+  ): Promise<void> {
+    if (!ufinetOltId) return;
+    try {
+      const olt = await this.prisma.olt.findFirst({
+        where: { id: ufinetOltId, tenantId, deletedAt: null },
+        select: { id: true, vendor: true, providerMode: true },
+      });
+      if (!olt || olt.vendor !== 'UFINET' || olt.providerMode !== 'ORCHESTRATOR') {
+        this.logger.warn(
+          `[ufinet] OLT ${ufinetOltId} não é UFINET/ORCHESTRATOR — alta não enfileirada`,
+        );
+        return;
+      }
+      const externalId = `ZUX-${contract.code ?? contract.id}`;
+      await this.ufinet.enqueueProvide({
+        tenantId,
+        contractId: contract.id,
+        oltId: olt.id,
+        externalId,
+        actorUserId,
+      });
+      this.logger.log(`[ufinet] alta enfileirada pra contrato ${contract.id} (${externalId})`);
+    } catch (err) {
+      this.logger.warn(
+        `[ufinet] falha ao enfileirar alta pra ${contract.id} — contrato mantido. ` +
+          `erro: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /** Dispara baja/cancelación Ufinet no cancelamento do contrato (best-effort). */
+  private async tryUfinetTeardown(tenantId: string, contractId: string, actorUserId: string): Promise<void> {
+    try {
+      const svc = await this.prisma.ufinetService.findUnique({
+        where: { contractId },
+        select: { id: true },
+      });
+      if (!svc) return;
+      await this.ufinet.requestTeardown(tenantId, contractId, actorUserId);
+      this.logger.log(`[ufinet] teardown (baja/cancel) disparado pra contrato ${contractId}`);
+    } catch (err) {
+      this.logger.warn(
+        `[ufinet] falha no teardown de ${contractId} — cancel mantido. ` +
+          `erro: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // CREATE
@@ -259,6 +320,16 @@ export class ContractsService {
         bandwidthMbps: created.bandwidthMbps,
       },
     });
+
+    // Rede neutra Ufinet (PY): enfileira a ALTA (reserva de porta) fora da TX,
+    // best-effort — só quando o contrato traz uma OLT-orquestradora.
+    await this.tryEnqueueUfinetProvide(
+      tenantId,
+      actorUserId,
+      created,
+      (input as { ufinetOltId?: string | null }).ufinetOltId ?? null,
+    );
+
     return toContractResponse(created, { includePassword: true });
   }
 
@@ -1028,6 +1099,9 @@ export class ContractsService {
         );
       }
     }
+
+    // Ufinet: dispara baja (se ativo) ou cancelación (se ONT não confirmada).
+    await this.tryUfinetTeardown(tenantId, updated.id, actorUserId);
 
     await this.audit.log({
       tenantId,

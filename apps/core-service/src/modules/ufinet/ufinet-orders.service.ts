@@ -1,0 +1,827 @@
+/**
+ * Máquina de estados das ordens Ufinet.
+ *
+ * Traduz as ações do NetX (alta/confirmar-ONT/confirmação/suspender/reativar/
+ * baja/cancelar) nas operações TMF e avança o `lifecycle` de cada
+ * `UfinetService`. O poller (cron) chama `advance()` nos estados transientes.
+ *
+ * Padrão SEND/POLL por passo: `currentOrderId == null` → ainda não enviei a
+ * operação (faço o POST/PATCH e gravo o id); `!= null` → faço poll do
+ * resultado e avanço o lifecycle quando concluir. Assim o poller pode rodar a
+ * mesma linha N vezes sem reenviar a operação.
+ *
+ * Caso A: a Ufinet só provisiona a óptica; o RADIUS/PPPoE local autoriza o
+ * tráfego. Todo cliente vai como "ZUX 1G" (banda real é do Mikrotik).
+ */
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import type { Olt, Prisma, UfinetService } from '@prisma/client';
+import {
+  paginationMeta,
+  UfinetOltConfigSchema,
+  UfinetCredentialsSchema,
+  type ListUfinetServicesQuery,
+  type Paginated,
+  type RetryUfinetServiceRequest,
+  type UfinetServiceResponse,
+} from '@netx/shared';
+
+import { AuditService } from '../audit/audit.service';
+import { CryptoService } from '../crypto/crypto.service';
+import { PrismaService } from '../prisma/prisma.service';
+
+import { UfinetClientService, UfinetApiError } from './ufinet-client.service';
+import {
+  extractOrder,
+  extractOrderId,
+  normalizeUfinetState,
+  UFINET_SPEC,
+  UFINET_STATE,
+  type UfinetConnection,
+  type UfinetInventoryService,
+  type UfinetOrderResponse,
+} from './ufinet.types';
+
+const SEND_RETRY_MS = 8_000; // logo após enviar, faz o 1º poll rápido
+const POLL_MIN_MS = 15_000;
+const POLL_MAX_MS = 5 * 60_000;
+const MAX_ATTEMPTS = 240; // ~horas de poll antes de desistir (FAILED)
+
+@Injectable()
+export class UfinetOrdersService {
+  private readonly logger = new Logger(UfinetOrdersService.name);
+
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly crypto: CryptoService,
+    private readonly client: UfinetClientService,
+    private readonly audit: AuditService,
+  ) {}
+
+  // ===========================================================================
+  // Conexão a partir da OLT (vendor=UFINET, providerMode=ORCHESTRATOR)
+  // ===========================================================================
+  resolveConnection(olt: Pick<Olt, 'apiEndpoint' | 'apiCredentialsEnc' | 'apiConfig'>): UfinetConnection {
+    if (!olt.apiEndpoint) throw new Error('OLT Ufinet sem apiEndpoint configurado');
+    if (!olt.apiCredentialsEnc) throw new Error('OLT Ufinet sem credenciais configuradas');
+
+    const credsRaw = this.crypto.decrypt(olt.apiCredentialsEnc);
+    const creds = UfinetCredentialsSchema.parse(JSON.parse(credsRaw));
+    const config = UfinetOltConfigSchema.parse(olt.apiConfig ?? {});
+
+    return {
+      baseUrl: olt.apiEndpoint,
+      tokenUrl: config.tokenUrl,
+      clientId: creds.clientId,
+      clientSecret: creds.clientSecret,
+      accessKey: creds.accessKey,
+      scope: config.scope,
+      operator: config.operator,
+      region: config.region,
+      contractId: config.contractId,
+      polygonAlias: config.polygonAlias ?? null,
+      userName: config.userName,
+      country: config.country,
+      city: config.city ?? null,
+      nms: config.nms,
+      nmsId: config.nmsId,
+      bandwidthProfile: config.bandwidthProfile,
+      bandwidthProfileId: config.bandwidthProfileId,
+    };
+  }
+
+  // ===========================================================================
+  // Entradas (enganches do contrato) — só mudam estado; o poller executa
+  // ===========================================================================
+  /**
+   * Cria (ou re-aproveita) o UfinetService de um contrato em PENDING_PROVIDE.
+   * Idempotente: se já existir, não duplica. Chamado fora da TX do contrato,
+   * defensivo — falhar aqui não quebra a criação do contrato.
+   */
+  async enqueueProvide(input: {
+    tenantId: string;
+    contractId: string;
+    oltId: string;
+    externalId: string;
+    actorUserId?: string | null;
+  }): Promise<UfinetService> {
+    const existing = await this.prisma.ufinetService.findUnique({
+      where: { contractId: input.contractId },
+    });
+    if (existing) return existing;
+
+    const created = await this.prisma.ufinetService.create({
+      data: {
+        tenantId: input.tenantId,
+        contractId: input.contractId,
+        oltId: input.oltId,
+        externalId: input.externalId,
+        labelDrop: input.externalId,
+        lifecycle: 'PENDING_PROVIDE',
+        nextAttemptAt: new Date(),
+      },
+    });
+    await this.audit.log({
+      tenantId: input.tenantId,
+      userId: input.actorUserId ?? null,
+      actor: input.actorUserId ? undefined : 'system',
+      action: 'ufinet.provide.enqueued',
+      resource: 'ufinet_services',
+      resourceId: created.id,
+      metadata: { externalId: input.externalId },
+    });
+    return created;
+  }
+
+  /**
+   * Confirma a ONT (chamado no install). Se a alta já reservou a porta
+   * (RESERVED), transiciona direto pra CONFIRMING_ONT. Se ainda está em
+   * PENDING_PROVIDE/PROVIDING (técnico chegou rápido), só GRAVA o SN — o
+   * `providePoll` avança automaticamente pra CONFIRMING_ONT ao reservar.
+   */
+  async requestConfirmOnt(
+    tenantId: string,
+    contractId: string,
+    serialNumber: string,
+    actorUserId?: string | null,
+  ): Promise<UfinetService> {
+    const svc = await this.getByContract(tenantId, contractId);
+    if (svc.lifecycle === 'RESERVED' || svc.lifecycle === 'CONFIRMING_ONT') {
+      return this.transition(
+        svc,
+        'CONFIRMING_ONT',
+        { serialNumber, currentOrderId: null, error: null, attempts: 0, nextAttemptAt: new Date() },
+        actorUserId,
+        'ufinet.confirm_ont.requested',
+      );
+    }
+    if (svc.lifecycle === 'PENDING_PROVIDE' || svc.lifecycle === 'PROVIDING') {
+      const updated = await this.save(svc.id, { serialNumber });
+      await this.audit.log({
+        tenantId,
+        userId: actorUserId ?? null,
+        actor: actorUserId ? undefined : 'system',
+        action: 'ufinet.confirm_ont.deferred',
+        resource: 'ufinet_services',
+        resourceId: svc.id,
+        metadata: { serialNumber, lifecycle: svc.lifecycle },
+      });
+      return updated;
+    }
+    throw new Error(`Ufinet: confirmar ONT inválido no lifecycle ${svc.lifecycle}`);
+  }
+
+  async requestSuspend(tenantId: string, contractId: string, actorUserId?: string | null) {
+    const svc = await this.getByContract(tenantId, contractId);
+    return this.transition(svc, 'SUSPENDING', this.resetStep(), actorUserId, 'ufinet.suspend.requested');
+  }
+
+  async requestReactivate(tenantId: string, contractId: string, actorUserId?: string | null) {
+    const svc = await this.getByContract(tenantId, contractId);
+    return this.transition(svc, 'REACTIVATING', this.resetStep(), actorUserId, 'ufinet.reactivate.requested');
+  }
+
+  /**
+   * Cancela (ONT ainda não confirmada) OU dá baja (já ativo). Decide pelo
+   * lifecycle: ACTIVE/SUSPENDED → CEASING; antes disso → CANCELLING.
+   */
+  async requestTeardown(tenantId: string, contractId: string, actorUserId?: string | null) {
+    const svc = await this.getByContract(tenantId, contractId);
+    const canCease = svc.lifecycle === 'ACTIVE' || svc.lifecycle === 'SUSPENDED';
+    const target = canCease ? 'CEASING' : 'CANCELLING';
+    const action = canCease ? 'ufinet.cease.requested' : 'ufinet.cancel.requested';
+    return this.transition(svc, target, this.resetStep(), actorUserId, action);
+  }
+
+  // ===========================================================================
+  // API de leitura / retry (controller + UI)
+  // ===========================================================================
+  async list(
+    tenantId: string,
+    q: ListUfinetServicesQuery,
+  ): Promise<Paginated<UfinetServiceResponse>> {
+    const where: Prisma.UfinetServiceWhereInput = {
+      tenantId,
+      ...(q.lifecycle ? { lifecycle: q.lifecycle } : {}),
+      ...(q.oltId ? { oltId: q.oltId } : {}),
+      ...(q.search
+        ? { OR: [{ externalId: { contains: q.search, mode: 'insensitive' } }] }
+        : {}),
+    };
+    const skip = (q.page - 1) * q.pageSize;
+    const [rows, total] = await Promise.all([
+      this.prisma.ufinetService.findMany({
+        where,
+        orderBy: [{ updatedAt: 'desc' }],
+        skip,
+        take: q.pageSize,
+        include: { olt: { select: { name: true } } },
+      }),
+      this.prisma.ufinetService.count({ where }),
+    ]);
+    return {
+      data: rows.map((r) => this.toResponse(r)),
+      pagination: paginationMeta(total, q.page, q.pageSize),
+    };
+  }
+
+  async findByContractForApi(
+    tenantId: string,
+    contractId: string,
+  ): Promise<UfinetServiceResponse | null> {
+    const row = await this.prisma.ufinetService.findUnique({
+      where: { contractId },
+      include: { olt: { select: { name: true } } },
+    });
+    if (!row || row.tenantId !== tenantId) return null;
+    return this.toResponse(row);
+  }
+
+  /** Re-arma um serviço FAILED pro poller (deriva o passo a retomar). */
+  async retry(
+    tenantId: string,
+    id: string,
+    req: RetryUfinetServiceRequest,
+  ): Promise<UfinetServiceResponse> {
+    const row = await this.prisma.ufinetService.findUnique({
+      where: { id },
+      include: { olt: { select: { name: true } } },
+    });
+    if (!row || row.tenantId !== tenantId) {
+      throw new NotFoundException('Serviço Ufinet não encontrado');
+    }
+    const { lifecycle, currentOrderId } = this.deriveResume(row);
+    const updated = await this.prisma.ufinetService.update({
+      where: { id },
+      data: {
+        lifecycle,
+        currentOrderId,
+        error: null,
+        attempts: req.resetAttempts ? 0 : row.attempts,
+        nextAttemptAt: new Date(),
+      },
+      include: { olt: { select: { name: true } } },
+    });
+    await this.audit.log({
+      tenantId,
+      action: 'ufinet.service.retry',
+      resource: 'ufinet_services',
+      resourceId: id,
+      beforeState: { lifecycle: row.lifecycle },
+      afterState: { lifecycle },
+    });
+    return this.toResponse(updated);
+  }
+
+  /**
+   * De um estado FAILED, deriva onde retomar: re-poll da alta se já há ordem,
+   * senão re-envia; confirma ONT se já reservado + tem SN; senão volta a
+   * RESERVED. Operações PATCH são idempotentes; a alta NÃO é re-enviada se já
+   * existe serviceOrderId (evita externalId duplicado).
+   */
+  private deriveResume(svc: UfinetService): {
+    lifecycle: UfinetService['lifecycle'];
+    currentOrderId: string | null;
+  } {
+    const reserved = !!svc.parentServiceId && !!svc.resPonAccessServiceId;
+    if (!svc.serviceOrderId) return { lifecycle: 'PENDING_PROVIDE', currentOrderId: null };
+    if (!reserved) return { lifecycle: 'PROVIDING', currentOrderId: svc.serviceOrderId };
+    if (svc.serialNumber) return { lifecycle: 'CONFIRMING_ONT', currentOrderId: null };
+    return { lifecycle: 'RESERVED', currentOrderId: null };
+  }
+
+  private toResponse(
+    s: UfinetService & { olt?: { name: string } | null },
+  ): UfinetServiceResponse {
+    return {
+      id: s.id,
+      contractId: s.contractId,
+      oltId: s.oltId,
+      oltName: s.olt?.name ?? null,
+      externalId: s.externalId,
+      labelDrop: s.labelDrop,
+      bandwidthProfile: s.bandwidthProfile,
+      lifecycle: s.lifecycle,
+      ufinetContractId: s.ufinetContractId,
+      serviceOrderId: s.serviceOrderId,
+      parentServiceId: s.parentServiceId,
+      resPonAccessServiceId: s.resPonAccessServiceId,
+      ctoPort: s.ctoPort,
+      serialNumber: s.serialNumber,
+      ufinetState: s.ufinetState,
+      waitingCode: s.waitingCode,
+      attempts: s.attempts,
+      nextAttemptAt: s.nextAttemptAt?.toISOString() ?? null,
+      error: s.error,
+      createdAt: s.createdAt.toISOString(),
+      updatedAt: s.updatedAt.toISOString(),
+    };
+  }
+
+  // ===========================================================================
+  // Poller entrypoint
+  // ===========================================================================
+  async advance(service: UfinetService): Promise<void> {
+    const olt = await this.prisma.olt.findUnique({ where: { id: service.oltId } });
+    if (!olt) return this.fail(service, 'OLT não encontrada');
+
+    let conn: UfinetConnection;
+    try {
+      conn = this.resolveConnection(olt);
+    } catch (err) {
+      return this.fail(service, `config inválida: ${msg(err)}`);
+    }
+
+    try {
+      switch (service.lifecycle) {
+        case 'PENDING_PROVIDE':
+          return await this.provideSend(service, conn);
+        case 'PROVIDING':
+          return await this.providePoll(service, conn);
+        case 'CONFIRMING_ONT':
+          return await this.confirmOnt(service, conn);
+        case 'CONFIRMING_SERVICE':
+          return await this.confirmService(service, conn);
+        case 'SUSPENDING':
+          return await this.orderStep(service, conn, 'SUSPEND');
+        case 'REACTIVATING':
+          return await this.orderStep(service, conn, 'REACTIVATE');
+        case 'CEASING':
+          return await this.orderStep(service, conn, 'CEASE');
+        case 'CANCELLING':
+          return await this.cancelStep(service, conn);
+        default:
+          return; // estado de repouso
+      }
+    } catch (err) {
+      // Erro de transporte/HTTP: backoff e tenta de novo; só FAILED no limite.
+      const attempts = service.attempts + 1;
+      const fatal = attempts >= MAX_ATTEMPTS;
+      this.logger.warn(`[ufinet] ${service.id} ${service.lifecycle} erro: ${msg(err)}`);
+      await this.save(service.id, {
+        attempts,
+        error: msg(err).slice(0, 2000),
+        ...(fatal ? { lifecycle: 'FAILED' as const } : { nextAttemptAt: this.backoff(attempts) }),
+        ...(err instanceof UfinetApiError ? { lastResponse: toJson(err.body) } : {}),
+      });
+    }
+  }
+
+  // ===========================================================================
+  // Passos do ciclo de vida
+  // ===========================================================================
+  // ALTA — envia
+  private async provideSend(svc: UfinetService, conn: UfinetConnection): Promise<void> {
+    if (svc.currentOrderId) return this.providePoll(svc, conn); // já enviado
+
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: svc.contractId },
+      include: { customer: { select: { displayName: true, primaryPhone: true } } },
+    });
+    if (!contract) return this.fail(svc, 'contrato não encontrado');
+
+    const payload = this.buildProvidePayload(svc, conn, contract);
+    const resp = await this.client.createOrder(conn, payload);
+    const orderId = extractOrderId(resp);
+    if (!orderId) return this.fail(svc, `alta sem orderId: ${JSON.stringify(resp).slice(0, 500)}`);
+
+    await this.save(svc.id, {
+      lifecycle: 'PROVIDING',
+      serviceOrderId: orderId,
+      currentOrderId: orderId,
+      ufinetState: normalizeUfinetState(extractOrder(resp)?.state),
+      ufinetContractId: extractOrder(resp)?.idContrato ?? svc.ufinetContractId,
+      lastResponse: toJson(resp),
+      attempts: 0,
+      nextAttemptAt: new Date(Date.now() + SEND_RETRY_MS),
+      error: null,
+    });
+  }
+
+  // ALTA — poll até reservar a porta (4 sub-serviços aparecem no inventário)
+  private async providePoll(svc: UfinetService, conn: UfinetConnection): Promise<void> {
+    const order = await this.client.getOrder(conn, svc.currentOrderId!);
+    const state = normalizeUfinetState(order.state);
+    if (state === UFINET_STATE.FAILED) {
+      return this.fail(svc, this.errText(order) ?? 'alta falhou (state=Failed)');
+    }
+    const ids = await this.resolveBundle(conn, svc.externalId);
+    if (ids) {
+      // Se o técnico já mandou o SN (confirm-ONT antes de reservar), avança
+      // direto pra confirmação; senão, fica RESERVED aguardando o campo.
+      const next = svc.serialNumber ? 'CONFIRMING_ONT' : 'RESERVED';
+      await this.save(svc.id, {
+        lifecycle: next,
+        parentServiceId: ids.parent,
+        fiberAccessServiceId: ids.fiberAccess,
+        hsdServiceId: ids.hsd,
+        resPonAccessServiceId: ids.resPonAccess,
+        ufinetState: state,
+        waitingCode: order.waitingCode ?? null,
+        currentOrderId: null,
+        nextAttemptAt: next === 'CONFIRMING_ONT' ? new Date() : null,
+        attempts: 0,
+      });
+      this.logger.log(
+        `[ufinet] ${svc.externalId} porta reservada → ${next}` +
+          (next === 'CONFIRMING_ONT' ? ' (SN já recebido)' : ' (aguarda ONT)'),
+      );
+      return;
+    }
+    return this.keepPolling(svc, order);
+  }
+
+  // CONFIRMAR ONT — PATCH Res Pon Access (SN) + sync; poll até HSD/Access ativos
+  private async confirmOnt(svc: UfinetService, conn: UfinetConnection): Promise<void> {
+    if (!svc.resPonAccessServiceId || !svc.parentServiceId) {
+      return this.fail(svc, 'confirmar ONT sem ids de sub-serviço (alta incompleta)');
+    }
+    if (!svc.serialNumber) return this.fail(svc, 'confirmar ONT sem serialNumber');
+
+    if (!svc.currentOrderId) {
+      // Paso 1: confirmar ONT no Res Pon Access
+      await this.client.patchService(conn, svc.resPonAccessServiceId, {
+        operator: conn.operator,
+        region: conn.region,
+        state: 'completed',
+        serviceCharacteristic: [{ name: 'SerialNumber', value: svc.serialNumber }],
+      });
+      // Paso 2: sincronizar serviço (Datos)
+      await this.client.patchService(conn, svc.parentServiceId, {
+        Region: conn.region,
+        Operator: conn.operator,
+        serviceCharacteristic: [],
+      });
+      await this.save(svc.id, {
+        currentOrderId: svc.parentServiceId, // marcador "enviado" + alvo do poll
+        nextAttemptAt: new Date(Date.now() + SEND_RETRY_MS),
+      });
+      return;
+    }
+
+    // Poll: HSD e Res Pon Access devem ficar Active
+    const bundle = await this.fetchBundleServices(conn, svc.externalId);
+    const hsd = normalizeUfinetState(bundle.get(UFINET_SPEC.HSD)?.state);
+    const access = normalizeUfinetState(bundle.get(UFINET_SPEC.RES_PON_ACCESS)?.state);
+    if (hsd === 'active' && access === 'active') {
+      await this.save(svc.id, {
+        lifecycle: 'CONFIRMING_SERVICE',
+        currentOrderId: null,
+        nextAttemptAt: new Date(),
+        attempts: 0,
+        error: null,
+      });
+      this.logger.log(`[ufinet] ${svc.externalId} ONT confirmada (HSD+Access Active)`);
+      return;
+    }
+    return this.keepPolling(svc, null);
+  }
+
+  // CONFIRMAÇÃO FINAL — lê CTO_PORT, PATCH order com CTO_PORT+LABEL_DROP, poll
+  private async confirmService(svc: UfinetService, conn: UfinetConnection): Promise<void> {
+    if (!svc.serviceOrderId) return this.fail(svc, 'confirmação sem serviceOrderId');
+
+    if (!svc.currentOrderId) {
+      const ctoPort = svc.ctoPort ?? (await this.readCtoPort(conn, svc.externalId));
+      if (!ctoPort) return this.keepPolling(svc, null, 'CTO_PORT ainda indisponível');
+      await this.client.patchOrder(conn, svc.serviceOrderId, {
+        region: conn.region,
+        operator: conn.operator,
+        state: 'completed',
+        serviceOrderItem: [
+          {
+            service: {
+              serviceCharacteristic: [
+                { name: 'CTO_PORT', value: ctoPort },
+                { name: 'LABEL_DROP', value: svc.labelDrop },
+              ],
+            },
+          },
+        ],
+      });
+      await this.save(svc.id, {
+        ctoPort,
+        currentOrderId: svc.serviceOrderId,
+        nextAttemptAt: new Date(Date.now() + SEND_RETRY_MS),
+      });
+      return;
+    }
+
+    const order = await this.client.getOrder(conn, svc.serviceOrderId);
+    const state = normalizeUfinetState(order.state);
+    if (state === UFINET_STATE.FAILED) {
+      return this.fail(svc, this.errText(order) ?? 'confirmação falhou');
+    }
+    if (state === UFINET_STATE.COMPLETED) {
+      await this.save(svc.id, {
+        lifecycle: 'ACTIVE',
+        currentOrderId: null,
+        nextAttemptAt: null,
+        attempts: 0,
+        error: null,
+        ufinetState: state,
+      });
+      await this.audit.log({
+        tenantId: svc.tenantId,
+        actor: 'system',
+        action: 'ufinet.service.active',
+        resource: 'ufinet_services',
+        resourceId: svc.id,
+        metadata: { externalId: svc.externalId, ctoPort: svc.ctoPort },
+      });
+      this.logger.log(`[ufinet] ${svc.externalId} ATIVO`);
+      return;
+    }
+    return this.keepPolling(svc, order);
+  }
+
+  // SUSPEND / REACTIVATE / CEASE — criam ordem e fazem poll
+  private async orderStep(
+    svc: UfinetService,
+    conn: UfinetConnection,
+    kind: 'SUSPEND' | 'REACTIVATE' | 'CEASE',
+  ): Promise<void> {
+    if (!svc.currentOrderId) {
+      const payload =
+        kind === 'CEASE'
+          ? this.buildCeasePayload(svc, conn)
+          : this.buildSuspendReactivatePayload(svc, conn, kind);
+      const resp = await this.client.createOrder(conn, payload);
+      const orderId = extractOrderId(resp);
+      if (!orderId) return this.fail(svc, `${kind} sem orderId`);
+      await this.save(svc.id, {
+        currentOrderId: orderId,
+        lastResponse: toJson(resp),
+        nextAttemptAt: new Date(Date.now() + SEND_RETRY_MS),
+      });
+      return;
+    }
+    const order = await this.client.getOrder(conn, svc.currentOrderId);
+    const state = normalizeUfinetState(order.state);
+    if (state === UFINET_STATE.FAILED) return this.fail(svc, this.errText(order) ?? `${kind} falhou`);
+    if (state === UFINET_STATE.COMPLETED) {
+      const next = kind === 'SUSPEND' ? 'SUSPENDED' : kind === 'REACTIVATE' ? 'ACTIVE' : 'CEASED';
+      await this.save(svc.id, {
+        lifecycle: next,
+        currentOrderId: null,
+        nextAttemptAt: null,
+        attempts: 0,
+        error: null,
+        ufinetState: state,
+      });
+      this.logger.log(`[ufinet] ${svc.externalId} ${kind} ok → ${next}`);
+      return;
+    }
+    return this.keepPolling(svc, order);
+  }
+
+  // CANCEL — POST CancelServiceOrder (imediato; sem poll dedicado na Fase 1)
+  private async cancelStep(svc: UfinetService, conn: UfinetConnection): Promise<void> {
+    if (!svc.serviceOrderId) return this.fail(svc, 'cancelar sem serviceOrderId');
+    const resp = await this.client.cancelOrder(conn, {
+      Region: conn.region,
+      Operator: conn.operator,
+      cancellationReason: 'Customer cancellation',
+      description: 'Cancelación de servicios',
+      serviceOrder: { id: Number(svc.serviceOrderId) },
+    });
+    await this.save(svc.id, {
+      lifecycle: 'CANCELLED',
+      currentOrderId: null,
+      nextAttemptAt: null,
+      error: null,
+      lastResponse: toJson(resp),
+    });
+    this.logger.log(`[ufinet] ${svc.externalId} CANCELADO`);
+  }
+
+  // ===========================================================================
+  // Payload builders
+  // ===========================================================================
+  private buildProvidePayload(
+    svc: UfinetService,
+    conn: UfinetConnection,
+    contract: { latitude: Prisma.Decimal | null; longitude: Prisma.Decimal | null; customer: { displayName: string; primaryPhone: string | null } },
+  ): Record<string, unknown> {
+    const now = new Date().toISOString();
+    const address: Record<string, unknown> = {
+      country: conn.country,
+      city: conn.city ?? undefined,
+    };
+    if (contract.latitude != null && contract.longitude != null) {
+      address.geometry = {
+        latitude: String(contract.latitude),
+        longitude: String(contract.longitude),
+      };
+    }
+    if (conn.polygonAlias) address.polygonAlias = conn.polygonAlias;
+
+    return {
+      orderDate: now,
+      username: conn.userName,
+      serviceOrderType: 'provide',
+      requestedStartDate: now,
+      operator: conn.operator,
+      region: conn.region,
+      externalId: svc.externalId,
+      description: 'SOLICITUD DE ALTA DE SERVICIO',
+      contractId: conn.contractId,
+      serviceOrderItem: [
+        {
+          action: 'ADD',
+          service: {
+            serviceType: 'CFS',
+            serviceName: 'Conectividad',
+            externalServiceId: svc.externalId,
+            serviceSpecification: { id: 'Datos', version: '1.0' },
+            serviceCharacteristic: [
+              { id: '110', name: 'CONTACT_NAME', description: 'Nombre contacto', valueType: 'string', value: contract.customer.displayName },
+              { id: '111', name: 'CONTACT_PHONE', description: 'Teléfono de contacto', valueType: 'string', value: contract.customer.primaryPhone ?? '0000000000' },
+              { id: conn.nmsId, name: 'NMS', description: 'NMS', valueType: 'string', value: conn.nms },
+              { id: conn.bandwidthProfileId, name: 'BANDWIDTH_PROFILE', description: 'Perfil de ancho de banda', valueType: 'string', value: conn.bandwidthProfile },
+            ],
+            place: [{ address }],
+          },
+        },
+      ],
+    };
+  }
+
+  private buildCeasePayload(svc: UfinetService, conn: UfinetConnection): Record<string, unknown> {
+    return {
+      region: conn.region,
+      operator: conn.operator,
+      serviceOrderType: 'cease',
+      description: 'BAJA DE SERVICIO',
+      externalId: svc.externalId,
+      RequestedStartDate: new Date().toISOString(),
+      Priority: '1',
+      contractId: conn.contractId,
+      relatedParty: [{ name: conn.userName, role: 'requester' }],
+      serviceOrderItem: [{ action: 'delete', service: { externalServiceId: svc.externalId } }],
+    };
+  }
+
+  private buildSuspendReactivatePayload(
+    svc: UfinetService,
+    conn: UfinetConnection,
+    kind: 'SUSPEND' | 'REACTIVATE',
+  ): Record<string, unknown> {
+    return {
+      Region: conn.region,
+      Operator: conn.operator,
+      ServiceOrderType: kind === 'SUSPEND' ? 'SUSPEND_SERVICE' : 'REACTIVATE_SERVICE',
+      Description: kind === 'SUSPEND' ? 'SUSPENCION DE SERVICIO' : 'REACTIVACION DE SERVICIO',
+      ExternalId: svc.externalId,
+      RequestedStartDate: new Date().toISOString(),
+      Priority: '1',
+      RelatedParty: [{ name: conn.userName, role: 'requester' }],
+      ServiceOrderItem: [
+        {
+          Action: 'MODIFY',
+          Service: {
+            ExternalServiceId: svc.parentServiceId ?? svc.externalId,
+            ServiceType: 'CFS',
+            serviceCharacteristic: [],
+            ServiceSpecification: { id: 'RES_PON_ACCESS', version: '1.0' },
+          },
+        },
+      ],
+    };
+  }
+
+  // ===========================================================================
+  // Helpers de inventário
+  // ===========================================================================
+  /** Mapa spec.id → serviço, dos sub-serviços do bundle de um externalId. */
+  private async fetchBundleServices(
+    conn: UfinetConnection,
+    externalId: string,
+  ): Promise<Map<string, UfinetInventoryService>> {
+    const all = await this.client.listServices(conn);
+    const map = new Map<string, UfinetInventoryService>();
+    for (const s of all) {
+      if (s.externalServiceId !== externalId) continue;
+      const spec = s.serviceSpecification?.id;
+      if (spec) map.set(String(spec), s);
+    }
+    return map;
+  }
+
+  /** Resolve os 4 ids do bundle; null se ainda não apareceu no inventário. */
+  private async resolveBundle(
+    conn: UfinetConnection,
+    externalId: string,
+  ): Promise<{ parent: string; fiberAccess: string; hsd: string; resPonAccess: string } | null> {
+    const map = await this.fetchBundleServices(conn, externalId);
+    const datos = map.get(UFINET_SPEC.DATOS);
+    const fiber = map.get(UFINET_SPEC.FIBER_ACCESS);
+    const hsd = map.get(UFINET_SPEC.HSD);
+    const access = map.get(UFINET_SPEC.RES_PON_ACCESS);
+    if (!datos?.id || !fiber?.id || !hsd?.id || !access?.id) return null;
+    return {
+      parent: String(datos.id),
+      fiberAccess: String(fiber.id),
+      hsd: String(hsd.id),
+      resPonAccess: String(access.id),
+    };
+  }
+
+  /** Procura o CTO_PORT nas characteristics dos sub-serviços do bundle. */
+  private async readCtoPort(conn: UfinetConnection, externalId: string): Promise<string | null> {
+    const map = await this.fetchBundleServices(conn, externalId);
+    for (const s of map.values()) {
+      const ch = s.serviceCharacteristic?.find((c) => c.name?.toUpperCase() === 'CTO_PORT');
+      if (ch?.value) return ch.value;
+    }
+    return null;
+  }
+
+  // ===========================================================================
+  // Persistência / transições
+  // ===========================================================================
+  private async getByContract(tenantId: string, contractId: string): Promise<UfinetService> {
+    const svc = await this.prisma.ufinetService.findUnique({ where: { contractId } });
+    if (!svc || svc.tenantId !== tenantId) {
+      throw new Error('Serviço Ufinet não encontrado para o contrato');
+    }
+    return svc;
+  }
+
+  private resetStep(): Prisma.UfinetServiceUpdateInput {
+    return { currentOrderId: null, error: null, attempts: 0, nextAttemptAt: new Date() };
+  }
+
+  private async transition(
+    svc: UfinetService,
+    lifecycle: UfinetService['lifecycle'],
+    extra: Prisma.UfinetServiceUpdateInput,
+    actorUserId: string | null | undefined,
+    action: string,
+  ): Promise<UfinetService> {
+    const updated = await this.prisma.ufinetService.update({
+      where: { id: svc.id },
+      data: { lifecycle, ...extra },
+    });
+    await this.audit.log({
+      tenantId: svc.tenantId,
+      userId: actorUserId ?? null,
+      actor: actorUserId ? undefined : 'system',
+      action,
+      resource: 'ufinet_services',
+      resourceId: svc.id,
+      beforeState: { lifecycle: svc.lifecycle },
+      afterState: { lifecycle },
+    });
+    return updated;
+  }
+
+  private save(id: string, data: Prisma.UfinetServiceUpdateInput): Promise<UfinetService> {
+    return this.prisma.ufinetService.update({ where: { id }, data });
+  }
+
+  private async fail(svc: UfinetService, error: string): Promise<void> {
+    this.logger.error(`[ufinet] ${svc.externalId} FAILED: ${error}`);
+    await this.save(svc.id, { lifecycle: 'FAILED', error: error.slice(0, 2000), nextAttemptAt: null });
+    await this.audit.log({
+      tenantId: svc.tenantId,
+      actor: 'system',
+      action: 'ufinet.service.failed',
+      resource: 'ufinet_services',
+      resourceId: svc.id,
+      level: 'WARNING',
+      metadata: { externalId: svc.externalId, error: error.slice(0, 500) },
+    });
+  }
+
+  /** Mantém em poll: backoff crescente; FAILED no limite de tentativas. */
+  private async keepPolling(svc: UfinetService, order: UfinetOrderResponse | null, note?: string): Promise<void> {
+    const attempts = svc.attempts + 1;
+    if (attempts >= MAX_ATTEMPTS) {
+      return this.fail(svc, note ?? `excedeu ${MAX_ATTEMPTS} tentativas de poll`);
+    }
+    await this.save(svc.id, {
+      attempts,
+      nextAttemptAt: this.backoff(attempts),
+      ufinetState: order ? normalizeUfinetState(order.state) : svc.ufinetState,
+      waitingCode: order?.waitingCode ?? svc.waitingCode,
+    });
+  }
+
+  private backoff(attempts: number): Date {
+    const ms = Math.min(POLL_MIN_MS * Math.max(1, attempts), POLL_MAX_MS);
+    return new Date(Date.now() + ms);
+  }
+
+  private errText(order: UfinetOrderResponse): string | null {
+    if (!order.errorMessages?.length) return null;
+    return order.errorMessages.map((e) => e.reason ?? e.message ?? e.code).filter(Boolean).join(' | ').slice(0, 2000);
+  }
+}
+
+function msg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function toJson(value: unknown): Prisma.InputJsonValue {
+  return (value ?? null) as Prisma.InputJsonValue;
+}

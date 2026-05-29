@@ -58,6 +58,7 @@ export interface Olt {
   apiAuthType: 'OAUTH2' | 'API_KEY' | 'MTLS' | null;
   hasApiCredentials: boolean;
   hasApiWebhookSecret: boolean;
+  apiConfig: Record<string, unknown> | null;
   serviceVlanId: number | null;
   defaultUpProfile: string | null;
   defaultDownProfile: string | null;
@@ -84,6 +85,7 @@ export interface CreateOltRequest {
   apiAuthType?: 'OAUTH2' | 'API_KEY' | 'MTLS' | null;
   apiCredentials?: Record<string, unknown> | null;
   apiWebhookSecret?: string | null;
+  apiConfig?: Record<string, unknown> | null;
   serviceVlanId?: number | null;
   defaultUpProfile?: string | null;
   defaultDownProfile?: string | null;
