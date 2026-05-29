@@ -172,6 +172,19 @@ export class UfinetOrdersService {
             nextAttemptAt: new Date(),
           },
         });
+        // Mesmo ID pra tudo: o código do contrato no NetX vira o externalId
+        // (ZUX-{seq}) — rastreabilidade única cliente↔Ufinet. Best-effort.
+        try {
+          await this.prisma.contract.update({
+            where: { id: input.contractId },
+            data: { code: externalId },
+          });
+        } catch (err) {
+          this.logger.warn(
+            `[ufinet] não consegui setar contract.code=${externalId} pro contrato ` +
+              `${input.contractId}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
         await this.audit.log({
           tenantId: input.tenantId,
           userId: input.actorUserId ?? null,
@@ -201,20 +214,24 @@ export class UfinetOrdersService {
     tenantId: string,
     contractId: string,
     serialNumber: string,
-    actorUserId?: string | null,
+    opts?: { ctoPort?: string | null; actorUserId?: string | null },
   ): Promise<UfinetService> {
+    const actorUserId = opts?.actorUserId ?? null;
+    // Caixa/porta REAIS do técnico — sobrescrevem o CTO_PORT sugerido pela
+    // Ufinet na confirmação do serviço. null/'' = mantém o que já houver.
+    const ctoOverride = opts?.ctoPort?.trim() ? { ctoPort: opts.ctoPort.trim() } : {};
     const svc = await this.getByContract(tenantId, contractId);
     if (svc.lifecycle === 'RESERVED' || svc.lifecycle === 'CONFIRMING_ONT') {
       return this.transition(
         svc,
         'CONFIRMING_ONT',
-        { serialNumber, currentOrderId: null, error: null, attempts: 0, nextAttemptAt: new Date() },
+        { serialNumber, ...ctoOverride, currentOrderId: null, error: null, attempts: 0, nextAttemptAt: new Date() },
         actorUserId,
         'ufinet.confirm_ont.requested',
       );
     }
     if (svc.lifecycle === 'PENDING_PROVIDE' || svc.lifecycle === 'PROVIDING') {
-      const updated = await this.save(svc.id, { serialNumber });
+      const updated = await this.save(svc.id, { serialNumber, ...ctoOverride });
       await this.audit.log({
         tenantId,
         userId: actorUserId ?? null,
@@ -222,7 +239,7 @@ export class UfinetOrdersService {
         action: 'ufinet.confirm_ont.deferred',
         resource: 'ufinet_services',
         resourceId: svc.id,
-        metadata: { serialNumber, lifecycle: svc.lifecycle },
+        metadata: { serialNumber, lifecycle: svc.lifecycle, ...ctoOverride },
       });
       return updated;
     }

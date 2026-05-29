@@ -524,7 +524,15 @@ export class ProvisioningService {
           oltId: olt.id,
           actorUserId,
         });
-        await this.ufinet.requestConfirmOnt(tenantId, contractId, resolvedSnGpon, actorUserId);
+        // Caixa/porta REAIS que o técnico conectou em campo → vira o CTO_PORT
+        // enviado na confirmação (sobrescreve o sugerido pela Ufinet).
+        const ctoPort = input.ufinetCto?.trim()
+          ? `${input.ufinetCto.trim()}${input.ufinetPort?.trim() ? `/${input.ufinetPort.trim()}` : ''}`
+          : null;
+        await this.ufinet.requestConfirmOnt(tenantId, contractId, resolvedSnGpon, {
+          ctoPort,
+          actorUserId,
+        });
         pushEvent('OLT_AUTHORIZE', 'SUCCESS', 'ONT confirmada na fila Ufinet (poller conclui em background)');
       } catch (err) {
         const m = err instanceof Error ? err.message : String(err);

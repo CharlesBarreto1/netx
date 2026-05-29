@@ -83,11 +83,20 @@ export default function InstallPage() {
     'BAND_STEERING',
   );
   const [notes, setNotes] = useState('');
+  // Ufinet (rede neutra PY): caixa (CTO) + porta REAIS onde o técnico conectou
+  // o drop — sobrescrevem o CTO sugerido pela Ufinet na confirmação.
+  const [ufinetCto, setUfinetCto] = useState('');
+  const [ufinetPort, setUfinetPort] = useState('');
 
   // Result state
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<InstallCustomerResponse | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // OLT selecionada — pra mostrar campos Ufinet só quando faz sentido.
+  const selectedOlt = olts.find((o) => o.id === oltId);
+  const isUfinet =
+    selectedOlt?.vendor === 'UFINET' && selectedOlt?.providerMode === 'ORCHESTRATOR';
 
   if (oltsLoading) return <PageLoader />;
 
@@ -110,6 +119,8 @@ export default function InstallPage() {
         pppoeVlan: Number(pppoeVlan) || 1010,
         wifiBandMode,
         notes: notes.trim() || null,
+        ufinetCto: ufinetCto.trim() || null,
+        ufinetPort: ufinetPort.trim() || null,
       });
       setResult(res);
     } catch (err) {
@@ -428,6 +439,41 @@ export default function InstallPage() {
             </p>
           </div>
         </section>
+
+        {isUfinet && (
+          <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Ufinet — caixa &amp; porta (rede neutra)
+            </h2>
+            <p className="text-xs text-slate-500">
+              Informe a <strong>caixa (CTO) e porta REAIS</strong> onde você conectou
+              o drop. Vão pra Ufinet na confirmação como <code>CTO_PORT</code> e
+              sobrescrevem a caixa que eles sugerem (que normalmente não é a usada).
+              Deixe vazio pra usar a caixa sugerida pela Ufinet.
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="ufinetCto">Caixa (CTO)</Label>
+                <Input
+                  id="ufinetCto"
+                  value={ufinetCto}
+                  onChange={(e) => setUfinetCto(e.target.value)}
+                  placeholder="ex.: CTO-MALLORQUIN-014"
+                />
+              </div>
+              <div>
+                <Label htmlFor="ufinetPort">Porta</Label>
+                <Input
+                  id="ufinetPort"
+                  value={ufinetPort}
+                  onChange={(e) => setUfinetPort(e.target.value)}
+                  placeholder="ex.: 4"
+                  className="sm:max-w-[140px]"
+                />
+              </div>
+            </div>
+          </section>
+        )}
 
         <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">

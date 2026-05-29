@@ -125,6 +125,9 @@ export interface InstallCustomerRequest {
   /** Modo Wi-Fi do modelo da ONT (default BAND_STEERING). */
   wifiBandMode?: 'BAND_STEERING' | 'DUAL_BAND';
   notes?: string | null;
+  /** Ufinet (rede neutra): caixa (CTO) + porta reais informadas pelo técnico. */
+  ufinetCto?: string | null;
+  ufinetPort?: string | null;
 }
 
 export interface InstallTimelineEvent {
