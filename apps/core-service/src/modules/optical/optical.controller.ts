@@ -122,6 +122,13 @@ export class OpticalController {
     return this.enclosures.list(u.tenantId, q);
   }
 
+  /** OLTs (enxuto) pra seletores de vínculo CTO↔OLT / provisionamento. */
+  @Get('olts')
+  @RequirePermissions('network.read')
+  listOltOptions(@CurrentUser() u: AuthenticatedPrincipal) {
+    return this.enclosures.listOltOptions(u.tenantId);
+  }
+
   /** IDs que casam com o filtro — pra "selecionar todas" na UI. ANTES de :id. */
   @Get('enclosures/ids')
   @RequirePermissions('network.read')

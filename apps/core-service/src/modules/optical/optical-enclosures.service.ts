@@ -168,6 +168,22 @@ export class OpticalEnclosuresService {
     };
   }
 
+  /**
+   * Lista enxuta de OLTs (id/nome/vendor/modo) pra POPULAR SELETORES — vincular
+   * CTO↔OLT, escolher OLT no provisionamento, etc. Liberada com `network.read`
+   * (o `/v1/olts` cheio exige `olts.admin` porque expõe credenciais; aqui só
+   * metadados públicos, então quem mexe na planta óptica consegue escolher).
+   */
+  async listOltOptions(
+    tenantId: string,
+  ): Promise<Array<{ id: string; name: string; vendor: string; providerMode: string }>> {
+    return this.prisma.olt.findMany({
+      where: { tenantId, deletedAt: null },
+      select: { id: true, name: true, vendor: true, providerMode: true },
+      orderBy: { name: 'asc' },
+    });
+  }
+
   /** Só os IDs que casam com o filtro (pra "selecionar todas" na UI, sem paginar). */
   async listIds(tenantId: string, q: ListOpticalEnclosuresQuery): Promise<string[]> {
     const where: Prisma.OpticalEnclosureWhereInput = {

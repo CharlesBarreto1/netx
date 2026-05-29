@@ -112,7 +112,7 @@ export default function OpticalEnclosuresPage() {
   const [bulkOltId, setBulkOltId] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
   const { data: bulkOltsResp } = useSWR(canWrite ? 'olts:all' : null, () =>
-    oltsApi.list({ pageSize: 200 }),
+    oltsApi.list({ pageSize: 100 }),
   );
   const bulkOlts = bulkOltsResp?.data ?? [];
 
@@ -519,7 +519,7 @@ function EnclosureFormDialog({
   const [error, setError] = useState<string | null>(null);
 
   // OLT que atende a caixa + PON (PON só pra OLT DIRECT; Ufinet abstrai).
-  const { data: oltsResp } = useSWR('olts:all', () => oltsApi.list({ pageSize: 200 }));
+  const { data: oltsResp } = useSWR('olts:all', () => oltsApi.list({ pageSize: 100 }));
   const olts: Olt[] = oltsResp?.data ?? [];
   const selectedOlt = olts.find((o) => o.id === form.oltId);
   const oltIsDirect = selectedOlt?.providerMode === 'DIRECT';

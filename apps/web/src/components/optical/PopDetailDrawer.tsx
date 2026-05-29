@@ -35,14 +35,14 @@ interface Props {
 export function PopDetailDrawer({ popId, onClose }: Props) {
   const { data: pop } = useSWR<NetworkPop>(`/v1/network/pops/${popId}`);
   // OLTs vinculadas a este POP.
-  const linkedKey = oltsApi.listPath({ popId, pageSize: 200 });
+  const linkedKey = oltsApi.listPath({ popId, pageSize: 100 });
   const { data: linkedData, mutate: mutateLinked } = useSWR<Paginated<Olt>>(
     linkedKey,
   );
   const linked = linkedData?.data ?? [];
 
   // OLTs sem POP (candidatos pra vincular).
-  const freeKey = oltsApi.listPath({ popId: 'none', pageSize: 200 });
+  const freeKey = oltsApi.listPath({ popId: 'none', pageSize: 100 });
   const { data: freeData, mutate: mutateFree } = useSWR<Paginated<Olt>>(
     freeKey,
   );
