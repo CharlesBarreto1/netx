@@ -2874,8 +2874,10 @@ model UfinetService {
   contractId            String          @map("contract_id") @db.Uuid
   oltId                 String          @map("olt_id") @db.Uuid
 
-  // ZUX-{code do contrato} — usado como externalId, LABEL_DROP e etiqueta do
-  // técnico em campo (decisão da operação). Único por tenant.
+  // Sequencial curto por tenant (ZUX-1, ZUX-2, …). `seq` é a base; `externalId`
+  // = "{prefixo}-{seq}" e serve como externalId TMF, LABEL_DROP e etiqueta do
+  // técnico em campo (decisão da operação). Tudo único por tenant.
+  seq                   Int?            @map("seq")
   externalId            String          @map("external_id") @db.VarChar(80)
   labelDrop             String          @map("label_drop") @db.VarChar(80)
   bandwidthProfile      String          @default("ZUX 1G") @map("bandwidth_profile") @db.VarChar(64)
@@ -2910,6 +2912,7 @@ model UfinetService {
 
   @@unique([contractId])
   @@unique([tenantId, externalId])
+  @@unique([tenantId, seq])
   @@index([tenantId, lifecycle])
   @@index([nextAttemptAt])
   @@map("ufinet_services")

@@ -125,15 +125,13 @@ export class ContractsService {
         );
         return;
       }
-      const externalId = `ZUX-${contract.code ?? contract.id}`;
-      await this.ufinet.enqueueProvide({
+      const svc = await this.ufinet.enqueueProvide({
         tenantId,
         contractId: contract.id,
         oltId: olt.id,
-        externalId,
         actorUserId,
       });
-      this.logger.log(`[ufinet] alta enfileirada pra contrato ${contract.id} (${externalId})`);
+      this.logger.log(`[ufinet] alta enfileirada pra contrato ${contract.id} (${svc.externalId})`);
     } catch (err) {
       this.logger.warn(
         `[ufinet] falha ao enfileirar alta pra ${contract.id} — contrato mantido. ` +

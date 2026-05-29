@@ -135,7 +135,6 @@ export class UfinetOrdersService {
     tenantId: string;
     contractId: string;
     oltId: string;
-    externalId: string;
     actorUserId?: string | null;
   }): Promise<UfinetService> {
     const existing = await this.prisma.ufinetService.findUnique({
@@ -143,27 +142,53 @@ export class UfinetOrdersService {
     });
     if (existing) return existing;
 
-    const created = await this.prisma.ufinetService.create({
-      data: {
-        tenantId: input.tenantId,
-        contractId: input.contractId,
-        oltId: input.oltId,
-        externalId: input.externalId,
-        labelDrop: input.externalId,
-        lifecycle: 'PENDING_PROVIDE',
-        nextAttemptAt: new Date(),
-      },
+    // Prefixo do externalId/marquilla (default "ZUX"), configurável por OLT.
+    const olt = await this.prisma.olt.findUnique({
+      where: { id: input.oltId },
+      select: { apiConfig: true },
     });
-    await this.audit.log({
-      tenantId: input.tenantId,
-      userId: input.actorUserId ?? null,
-      actor: input.actorUserId ? undefined : 'system',
-      action: 'ufinet.provide.enqueued',
-      resource: 'ufinet_services',
-      resourceId: created.id,
-      metadata: { externalId: input.externalId },
-    });
-    return created;
+    const prefix = UfinetOltConfigSchema.parse(olt?.apiConfig ?? {}).externalIdPrefix;
+
+    // Sequencial curto por tenant: ZUX-1, ZUX-2, … (marquilla legível em campo).
+    // MAX(seq)+1 com retry — concorrência baixa (criação de contrato), e o
+    // índice único [tenantId, seq] protege contra corrida.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const agg = await this.prisma.ufinetService.aggregate({
+        where: { tenantId: input.tenantId },
+        _max: { seq: true },
+      });
+      const seq = (agg._max.seq ?? 0) + 1;
+      const externalId = `${prefix}-${seq}`;
+      try {
+        const created = await this.prisma.ufinetService.create({
+          data: {
+            tenantId: input.tenantId,
+            contractId: input.contractId,
+            oltId: input.oltId,
+            seq,
+            externalId,
+            labelDrop: externalId,
+            lifecycle: 'PENDING_PROVIDE',
+            nextAttemptAt: new Date(),
+          },
+        });
+        await this.audit.log({
+          tenantId: input.tenantId,
+          userId: input.actorUserId ?? null,
+          actor: input.actorUserId ? undefined : 'system',
+          action: 'ufinet.provide.enqueued',
+          resource: 'ufinet_services',
+          resourceId: created.id,
+          metadata: { externalId, seq },
+        });
+        return created;
+      } catch (err) {
+        // P2002 = colisão de seq/externalId (corrida) → recalcula e tenta de novo.
+        if ((err as { code?: string })?.code === 'P2002') continue;
+        throw err;
+      }
+    }
+    throw new Error('Ufinet: não consegui alocar sequencial de externalId após 5 tentativas');
   }
 
   /**

@@ -522,7 +522,6 @@ export class ProvisioningService {
           tenantId,
           contractId,
           oltId: olt.id,
-          externalId: `ZUX-${updatedContract.code ?? contractId}`,
           actorUserId,
         });
         await this.ufinet.requestConfirmOnt(tenantId, contractId, resolvedSnGpon, actorUserId);

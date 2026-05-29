@@ -89,6 +89,11 @@ export const UfinetOltConfigSchema = z.object({
   scope: z.string().min(1).max(255),
   /** Endpoint de token OAuth (tenant Microsoft). */
   tokenUrl: z.string().url(),
+  /**
+   * Prefixo do externalId/marquilla drop. O NetX gera sequencial por tenant:
+   * `{prefixo}-{n}` → "ZUX-1", "ZUX-2", … (curto e legível pro técnico em campo).
+   */
+  externalIdPrefix: z.string().min(1).max(16).default('ZUX'),
 });
 export type UfinetOltConfig = z.infer<typeof UfinetOltConfigSchema>;
 
