@@ -73,6 +73,8 @@ export class UfinetClientService {
         error_description?: string;
       };
       if (!res.ok || !json.access_token) {
+        // Sem segredos no log — só o motivo retornado pela Microsoft.
+        this.logger.warn(`OAuth token → ${res.status}: ${json.error_description ?? 'sem access_token'}`);
         throw new UfinetApiError(
           `Ufinet OAuth falhou: ${json.error_description ?? res.status}`,
           res.status,
@@ -84,6 +86,7 @@ export class UfinetClientService {
         token: json.access_token,
         expiresAt: Date.now() + expiresInMs - TOKEN_SKEW_MS,
       });
+      this.logger.debug(`OAuth token novo OK (expires_in=${json.expires_in ?? '?'}s)`);
       return json.access_token;
     } finally {
       clearTimeout(timer);
@@ -103,6 +106,11 @@ export class UfinetClientService {
     const url = `${conn.baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+    const startedAt = Date.now();
+    // "Conversa" NetX↔Ufinet: corpo do request em debug (sem token/Access key).
+    if (body !== undefined) {
+      this.logger.debug(`→ ${method} ${path} req=${truncate(JSON.stringify(body))}`);
+    }
     try {
       const res = await fetch(url, {
         method,
@@ -116,6 +124,7 @@ export class UfinetClientService {
         signal: controller.signal,
       });
       const text = await res.text();
+      const ms = Date.now() - startedAt;
       const parsed = text ? safeJson(text) : null;
       if (!res.ok) {
         throw new UfinetApiError(
@@ -124,10 +133,18 @@ export class UfinetClientService {
           parsed ?? text,
         );
       }
+      this.logger.log(`${method} ${path} → ${res.status} (${ms}ms)`);
+      this.logger.debug(`← ${method} ${path} resp=${truncate(text)}`);
       return parsed as T;
     } catch (err) {
-      if (err instanceof UfinetApiError) throw err;
+      const ms = Date.now() - startedAt;
+      if (err instanceof UfinetApiError) {
+        this.logger.warn(`${method} ${path} → ${err.status || 'ERRO'} (${ms}ms): ${err.message}`);
+        this.logger.debug(`← ${method} ${path} erro-body=${truncate(JSON.stringify(err.body))}`);
+        throw err;
+      }
       const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`${method} ${path} → FALHA (${ms}ms): ${message}`);
       throw new UfinetApiError(`Ufinet ${method} ${path} falhou: ${message}`, 0, null);
     } finally {
       clearTimeout(timer);
@@ -190,4 +207,10 @@ function safeJson(text: string): unknown {
   } catch {
     return text;
   }
+}
+
+/** Limita o tamanho do corpo no log (debug pode ter payloads grandes). */
+function truncate(s: string | null | undefined, max = 4000): string {
+  if (!s) return '';
+  return s.length > max ? `${s.slice(0, max)}…[+${s.length - max} chars]` : s;
 }
