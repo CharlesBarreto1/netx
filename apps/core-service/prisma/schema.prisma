@@ -2906,6 +2906,9 @@ model UfinetService {
   waitingCode           String?         @map("waiting_code") @db.VarChar(16)        // !=0 = precisa trabalho de campo
   attempts              Int             @default(0)
   nextAttemptAt         DateTime?       @map("next_attempt_at")
+  // Âncora do teto de espera em "aprovisionando" (Ufinet 426). Marcado no 1º
+  // tick pending; limpo quando o serviço avança/poll normal. Estourou 1h → FAILED.
+  pendingSince          DateTime?       @map("pending_since")
   lastResponse          Json?           @map("last_response")
   error                 String?         @db.Text
 

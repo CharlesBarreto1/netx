@@ -50,6 +50,9 @@ const MAX_ATTEMPTS = 240; // ~horas de poll antes de desistir (FAILED)
 // Ufinet 426 "Tareas pendientes": aprovisionamento ainda em trabalho de campo/
 // infra. NÃO é erro — espera calma, sem contar pro limite de FAILED.
 const PENDING_RETRY_MS = 60_000;
+// Teto de espera em "aprovisionando": se a Ufinet não concluir em 1h, vira
+// FAILED em vez de repollar pra sempre (ex.: serial errado / ONT inexistente).
+const PENDING_MAX_MS = 60 * 60_000;
 
 @Injectable()
 export class UfinetOrdersService {
@@ -476,14 +479,27 @@ export class UfinetOrdersService {
       // executa trabalho de campo/infra. É ESPERA, não erro — re-tenta calmo,
       // sem marcar erro nem contar pro limite de FAILED.
       if (this.isProvisioningPending(err)) {
+        const now = Date.now();
+        const pendingSince = service.pendingSince ?? new Date(now);
+        const waitedMs = now - pendingSince.getTime();
+        // Teto: se a Ufinet não concluir em 1h, desiste (FAILED) em vez de
+        // repollar pra sempre — ex.: serialNumber errado ou ONT/OLT inexistente.
+        if (waitedMs >= PENDING_MAX_MS) {
+          return this.fail(
+            service,
+            `Ufinet não concluiu o aprovisionamento em ${Math.round(PENDING_MAX_MS / 60_000)}min ` +
+              `(426 "tareas pendientes" persistente). Revise o serialNumber e o Res Pon Access e reprocesse.`,
+          );
+        }
         this.logger.log(
           `[ufinet] ${service.externalId} aguardando Ufinet concluir aprovisionamento ` +
-            `(tareas pendientes) — re-tenta em ${PENDING_RETRY_MS / 1000}s`,
+            `(tareas pendientes, ${Math.round(waitedMs / 60_000)}min) — re-tenta em ${PENDING_RETRY_MS / 1000}s`,
         );
         await this.save(service.id, {
           ufinetState: 'aprovisionando',
           error: null,
-          nextAttemptAt: new Date(Date.now() + PENDING_RETRY_MS),
+          pendingSince,
+          nextAttemptAt: new Date(now + PENDING_RETRY_MS),
           ...(err instanceof UfinetApiError ? { lastResponse: toJson(err.body) } : {}),
         });
         return;
@@ -911,7 +927,10 @@ export class UfinetOrdersService {
   }
 
   private save(id: string, data: Prisma.UfinetServiceUpdateInput): Promise<UfinetService> {
-    return this.prisma.ufinetService.update({ where: { id }, data });
+    // Reset implícito da âncora de pending: só o branch "aprovisionando" passa
+    // `pendingSince`; qualquer avanço/poll/erro normal quebra o streak e zera.
+    const patch = 'pendingSince' in data ? data : { ...data, pendingSince: null };
+    return this.prisma.ufinetService.update({ where: { id }, data: patch });
   }
 
   private async fail(svc: UfinetService, error: string): Promise<void> {
