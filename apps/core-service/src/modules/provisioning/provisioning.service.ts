@@ -182,19 +182,17 @@ export class ProvisioningService {
     });
     if (!olt) throw new NotFoundException('OLT não encontrada');
 
-    // Defesa pré-driver: drivers stub (Ufinet API real, Huawei SSH real) lançam
-    // mensagens técnicas confusas pro técnico de campo. Damos um erro amigável
-    // antes de chegar lá. EXTERNAL e GENERIC (mock) sempre passam.
-    const isStub =
-      (olt.providerMode === 'ORCHESTRATOR' && olt.vendor === 'UFINET') ||
-      (olt.providerMode === 'DIRECT' && olt.vendor === 'HUAWEI');
+    // Defesa pré-driver: o driver Huawei SSH (DIRECT) ainda é stub e lançaria
+    // mensagem técnica confusa pro técnico. Damos um erro amigável antes.
+    // UFINET/ORCHESTRATOR JÁ é suportado (módulo ufinet — alta/confirmar-ONT
+    // assíncronos); EXTERNAL e GENERIC (mock) sempre passam.
+    const isStub = olt.providerMode === 'DIRECT' && olt.vendor === 'HUAWEI';
     if (isStub) {
       throw new BadRequestException(
         `Driver ${olt.vendor}/${olt.providerMode} ainda não implementado ` +
-          '(Ufinet API aguardando doc; Huawei SSH planejado pra fase BR). ' +
-          'Pra ativar clientes agora, edite a OLT e troque "Modo" pra EXTERNAL ' +
-          '— assim NetX só registra a ONT e segue pra RADIUS + TR-069, com você ' +
-          'provisionando o SN manualmente na OLT real (Ufinet).',
+          '(Huawei SSH planejado pra fase BR). Pra ativar clientes agora, edite a ' +
+          'OLT e troque "Modo" pra EXTERNAL — NetX registra a ONT e segue pra ' +
+          'RADIUS + TR-069, com você provisionando o SN manualmente na OLT real.',
       );
     }
 
