@@ -89,6 +89,37 @@ export class UfinetOrdersService {
     };
   }
 
+  /**
+   * Teste de conexão REAL: valida OAuth (client_id/secret/scope/tokenUrl) +
+   * Access key + conectividade/whitelist com um GET autenticado. Usado pelo
+   * botão "Testar" da OLT. NÃO cria nada na Ufinet.
+   */
+  async testConnection(
+    olt: Pick<Olt, 'apiEndpoint' | 'apiCredentialsEnc' | 'apiConfig'>,
+  ): Promise<{ success: boolean; message: string; durationMs: number }> {
+    const started = Date.now();
+    try {
+      const conn = this.resolveConnection(olt);
+      await this.client.getToken(conn); // valida OAuth
+      const orders = await this.client.listOrders(conn); // valida Access key + rede/whitelist
+      return {
+        success: true,
+        message: `OK — OAuth + API Ufinet respondendo (${conn.operator}/${conn.region}; ${
+          Array.isArray(orders) ? orders.length : 0
+        } ordens visíveis).`,
+        durationMs: Date.now() - started,
+      };
+    } catch (err) {
+      const message =
+        err instanceof UfinetApiError
+          ? `${err.message}${err.status ? ` (HTTP ${err.status})` : ''}`
+          : err instanceof Error
+            ? err.message
+            : String(err);
+      return { success: false, message, durationMs: Date.now() - started };
+    }
+  }
+
   // ===========================================================================
   // Entradas (enganches do contrato) — só mudam estado; o poller executa
   // ===========================================================================

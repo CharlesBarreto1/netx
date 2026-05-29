@@ -32,6 +32,8 @@ import { AuditService } from '../audit/audit.service';
 import { CryptoService } from '../crypto/crypto.service';
 import { PrismaService } from '../prisma/prisma.service';
 
+import { UfinetOrdersService } from '../ufinet/ufinet-orders.service';
+
 import { OltDriverFactory } from './drivers/olt-driver.factory';
 import { buildConnectionContext } from './olt-context.util';
 
@@ -81,6 +83,7 @@ export class OltsService {
     private readonly crypto: CryptoService,
     private readonly audit: AuditService,
     private readonly drivers: OltDriverFactory,
+    private readonly ufinet: UfinetOrdersService,
   ) {}
 
   async create(
@@ -303,16 +306,28 @@ export class OltsService {
     });
     if (!olt) throw new NotFoundException('OLT não encontrada');
 
-    const ctx = buildConnectionContext(olt, this.crypto);
-    const driver = this.drivers.resolve(olt.vendor, olt.providerMode);
-    const result = await driver.testConnection(ctx);
+    // UFINET/ORCHESTRATOR faz teste REAL (OAuth + GET autenticado) no módulo
+    // ufinet. Demais vendors usam o driver (SSH/NoOp).
+    let norm: { success: boolean; message: string; durationMs: number };
+    if (olt.vendor === 'UFINET' && olt.providerMode === 'ORCHESTRATOR') {
+      norm = await this.ufinet.testConnection(olt);
+    } else {
+      const ctx = buildConnectionContext(olt, this.crypto);
+      const driver = this.drivers.resolve(olt.vendor, olt.providerMode);
+      const r = await driver.testConnection(ctx);
+      norm = {
+        success: r.success,
+        message: r.success ? r.data.message : r.error,
+        durationMs: r.durationMs,
+      };
+    }
 
     await this.prisma.olt.update({
       where: { id },
       data: {
-        status: result.success ? 'ONLINE' : 'OFFLINE',
-        lastSeenAt: result.success ? new Date() : olt.lastSeenAt,
-        lastError: result.success ? null : result.error,
+        status: norm.success ? 'ONLINE' : 'OFFLINE',
+        lastSeenAt: norm.success ? new Date() : olt.lastSeenAt,
+        lastError: norm.success ? null : norm.message,
       },
     });
     await this.audit.log({
@@ -322,16 +337,12 @@ export class OltsService {
       resource: 'olts',
       resourceId: id,
       metadata: {
-        success: result.success,
-        durationMs: result.durationMs,
-        ...(result.success ? {} : { error: result.error }),
+        success: norm.success,
+        durationMs: norm.durationMs,
+        ...(norm.success ? {} : { error: norm.message }),
       },
     });
 
-    return {
-      success: result.success,
-      message: result.success ? result.data.message : result.error,
-      durationMs: result.durationMs,
-    };
+    return norm;
   }
 }
