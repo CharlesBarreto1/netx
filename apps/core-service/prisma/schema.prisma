@@ -2524,6 +2524,7 @@ model Olt {
   pop                 NetworkPop?     @relation(fields: [popId], references: [id], onDelete: SetNull)
   onts                Ont[]
   ponPorts            PonPort[]
+  enclosures          OpticalEnclosure[]
   ufinetServices      UfinetService[]
 
   @@unique([tenantId, name])
@@ -2568,6 +2569,7 @@ model PonPort {
   tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   olt             Olt             @relation(fields: [oltId], references: [id], onDelete: Cascade)
   cable           FiberCable?     @relation(fields: [cableId], references: [id], onDelete: SetNull)
+  enclosures      OpticalEnclosure[]
 
   // Uma porta por (olt, ponIndex). Garante unicidade física.
   @@unique([oltId, ponIndex])
@@ -3079,10 +3081,19 @@ model OpticalEnclosure {
   folderId        String?               @map("folder_id") @db.Uuid
   folder          NetworkFolder?        @relation(fields: [folderId], references: [id], onDelete: SetNull)
 
+  // Vínculo de rede (provisionamento): qual OLT atende esta caixa e, quando a
+  // OLT fala direto (DIRECT), qual porta PON. Quando a OLT é ORCHESTRATOR
+  // (Ufinet), só a OLT é vinculada — a PON é abstraída pela rede neutra.
+  oltId           String?               @map("olt_id") @db.Uuid
+  ponPortId       String?               @map("pon_port_id") @db.Uuid
+  olt             Olt?                  @relation(fields: [oltId], references: [id], onDelete: SetNull)
+  ponPort         PonPort?              @relation(fields: [ponPortId], references: [id], onDelete: SetNull)
+
   @@unique([tenantId, code])
   @@index([tenantId, type])
   @@index([tenantId, parentId])
   @@index([tenantId, folderId])
+  @@index([tenantId, oltId])
   @@map("optical_enclosures")
 }
 

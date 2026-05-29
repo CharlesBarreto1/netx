@@ -27,6 +27,7 @@ import {
   type Olt,
 } from '@/lib/provisioning-api';
 import { stockApi, type ComodatoAvailableSerial } from '@/lib/stock-api';
+import { opticalApi } from '@/lib/optical-api';
 
 function generatePassword(): string {
   // 10 chars, sem ambíguos (0/O, 1/l) — fácil de ditar no campo
@@ -83,9 +84,10 @@ export default function InstallPage() {
     'BAND_STEERING',
   );
   const [notes, setNotes] = useState('');
-  // Ufinet (rede neutra PY): caixa (CTO) + porta REAIS onde o técnico conectou
-  // o drop — sobrescrevem o CTO sugerido pela Ufinet na confirmação.
-  const [ufinetCto, setUfinetCto] = useState('');
+  // Ufinet (rede neutra PY): o técnico ESCOLHE a caixa (CTO) de uma lista
+  // filtrada pela OLT (não digita) + informa a porta (controle interno).
+  const [ufinetEnclosureId, setUfinetEnclosureId] = useState('');
+  const [ctoSearch, setCtoSearch] = useState('');
   const [ufinetPort, setUfinetPort] = useState('');
 
   // Result state
@@ -97,6 +99,21 @@ export default function InstallPage() {
   const selectedOlt = olts.find((o) => o.id === oltId);
   const isUfinet =
     selectedOlt?.vendor === 'UFINET' && selectedOlt?.providerMode === 'ORCHESTRATOR';
+
+  // CTOs atendidas pela OLT escolhida (o técnico escolhe, não digita).
+  const { data: ctoResp } = useSWR(
+    isUfinet && oltId ? ['olt-enclosures', oltId] : null,
+    () => opticalApi.list({ oltId, pageSize: 500 }),
+  );
+  const ctos = ctoResp?.data ?? [];
+  const filteredCtos = ctoSearch.trim()
+    ? ctos.filter((c) =>
+        `${c.code} ${c.locationLabel ?? ''}`
+          .toLowerCase()
+          .includes(ctoSearch.trim().toLowerCase()),
+      )
+    : ctos;
+  const selectedCto = ctos.find((c) => c.id === ufinetEnclosureId);
 
   if (oltsLoading) return <PageLoader />;
 
@@ -119,7 +136,7 @@ export default function InstallPage() {
         pppoeVlan: Number(pppoeVlan) || 1010,
         wifiBandMode,
         notes: notes.trim() || null,
-        ufinetCto: ufinetCto.trim() || null,
+        ufinetCto: selectedCto?.code ?? null,
         ufinetPort: ufinetPort.trim() || null,
       });
       setResult(res);
@@ -446,33 +463,58 @@ export default function InstallPage() {
               Ufinet — caixa &amp; porta (rede neutra)
             </h2>
             <p className="text-xs text-slate-500">
-              Informe a <strong>caixa (CTO) REAL</strong> onde você conectou o drop —
+              Escolha a <strong>caixa (CTO) REAL</strong> onde você conectou o drop —
               ela vai pra Ufinet na confirmação e sobrescreve a caixa que eles
-              sugerem (que normalmente não é a usada). A <strong>porta</strong> é só
-              controle interno do NetX (não vai pra Ufinet). Caixa vazia = usa a
-              sugerida pela Ufinet.
+              sugerem. A <strong>porta</strong> é só controle interno do NetX (não
+              vai pra Ufinet). Sem caixa = usa a sugerida pela Ufinet.
             </p>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <Label htmlFor="ufinetCto">Caixa (CTO)</Label>
-                <Input
-                  id="ufinetCto"
-                  value={ufinetCto}
-                  onChange={(e) => setUfinetCto(e.target.value)}
-                  placeholder="ex.: FTTXPY13695"
-                />
+            {ctos.length === 0 ? (
+              <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                Nenhuma CTO vinculada a esta OLT. Cadastre/atribua caixas a esta OLT
+                em Rede → Óptico pra elas aparecerem aqui.
+              </p>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="sm:col-span-2">
+                  <Label htmlFor="ctoSearch">Buscar caixa (código)</Label>
+                  <Input
+                    id="ctoSearch"
+                    value={ctoSearch}
+                    onChange={(e) => setCtoSearch(e.target.value)}
+                    placeholder="ex.: FTTXPY13695"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="ufinetEnclosure">Caixa (CTO) *</Label>
+                  <Select
+                    id="ufinetEnclosure"
+                    value={ufinetEnclosureId}
+                    onChange={(e) => setUfinetEnclosureId(e.target.value)}
+                  >
+                    <option value="">— escolher —</option>
+                    {filteredCtos.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.code}
+                        {c.locationLabel ? ` · ${c.locationLabel}` : ''}
+                      </option>
+                    ))}
+                  </Select>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {filteredCtos.length} de {ctos.length} caixa(s)
+                  </p>
+                </div>
+                <div>
+                  <Label htmlFor="ufinetPort">Porta (1–16, uso interno)</Label>
+                  <Input
+                    id="ufinetPort"
+                    value={ufinetPort}
+                    onChange={(e) => setUfinetPort(e.target.value)}
+                    placeholder="ex.: 4"
+                    className="sm:max-w-[140px]"
+                  />
+                </div>
               </div>
-              <div>
-                <Label htmlFor="ufinetPort">Porta (1–16, uso interno)</Label>
-                <Input
-                  id="ufinetPort"
-                  value={ufinetPort}
-                  onChange={(e) => setUfinetPort(e.target.value)}
-                  placeholder="ex.: 4"
-                  className="sm:max-w-[140px]"
-                />
-              </div>
-            </div>
+            )}
           </section>
         )}
 

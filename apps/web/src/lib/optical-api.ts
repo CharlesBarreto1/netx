@@ -72,6 +72,10 @@ export interface OpticalEnclosure {
   locationLabel: string | null;
   notes: string | null;
   isActive: boolean;
+  /** Vínculo de rede (provisionamento). oltName vem enriquecido do backend. */
+  oltId: string | null;
+  oltName: string | null;
+  ponPortId: string | null;
   createdAt: string;
   updatedAt: string;
   stats?: OpticalEnclosureStats;
@@ -106,6 +110,8 @@ export interface CreateEnclosureInput {
   locationLabel?: string | null;
   notes?: string | null;
   isActive?: boolean;
+  oltId?: string | null;
+  ponPortId?: string | null;
 }
 export type UpdateEnclosureInput = Partial<CreateEnclosureInput>;
 
@@ -121,6 +127,7 @@ export interface ListEnclosuresParams {
   type?: OpticalEnclosureType;
   parentId?: string;
   search?: string;
+  oltId?: string;
 }
 
 function qs(p: ListEnclosuresParams = {}): string {
@@ -130,6 +137,7 @@ function qs(p: ListEnclosuresParams = {}): string {
   if (p.type) u.set('type', p.type);
   if (p.parentId) u.set('parentId', p.parentId);
   if (p.search) u.set('search', p.search);
+  if (p.oltId) u.set('oltId', p.oltId);
   const s = u.toString();
   return s ? `?${s}` : '';
 }
@@ -146,6 +154,12 @@ export const opticalApi = {
   update: (id: string, input: UpdateEnclosureInput) =>
     api.patch<OpticalEnclosure>(`/v1/optical/enclosures/${id}`, input),
   remove: (id: string) => api.delete(`/v1/optical/enclosures/${id}`),
+  /** Atribui OLT a várias caixas (ação em massa). oltId=null limpa. */
+  assignOlt: (enclosureIds: string[], oltId: string | null) =>
+    api.post<{ updated: number }>('/v1/optical/enclosures/assign-olt', {
+      enclosureIds,
+      oltId,
+    }),
 
   // Ports
   portsPath: (enclosureId: string) =>

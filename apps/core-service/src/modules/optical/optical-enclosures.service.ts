@@ -22,6 +22,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import type {
+  AssignEnclosureOltRequest,
   CreateOpticalEnclosureRequest,
   ListOpticalEnclosuresQuery,
   OpticalEnclosureResponse,
@@ -37,6 +38,7 @@ import { PrismaService } from '../prisma/prisma.service';
 type EnclosureRow = Prisma.OpticalEnclosureGetPayload<{
   include: {
     ports: { select: { status: true } };
+    olt: { select: { name: true } };
   };
 }>;
 
@@ -76,6 +78,9 @@ function toEnclosureResponse(e: EnclosureRow): OpticalEnclosureResponse {
     locationLabel: e.locationLabel,
     notes: e.notes,
     isActive: e.isActive,
+    oltId: e.oltId,
+    oltName: e.olt?.name ?? null,
+    ponPortId: e.ponPortId,
     createdAt: e.createdAt.toISOString(),
     updatedAt: e.updatedAt.toISOString(),
     stats: {
@@ -132,6 +137,7 @@ export class OpticalEnclosuresService {
       deletedAt: null,
       ...(q.type ? { type: q.type } : {}),
       ...(q.parentId ? { parentId: q.parentId } : {}),
+      ...(q.oltId ? { oltId: q.oltId } : {}),
       ...(q.search
         ? {
             OR: [
@@ -145,7 +151,7 @@ export class OpticalEnclosuresService {
       this.prisma.opticalEnclosure.count({ where }),
       this.prisma.opticalEnclosure.findMany({
         where,
-        include: { ports: { select: { status: true } } },
+        include: { ports: { select: { status: true } }, olt: { select: { name: true } } },
         orderBy: { code: 'asc' },
         skip: (q.page - 1) * q.pageSize,
         take: q.pageSize,
@@ -165,7 +171,7 @@ export class OpticalEnclosuresService {
   async findById(tenantId: string, id: string): Promise<OpticalEnclosureResponse> {
     const e = await this.prisma.opticalEnclosure.findFirst({
       where: { id, tenantId, deletedAt: null },
-      include: { ports: { select: { status: true } } },
+      include: { ports: { select: { status: true } }, olt: { select: { name: true } } },
     });
     if (!e) throw new NotFoundException('Caixa óptica não encontrada');
     return toEnclosureResponse(e);
@@ -206,6 +212,12 @@ export class OpticalEnclosuresService {
       if (!parent) throw new BadRequestException('parentId inválido');
     }
 
+    const { oltId, ponPortId } = await this.resolveOltPon(
+      tenantId,
+      input.oltId ?? null,
+      input.ponPortId ?? null,
+    );
+
     try {
       const created = await this.prisma.$transaction(async (tx) => {
         const enclosure = await tx.opticalEnclosure.create({
@@ -222,6 +234,8 @@ export class OpticalEnclosuresService {
             locationLabel: input.locationLabel ?? null,
             notes: input.notes ?? null,
             isActive: input.isActive ?? true,
+            oltId,
+            ponPortId,
             createdById: actorUserId,
             updatedById: actorUserId,
           },
@@ -308,6 +322,16 @@ export class OpticalEnclosuresService {
       }
     }
 
+    // Resolve OLT/PON só se algum dos dois veio no payload (undefined = manter).
+    const oltUpdate =
+      input.oltId !== undefined || input.ponPortId !== undefined
+        ? await this.resolveOltPon(
+            tenantId,
+            input.oltId !== undefined ? input.oltId : existing.oltId,
+            input.ponPortId !== undefined ? input.ponPortId : existing.ponPortId,
+          )
+        : null;
+
     try {
       await this.prisma.$transaction(async (tx) => {
         await tx.opticalEnclosure.update({
@@ -331,6 +355,8 @@ export class OpticalEnclosuresService {
                 : input.locationLabel ?? null,
             notes: input.notes === undefined ? undefined : input.notes ?? null,
             isActive: input.isActive,
+            oltId: oltUpdate ? oltUpdate.oltId : undefined,
+            ponPortId: oltUpdate ? oltUpdate.ponPortId : undefined,
             updatedById: actorUserId,
           },
         });
@@ -380,6 +406,54 @@ export class OpticalEnclosuresService {
       }
       throw err;
     }
+  }
+
+  /**
+   * Valida o vínculo de rede da caixa. OLT ORCHESTRATOR (Ufinet) NÃO vincula
+   * PON (a porta é abstraída pela rede neutra) → força ponPortId null. OLT
+   * DIRECT aceita PON (validada como pertencente à OLT).
+   */
+  private async resolveOltPon(
+    tenantId: string,
+    oltId: string | null,
+    ponPortId: string | null,
+  ): Promise<{ oltId: string | null; ponPortId: string | null }> {
+    if (!oltId) return { oltId: null, ponPortId: null };
+    const olt = await this.prisma.olt.findFirst({
+      where: { id: oltId, tenantId, deletedAt: null },
+      select: { id: true, providerMode: true },
+    });
+    if (!olt) throw new BadRequestException('oltId inválido');
+    if (olt.providerMode === 'ORCHESTRATOR') return { oltId, ponPortId: null };
+    if (ponPortId) {
+      const pon = await this.prisma.ponPort.findFirst({
+        where: { id: ponPortId, tenantId, oltId },
+        select: { id: true },
+      });
+      if (!pon) throw new BadRequestException('ponPortId inválido pra esta OLT');
+    }
+    return { oltId, ponPortId: ponPortId ?? null };
+  }
+
+  /** Atribui (ou limpa, oltId=null) a OLT de várias caixas (ação em massa). */
+  async assignOlt(
+    tenantId: string,
+    actorUserId: string,
+    input: AssignEnclosureOltRequest,
+  ): Promise<{ updated: number }> {
+    const { oltId, ponPortId } = await this.resolveOltPon(tenantId, input.oltId, null);
+    const res = await this.prisma.opticalEnclosure.updateMany({
+      where: { tenantId, deletedAt: null, id: { in: input.enclosureIds } },
+      data: { oltId, ponPortId, updatedById: actorUserId },
+    });
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'optical.enclosure.olt_assigned',
+      resource: 'optical_enclosures',
+      metadata: { oltId, count: res.count },
+    });
+    return { updated: res.count };
   }
 
   // ───────────────────────────────────────────────────────────────────────────

@@ -104,10 +104,24 @@ export const CreateOpticalEnclosureRequestSchema = z.object({
   locationLabel: optionalNullableString(255),
   notes: optionalNullableString(2000),
   isActive: z.coerce.boolean().default(true),
+  /** OLT que atende esta caixa (usado no provisionamento). */
+  oltId: z.string().uuid().nullish(),
+  /**
+   * Porta PON da caixa. Só p/ OLT DIRECT — quando a OLT é ORCHESTRATOR
+   * (Ufinet), o backend força null (a PON é abstraída pela rede neutra).
+   */
+  ponPortId: z.string().uuid().nullish(),
 });
 export type CreateOpticalEnclosureRequest = z.infer<
   typeof CreateOpticalEnclosureRequestSchema
 >;
+
+// Atribuição de OLT em LOTE (ação em massa na lista de CTOs).
+export const AssignEnclosureOltRequestSchema = z.object({
+  enclosureIds: z.array(z.string().uuid()).min(1).max(1000),
+  oltId: z.string().uuid().nullable(),
+});
+export type AssignEnclosureOltRequest = z.infer<typeof AssignEnclosureOltRequestSchema>;
 
 // =============================================================================
 // OpticalEnclosure — Update
@@ -135,6 +149,10 @@ export interface OpticalEnclosureResponse {
   locationLabel: string | null;
   notes: string | null;
   isActive: boolean;
+  /** Vínculo de rede (provisionamento). */
+  oltId: string | null;
+  oltName: string | null;
+  ponPortId: string | null;
   createdAt: string;
   updatedAt: string;
   /** Contadores enriquecidos pelo backend pra UI (cor por ocupação no mapa). */
@@ -206,6 +224,8 @@ export const ListOpticalEnclosuresQuerySchema = z.object({
   type: OpticalEnclosureTypeSchema.optional(),
   parentId: z.string().uuid().optional(),
   search: z.string().max(120).optional(),
+  /** Filtra caixas atendidas por uma OLT (usado no seletor do provisionamento). */
+  oltId: z.string().uuid().optional(),
 });
 export type ListOpticalEnclosuresQuery = z.infer<
   typeof ListOpticalEnclosuresQuerySchema

@@ -38,6 +38,8 @@ import {
   type SplitterRatio,
 } from '@/lib/optical-api';
 import { hasPermission } from '@/lib/session';
+import { oltsApi, type Olt } from '@/lib/provisioning-api';
+import { ponPortsApi } from '@/lib/pon-port-api';
 
 const LocationPicker = dynamic(
   () =>
@@ -104,6 +106,38 @@ export default function OpticalEnclosuresPage() {
   const [editing, setEditing] = useState<OpticalEnclosure | 'new' | null>(null);
   const [deleting, setDeleting] = useState<OpticalEnclosure | null>(null);
   const [showingPorts, setShowingPorts] = useState<OpticalEnclosure | null>(null);
+
+  // Ação em massa: atribuir OLT a várias caixas (ex.: as 218 importadas do KMZ).
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkOltId, setBulkOltId] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const { data: bulkOltsResp } = useSWR(canWrite ? 'olts:all' : null, () =>
+    oltsApi.list({ pageSize: 200 }),
+  );
+  const bulkOlts = bulkOltsResp?.data ?? [];
+
+  function toggleSelected(id: string) {
+    setSelected((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  }
+  async function handleBulkAssign() {
+    setBulkBusy(true);
+    try {
+      const r = await opticalApi.assignOlt([...selected], bulkOltId || null);
+      toast.success(`OLT atribuída a ${r.updated} caixa(s)`);
+      setSelected(new Set());
+      setBulkOltId('');
+      await mutate();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   if (isLoading && !data) return <PageLoader label="Carregando caixas…" />;
 
@@ -174,11 +208,40 @@ export default function OpticalEnclosuresPage() {
         </div>
       </section>
 
+      {/* Ação em massa: atribuir OLT às caixas selecionadas */}
+      {canWrite && selected.size > 0 && (
+        <section className="flex flex-wrap items-end gap-3 rounded-md border border-brand-300 bg-brand-50 p-3 dark:border-brand-900 dark:bg-brand-950">
+          <div className="text-sm font-medium">{selected.size} caixa(s) selecionada(s)</div>
+          <div className="min-w-[240px] flex-1">
+            <Label htmlFor="bulk-olt">Atribuir OLT</Label>
+            <Select
+              id="bulk-olt"
+              value={bulkOltId}
+              onChange={(e) => setBulkOltId(e.target.value)}
+            >
+              <option value="">— sem OLT (limpar vínculo) —</option>
+              {bulkOlts.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name} ({o.vendor}/{o.providerMode})
+                </option>
+              ))}
+            </Select>
+          </div>
+          <Button type="button" loading={bulkBusy} onClick={handleBulkAssign}>
+            Atribuir a {selected.size}
+          </Button>
+          <Button type="button" variant="ghost" onClick={() => setSelected(new Set())}>
+            Limpar seleção
+          </Button>
+        </section>
+      )}
+
       {/* Lista */}
       <div className="overflow-x-auto rounded-md border border-border bg-surface">
         <table className="min-w-full text-sm">
           <thead className="bg-surface-muted text-left text-[11px] font-semibold uppercase tracking-wider text-text-muted">
             <tr>
+              <th className="w-8 px-3 py-2"></th>
               <th className="px-3 py-2">Código</th>
               <th className="px-3 py-2">Tipo</th>
               <th className="px-3 py-2">Splitter</th>
@@ -190,7 +253,7 @@ export default function OpticalEnclosuresPage() {
           <tbody className="divide-y divide-border">
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-3 py-6 text-center text-text-muted">
+                <td colSpan={7} className="px-3 py-6 text-center text-text-muted">
                   Nenhuma caixa cadastrada ainda.
                 </td>
               </tr>
@@ -203,6 +266,14 @@ export default function OpticalEnclosuresPage() {
                     window.location.href = `/network/optical/${e.id}`;
                   }}
                 >
+                  <td className="px-3 py-2" onClick={(ev) => ev.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Selecionar ${e.code}`}
+                      checked={selected.has(e.id)}
+                      onChange={() => toggleSelected(e.id)}
+                    />
+                  </td>
                   <td className="px-3 py-2 font-medium text-text">{e.code}</td>
                   <td className="px-3 py-2 text-text-muted">
                     {TYPE_LABEL[e.type]}
@@ -402,12 +473,24 @@ function EnclosureFormDialog({
     locationLabel: initial?.locationLabel ?? null,
     notes: initial?.notes ?? null,
     isActive: initial?.isActive ?? true,
+    oltId: initial?.oltId ?? null,
+    ponPortId: initial?.ponPortId ?? null,
   });
   const [location, setLocation] = useState<LatLng | null>(
     initial ? { latitude: initial.latitude, longitude: initial.longitude } : null,
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // OLT que atende a caixa + PON (PON só pra OLT DIRECT; Ufinet abstrai).
+  const { data: oltsResp } = useSWR('olts:all', () => oltsApi.list({ pageSize: 200 }));
+  const olts: Olt[] = oltsResp?.data ?? [];
+  const selectedOlt = olts.find((o) => o.id === form.oltId);
+  const oltIsDirect = selectedOlt?.providerMode === 'DIRECT';
+  const { data: ponPorts } = useSWR(
+    oltIsDirect && form.oltId ? ponPortsApi.listByOltPath(form.oltId) : null,
+    () => ponPortsApi.listByOlt(form.oltId as string),
+  );
 
   // Quando muda o splitterRatio, sugere capacity = número de saídas.
   function setSplitterRatio(ratio: SplitterRatio | null) {
@@ -559,6 +642,44 @@ function EnclosureFormDialog({
               placeholder="Poste 027, Av. Mariscal Lopez"
             />
           </div>
+          <div>
+            <Label>OLT (rede)</Label>
+            <Select
+              value={form.oltId ?? ''}
+              onChange={(e) =>
+                setForm({ ...form, oltId: e.target.value || null, ponPortId: null })
+              }
+            >
+              <option value="">— sem OLT —</option>
+              {olts.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name} ({o.vendor}/{o.providerMode})
+                </option>
+              ))}
+            </Select>
+            <FieldHelp>
+              OLT que atende esta caixa. Pra OLT Ufinet (orquestrador) não há PON.
+            </FieldHelp>
+          </div>
+          {oltIsDirect && (
+            <div>
+              <Label>Porta PON</Label>
+              <Select
+                value={form.ponPortId ?? ''}
+                onChange={(e) =>
+                  setForm({ ...form, ponPortId: e.target.value || null })
+                }
+              >
+                <option value="">— sem PON —</option>
+                {(ponPorts ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    PON {p.ponIndex}
+                    {p.cable ? ` · ${p.cable.code}` : ''}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          )}
         </div>
 
         <div>

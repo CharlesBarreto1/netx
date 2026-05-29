@@ -33,6 +33,7 @@ import {
   CreateFiberCableRequestSchema,
   CreateFiberEventRequestSchema,
   CreateFiberSpliceRequestSchema,
+  AssignEnclosureOltRequestSchema,
   CreateNetworkFolderRequestSchema,
   CreateOpticalEnclosureRequestSchema,
   CreatePonPortRequestSchema,
@@ -49,6 +50,7 @@ import {
   UpdateNetworkFolderRequestSchema,
   UpdateOpticalEnclosureRequestSchema,
   UpdateOpticalPortRequestSchema,
+  type AssignEnclosureOltRequest,
   type AssignItemsToFolderRequest,
   type AuthenticatedPrincipal,
   type CalculatePowerBudgetRequest,
@@ -137,6 +139,16 @@ export class OpticalController {
     body: CreateOpticalEnclosureRequest,
   ) {
     return this.enclosures.create(u.tenantId, u.sub, body);
+  }
+
+  /** Atribui OLT a várias caixas de uma vez (ação em massa na lista de CTOs). */
+  @Post('enclosures/assign-olt')
+  @RequirePermissions('network.write')
+  assignOlt(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @ZodBody(AssignEnclosureOltRequestSchema) body: AssignEnclosureOltRequest,
+  ) {
+    return this.enclosures.assignOlt(u.tenantId, u.sub, body);
   }
 
   @Patch('enclosures/:id')
