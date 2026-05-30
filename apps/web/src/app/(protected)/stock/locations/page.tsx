@@ -236,7 +236,7 @@ function LocationFormModal({
               placeholder="DEP-MATRIZ"
               value={form.code}
               onChange={(e) =>
-                setForm({ ...form, code: e.target.value.toUpperCase().replace(/[^A-Z0-9._\-]/g, '') })
+                setForm({ ...form, code: e.target.value.toUpperCase().replace(/[^A-Z0-9._-]/g, '') })
               }
               required
               maxLength={40}

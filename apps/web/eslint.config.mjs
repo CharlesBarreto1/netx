@@ -13,6 +13,7 @@
 // =============================================================================
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
+import reactHooks from 'eslint-plugin-react-hooks';
 
 export default [
   {
@@ -76,8 +77,15 @@ export default [
     },
     plugins: {
       '@typescript-eslint': tseslint.plugin,
+      'react-hooks': reactHooks,
     },
     rules: {
+      // react-hooks: o plugin está instalado mas não era registrado, então os
+      // `eslint-disable react-hooks/exhaustive-deps` espalhados pelo app davam
+      // "rule not found" (erro). Registrado aqui: rules-of-hooks pega bug real
+      // (erro); exhaustive-deps fica em warn (ruído alto, não quebra o lint).
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
       // Desliga a regra base e usa só a do TS (que entende tipos/imports)
       'no-unused-vars': 'off',
       '@typescript-eslint/no-unused-vars': [

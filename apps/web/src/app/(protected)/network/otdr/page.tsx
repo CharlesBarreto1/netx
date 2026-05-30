@@ -236,7 +236,6 @@ export default function OtdrPage() {
           title={`Foto — ${photoViewing.cable.code}`}
           size="lg"
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={photoViewing.photoUrl}
             alt="Captura do OTDR ou foto"
