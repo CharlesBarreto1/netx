@@ -9,6 +9,9 @@ export const PaymentMethodSchema = z.enum([
   'PIX',
   'CARD',
   'BANK_TRANSFER',
+  // BOLETO — baixa de fatura paga via boleto/Bolix do gateway EFI (espelha o
+  // enum PaymentMethod do Prisma).
+  'BOLETO',
   'OTHER',
 ]);
 export type PaymentMethod = z.infer<typeof PaymentMethodSchema>;

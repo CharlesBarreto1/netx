@@ -386,6 +386,7 @@ const messages = {
       PIX: 'PIX',
       CARD: 'Cartão',
       BANK_TRANSFER: 'Transferência bancária',
+      BOLETO: 'Boleto',
       OTHER: 'Outro',
     },
   },

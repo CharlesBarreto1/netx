@@ -299,6 +299,100 @@ export class ContractInvoicesService {
   }
 
   // ---------------------------------------------------------------------------
+  // BAIXA VIA GATEWAY (EFI — Pix/Bolix)
+  //  - Chamado pelo webhook do EFI quando a cobrança é confirmada paga.
+  //  - Não envolve caixa (cashRegister) — é recebimento digital direto.
+  //  - Idempotente: fatura já PAID retorna sem efeito (webhooks repetem).
+  //  - Reusa a mesma lógica de avanço PREPAID + reativação automática do
+  //    contrato suspenso por inadimplência que o pay() manual aplica.
+  // ---------------------------------------------------------------------------
+  async registerGatewayPayment(
+    tenantId: string,
+    invoiceId: string,
+    input: {
+      paidAmount: number;
+      paidAt: Date;
+      paidVia: 'PIX' | 'BOLETO';
+      gatewayRef: string;
+    },
+  ): Promise<void> {
+    const existing = await this.prisma.contractInvoice.findFirst({
+      where: { id: invoiceId, tenantId },
+      include: { contract: true },
+    });
+    if (!existing) {
+      this.logger.warn(`[gateway-pay] fatura ${invoiceId} não encontrada (tenant ${tenantId})`);
+      return;
+    }
+    if (existing.status === PrismaInvoiceStatus.PAID) return; // idempotência
+    if (existing.status === PrismaInvoiceStatus.CANCELLED) {
+      this.logger.warn(`[gateway-pay] fatura ${invoiceId} CANCELADA — pagamento EFI ignorado`);
+      return;
+    }
+
+    await this.prisma.contractInvoice.update({
+      where: { id: invoiceId },
+      data: {
+        status: PrismaInvoiceStatus.PAID,
+        paidAt: input.paidAt,
+        paidAmount: new Prisma.Decimal(input.paidAmount),
+        paidVia: input.paidVia,
+        cashRegisterId: null,
+        paymentNote: `EFI ${input.paidVia} ref ${input.gatewayRef}`.slice(0, 255),
+      },
+    });
+
+    await this.audit.log({
+      tenantId,
+      action: 'contract_invoices.paid',
+      actor: 'webhook:efi',
+      resource: 'contract_invoices',
+      resourceId: invoiceId,
+      metadata: {
+        contractId: existing.contractId,
+        paidAmount: input.paidAmount,
+        paidAt: input.paidAt.toISOString(),
+        via: input.paidVia,
+        gatewayRef: input.gatewayRef,
+      },
+    });
+
+    // PREPAID: avança o ciclo (mesma regra do pay() manual).
+    if (
+      existing.contract.paymentMode === PrismaPaymentMode.PREPAID &&
+      (existing.kind === PrismaInvoiceKind.REGULAR ||
+        existing.kind === PrismaInvoiceKind.INITIAL)
+    ) {
+      const base = existing.periodEnd ?? existing.contract.prepaidUntil ?? input.paidAt;
+      const newPrepaidUntil = nextPrepaidDate(base, 1);
+      await this.prisma.contract.update({
+        where: { id: existing.contractId },
+        data: { prepaidUntil: newPrepaidUntil },
+      });
+    }
+
+    // Reativação automática se estava suspenso por inadimplência.
+    if (
+      existing.contract.status === PrismaContractStatus.SUSPENDED &&
+      existing.contract.suspendReason === ContractSuspendReason.OVERDUE_PAYMENT
+    ) {
+      const stillOverdue = await this.prisma.contractInvoice.count({
+        where: {
+          tenantId,
+          contractId: existing.contractId,
+          status: { in: [PrismaInvoiceStatus.OPEN, PrismaInvoiceStatus.OVERDUE] },
+          dueDate: { lt: new Date() },
+        },
+      });
+      if (stillOverdue === 0) {
+        await this.contracts.applyReactivate(tenantId, existing.contractId, {
+          note: `baixa automática EFI da fatura ${invoiceId}`,
+        });
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // CANCEL
   // ---------------------------------------------------------------------------
   async cancel(

@@ -10,7 +10,7 @@ import type { Paginated } from './crm-types';
 // =============================================================================
 export type CashRegisterType = 'CASH' | 'BANK' | 'PIX' | 'CARD' | 'OTHER';
 export type CashRegisterRole = 'OPERATOR' | 'VIEWER';
-export type PaymentMethod = 'CASH' | 'PIX' | 'CARD' | 'BANK_TRANSFER' | 'OTHER';
+export type PaymentMethod = 'CASH' | 'PIX' | 'CARD' | 'BANK_TRANSFER' | 'BOLETO' | 'OTHER';
 export type OneTimeChargeStatus = 'OPEN' | 'PAID' | 'CANCELLED';
 
 export interface CashRegisterMember {
@@ -68,6 +68,7 @@ export const PAYMENT_METHOD_LABEL_KEY: Record<PaymentMethod, string> = {
   PIX: 'pix',
   CARD: 'card',
   BANK_TRANSFER: 'bankTransfer',
+  BOLETO: 'boleto',
   OTHER: 'other',
 };
 
@@ -293,5 +294,72 @@ export const chargesApi = {
   },
   remove(id: string) {
     return api.delete(`/v1/charges/${id}`);
+  },
+};
+
+// =============================================================================
+// EFI / EfiPay — pagamentos BR (Pix imediato + boleto híbrido "Bolix")
+// =============================================================================
+export type EfiChargeKind = 'PIX' | 'BOLIX';
+export type EfiChargeStatus = 'PENDING' | 'ACTIVE' | 'PAID' | 'CANCELED' | 'ERROR';
+
+export interface EfiCharge {
+  id: string;
+  tenantId: string;
+  invoiceId: string;
+  kind: EfiChargeKind;
+  status: EfiChargeStatus;
+  amount: number;
+  txid: string | null;
+  efiChargeId: string | null;
+  pixCopiaECola: string | null;
+  pixQrImage: string | null; // dataURL image/png
+  barcode: string | null; // linha digitável
+  pdfUrl: string | null;
+  paymentLink: string | null;
+  expiresAt: string | null;
+  paidAt: string | null;
+  paidAmount: number | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EfiConfigView {
+  tenantId: string;
+  environment: 'PRODUCTION' | 'SANDBOX';
+  enabled: boolean;
+  hasCredentials: boolean;
+  hasCertificate: boolean;
+  pixKey: string | null;
+  defaultChargeKind: EfiChargeKind;
+  expirationDays: number;
+  autoGenerate: boolean;
+  finePercent: number | null;
+  interestPercent: number | null;
+  pixWebhookRegistered: boolean;
+  pixWebhookUrl: string | null;
+  boletoNotificationUrl: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface GenerateEfiChargeInput {
+  kind?: EfiChargeKind;
+  force?: boolean;
+}
+
+export const efiApi = {
+  configPath: () => `/v1/efi/config`,
+  getConfig() {
+    return api.get<EfiConfigView>(this.configPath());
+  },
+  // Cobrança (ativa/mais recente) de uma fatura — null quando ainda não existe.
+  invoiceChargePath: (invoiceId: string) => `/v1/efi/invoices/${invoiceId}/charge`,
+  getForInvoice(invoiceId: string) {
+    return api.get<EfiCharge | null>(this.invoiceChargePath(invoiceId));
+  },
+  generate(invoiceId: string, input: GenerateEfiChargeInput = {}) {
+    return api.post<EfiCharge>(`/v1/efi/invoices/${invoiceId}/charge`, input);
   },
 };

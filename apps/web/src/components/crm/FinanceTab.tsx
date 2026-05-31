@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import useSWR from 'swr';
 
 import { DiscountDialog } from '@/components/finance/DiscountDialog';
+import { EfiChargeDialog } from '@/components/finance/EfiChargeDialog';
 import { NewChargeDialog } from '@/components/finance/NewChargeDialog';
 import { PaymentDialog } from '@/components/finance/PaymentDialog';
 import { PostponeDialog } from '@/components/finance/PostponeDialog';
@@ -83,9 +84,11 @@ export function FinanceTab({ customerId }: { customerId: string }) {
   const [paying, setPaying] = useState<ContractInvoice | null>(null);
   const [discounting, setDiscounting] = useState<ContractInvoice | null>(null);
   const [postponing, setPostponing] = useState<ContractInvoice | null>(null);
+  const [efiCharging, setEfiCharging] = useState<ContractInvoice | null>(null);
   const [newChargeOpen, setNewChargeOpen] = useState(false);
   const canCreateCharge = hasPermission('finance.charges.write');
   const canDiscount = hasPermission('finance.discount.apply');
+  const canEfiCharge = hasPermission('efi.charges.write');
 
   if (isLoading && !invoicesResp) {
     return <InlineLoader label="Carregando faturas…" />;
@@ -227,6 +230,16 @@ export function FinanceTab({ customerId }: { customerId: string }) {
                             % desc
                           </Button>
                         )}
+                        {canPay && canEfiCharge && (
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            onClick={() => setEfiCharging(inv)}
+                            title="Gerar Pix/Boleto (EFI)"
+                          >
+                            Pix/Boleto
+                          </Button>
+                        )}
                         {canPay && canWrite && (
                           <Button
                             variant="outline"
@@ -300,6 +313,17 @@ export function FinanceTab({ customerId }: { customerId: string }) {
             toast.success(tCommon('success'));
             await mutate();
           }}
+        />
+      )}
+
+      {efiCharging && (
+        <EfiChargeDialog
+          open
+          onOpenChange={(v) => !v && setEfiCharging(null)}
+          invoiceId={efiCharging.id}
+          amount={efiCharging.amount}
+          description={`${efiCharging.reference ?? ''} · ${formatDate(efiCharging.dueDate)}`}
+          onGenerated={() => void mutate()}
         />
       )}
 

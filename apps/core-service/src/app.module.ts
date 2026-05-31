@@ -11,6 +11,7 @@ import { ContractsModule } from './modules/contracts/contracts.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { CryptoModule } from './modules/crypto/crypto.module';
 import { DisconnectModule } from './modules/disconnect/disconnect.module';
+import { EfiModule } from './modules/efi/efi.module';
 import { ServiceOrdersModule } from './modules/service-orders/service-orders.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { ReportsModule } from './modules/reports/reports.module';
@@ -85,6 +86,7 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
     ContractsModule,
     ServiceOrdersModule,
     FinanceModule,
+    EfiModule,
     ReportsModule,
     BackupsModule,
     NetworkModule,

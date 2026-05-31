@@ -87,6 +87,7 @@ model Tenant {
   radiusEvents RadiusEvent[]
   serviceOrders        ServiceOrder[]
   serviceOrderReasons  ServiceOrderReason[]
+  serviceOrderPhotos   ServiceOrderPhoto[]
   cashRegisters        CashRegister[]
   oneTimeCharges       OneTimeCharge[]
   cashMovements        CashMovement[]
@@ -143,6 +144,10 @@ model Tenant {
   payslips             Payslip[]
   salaryPayments       SalaryPayment[]
   companyPosts         CompanyPost[]
+
+  // EFI (pagamentos BR — Pix imediato + Bolix)
+  efiConfig            EfiConfig?
+  efiCharges           EfiCharge[]
 
   @@index([status])
   @@index([country])
@@ -1315,6 +1320,8 @@ model ContractInvoice {
 
   // SIFEN — 0..N documentos (1 fatura pode ter Factura + Nota de Crédito, etc).
   sifenDocuments SifenDocument[]
+  // EFI — cobranças (Pix/Bolix) geradas para esta fatura.
+  efiCharges     EfiCharge[]
 
   @@index([tenantId, contractId])
   @@index([tenantId, cashRegisterId])
@@ -1385,6 +1392,7 @@ model RadiusEvent {
 enum ServiceOrderStatus {
   OPEN
   SCHEDULED
+  EN_ROUTE
   IN_PROGRESS
   COMPLETED
   CANCELLED
@@ -1431,6 +1439,10 @@ model ServiceOrder {
   // Datas do ciclo de vida.
   openedAt           DateTime            @default(now()) @map("opened_at")
   scheduledAt        DateTime?           @map("scheduled_at")
+  // Lifecycle de campo: técnico inicia deslocamento (EN_ROUTE) e faz check-in
+  // ao chegar (IN_PROGRESS). startedAt = checkinAt (mantido por compat).
+  enRouteAt          DateTime?           @map("en_route_at")
+  checkinAt          DateTime?           @map("checkin_at")
   startedAt          DateTime?           @map("started_at")
   completedAt        DateTime?           @map("completed_at")
   cancelledAt        DateTime?           @map("cancelled_at")
@@ -1462,6 +1474,8 @@ model ServiceOrder {
   updatedBy          User?               @relation("ServiceOrderUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   // Estoque — Fase 2 (consumo de material em OS)
   stockMovements     StockMovement[]
+  // Fotos de campo (comprovação da instalação) — keys no MinIO via StorageService.
+  photos             ServiceOrderPhoto[]
 
   @@unique([tenantId, code])
   @@index([tenantId, status])
@@ -1470,6 +1484,27 @@ model ServiceOrder {
   @@index([tenantId, city])
   @@index([tenantId, assignedToId, status])
   @@map("service_orders")
+}
+
+// Fotos de comprovação da instalação/atendimento em campo. Bytes ficam no
+// MinIO (StorageService presigned); aqui guardamos só a key + metadados.
+model ServiceOrderPhoto {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  serviceOrderId String   @map("service_order_id") @db.Uuid
+  storageKey     String   @map("storage_key") @db.VarChar(512)
+  contentType    String?  @map("content_type") @db.VarChar(120)
+  sizeBytes      Int?     @map("size_bytes")
+  caption        String?  @db.VarChar(255)
+  // Quem anexou (escalar, sem FK relacional — basta rastreio).
+  createdById    String?  @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serviceOrder ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, serviceOrderId])
+  @@map("service_order_photos")
 }
 
 // =============================================================================
@@ -1501,6 +1536,7 @@ enum PaymentMethod {
   PIX
   CARD
   BANK_TRANSFER
+  BOLETO
   OTHER
 }
 
@@ -4068,4 +4104,110 @@ model CompanyPost {
   @@unique([tenantId, slug])
   @@index([tenantId, status, publishedAt])
   @@map("company_posts")
+}
+
+// =============================================================================
+// EFI / EfiPay — Pagamentos BR (Pix imediato + Boleto híbrido com Pix "Bolix")
+// Integração SOMENTE BR. Credenciais e certificado por tenant, cifrados
+// (CryptoService). O NetX sobe cobranças individuais por fatura — sem
+// recorrência/assinatura do lado do EFI.
+// =============================================================================
+enum EfiEnvironment {
+  PRODUCTION
+  SANDBOX
+}
+
+// PIX   = cobrança imediata Pix (API Pix v2, exige certificado mTLS).
+// BOLIX = boleto híbrido com QR Pix embutido (API Cobranças, sem mTLS).
+enum EfiChargeKind {
+  PIX
+  BOLIX
+}
+
+enum EfiChargeStatus {
+  PENDING  // criada no NetX, ainda não emitida no EFI
+  ACTIVE   // emitida no EFI, aguardando pagamento
+  PAID     // confirmada paga (webhook)
+  CANCELED // cancelada/expirada
+  ERROR    // falha ao emitir
+}
+
+model EfiConfig {
+  id                   String         @id @default(uuid()) @db.Uuid
+  tenantId             String         @unique @map("tenant_id") @db.Uuid
+
+  environment          EfiEnvironment @default(PRODUCTION)
+  enabled              Boolean        @default(false)
+
+  // Segredos cifrados (CryptoService v1:iv:tag:ct).
+  // credentialsEnc = JSON {clientId, clientSecret}. As mesmas credenciais
+  // servem pra API Pix e API Cobranças (conta EFI unificada).
+  credentialsEnc       String?        @map("credentials_enc") @db.Text
+  // Certificado .p12 (base64) — exigido pela API Pix (mTLS). Cobranças não usa.
+  certificateEnc       String?        @map("certificate_enc") @db.Text
+  // Senha do .p12 (geralmente vazia no EFI). Cifrada.
+  certificatePassEnc   String?        @map("certificate_pass_enc") @db.Text
+
+  // Config não-secreta
+  pixKey               String?        @map("pix_key") @db.VarChar(140)
+  defaultChargeKind    EfiChargeKind  @default(BOLIX) @map("default_charge_kind")
+  // Dias até expirar (Pix calendario.expiracao / vencimento do boleto).
+  expirationDays       Int            @default(3) @map("expiration_days")
+  // Emitir cobrança EFI automaticamente quando a fatura entra em OPEN.
+  autoGenerate         Boolean        @default(false) @map("auto_generate")
+  // Multa (%) e juros a.m. (%) aplicados no boleto (Bolix). Null = sem.
+  finePercent          Decimal?       @map("fine_percent") @db.Decimal(5, 2)
+  interestPercent      Decimal?       @map("interest_percent") @db.Decimal(5, 2)
+  // Token aleatório validado no querystring do webhook (defesa além do mTLS).
+  webhookToken         String?        @map("webhook_token") @db.VarChar(64)
+  // Marca se o webhook Pix já foi registrado no EFI (chave/ambiente).
+  pixWebhookRegistered Boolean        @default(false) @map("pix_webhook_registered")
+
+  createdAt            DateTime       @default(now()) @map("created_at")
+  updatedAt            DateTime       @updatedAt @map("updated_at")
+
+  tenant               Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("efi_configs")
+}
+
+model EfiCharge {
+  id            String          @id @default(uuid()) @db.Uuid
+  tenantId      String          @map("tenant_id") @db.Uuid
+  invoiceId     String          @map("invoice_id") @db.Uuid
+
+  kind          EfiChargeKind
+  status        EfiChargeStatus @default(PENDING)
+  amount        Decimal         @db.Decimal(12, 2)
+
+  // Identificadores do lado EFI
+  txid          String?         @db.VarChar(64) // Pix cob
+  efiChargeId   String?         @map("efi_charge_id") @db.VarChar(40) // charge_id (Cobranças)
+  locId         String?         @map("loc_id") @db.VarChar(40) // location do Pix
+
+  // Artefatos entregáveis ao cliente
+  pixCopiaECola String?         @map("pix_copia_e_cola") @db.Text // BR Code (emv)
+  pixQrImage    String?         @map("pix_qr_image") @db.Text // dataURL do QR
+  barcode       String?         @db.VarChar(64) // linha digitável do boleto
+  pdfUrl        String?         @map("pdf_url") @db.VarChar(500)
+  paymentLink   String?         @map("payment_link") @db.VarChar(500)
+
+  expiresAt     DateTime?       @map("expires_at")
+  paidAt        DateTime?       @map("paid_at")
+  paidAmount    Decimal?        @map("paid_amount") @db.Decimal(12, 2)
+  endToEndId    String?         @map("end_to_end_id") @db.VarChar(40) // e2eid do Pix pago
+  lastError     String?         @map("last_error") @db.Text
+  lastPayload   Json?           @map("last_payload")
+
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  invoice       ContractInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@unique([txid])
+  @@index([tenantId, status])
+  @@index([tenantId, invoiceId])
+  @@index([efiChargeId])
+  @@map("efi_charges")
 }

@@ -219,6 +219,18 @@ const ufinetPermissions = [
 ];
 
 // -----------------------------------------------------------------------------
+// Permission catalog — EFI / EfiPay (pagamentos BR: Pix imediato + Bolix)
+// -----------------------------------------------------------------------------
+const efiPermissions = [
+  // Config (credenciais/certificado por tenant — sensível, admin).
+  { code: 'efi.config.read',  module: 'efi', resource: 'efi_config',  action: 'read'  },
+  { code: 'efi.config.write', module: 'efi', resource: 'efi_config',  action: 'write' },
+  // Cobranças (gerar Pix/Bolix sobre faturas; ver status).
+  { code: 'efi.charges.read',  module: 'efi', resource: 'efi_charges', action: 'read'  },
+  { code: 'efi.charges.write', module: 'efi', resource: 'efi_charges', action: 'write' },
+];
+
+// -----------------------------------------------------------------------------
 // Permission catalog — Chat / Atendimento (WhatsApp via Evolution API)
 // -----------------------------------------------------------------------------
 const chatPermissions = [
@@ -311,6 +323,11 @@ const systemRoles = [
       'finance.charges.write',
       'finance.charges.delete',
       'finance.discount.apply',
+      // EFI — pagamentos BR (config + cobranças)
+      'efi.config.read',
+      'efi.config.write',
+      'efi.charges.read',
+      'efi.charges.write',
       'reports.read',
       'backups.manage',
       // Rede
@@ -397,6 +414,9 @@ const systemRoles = [
       // nem aplicar desconto)
       'finance.charges.read',
       'finance.charges.write',
+      // EFI — operador gera/consulta cobranças (sem mexer em credenciais)
+      'efi.charges.read',
+      'efi.charges.write',
       // Reports (operador também pode ver)
       'reports.read',
       // Rede — só leitura pra operador
@@ -498,6 +518,7 @@ async function main() {
     ...hrPermissions,
     ...provisioningPermissions,
     ...ufinetPermissions,
+    ...efiPermissions,
     ...chatPermissions,
   ]) {
     await prisma.permission.upsert({

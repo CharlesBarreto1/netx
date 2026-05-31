@@ -84,7 +84,7 @@ export interface ContractInvoice {
   /** Desconto aplicado no pagamento (positivo). */
   discountAmount: number | null;
   /** Forma como o cliente pagou. */
-  paidVia: 'CASH' | 'PIX' | 'CARD' | 'BANK_TRANSFER' | 'OTHER' | null;
+  paidVia: 'CASH' | 'PIX' | 'CARD' | 'BANK_TRANSFER' | 'BOLETO' | 'OTHER' | null;
   /** Caixa que recebeu o pagamento. */
   cashRegisterId: string | null;
   paymentNote: string | null;
@@ -356,7 +356,7 @@ export interface PayInvoiceInput {
   /** Caixa que recebeu (UUID). Validado contra membership do user. */
   cashRegisterId?: string | null;
   /** Forma de pagamento. */
-  paidVia?: 'CASH' | 'PIX' | 'CARD' | 'BANK_TRANSFER' | 'OTHER';
+  paidVia?: 'CASH' | 'PIX' | 'CARD' | 'BANK_TRANSFER' | 'BOLETO' | 'OTHER';
   /** Desconto aplicado (positivo). Exige perm `finance.discount.apply`. */
   discountAmount?: number;
 }
