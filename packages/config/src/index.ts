@@ -68,6 +68,19 @@ const baseSchema = z.object({
   // Observability (optional)
   OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
   OTEL_SERVICE_NAME: z.string().default('netx'),
+
+  // Storage (MinIO / S3-compatível) — uploads de RH (documentos, comprovantes,
+  // holerites) e, no futuro, fotos do mobile. Bytes não passam pelo core:
+  // entregamos presigned URLs pro client subir/baixar direto.
+  // OPCIONAL: sem endpoint+keys, o StorageService fica desabilitado e os
+  // endpoints de upload retornam 503 (resto do sistema sobe normal).
+  STORAGE_ENDPOINT: z.string().url().optional(),       // ex.: http://127.0.0.1:9000
+  STORAGE_REGION: z.string().default('us-east-1'),
+  STORAGE_BUCKET: z.string().default('netx-files'),
+  STORAGE_ACCESS_KEY: z.string().optional(),
+  STORAGE_SECRET_KEY: z.string().optional(),
+  STORAGE_FORCE_PATH_STYLE: booleanFromString.optional(), // MinIO exige; default true no mapeamento
+  STORAGE_PUBLIC_URL: z.string().url().optional(),     // base pública (nginx /minio/*)
 });
 
 export type RawEnv = z.infer<typeof baseSchema>;
@@ -111,6 +124,16 @@ export interface Config {
   observability: {
     otlpEndpoint?: string;
     serviceName: string;
+  };
+  storage: {
+    enabled: boolean;
+    endpoint?: string;
+    region: string;
+    bucket: string;
+    accessKey?: string;
+    secretKey?: string;
+    forcePathStyle: boolean;
+    publicUrl?: string;
   };
 }
 
@@ -160,6 +183,16 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
     observability: {
       otlpEndpoint: e.OTEL_EXPORTER_OTLP_ENDPOINT,
       serviceName: e.OTEL_SERVICE_NAME,
+    },
+    storage: {
+      enabled: Boolean(e.STORAGE_ENDPOINT && e.STORAGE_ACCESS_KEY && e.STORAGE_SECRET_KEY),
+      endpoint: e.STORAGE_ENDPOINT,
+      region: e.STORAGE_REGION,
+      bucket: e.STORAGE_BUCKET,
+      accessKey: e.STORAGE_ACCESS_KEY,
+      secretKey: e.STORAGE_SECRET_KEY,
+      forcePathStyle: e.STORAGE_FORCE_PATH_STYLE ?? true,
+      publicUrl: e.STORAGE_PUBLIC_URL,
     },
   };
 }

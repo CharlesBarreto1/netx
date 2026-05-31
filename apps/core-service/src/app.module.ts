@@ -28,6 +28,8 @@ import { MappingModule } from './modules/mapping/mapping.module';
 import { SifenModule } from './modules/sifen/sifen.module';
 import { StockModule } from './modules/stock/stock.module';
 import { FleetModule } from './modules/fleet/fleet.module';
+import { StorageModule } from './modules/storage/storage.module';
+import { HrModule } from './modules/hr/hr.module';
 import { UfinetModule } from './modules/ufinet/ufinet.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { UsersModule } from './modules/users/users.module';
@@ -93,6 +95,8 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
     MappingModule,
     StockModule,
     FleetModule,
+    StorageModule,
+    HrModule,
     UfinetModule,
     ProvisioningModule,
     MobileModule,

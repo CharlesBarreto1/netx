@@ -85,6 +85,8 @@ export class CashMovementsService {
     cashRegisterId: string;
     amount: number;
     sourceId: string;
+    /** Origem do movimento. Default FLEET_EXPENSE (despesa de frota). RH usa PAYROLL. */
+    source?: CashMovementSource;
     description?: string | null;
     actorUserId: string;
     occurredAt?: Date;
@@ -96,7 +98,7 @@ export class CashMovementsService {
         tenantId: opts.tenantId,
         cashRegisterId: opts.cashRegisterId,
         type: PrismaMovementType.OUTCOME,
-        source: PrismaMovementSource.FLEET_EXPENSE,
+        source: (opts.source ?? 'FLEET_EXPENSE') as PrismaMovementSource,
         sourceId: opts.sourceId,
         amount: new Prisma.Decimal(opts.amount),
         description: opts.description ?? null,

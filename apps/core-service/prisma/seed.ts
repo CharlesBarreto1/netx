@@ -171,6 +171,29 @@ const fleetPermissions = [
 ];
 
 // -----------------------------------------------------------------------------
+// Permission catalog — RH (Recursos Humanos / colaboradores)
+// -----------------------------------------------------------------------------
+const hrPermissions = [
+  // hr.read: ver colaboradores, documentos, ponto, espelho
+  { code: 'hr.read',               module: 'hr', resource: 'hr',          action: 'read'   },
+  // hr.write: criar/editar colaboradores (e provisionar login)
+  { code: 'hr.write',              module: 'hr', resource: 'hr',          action: 'write'  },
+  // hr.delete: desligar/remover (soft) colaborador
+  { code: 'hr.delete',             module: 'hr', resource: 'hr',          action: 'delete' },
+  // hr.payroll.manage: holerites + pagamentos (integra no caixa) + relatórios de folha
+  { code: 'hr.payroll.manage',     module: 'hr', resource: 'payroll',     action: 'manage' },
+  // hr.timeclock.manage: lançar ponto manual + aprovar/rejeitar correções
+  { code: 'hr.timeclock.manage',   module: 'hr', resource: 'timeclock',   action: 'manage' },
+  // hr.documents.manage: anexar/assinar/remover documentos do colaborador
+  { code: 'hr.documents.manage',   module: 'hr', resource: 'documents',   action: 'manage' },
+  // hr.blog.manage: gerenciar notícias/blog da empresa
+  { code: 'hr.blog.manage',        module: 'hr', resource: 'blog',        action: 'manage' },
+  // self.read: acesso ao portal do colaborador (self-service /me). Não controla
+  // os endpoints /hr/me (que só exigem login) — é só pra exibir o menu do portal.
+  { code: 'self.read',             module: 'hr', resource: 'self',        action: 'read'   },
+];
+
+// -----------------------------------------------------------------------------
 // Permission catalog — Provisionamento (OLT/ONT + TR-069 ACS)
 // -----------------------------------------------------------------------------
 const provisioningPermissions = [
@@ -308,6 +331,15 @@ const systemRoles = [
       'fleet.expense.create',
       'fleet.maintenance.manage',
       'fleet.live.read',
+      // RH (admin tem tudo)
+      'hr.read',
+      'hr.write',
+      'hr.delete',
+      'hr.payroll.manage',
+      'hr.timeclock.manage',
+      'hr.documents.manage',
+      'hr.blog.manage',
+      'self.read',
       // Provisionamento (admin gerencia OLTs e ACS)
       'olts.admin',
       'provisioning.read',
@@ -382,6 +414,12 @@ const systemRoles = [
       'fleet.expense.create',
       'fleet.maintenance.manage',
       'fleet.live.read',
+      // RH — operação consulta colaboradores/ponto e aprova correções; folha
+      // (holerites/pagamentos) fica pro admin. Acessa o próprio portal.
+      'hr.read',
+      'hr.timeclock.manage',
+      'hr.documents.manage',
+      'self.read',
       // Provisionamento — técnico ativa cliente em campo, lê pendentes.
       // Sem `olts.admin` (creds SSH/API ficam só com admin) nem `tr069.admin`.
       'provisioning.read',
@@ -422,10 +460,22 @@ const systemRoles = [
       'stock.read',
       'fleet.read',
       'fleet.live.read',
+      'hr.read',
+      'self.read',
       'provisioning.read',
       'sifen.read',
       'mapping.read',
     ],
+  },
+  {
+    // Role do portal do colaborador. Provisionada automaticamente ao criar um
+    // Employee com login (EmployeesService.provisionLoginUser). Só dá acesso
+    // ao self-service (/me) — sem nenhuma permissão de gestão. menuAccess do
+    // User restringe a navegação aos itens do portal.
+    name: 'employee',
+    description: 'Colaborador — acesso somente ao portal self-service (/me)',
+    priority: 200,
+    permissions: ['self.read'],
   },
 ];
 
@@ -445,6 +495,7 @@ async function main() {
     ...networkPermissions,
     ...stockPermissions,
     ...fleetPermissions,
+    ...hrPermissions,
     ...provisioningPermissions,
     ...ufinetPermissions,
     ...chatPermissions,

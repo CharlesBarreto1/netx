@@ -134,6 +134,16 @@ model Tenant {
   maintenanceRecords   MaintenanceRecord[]
   vehiclePositions     VehiclePosition[]
 
+  // RH (Recursos Humanos / colaboradores)
+  employees            Employee[]
+  employeeDocuments    EmployeeDocument[]
+  documentSignatures   DocumentSignature[]
+  timeEntries          TimeEntry[]
+  timeCorrectionRequests TimeCorrectionRequest[]
+  payslips             Payslip[]
+  salaryPayments       SalaryPayment[]
+  companyPosts         CompanyPost[]
+
   @@index([status])
   @@index([country])
   @@map("tenants")
@@ -283,6 +293,17 @@ model User {
   fleetExpensesCreated      FleetExpense[]      @relation("FleetExpenseCreatedBy")
   maintenancePlansCreated   MaintenancePlan[]   @relation("MaintenancePlanCreatedBy")
   maintenanceRecordsCreated MaintenanceRecord[] @relation("MaintenanceRecordCreatedBy")
+
+  // RH — vínculo do login ao colaborador + autoria/aprovação de registros
+  employeeProfile           Employee?           @relation("EmployeeUser")
+  employeesCreated          Employee[]          @relation("EmployeeCreatedBy")
+  employeesUpdated          Employee[]          @relation("EmployeeUpdatedBy")
+  employeeDocumentsUploaded EmployeeDocument[]  @relation("EmployeeDocumentUploadedBy")
+  timeEntriesCreated        TimeEntry[]         @relation("TimeEntryCreatedBy")
+  timeCorrectionsReviewed   TimeCorrectionRequest[] @relation("TimeCorrectionReviewedBy")
+  payslipsCreated           Payslip[]           @relation("PayslipCreatedBy")
+  salaryPaymentsCreated     SalaryPayment[]     @relation("SalaryPaymentCreatedBy")
+  companyPostsAuthored      CompanyPost[]       @relation("CompanyPostAuthor")
 
   @@unique([tenantId, email])
   @@index([tenantId, status])
@@ -1516,6 +1537,7 @@ model CashRegister {
   oneTimeCharges OneTimeCharge[]
   movements      CashMovement[]
   fleetExpenses  FleetExpense[]
+  salaryPayments SalaryPayment[]
 
   @@unique([tenantId, name])
   @@index([tenantId, isActive])
@@ -1606,6 +1628,7 @@ enum CashMovementSource {
   TRANSFER
   MANUAL
   FLEET_EXPENSE   // Despesa de frota (combustível, manutenção, multa, etc.)
+  PAYROLL         // Pagamento de salário/holerite a colaborador (RH)
 }
 
 model CashMovement {
@@ -3635,4 +3658,414 @@ model VehiclePosition {
   @@index([tenantId])
   @@index([tenantId, deviceTime])
   @@map("vehicle_positions")
+}
+
+// =============================================================================
+// RH — RECURSOS HUMANOS / COLABORADORES
+// =============================================================================
+// Decisões (2026-05-31, ver AGENTS / memória project_netx_rh):
+//  - Login do colaborador = User do sistema (Employee.userId 1:1, role restrita).
+//    O "portal do colaborador" é uma área self-service em apps/web que resolve
+//    Employee onde userId = currentUser.
+//  - Folha = lançamento MANUAL (linhas provento/desconto, bruto/líquido por
+//    soma). SEM cálculo de INSS/FGTS/IRRF/IPS.
+//  - Anexos (contrato, atestado, advertência, comprovante, holerite) via
+//    StorageModule (MinIO presigned) — guardamos só a storageKey aqui.
+
+enum EmployeeStatus {
+  ACTIVE       // ativo
+  ON_LEAVE     // afastado (licença, férias, atestado longo)
+  SUSPENDED    // suspenso
+  TERMINATED   // desligado
+}
+
+enum EmploymentType {
+  CLT          // BR — carteira assinada
+  PJ           // prestador (pessoa jurídica)
+  INTERN       // estágio
+  TEMPORARY    // temporário / contrato a prazo
+  RELACION_DEPENDENCIA // PY — empregado em relação de dependência (IPS)
+  OTHER
+}
+
+enum PayFrequency {
+  MONTHLY
+  BIWEEKLY     // quinzenal
+  WEEKLY
+}
+
+model Employee {
+  id              String         @id @default(uuid()) @db.Uuid
+  tenantId        String         @map("tenant_id") @db.Uuid
+
+  // Matrícula interna sequencial/legível (única por tenant). Gerada no service.
+  registration    String?        @db.VarChar(32)
+
+  // ── Dados pessoais ─────────────────────────────────────────────────────────
+  fullName        String         @map("full_name") @db.VarChar(180)
+  preferredName   String?        @map("preferred_name") @db.VarChar(80)
+  // Documento principal: CPF (BR) ou CI (PY). taxIdType reaproveita semântica
+  // do CRM mas guardado como string livre aqui pra não acoplar.
+  document        String?        @db.VarChar(32)
+  documentType    String?        @map("document_type") @db.VarChar(16) // CPF, CI, RUC...
+  // BR: PIS/PASEP · PY: nº de aporte IPS. Identificador previdenciário.
+  socialSecurityNo String?       @map("social_security_no") @db.VarChar(32)
+  birthDate       DateTime?      @map("birth_date") @db.Date
+  gender          String?        @db.VarChar(16)
+  maritalStatus   String?        @map("marital_status") @db.VarChar(24)
+  nationality     String?        @db.VarChar(48)
+
+  // ── Contato ─────────────────────────────────────────────────────────────────
+  email           String?        @db.VarChar(160)
+  phone           String?        @db.VarChar(32)
+  emergencyContact String?       @map("emergency_contact") @db.VarChar(180)
+  emergencyPhone  String?        @map("emergency_phone") @db.VarChar(32)
+  address         String?        @db.VarChar(500)
+
+  // ── Vínculo / cargo ───────────────────────────────────────────────────────
+  department      String?        @db.VarChar(120)
+  position        String?        @db.VarChar(120) // função / cargo
+  employmentType  EmploymentType @default(CLT) @map("employment_type")
+  status          EmployeeStatus @default(ACTIVE)
+  hiredAt         DateTime?      @map("hired_at") @db.Date
+  // Fim do contrato de experiência (45/90d BR) — base de alerta no futuro.
+  probationEndsAt DateTime?      @map("probation_ends_at") @db.Date
+  terminatedAt    DateTime?      @map("terminated_at") @db.Date
+  terminationReason String?      @map("termination_reason") @db.VarChar(500)
+
+  // ── Remuneração / jornada ───────────────────────────────────────────────────
+  baseSalary      Decimal?       @map("base_salary") @db.Decimal(12, 2)
+  payFrequency    PayFrequency   @default(MONTHLY) @map("pay_frequency")
+  // Jornada: descrição + carga semanal. Escala detalhada (turnos) fica p/ fase 2.
+  weeklyHours     Decimal?       @map("weekly_hours") @db.Decimal(5, 2)
+  workSchedule    String?        @map("work_schedule") @db.VarChar(255) // ex.: "Seg-Sex 08:00-17:00"
+  // Tolerância de atraso em minutos pro espelho de ponto.
+  clockToleranceMin Int          @default(10) @map("clock_tolerance_min")
+
+  // ── Aptidões / acompanhamento RH ────────────────────────────────────────────
+  skills          String[]       @default([]) // aptidões (ex.: "fusão fibra", "CNH D")
+  notes           String?        @db.Text // observações de acompanhamento do RH
+
+  // ── Vínculos ────────────────────────────────────────────────────────────────
+  // Login no sistema. 1:1 — um User é no máximo um colaborador.
+  userId          String?        @unique @map("user_id") @db.Uuid
+  // Gestor direto (organograma). Self-relation.
+  managerId       String?        @map("manager_id") @db.Uuid
+
+  createdById     String?        @map("created_by_id") @db.Uuid
+  updatedById     String?        @map("updated_by_id") @db.Uuid
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+  deletedAt       DateTime?      @map("deleted_at")
+
+  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user            User?          @relation("EmployeeUser", fields: [userId], references: [id], onDelete: SetNull)
+  manager         Employee?      @relation("EmployeeManager", fields: [managerId], references: [id], onDelete: SetNull)
+  reports         Employee[]     @relation("EmployeeManager")
+  createdBy       User?          @relation("EmployeeCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy       User?          @relation("EmployeeUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  documents       EmployeeDocument[]
+  timeEntries     TimeEntry[]
+  correctionRequests TimeCorrectionRequest[]
+  payslips        Payslip[]
+  signatures      DocumentSignature[]
+
+  @@unique([tenantId, registration])
+  @@index([tenantId, status])
+  @@index([tenantId, department])
+  @@index([tenantId, managerId])
+  @@map("employees")
+}
+
+// ── Documentos do colaborador ────────────────────────────────────────────────
+enum EmployeeDocumentType {
+  CONTRACT            // contrato de trabalho
+  AMENDMENT           // aditivo
+  MEDICAL_CERTIFICATE // atestado médico
+  WARNING             // advertência
+  SUSPENSION          // suspensão
+  ID_DOCUMENT         // RG/CI/CPF/etc.
+  CERTIFICATE         // certificado / curso
+  PAYSLIP             // holerite (também referenciado por Payslip.documentId)
+  PAYMENT_RECEIPT     // comprovante de pagamento
+  OTHER
+}
+
+model EmployeeDocument {
+  id              String               @id @default(uuid()) @db.Uuid
+  tenantId        String               @map("tenant_id") @db.Uuid
+  employeeId      String               @map("employee_id") @db.Uuid
+
+  type            EmployeeDocumentType @default(OTHER)
+  title           String               @db.VarChar(200)
+  description     String?              @db.VarChar(500)
+
+  // Arquivo no storage (MinIO). storageKey = chave no bucket; null = sem anexo
+  // (ex.: advertência registrada só como texto).
+  storageKey      String?              @map("storage_key") @db.VarChar(500)
+  fileName        String?              @map("file_name") @db.VarChar(255)
+  mimeType        String?              @map("mime_type") @db.VarChar(120)
+  fileSize        Int?                 @map("file_size")
+  // SHA-256 do arquivo — base do "protocolo" de assinatura (prova de integridade).
+  fileHash        String?              @map("file_hash") @db.VarChar(64)
+
+  issuedAt        DateTime?            @map("issued_at") @db.Date
+  expiresAt       DateTime?            @map("expires_at") @db.Date // p/ alertas de vencimento
+
+  // Exige aceite/assinatura do colaborador no portal? (advertência, contrato…)
+  requiresSignature Boolean            @default(false) @map("requires_signature")
+
+  uploadedById    String?              @map("uploaded_by_id") @db.Uuid
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+  deletedAt       DateTime?            @map("deleted_at")
+
+  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee        Employee             @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  uploadedBy      User?                @relation("EmployeeDocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+  signature       DocumentSignature?
+
+  @@index([tenantId, employeeId])
+  @@index([tenantId, type])
+  @@index([tenantId, requiresSignature])
+  @@index([tenantId, expiresAt])
+  @@map("employee_documents")
+}
+
+// Aceite eletrônico "estilo protocolo" — NÃO é assinatura ICP-Brasil/cert
+// digital. Prova de ciência: quem, quando, de onde (IP/UA) e contra qual hash.
+// 1:1 com o documento (um aceite por doc). Reabrir = limpar e reexigir.
+model DocumentSignature {
+  id              String           @id @default(uuid()) @db.Uuid
+  tenantId        String           @map("tenant_id") @db.Uuid
+  documentId      String           @unique @map("document_id") @db.Uuid
+  employeeId      String           @map("employee_id") @db.Uuid
+
+  signedAt        DateTime         @default(now()) @map("signed_at")
+  // Hash do arquivo no momento do aceite — confere contra EmployeeDocument.fileHash.
+  signedFileHash  String?          @map("signed_file_hash") @db.VarChar(64)
+  ipAddress       String?          @map("ip_address") @db.VarChar(64)
+  userAgent       String?          @map("user_agent") @db.VarChar(400)
+  // Texto do aceite exibido ("Li e estou ciente…") — congela o que foi aceito.
+  acceptedText    String?          @map("accepted_text") @db.VarChar(1000)
+
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  document        EmployeeDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  employee        Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, employeeId])
+  @@map("document_signatures")
+}
+
+// ── Ponto (relógio de ponto) ─────────────────────────────────────────────────
+enum TimeEntryType {
+  CLOCK_IN     // entrada
+  CLOCK_OUT    // saída
+  BREAK_START  // início de intervalo
+  BREAK_END    // fim de intervalo
+}
+
+enum TimeEntrySource {
+  PORTAL       // batido pelo colaborador na web (self-service)
+  MOBILE       // app do técnico (fase 2 — com GPS)
+  MANUAL       // lançado pelo RH (correção aprovada / ajuste)
+}
+
+model TimeEntry {
+  id              String          @id @default(uuid()) @db.Uuid
+  tenantId        String          @map("tenant_id") @db.Uuid
+  employeeId      String          @map("employee_id") @db.Uuid
+
+  type            TimeEntryType
+  // Momento da marcação (UTC). O espelho agrupa por dia no timezone do tenant.
+  occurredAt      DateTime        @map("occurred_at")
+  source          TimeEntrySource @default(PORTAL)
+
+  // Geolocalização opcional (fase mobile). Mantido aqui pra não migrar depois.
+  latitude        Float?
+  longitude       Float?
+  ipAddress       String?         @map("ip_address") @db.VarChar(64)
+
+  // Marcação criada/alterada via correção aprovada aponta pra request de origem.
+  correctionId    String?         @map("correction_id") @db.Uuid
+  notes           String?         @db.VarChar(500)
+
+  createdById     String?         @map("created_by_id") @db.Uuid
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  deletedAt       DateTime?       @map("deleted_at")
+
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee        Employee        @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  createdBy       User?           @relation("TimeEntryCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, employeeId, occurredAt])
+  @@index([tenantId, occurredAt])
+  @@map("time_entries")
+}
+
+enum TimeCorrectionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum TimeCorrectionKind {
+  ADD     // faltou bater — adicionar marcação
+  EDIT    // bateu errado — corrigir horário de uma marcação
+  REMOVE  // marcação indevida — remover
+}
+
+// Solicitação do colaborador para corrigir o ponto. Sobe pendente, RH aprova
+// ou rejeita. Ao aprovar, o service materializa a mudança em TimeEntry
+// (source=MANUAL, correctionId apontando aqui).
+model TimeCorrectionRequest {
+  id              String               @id @default(uuid()) @db.Uuid
+  tenantId        String               @map("tenant_id") @db.Uuid
+  employeeId      String               @map("employee_id") @db.Uuid
+
+  kind            TimeCorrectionKind   @default(ADD)
+  // Dia de referência da correção.
+  targetDate      DateTime             @map("target_date") @db.Date
+  // Marcação alvo (EDIT/REMOVE). Null em ADD.
+  targetEntryId   String?              @map("target_entry_id") @db.Uuid
+  // Tipo + horário propostos (ADD/EDIT).
+  proposedType    TimeEntryType?       @map("proposed_type")
+  proposedTime    DateTime?            @map("proposed_time")
+  reason          String               @db.VarChar(1000)
+
+  status          TimeCorrectionStatus @default(PENDING)
+  reviewedById    String?              @map("reviewed_by_id") @db.Uuid
+  reviewedAt      DateTime?            @map("reviewed_at")
+  reviewNotes     String?              @map("review_notes") @db.VarChar(1000)
+
+  createdAt       DateTime             @default(now()) @map("created_at")
+  updatedAt       DateTime             @updatedAt @map("updated_at")
+
+  tenant          Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee        Employee             @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  reviewedBy      User?                @relation("TimeCorrectionReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status])
+  @@index([tenantId, employeeId])
+  @@map("time_correction_requests")
+}
+
+// ── Folha de pagamento (lançamento manual) ──────────────────────────────────
+enum PayslipStatus {
+  DRAFT     // em edição
+  APPROVED  // fechado, pronto p/ pagar
+  PAID      // pago (tem SalaryPayment)
+  CANCELLED
+}
+
+// Holerite/recibo de uma competência. Itens (proventos/descontos) ficam em
+// Json — flexível e suficiente pro lançamento manual (sem cálculo legal).
+// netAmount = grossAmount - deductionsTotal, calculado no service.
+model Payslip {
+  id              String        @id @default(uuid()) @db.Uuid
+  tenantId        String        @map("tenant_id") @db.Uuid
+  employeeId      String        @map("employee_id") @db.Uuid
+
+  // Competência (mês de referência) — dia 1 do mês, no timezone do tenant.
+  referenceMonth  DateTime      @map("reference_month") @db.Date
+
+  // Linhas: [{ kind: 'EARNING'|'DEDUCTION', label, amount }]. Validado no DTO.
+  items           Json          @default("[]")
+  grossAmount     Decimal       @map("gross_amount") @db.Decimal(12, 2) @default(0)
+  deductionsTotal Decimal       @map("deductions_total") @db.Decimal(12, 2) @default(0)
+  netAmount       Decimal       @map("net_amount") @db.Decimal(12, 2) @default(0)
+
+  status          PayslipStatus @default(DRAFT)
+  notes           String?       @db.VarChar(1000)
+
+  // PDF do holerite gerado/anexado (storage). Pode também virar EmployeeDocument.
+  storageKey      String?       @map("storage_key") @db.VarChar(500)
+
+  createdById     String?       @map("created_by_id") @db.Uuid
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  deletedAt       DateTime?     @map("deleted_at")
+
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee        Employee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  createdBy       User?         @relation("PayslipCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  payment         SalaryPayment?
+
+  @@unique([tenantId, employeeId, referenceMonth])
+  @@index([tenantId, status])
+  @@index([tenantId, referenceMonth])
+  @@map("payslips")
+}
+
+// Pagamento efetivo de um holerite. Integra no caixa: gera CashMovement OUTCOME
+// (source=PAYROLL) — mesmo padrão de FleetExpense. cashMovementId é FK
+// polimórfica simples (não relation), igual CashMovement.sourceId.
+model SalaryPayment {
+  id              String        @id @default(uuid()) @db.Uuid
+  tenantId        String        @map("tenant_id") @db.Uuid
+  payslipId       String        @unique @map("payslip_id") @db.Uuid
+  employeeId      String        @map("employee_id") @db.Uuid
+
+  amount          Decimal       @db.Decimal(12, 2)
+  paidAt          DateTime      @map("paid_at")
+  method          PaymentMethod @default(CASH)
+
+  cashRegisterId  String?       @map("cash_register_id") @db.Uuid
+  cashMovementId  String?       @map("cash_movement_id") @db.Uuid
+
+  // Comprovante de pagamento (storage).
+  receiptStorageKey String?     @map("receipt_storage_key") @db.VarChar(500)
+  notes           String?       @db.VarChar(500)
+
+  createdById     String?       @map("created_by_id") @db.Uuid
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  deletedAt       DateTime?     @map("deleted_at")
+
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  payslip         Payslip       @relation(fields: [payslipId], references: [id], onDelete: Cascade)
+  cashRegister    CashRegister? @relation(fields: [cashRegisterId], references: [id], onDelete: SetNull)
+  createdBy       User?         @relation("SalaryPaymentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, employeeId])
+  @@index([tenantId, paidAt])
+  @@index([cashMovementId])
+  @@map("salary_payments")
+}
+
+// ── Blog / Notícias da empresa (portal do colaborador) ──────────────────────
+enum CompanyPostStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model CompanyPost {
+  id              String            @id @default(uuid()) @db.Uuid
+  tenantId        String            @map("tenant_id") @db.Uuid
+
+  title           String            @db.VarChar(250)
+  // Slug legível por tenant (p/ URL no portal).
+  slug            String            @db.VarChar(280)
+  excerpt         String?           @db.VarChar(500)
+  body            String            @db.Text // markdown
+  coverStorageKey String?           @map("cover_storage_key") @db.VarChar(500)
+
+  status          CompanyPostStatus @default(DRAFT)
+  pinned          Boolean           @default(false) // fixar no topo do feed
+  publishedAt     DateTime?         @map("published_at")
+
+  authorId        String?           @map("author_id") @db.Uuid
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  deletedAt       DateTime?         @map("deleted_at")
+
+  tenant          Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  author          User?             @relation("CompanyPostAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, status, publishedAt])
+  @@map("company_posts")
 }

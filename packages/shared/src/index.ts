@@ -21,3 +21,4 @@ export * from './provisioning';
 export * from './mapping';
 export * from './mobile';
 export * from './fleet';
+export * from './hr';

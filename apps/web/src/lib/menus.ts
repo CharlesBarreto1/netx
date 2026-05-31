@@ -119,6 +119,33 @@ export const MENU_GROUPS: MenuGroup[] = [
     ],
   },
 
+  // RH — gestão de colaboradores (admin). O portal self-service é o grupo abaixo.
+  {
+    key: 'hr',
+    labelKey: 'group.hr',
+    items: [
+      { key: 'hrEmployees',  href: '/hr/employees',  labelKey: 'hrEmployees',  permission: 'hr.read' },
+      { key: 'hrTimeclock',  href: '/hr/timeclock',  labelKey: 'hrTimeclock',  permission: 'hr.read' },
+      { key: 'hrPayroll',    href: '/hr/payroll',    labelKey: 'hrPayroll',    permission: 'hr.payroll.manage' },
+      { key: 'hrPosts',      href: '/hr/posts',      labelKey: 'hrPosts',      permission: 'hr.blog.manage' },
+      { key: 'hrReports',    href: '/hr/reports',    labelKey: 'hrReports',    permission: 'hr.payroll.manage' },
+    ],
+  },
+
+  // Portal do colaborador — self-service. Items keyed me* batem com o
+  // menuAccess do User provisionado (EmployeesService.EMPLOYEE_MENU_ACCESS).
+  {
+    key: 'portal',
+    labelKey: 'group.portal',
+    items: [
+      { key: 'meHome',      href: '/me',             labelKey: 'meHome',      permission: 'self.read' },
+      { key: 'meTimeclock', href: '/me/ponto',       labelKey: 'meTimeclock', permission: 'self.read' },
+      { key: 'meEarnings',  href: '/me/rendimentos', labelKey: 'meEarnings',  permission: 'self.read' },
+      { key: 'meDocuments', href: '/me/documentos',  labelKey: 'meDocuments', permission: 'self.read' },
+      { key: 'meNews',      href: '/me/noticias',    labelKey: 'meNews',      permission: 'self.read' },
+    ],
+  },
+
   // [DESATIVADO] Atendimento — Evolution API teve problemas; reativar quando
   // trocarmos pra Whaticket/WhatsApp Web JS/Meta oficial. Veja docs/architecture/
   // ou memória "whatsapp_evolution_pendente". Backend/schema/i18n/pages
