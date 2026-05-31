@@ -12,6 +12,7 @@ import type { Paginated } from './crm-types';
 export type ServiceOrderStatus =
   | 'OPEN'
   | 'SCHEDULED'
+  | 'EN_ROUTE'
   | 'IN_PROGRESS'
   | 'COMPLETED'
   | 'CANCELLED';
@@ -20,10 +21,20 @@ export type ServiceOrderStatus =
 export type ServiceOrderDisplayStatus =
   | 'OPEN'
   | 'SCHEDULED'
+  | 'EN_ROUTE'
   | 'IN_PROGRESS'
   | 'OVERDUE'
   | 'COMPLETED'
   | 'CANCELLED';
+
+export interface ServiceOrderPhotoResponse {
+  id: string;
+  storageKey: string;
+  contentType: string | null;
+  caption: string | null;
+  createdAt: string;
+  url?: string;
+}
 
 export interface ServiceOrderResponse {
   id: string;
@@ -35,6 +46,8 @@ export interface ServiceOrderResponse {
   displayStatus: ServiceOrderDisplayStatus;
   openedAt: string;
   scheduledAt: string | null;
+  enRouteAt: string | null;
+  checkinAt: string | null;
   startedAt: string | null;
   completedAt: string | null;
   cancelledAt: string | null;
@@ -59,6 +72,7 @@ export interface ServiceOrderResponse {
     firstName: string;
     lastName: string;
   } | null;
+  photos?: ServiceOrderPhotoResponse[];
 }
 
 export interface ServiceOrderReasonResponse {
@@ -88,6 +102,7 @@ export const SO_STATUS_TONE: Record<
 > = {
   OPEN: 'warning',
   SCHEDULED: 'info',
+  EN_ROUTE: 'info',
   IN_PROGRESS: 'purple',
   OVERDUE: 'danger',
   COMPLETED: 'success',
@@ -160,6 +175,73 @@ export interface CancelServiceOrderInput {
   reason?: string;
 }
 
+// ── One-touch (tela /os do técnico) ─────────────────────────────────────────
+/** Campos de provisionamento (mesmo shape do /provisioning/install). */
+export interface InstallFieldsInput {
+  oltId: string;
+  serialItemId?: string | null;
+  allowStockBypass?: boolean;
+  snGpon?: string | null;
+  ponFrame?: number;
+  ponSlot?: number;
+  macAddress?: string | null;
+  serialPhysical?: string | null;
+  ssid: string;
+  wifiPassword: string;
+  wifiBandMode?: 'BAND_STEERING' | 'DUAL_BAND';
+  pppoeVlan?: number;
+  notes?: string | null;
+  ufinetCto?: string | null;
+  ufinetPort?: string | null;
+}
+
+export interface FieldMaterialInput {
+  productId: string;
+  locationId: string;
+  quantity: number;
+  notes?: string | null;
+}
+
+export interface ServiceOrderPhotoInput {
+  storageKey: string;
+  contentType?: string | null;
+  sizeBytes?: number | null;
+  caption?: string | null;
+}
+
+export interface CompleteInstallationInput {
+  install: InstallFieldsInput;
+  enclosureId?: string | null;
+  enclosurePort?: string | null;
+  materials?: FieldMaterialInput[];
+  photos?: ServiceOrderPhotoInput[];
+  closeDescription: string;
+  completedAt?: string;
+}
+
+export interface PhotoPresignResponse {
+  uploadUrl: string;
+  storageKey: string;
+  expiresIn: number;
+}
+
+export interface InstallTimelineEvent {
+  action: string;
+  status: string;
+  message?: string;
+  error?: string | null;
+  durationMs?: number;
+}
+
+export interface CompleteInstallationResult {
+  serviceOrder: ServiceOrderResponse;
+  install: {
+    status: 'OK' | 'PARTIAL' | 'FAILED';
+    timeline: InstallTimelineEvent[];
+    pollUrl?: string;
+  };
+}
+
 export const serviceOrdersApi = {
   listPath: (params: ListServiceOrdersParams = {}) =>
     `/v1/service-orders${qs(params)}`,
@@ -190,6 +272,31 @@ export const serviceOrdersApi = {
   cancel(id: string, input: CancelServiceOrderInput = {}) {
     return api.post<ServiceOrderResponse>(
       `/v1/service-orders/${id}/cancel`,
+      input,
+    );
+  },
+  // ── Lifecycle de campo + one-touch ──
+  enRoute(id: string) {
+    return api.post<ServiceOrderResponse>(
+      `/v1/service-orders/${id}/en-route`,
+      {},
+    );
+  },
+  checkin(id: string) {
+    return api.post<ServiceOrderResponse>(
+      `/v1/service-orders/${id}/checkin`,
+      {},
+    );
+  },
+  presignPhoto(id: string, fileName: string, contentType?: string) {
+    return api.post<PhotoPresignResponse>(
+      `/v1/service-orders/${id}/photos/presign`,
+      { fileName, ...(contentType ? { contentType } : {}) },
+    );
+  },
+  completeInstallation(id: string, input: CompleteInstallationInput) {
+    return api.post<CompleteInstallationResult>(
+      `/v1/service-orders/${id}/complete-installation`,
       input,
     );
   },

@@ -13,16 +13,24 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
 import {
   CancelServiceOrderRequestSchema,
+  CheckinServiceOrderRequestSchema,
+  CompleteInstallationRequestSchema,
   CompleteServiceOrderRequestSchema,
   CreateServiceOrderRequestSchema,
+  EnRouteServiceOrderRequestSchema,
   ListServiceOrdersQuerySchema,
+  ServiceOrderPhotoPresignRequestSchema,
   StartServiceOrderRequestSchema,
   UpdateServiceOrderRequestSchema,
   type AuthenticatedPrincipal,
   type CancelServiceOrderRequest,
+  type CheckinServiceOrderRequest,
+  type CompleteInstallationRequest,
   type CompleteServiceOrderRequest,
   type CreateServiceOrderRequest,
+  type EnRouteServiceOrderRequest,
   type ListServiceOrdersQuery,
+  type ServiceOrderPhotoPresignRequest,
   type StartServiceOrderRequest,
   type UpdateServiceOrderRequest,
 } from '@netx/shared';
@@ -103,6 +111,51 @@ export class ServiceOrdersController {
     @ZodBody(CancelServiceOrderRequestSchema) body: CancelServiceOrderRequest,
   ) {
     return this.orders.cancel(user.tenantId, user.sub, id, body);
+  }
+
+  // ── Lifecycle de campo (tela /os do técnico) ────────────────────────────
+  @Post(':id/en-route')
+  @RequirePermissions('service_orders.write')
+  enRoute(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(EnRouteServiceOrderRequestSchema) body: EnRouteServiceOrderRequest,
+  ) {
+    return this.orders.enRoute(user.tenantId, user.sub, id, body);
+  }
+
+  @Post(':id/checkin')
+  @RequirePermissions('service_orders.write')
+  checkin(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(CheckinServiceOrderRequestSchema) body: CheckinServiceOrderRequest,
+  ) {
+    return this.orders.checkin(user.tenantId, user.sub, id, body);
+  }
+
+  /** Pede URL assinada pra subir foto de campo direto no MinIO. */
+  @Post(':id/photos/presign')
+  @RequirePermissions('service_orders.write')
+  presignPhoto(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(ServiceOrderPhotoPresignRequestSchema) body: ServiceOrderPhotoPresignRequest,
+  ) {
+    return this.orders.presignPhoto(user.tenantId, id, body);
+  }
+
+  /** ONE-TOUCH: provisiona + estoque + fotos + fecha a O.S numa tacada. */
+  @Post(':id/complete-installation')
+  @RequirePermissions('provisioning.write')
+  completeInstallation(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(CompleteInstallationRequestSchema) body: CompleteInstallationRequest,
+  ) {
+    return this.orders.completeInstallation(user.tenantId, user.sub, id, body, {
+      isAdmin: user.permissions.includes('stock.admin'),
+    });
   }
 
   @Delete(':id')

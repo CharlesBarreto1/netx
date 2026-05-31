@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { InstallCustomerRequestSchema } from '../provisioning/install.dto';
+
 /**
  * Status persistido no DB. `OVERDUE` NÃO é persistido — é um status derivado
  * computado no momento do read quando `scheduledAt < now AND status ∈
@@ -9,6 +11,7 @@ import { z } from 'zod';
 export const ServiceOrderStatusSchema = z.enum([
   'OPEN',
   'SCHEDULED',
+  'EN_ROUTE',
   'IN_PROGRESS',
   'COMPLETED',
   'CANCELLED',
@@ -19,6 +22,7 @@ export type ServiceOrderStatus = z.infer<typeof ServiceOrderStatusSchema>;
 export const ServiceOrderDisplayStatusSchema = z.enum([
   'OPEN',
   'SCHEDULED',
+  'EN_ROUTE',
   'IN_PROGRESS',
   'OVERDUE',
   'COMPLETED',
@@ -98,6 +102,103 @@ export type CancelServiceOrderRequest = z.infer<
   typeof CancelServiceOrderRequestSchema
 >;
 
+/** Técnico inicia deslocamento → status EN_ROUTE (a caminho). */
+export const EnRouteServiceOrderRequestSchema = z.object({
+  enRouteAt: z.string().datetime({ offset: true }).optional(),
+});
+export type EnRouteServiceOrderRequest = z.infer<
+  typeof EnRouteServiceOrderRequestSchema
+>;
+
+/** Check-in ao chegar → status IN_PROGRESS (seta checkinAt + startedAt). */
+export const CheckinServiceOrderRequestSchema = z.object({
+  checkinAt: z.string().datetime({ offset: true }).optional(),
+});
+export type CheckinServiceOrderRequest = z.infer<
+  typeof CheckinServiceOrderRequestSchema
+>;
+
+// =============================================================================
+// FOTOS DE CAMPO (comprovação) — upload via MinIO presigned
+// =============================================================================
+/** Pede uma URL assinada de upload pro MinIO (técnico sobe direto). */
+export const ServiceOrderPhotoPresignRequestSchema = z.object({
+  fileName: z.string().min(1).max(200),
+  contentType: z.string().max(120).optional(),
+});
+export type ServiceOrderPhotoPresignRequest = z.infer<
+  typeof ServiceOrderPhotoPresignRequestSchema
+>;
+
+export interface ServiceOrderPhotoPresignResponse {
+  uploadUrl: string;
+  /** Key a devolver no confirm/complete pra persistir a referência. */
+  storageKey: string;
+  expiresIn: number;
+}
+
+/** Metadado de uma foto já enviada (key existente no bucket). */
+export const ServiceOrderPhotoInputSchema = z.object({
+  storageKey: z.string().min(1).max(512),
+  contentType: z.string().max(120).nullish(),
+  sizeBytes: z.coerce.number().int().nonnegative().nullish(),
+  caption: z.string().max(255).nullish(),
+});
+export type ServiceOrderPhotoInput = z.infer<
+  typeof ServiceOrderPhotoInputSchema
+>;
+
+export interface ServiceOrderPhotoResponse {
+  id: string;
+  storageKey: string;
+  contentType: string | null;
+  caption: string | null;
+  createdAt: string;
+  /** URL assinada de download (preenchida on-demand pelo backend). */
+  url?: string;
+}
+
+// =============================================================================
+// ONE-TOUCH — finalizar instalação em campo numa tacada só
+// =============================================================================
+/** Material consumível usado na instalação (vai pro estoque via OS_CONSUMPTION). */
+export const FieldMaterialSchema = z.object({
+  productId: z.string().uuid(),
+  locationId: z.string().uuid(),
+  quantity: z.coerce.number().positive(),
+  notes: z.string().max(255).nullish(),
+});
+export type FieldMaterial = z.infer<typeof FieldMaterialSchema>;
+
+/**
+ * Payload da finalização em campo (tela /os). O backend "splita" cada parte:
+ *   1. Provisiona + ativa contrato + RADIUS + TR-069 (via ProvisioningService)
+ *   2. Movimenta estoque: ONT em comodato (no install) + materiais consumidos
+ *   3. Vincula caixa/porta (Ufinet CTO/porta OU CTO óptica cadastrada)
+ *   4. Anexa fotos + closeDescription e fecha a O.S
+ *
+ * `install` reusa o mesmo contrato do /provisioning/install. `enclosureId`/
+ * `enclosurePort` são pro caso de OLT própria (CTO cadastrada); pra Ufinet, o
+ * caixa/porta vão dentro de `install.ufinetCto`/`install.ufinetPort`.
+ */
+export const CompleteInstallationRequestSchema = z.object({
+  /** Dados de provisionamento (mesmo shape do /provisioning/install). */
+  install: InstallCustomerRequestSchema,
+  /** CTO óptica cadastrada (OLT própria) — opcional. */
+  enclosureId: z.string().uuid().nullish(),
+  enclosurePort: z.string().max(32).nullish(),
+  /** Materiais consumíveis usados (cabo, conector, fusão…). */
+  materials: z.array(FieldMaterialSchema).max(100).default([]),
+  /** Fotos já enviadas ao MinIO (keys). */
+  photos: z.array(ServiceOrderPhotoInputSchema).max(30).default([]),
+  /** Relato de fechamento da O.S (obrigatório). */
+  closeDescription: z.string().min(1).max(10_000),
+  completedAt: z.string().datetime({ offset: true }).optional(),
+});
+export type CompleteInstallationRequest = z.infer<
+  typeof CompleteInstallationRequestSchema
+>;
+
 // =============================================================================
 // LIST / FILTROS
 // =============================================================================
@@ -160,6 +261,8 @@ export interface ServiceOrderResponse {
 
   openedAt: string;
   scheduledAt: string | null;
+  enRouteAt: string | null;
+  checkinAt: string | null;
   startedAt: string | null;
   completedAt: string | null;
   cancelledAt: string | null;
@@ -186,4 +289,6 @@ export interface ServiceOrderResponse {
   } | null;
   customer?: { id: string; displayName: string } | null;
   assignedTo?: { id: string; firstName: string; lastName: string } | null;
+  /** Fotos de campo (preenchido no detalhe; URLs assinadas on-demand). */
+  photos?: ServiceOrderPhotoResponse[];
 }

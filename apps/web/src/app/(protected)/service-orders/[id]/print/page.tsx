@@ -87,6 +87,7 @@ export default function ServiceOrderPrintPage() {
   const statusLabel: Record<typeof os.status, string> = {
     OPEN: 'Aberta',
     SCHEDULED: 'Agendada',
+    EN_ROUTE: 'A caminho',
     IN_PROGRESS: 'Em Execução',
     COMPLETED: 'Finalizada',
     CANCELLED: 'Cancelada',

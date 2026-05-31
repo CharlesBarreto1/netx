@@ -26,6 +26,7 @@ import { hasPermission } from '@/lib/session';
 const STATUS_TONE: Record<ServiceOrderDisplayStatus, 'info' | 'success' | 'warning' | 'danger' | 'neutral'> = {
   OPEN: 'info',
   SCHEDULED: 'info',
+  EN_ROUTE: 'info',
   IN_PROGRESS: 'warning',
   OVERDUE: 'danger',
   COMPLETED: 'success',
@@ -35,6 +36,7 @@ const STATUS_TONE: Record<ServiceOrderDisplayStatus, 'info' | 'success' | 'warni
 const STATUS_LABEL: Record<ServiceOrderDisplayStatus, string> = {
   OPEN: 'Abierta',
   SCHEDULED: 'Agendada',
+  EN_ROUTE: 'En camino',
   IN_PROGRESS: 'En ejecución',
   OVERDUE: 'Atrasada',
   COMPLETED: 'Finalizada',

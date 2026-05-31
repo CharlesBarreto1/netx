@@ -9,11 +9,16 @@ import { Prisma, ServiceOrderStatus as PrismaSOStatus } from '@prisma/client';
 import {
   paginationMeta,
   type CancelServiceOrderRequest,
+  type CheckinServiceOrderRequest,
+  type CompleteInstallationRequest,
   type CompleteServiceOrderRequest,
   type CreateServiceOrderRequest,
+  type EnRouteServiceOrderRequest,
   type ListServiceOrdersQuery,
   type Paginated,
   type ServiceOrderDisplayStatus,
+  type ServiceOrderPhotoPresignRequest,
+  type ServiceOrderPhotoPresignResponse,
   type ServiceOrderResponse,
   type ServiceOrderStatus,
   type StartServiceOrderRequest,
@@ -22,6 +27,9 @@ import {
 
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { ProvisioningService } from '../provisioning/provisioning.service';
+import { OsConsumptionService } from '../stock/os-consumption.service';
+import { StorageService } from '../storage/storage.service';
 
 /**
  * O.S — Ordens de Serviço.
@@ -52,6 +60,9 @@ export class ServiceOrdersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly provisioning: ProvisioningService,
+    private readonly consumption: OsConsumptionService,
+    private readonly storage: StorageService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -405,6 +416,210 @@ export class ServiceOrdersService {
     return toResponse(updated);
   }
 
+  // ---------------------------------------------------------------------------
+  // LIFECYCLE DE CAMPO (tela /os do técnico)
+  // ---------------------------------------------------------------------------
+  /** Técnico inicia deslocamento → EN_ROUTE ("a caminho"). */
+  async enRoute(
+    tenantId: string,
+    actorUserId: string,
+    id: string,
+    input: EnRouteServiceOrderRequest,
+  ): Promise<ServiceOrderResponse> {
+    const before = await this.prisma.serviceOrder.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!before) throw new NotFoundException('O.S não encontrada');
+    if (
+      before.status === PrismaSOStatus.COMPLETED ||
+      before.status === PrismaSOStatus.CANCELLED
+    )
+      throw new ConflictException('O.S encerrada — não pode iniciar deslocamento');
+    if (before.status === PrismaSOStatus.IN_PROGRESS)
+      throw new ConflictException('O.S já está em execução');
+
+    const enRouteAt = input.enRouteAt ? new Date(input.enRouteAt) : new Date();
+    const updated = await this.prisma.serviceOrder.update({
+      where: { id },
+      data: { status: PrismaSOStatus.EN_ROUTE, enRouteAt, updatedById: actorUserId },
+      include: defaultInclude(),
+    });
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'service_order.en_route',
+      resource: 'service_orders',
+      resourceId: id,
+      beforeState: { status: before.status },
+      afterState: { status: updated.status, enRouteAt: updated.enRouteAt },
+    });
+    return toResponse(updated);
+  }
+
+  /** Check-in ao chegar no local → IN_PROGRESS (seta checkinAt + startedAt). */
+  async checkin(
+    tenantId: string,
+    actorUserId: string,
+    id: string,
+    input: CheckinServiceOrderRequest,
+  ): Promise<ServiceOrderResponse> {
+    const before = await this.prisma.serviceOrder.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!before) throw new NotFoundException('O.S não encontrada');
+    if (
+      before.status === PrismaSOStatus.COMPLETED ||
+      before.status === PrismaSOStatus.CANCELLED
+    )
+      throw new ConflictException('O.S encerrada — não pode fazer check-in');
+
+    const at = input.checkinAt ? new Date(input.checkinAt) : new Date();
+    const updated = await this.prisma.serviceOrder.update({
+      where: { id },
+      data: {
+        status: PrismaSOStatus.IN_PROGRESS,
+        checkinAt: at,
+        startedAt: before.startedAt ?? at,
+        updatedById: actorUserId,
+      },
+      include: defaultInclude(),
+    });
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'service_order.checkin',
+      resource: 'service_orders',
+      resourceId: id,
+      beforeState: { status: before.status },
+      afterState: { status: updated.status, checkinAt: updated.checkinAt },
+    });
+    return toResponse(updated);
+  }
+
+  /** URL presigned pra o técnico subir uma foto de campo direto no MinIO. */
+  async presignPhoto(
+    tenantId: string,
+    id: string,
+    input: ServiceOrderPhotoPresignRequest,
+  ): Promise<ServiceOrderPhotoPresignResponse> {
+    const so = await this.prisma.serviceOrder.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!so) throw new NotFoundException('O.S não encontrada');
+    if (!this.storage.isEnabled())
+      throw new BadRequestException('Storage (MinIO) não configurado');
+    const key = this.storage.buildKey(
+      tenantId,
+      `service-orders/${id}/photos`,
+      input.fileName,
+    );
+    const { url, expiresIn } = await this.storage.presignUpload(key, input.contentType);
+    return { uploadUrl: url, storageKey: key, expiresIn };
+  }
+
+  /**
+   * ONE-TOUCH — finaliza a instalação em campo numa tacada só:
+   *   1. Provisiona + ativa contrato + RADIUS + TR-069 + comodato da ONT +
+   *      Ufinet (reusa ProvisioningService.installCustomer — parte crítica).
+   *   2. Movimenta estoque: materiais consumíveis (cabo/conector/fusão).
+   *   3. Anexa fotos (keys já enviadas ao MinIO).
+   *   4. Fecha a O.S (closeDescription).
+   * Se o provisionamento falhar, aborta ANTES de consumir material/fechar.
+   * Obs.: passos 2–4 não são idempotentes — em retry após sucesso do install,
+   * cuidado pra não reenviar materiais já consumidos.
+   */
+  async completeInstallation(
+    tenantId: string,
+    actorUserId: string,
+    id: string,
+    input: CompleteInstallationRequest,
+    opts: { isAdmin?: boolean } = {},
+  ): Promise<{
+    serviceOrder: ServiceOrderResponse;
+    install: Awaited<ReturnType<ProvisioningService['installCustomer']>>;
+  }> {
+    const so = await this.prisma.serviceOrder.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true, contractId: true, status: true },
+    });
+    if (!so) throw new NotFoundException('O.S não encontrada');
+    if (so.status === PrismaSOStatus.COMPLETED)
+      throw new ConflictException('O.S já finalizada');
+    if (so.status === PrismaSOStatus.CANCELLED)
+      throw new ConflictException('O.S cancelada — reabra antes de finalizar');
+
+    // 1. Provisiona + ativa contrato (irreversível). Aborta se falhar.
+    const install = await this.provisioning.installCustomer(
+      tenantId,
+      actorUserId,
+      so.contractId,
+      input.install,
+    );
+    if (install.status === 'FAILED') {
+      throw new ConflictException(
+        'Provisionamento falhou — O.S não finalizada. Verifique OLT/ONT e tente novamente.',
+      );
+    }
+
+    // 2. Materiais consumíveis.
+    if (input.materials.length > 0) {
+      await this.consumption.addConsumption(
+        tenantId,
+        actorUserId,
+        {
+          serviceOrderId: id,
+          items: input.materials.map((m) => ({
+            productId: m.productId,
+            locationId: m.locationId,
+            quantity: m.quantity,
+            notes: m.notes ?? undefined,
+          })),
+        },
+        { isAdmin: opts.isAdmin },
+      );
+    }
+
+    // 3. Fotos de comprovação.
+    if (input.photos.length > 0) {
+      await this.prisma.serviceOrderPhoto.createMany({
+        data: input.photos.map((p) => ({
+          tenantId,
+          serviceOrderId: id,
+          storageKey: p.storageKey,
+          contentType: p.contentType ?? null,
+          sizeBytes: p.sizeBytes ?? null,
+          caption: p.caption ?? null,
+          createdById: actorUserId,
+        })),
+      });
+    }
+
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'service_order.field_install',
+      resource: 'service_orders',
+      resourceId: id,
+      metadata: {
+        contractId: so.contractId,
+        installStatus: install.status,
+        materials: input.materials.length,
+        photos: input.photos.length,
+        enclosureId: input.enclosureId ?? null,
+        enclosurePort: input.enclosurePort ?? null,
+      },
+    });
+
+    // 4. Fecha a O.S (a trava de instalação passa: install alocou a ONT em comodato).
+    const serviceOrder = await this.complete(tenantId, actorUserId, id, {
+      closeDescription: input.closeDescription,
+      completedAt: input.completedAt,
+    });
+
+    return { serviceOrder, install };
+  }
+
   async cancel(
     tenantId: string,
     actorUserId: string,
@@ -531,6 +746,8 @@ function toResponse(o: any): ServiceOrderResponse {
     displayStatus,
     openedAt: o.openedAt.toISOString(),
     scheduledAt: o.scheduledAt?.toISOString() ?? null,
+    enRouteAt: o.enRouteAt?.toISOString() ?? null,
+    checkinAt: o.checkinAt?.toISOString() ?? null,
     startedAt: o.startedAt?.toISOString() ?? null,
     completedAt: o.completedAt?.toISOString() ?? null,
     cancelledAt: o.cancelledAt?.toISOString() ?? null,
