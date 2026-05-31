@@ -95,6 +95,17 @@ git -C "${NETX_HOME}" reset --hard "origin/${NETX_REPO_BRANCH}"
 NEW_SHA=$(git -C "${NETX_HOME}" rev-parse HEAD)
 chown -R "${NETX_USER}:${NETX_USER}" "${NETX_HOME}"
 
+# Defesa: garante +x nos scripts EXECUTADOS direto (backend roda via `sudo -n`,
+# e há symlinks em /usr/local/bin). O git já versiona estes como 755, mas se
+# `core.fileMode=false` ou o deploy não preservar o modo, o pull os entregaria
+# como 644 → "command not found" e os hooks de sync (NTP/firewall) e o CLI
+# netx-radius-check quebram silenciosamente. As libs (lib/*.sh) são `source`adas
+# e ficam 644 de propósito.
+chmod +x "${NETX_HOME}"/infra/installer/scripts/sync-ntp.sh \
+         "${NETX_HOME}"/infra/installer/scripts/sync-firewall.sh \
+         "${NETX_HOME}"/infra/installer/scripts/netx-radius-check.sh \
+         "${NETX_HOME}"/infra/installer/scripts/netx-update.sh 2>/dev/null || true
+
 if [[ "${CURRENT_SHA}" == "${NEW_SHA}" ]]; then
   dim "Já estamos na versão mais recente (${NEW_SHA:0:8}). Build pode pular se artefatos OK."
   NETX_FORCE_BUILD="${NETX_FORCE_BUILD:-0}"
