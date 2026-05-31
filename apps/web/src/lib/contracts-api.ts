@@ -134,11 +134,6 @@ interface CommonContractInput {
   code?: string;
   installationAddress: string;
   installationMapsUrl?: string | null;
-  /**
-   * Rede neutra Ufinet (PY): OLT-orquestradora (= polígono Ufinet) que atende
-   * o contrato. Quando preenchida, a criação enfileira a ALTA na Ufinet.
-   */
-  ufinetOltId?: string | null;
   /** Plano de internet selecionado (opcional). */
   planId?: string | null;
   monthlyValue: number;

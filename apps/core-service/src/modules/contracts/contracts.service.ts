@@ -101,45 +101,6 @@ export class ContractsService {
     private readonly ufinet: UfinetOrdersService,
   ) {}
 
-  /**
-   * Enfileira a ALTA Ufinet quando o contrato nasce com uma OLT-orquestradora
-   * (vendor=UFINET, ORCHESTRATOR). Best-effort: falhar aqui NÃO quebra a
-   * criação do contrato (o operador pode reprocessar). externalId = LABEL_DROP
-   * = `ZUX-{code do contrato}` (decisão da operação).
-   */
-  private async tryEnqueueUfinetProvide(
-    tenantId: string,
-    actorUserId: string,
-    contract: ContractWithRelations,
-    ufinetOltId: string | null | undefined,
-  ): Promise<void> {
-    if (!ufinetOltId) return;
-    try {
-      const olt = await this.prisma.olt.findFirst({
-        where: { id: ufinetOltId, tenantId, deletedAt: null },
-        select: { id: true, vendor: true, providerMode: true },
-      });
-      if (!olt || olt.vendor !== 'UFINET' || olt.providerMode !== 'ORCHESTRATOR') {
-        this.logger.warn(
-          `[ufinet] OLT ${ufinetOltId} não é UFINET/ORCHESTRATOR — alta não enfileirada`,
-        );
-        return;
-      }
-      const svc = await this.ufinet.enqueueProvide({
-        tenantId,
-        contractId: contract.id,
-        oltId: olt.id,
-        actorUserId,
-      });
-      this.logger.log(`[ufinet] alta enfileirada pra contrato ${contract.id} (${svc.externalId})`);
-    } catch (err) {
-      this.logger.warn(
-        `[ufinet] falha ao enfileirar alta pra ${contract.id} — contrato mantido. ` +
-          `erro: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  }
-
   /** Dispara baja/cancelación Ufinet no cancelamento do contrato (best-effort). */
   private async tryUfinetTeardown(tenantId: string, contractId: string, actorUserId: string): Promise<void> {
     try {
@@ -319,15 +280,10 @@ export class ContractsService {
       },
     });
 
-    // Rede neutra Ufinet (PY): enfileira a ALTA (reserva de porta) fora da TX,
-    // best-effort — só quando o contrato traz uma OLT-orquestradora.
-    await this.tryEnqueueUfinetProvide(
-      tenantId,
-      actorUserId,
-      created,
-      (input as { ufinetOltId?: string | null }).ufinetOltId ?? null,
-    );
-
+    // Rede neutra Ufinet (PY): a ALTA (reserva de porta) NÃO é mais disparada
+    // na criação. Ela sai na INSTALAÇÃO (ProvisioningService.install), quando a
+    // OLT real é conhecida — assim cliente em OLT direta nunca consome Ufinet
+    // (cara) e evitamos altas indevidas. Decisão da operação 2026-05-30.
     return toContractResponse(created, { includePassword: true });
   }
 
