@@ -129,6 +129,10 @@ export function AppShell({
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<boolean>(false);
+  // Hover-to-expand: quando colapsada, passar o mouse expande temporariamente
+  // (overlay, sem mexer no estado persistido nem empurrar o conteúdo).
+  const [hovering, setHovering] = useState(false);
+  const expanded = !collapsed || hovering;
 
   // Hidrata estado de collapse do localStorage (evita flash).
   useEffect(() => {
@@ -278,30 +282,46 @@ export function AppShell({
         <div className="flex">
           {/* ============ SIDEBAR DESKTOP ============ */}
           <aside
+            onMouseEnter={() => {
+              if (collapsed) setHovering(true);
+            }}
+            onMouseLeave={() => setHovering(false)}
             className={cn(
-              'sticky top-14 hidden h-[calc(100vh-3.5rem)] shrink-0 border-r border-border bg-surface/40 transition-[width] duration-200 md:block',
+              'sticky top-14 hidden h-[calc(100vh-3.5rem)] shrink-0 transition-[width] duration-200 md:block',
               collapsed ? 'w-[60px]' : 'w-60',
             )}
           >
-            <SidebarNav
-              groups={allowedGroups}
-              pathname={pathname}
-              collapsed={collapsed}
-            />
-            <button
-              type="button"
-              onClick={toggleCollapsed}
+            {/* Painel interno absoluto: quando expande no hover, vira overlay
+                opaco com sombra — sobrepõe o conteúdo SEM empurrar (sem reflow). */}
+            <div
               className={cn(
-                'absolute bottom-3 right-3 inline-flex h-7 w-7 items-center justify-center rounded-md text-text-subtle transition-colors hover:bg-surface-hover hover:text-text',
+                'absolute inset-y-0 left-0 z-20 flex flex-col border-r border-border',
+                'transition-[width,background-color,box-shadow] duration-200',
+                expanded ? 'w-60' : 'w-[60px]',
+                collapsed && hovering ? 'bg-surface shadow-pop' : 'bg-surface/40',
               )}
-              aria-label={collapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
             >
-              {collapsed ? (
-                <ChevronsRight className="h-4 w-4" />
-              ) : (
-                <ChevronsLeft className="h-4 w-4" />
-              )}
-            </button>
+              <div className="flex-1 overflow-y-auto overflow-x-hidden">
+                <SidebarNav
+                  groups={allowedGroups}
+                  pathname={pathname}
+                  collapsed={!expanded}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={toggleCollapsed}
+                className="absolute bottom-3 right-3 inline-flex h-7 w-7 items-center justify-center rounded-md text-text-subtle transition-colors hover:bg-surface-hover hover:text-text"
+                aria-label={collapsed ? 'Fixar menu aberto' : 'Recolher menu'}
+                title={collapsed ? 'Fixar menu aberto (⌘\\)' : 'Recolher menu (⌘\\)'}
+              >
+                {collapsed ? (
+                  <ChevronsRight className="h-4 w-4" />
+                ) : (
+                  <ChevronsLeft className="h-4 w-4" />
+                )}
+              </button>
+            </div>
           </aside>
 
           {/* ============ SIDEBAR MOBILE (drawer) ============ */}
