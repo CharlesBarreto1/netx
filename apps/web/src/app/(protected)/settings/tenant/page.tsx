@@ -45,6 +45,7 @@ export default function TenantSettingsPage() {
     name: string;
     legalName: string;
     taxId: string;
+    contractPrefix: string;
     applyCountryDefaults: boolean;
   }>({
     country: 'PY',
@@ -54,6 +55,7 @@ export default function TenantSettingsPage() {
     name: '',
     legalName: '',
     taxId: '',
+    contractPrefix: '',
     applyCountryDefaults: false,
   });
   const [submitting, setSubmitting] = useState(false);
@@ -69,6 +71,7 @@ export default function TenantSettingsPage() {
       name: tenant.name,
       legalName: tenant.legalName ?? '',
       taxId: tenant.taxId ?? '',
+      contractPrefix: tenant.contractPrefix ?? '',
     }));
   }, [tenant]);
 
@@ -125,6 +128,8 @@ export default function TenantSettingsPage() {
         currency: form.currency,
         timezone: form.timezone,
       };
+      const prefix = form.contractPrefix.trim().toUpperCase();
+      if (prefix) body.contractPrefix = prefix;
       if (form.applyCountryDefaults) body.applyCountryDefaults = true;
       await api.patch<TenantMe>('/v1/tenants/me', body);
       toast.success(tCommon('success'));
@@ -182,6 +187,33 @@ export default function TenantSettingsPage() {
               onChange={(e) => setForm((s) => ({ ...s, legalName: e.target.value }))}
               disabled={!canUpdate}
             />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <Label htmlFor="t-contractPrefix">Prefixo do contrato</Label>
+            <Input
+              id="t-contractPrefix"
+              value={form.contractPrefix}
+              maxLength={3}
+              placeholder="ZUX"
+              onChange={(e) =>
+                setForm((s) => ({
+                  ...s,
+                  contractPrefix: e.target.value
+                    .toUpperCase()
+                    .replace(/[^A-Z]/g, '')
+                    .slice(0, 3),
+                }))
+              }
+              disabled={!canUpdate}
+            />
+            <FieldHelp>
+              3 letras. Forma o código sequencial do contrato (ex.:{' '}
+              {form.contractPrefix || 'ZUX'}-1, {form.contractPrefix || 'ZUX'}-2…)
+              — também usado como externalId/Marquilla na Ufinet.
+            </FieldHelp>
           </div>
         </div>
 

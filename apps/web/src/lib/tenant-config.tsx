@@ -34,6 +34,7 @@ export interface TenantMe {
   locale: string;
   timezone: string;
   currency: string;
+  contractPrefix: string | null;
   status: 'ACTIVE' | 'SUSPENDED' | 'TRIAL' | 'CHURNED';
 }
 

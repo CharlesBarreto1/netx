@@ -147,66 +147,53 @@ export class UfinetOrdersService {
     });
     if (existing) return existing;
 
-    // Prefixo do externalId/marquilla (default "ZUX"), configurável por OLT.
-    const olt = await this.prisma.olt.findUnique({
-      where: { id: input.oltId },
-      select: { apiConfig: true },
+    // externalId/Marquilla = código do contrato (Contract.code, ex.: ZUX-234),
+    // gerado na CRIAÇÃO do contrato. A Ufinet só HERDA esse código — não há
+    // sequencial próprio aqui (o sequencial vive no Contract).
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: input.contractId },
+      select: { code: true },
     });
-    const prefix = UfinetOltConfigSchema.parse(olt?.apiConfig ?? {}).externalIdPrefix;
-
-    // Sequencial curto por tenant: ZUX-1, ZUX-2, … (marquilla legível em campo).
-    // MAX(seq)+1 com retry — concorrência baixa (criação de contrato), e o
-    // índice único [tenantId, seq] protege contra corrida.
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const agg = await this.prisma.ufinetService.aggregate({
-        where: { tenantId: input.tenantId },
-        _max: { seq: true },
-      });
-      const seq = (agg._max.seq ?? 0) + 1;
-      const externalId = `${prefix}-${seq}`;
-      try {
-        const created = await this.prisma.ufinetService.create({
-          data: {
-            tenantId: input.tenantId,
-            contractId: input.contractId,
-            oltId: input.oltId,
-            seq,
-            externalId,
-            labelDrop: externalId,
-            lifecycle: 'PENDING_PROVIDE',
-            nextAttemptAt: new Date(),
-          },
-        });
-        // Mesmo ID pra tudo: o código do contrato no NetX vira o externalId
-        // (ZUX-{seq}) — rastreabilidade única cliente↔Ufinet. Best-effort.
-        try {
-          await this.prisma.contract.update({
-            where: { id: input.contractId },
-            data: { code: externalId },
-          });
-        } catch (err) {
-          this.logger.warn(
-            `[ufinet] não consegui setar contract.code=${externalId} pro contrato ` +
-              `${input.contractId}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-        await this.audit.log({
-          tenantId: input.tenantId,
-          userId: input.actorUserId ?? null,
-          actor: input.actorUserId ? undefined : 'system',
-          action: 'ufinet.provide.enqueued',
-          resource: 'ufinet_services',
-          resourceId: created.id,
-          metadata: { externalId, seq },
-        });
-        return created;
-      } catch (err) {
-        // P2002 = colisão de seq/externalId (corrida) → recalcula e tenta de novo.
-        if ((err as { code?: string })?.code === 'P2002') continue;
-        throw err;
-      }
+    const externalId = contract?.code?.trim();
+    if (!externalId) {
+      throw new Error(
+        `Ufinet: contrato ${input.contractId} sem código (Contract.code) — ` +
+          'não dá pra montar o externalId/Marquilla',
+      );
     }
-    throw new Error('Ufinet: não consegui alocar sequencial de externalId após 5 tentativas');
+
+    try {
+      const created = await this.prisma.ufinetService.create({
+        data: {
+          tenantId: input.tenantId,
+          contractId: input.contractId,
+          oltId: input.oltId,
+          externalId,
+          labelDrop: externalId,
+          lifecycle: 'PENDING_PROVIDE',
+          nextAttemptAt: new Date(),
+        },
+      });
+      await this.audit.log({
+        tenantId: input.tenantId,
+        userId: input.actorUserId ?? null,
+        actor: input.actorUserId ? undefined : 'system',
+        action: 'ufinet.provide.enqueued',
+        resource: 'ufinet_services',
+        resourceId: created.id,
+        metadata: { externalId },
+      });
+      return created;
+    } catch (err) {
+      // Corrida: outra chamada já criou o serviço (unique contractId) → devolve.
+      if ((err as { code?: string })?.code === 'P2002') {
+        const again = await this.prisma.ufinetService.findUnique({
+          where: { contractId: input.contractId },
+        });
+        if (again) return again;
+      }
+      throw err;
+    }
   }
 
   /**

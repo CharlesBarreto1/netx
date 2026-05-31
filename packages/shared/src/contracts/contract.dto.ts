@@ -140,7 +140,6 @@ export const CreateContractRequestSchema = z
   .discriminatedUnion('authMethod', [
     z.object({
       customerId: z.string().uuid(),
-      code: z.string().max(32).optional(),
       firstDueDate: z.string().date().optional(),
       ...commonContractFields,
       ...pppoeFields,
@@ -148,7 +147,6 @@ export const CreateContractRequestSchema = z
     }),
     z.object({
       customerId: z.string().uuid(),
-      code: z.string().max(32).optional(),
       firstDueDate: z.string().date().optional(),
       ...commonContractFields,
       ...ipoeFields,

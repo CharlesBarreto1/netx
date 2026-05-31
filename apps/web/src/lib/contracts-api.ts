@@ -131,7 +131,6 @@ export interface ListContractsParams {
 
 interface CommonContractInput {
   customerId: string;
-  code?: string;
   installationAddress: string;
   installationMapsUrl?: string | null;
   /** Plano de internet selecionado (opcional). */

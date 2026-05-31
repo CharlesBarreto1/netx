@@ -74,6 +74,7 @@ export class TenantsService {
     if (input.locale !== undefined) data.locale = input.locale;
     if (input.currency !== undefined) data.currency = input.currency;
     if (input.timezone !== undefined) data.timezone = input.timezone;
+    if (input.contractPrefix !== undefined) data.contractPrefix = input.contractPrefix;
 
     const updated = await this.prisma.tenant.update({
       where: { id: tenantId },
@@ -93,6 +94,7 @@ export class TenantsService {
       locale: t.locale,
       timezone: t.timezone,
       currency: t.currency,
+      contractPrefix: t.contractPrefix ?? null,
       status: t.status,
       trialEndsAt: t.trialEndsAt?.toISOString() ?? null,
       createdAt: t.createdAt.toISOString(),

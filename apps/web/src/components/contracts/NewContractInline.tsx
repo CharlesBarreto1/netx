@@ -45,7 +45,6 @@ export interface NewContractInlineProps {
     monthlyValue: number | string;
     bandwidthMbps: number | string;
     dueDay: number | string;
-    code: string;
     notes: string;
     installationAddress: string;
     installationMapsUrl: string;
@@ -118,7 +117,6 @@ export function NewContractInline({
   const [pppoeUserEdited, setPppoeUserEdited] = useState(false);
   const [form, setForm] = useState({
     customerId: lockedCustomerId ?? '',
-    code: initial?.code ?? '',
     // PPPoE — login é derivado do nome do cliente (preenchido pelo useEffect
     // quando o cliente é selecionado). Senha = padrão da operação.
     pppoeUsername: initial?.pppoeUsername ?? '',
@@ -291,7 +289,6 @@ export function NewContractInline({
 
     const common = {
       customerId: form.customerId,
-      code: form.code || undefined,
       installationAddress: form.installationAddress,
       installationMapsUrl: form.installationMapsUrl.trim()
         ? normalizeMapsUrl(form.installationMapsUrl)
@@ -748,15 +745,6 @@ export function NewContractInline({
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
-        <div>
-          <Label htmlFor="contract-code">Código do contrato (opcional)</Label>
-          <Input
-            id="contract-code"
-            value={form.code}
-            onChange={(e) => update('code', e.target.value)}
-            placeholder="ex. CTR-001234"
-          />
-        </div>
         <div>
           <Label htmlFor="contract-firstDueDate">1ª fatura vence em (opcional)</Label>
           <Input

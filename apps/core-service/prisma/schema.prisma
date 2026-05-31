@@ -57,6 +57,9 @@ model Tenant {
   locale      String       @default("pt-BR") @db.VarChar(10)
   timezone    String       @default("America/Sao_Paulo") @db.VarChar(64)
   currency    String       @default("BRL") @db.Char(3) // ISO 4217
+  // Prefixo de 3 letras pro código sequencial de contrato ({prefix}-{seq},
+  // ex.: ZUX-1). Configurável pela operação. Null = derivado do slug.
+  contractPrefix String?   @map("contract_prefix") @db.VarChar(3)
   status      TenantStatus @default(TRIAL)
   domains     String[]     @default([]) // custom domains
   logoUrl     String?      @map("logo_url")
@@ -1084,8 +1087,12 @@ model Contract {
   tenantId            String         @map("tenant_id") @db.Uuid
   customerId          String         @map("customer_id") @db.Uuid
 
-  // Código humano ex. CTR-000123 (opcional, gerado pelo service)
+  // Código sequencial do contrato por tenant: "{Tenant.contractPrefix}-{seq}"
+  // (ex.: ZUX-1, ZUX-234). Gerado SEMPRE pelo service na criação — é a
+  // identidade do contrato no NetX e também o externalId/Marquilla na Ufinet.
+  // `seq` é o sequencial global por tenant (todo contrato, Ufinet ou não).
   code                String?        @db.VarChar(32)
+  seq                 Int?           @map("seq")
 
   // Método de autenticação no RADIUS. Default PPPOE — decisão de engenharia
   // (2026-05-22): pro cenário ONT-roteador + BNG Mikrotik + RADIUS local,
@@ -1228,6 +1235,7 @@ model Contract {
   @@unique([tenantId, circuitId])
   @@unique([tenantId, macAddress])
   @@unique([tenantId, code])
+  @@unique([tenantId, seq])
   @@index([tenantId, customerId])
   @@index([tenantId, planId])
   @@index([tenantId, status])
@@ -2876,10 +2884,9 @@ model UfinetService {
   contractId            String          @map("contract_id") @db.Uuid
   oltId                 String          @map("olt_id") @db.Uuid
 
-  // Sequencial curto por tenant (ZUX-1, ZUX-2, …). `seq` é a base; `externalId`
-  // = "{prefixo}-{seq}" e serve como externalId TMF, LABEL_DROP e etiqueta do
-  // técnico em campo (decisão da operação). Tudo único por tenant.
-  seq                   Int?            @map("seq")
+  // externalId = código do contrato (Contract.code, ex.: ZUX-234) — serve como
+  // externalId TMF, LABEL_DROP e etiqueta do técnico em campo. O sequencial
+  // vive no Contract agora (não mais aqui).
   externalId            String          @map("external_id") @db.VarChar(80)
   labelDrop             String          @map("label_drop") @db.VarChar(80)
   bandwidthProfile      String          @default("ZUX 1G") @map("bandwidth_profile") @db.VarChar(64)
@@ -2921,7 +2928,6 @@ model UfinetService {
 
   @@unique([contractId])
   @@unique([tenantId, externalId])
-  @@unique([tenantId, seq])
   @@index([tenantId, lifecycle])
   @@index([nextAttemptAt])
   @@map("ufinet_services")

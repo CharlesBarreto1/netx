@@ -25,6 +25,8 @@ export interface TenantResponse {
   locale: string;
   timezone: string;
   currency: string;
+  /** Prefixo de 3 letras do código sequencial de contrato (ex.: "ZUX"). */
+  contractPrefix: string | null;
   status: TenantStatus;
   trialEndsAt: string | null;
   createdAt: string;
@@ -46,6 +48,13 @@ export const UpdateTenantSettingsRequestSchema = z
     locale: z.string().max(10).optional(),
     timezone: z.string().max(64).optional(),
     currency: z.string().length(3).toUpperCase().optional(),
+    // Prefixo de 3 letras do código sequencial de contrato ({prefix}-{seq}).
+    contractPrefix: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^[A-Z]{3}$/, 'O prefixo deve ter exatamente 3 letras (A–Z)')
+      .optional(),
     applyCountryDefaults: z.boolean().optional(),
   })
   .strict();

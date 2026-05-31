@@ -126,6 +126,7 @@ export class ContractsService {
     tenantId: string,
     actorUserId: string,
     input: CreateContractRequest,
+    seqAttempt = 0,
   ): Promise<ContractResponse> {
     const customer = await this.prisma.customer.findFirst({
       where: { id: input.customerId, tenantId, deletedAt: null },
@@ -136,6 +137,17 @@ export class ContractsService {
     const firstDue = input.firstDueDate ? new Date(`${input.firstDueDate}T00:00:00.000Z`) : undefined;
 
     const now = new Date();
+
+    // Prefixo do tenant pro código sequencial do contrato ({prefix}-{seq}).
+    // Null = derivado do slug. O `seq` é gerado dentro da TX (MAX+1).
+    const tenantRow = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { slug: true, contractPrefix: true },
+    });
+    const prefix = (
+      tenantRow?.contractPrefix?.trim() || deriveContractPrefix(tenantRow?.slug)
+    ).toUpperCase();
+
     let created: ContractWithRelations;
     try {
       created = await this.prisma.$transaction(async (tx) => {
@@ -187,11 +199,22 @@ export class ContractsService {
           'PENDING_INSTALL';
         const isPending = initialStatus === 'PENDING_INSTALL';
 
+        // Sequencial global por tenant (TODO contrato, Ufinet ou não):
+        // MAX(seq)+1. O índice único (tenant_id, seq) protege contra corrida;
+        // colisão → P2002 → retry recalculando (vide catch).
+        const agg = await tx.contract.aggregate({
+          where: { tenantId },
+          _max: { seq: true },
+        });
+        const seq = (agg._max.seq ?? 0) + 1;
+        const code = `${prefix}-${seq}`;
+
         const contract = await tx.contract.create({
           data: {
             tenantId,
             customerId: input.customerId,
-            code: input.code ?? null,
+            code,
+            seq,
             ...authData,
             installationAddress: input.installationAddress,
             installationMapsUrl: input.installationMapsUrl ?? null,
@@ -248,13 +271,20 @@ export class ContractsService {
       });
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
-        // O alvo do unique varia: pppoe_username, circuit_id ou mac_address.
+        // O alvo do unique varia: pppoe_username, circuit_id, mac_address ou
+        // seq/code (sequencial do contrato).
         const target = (err.meta?.target as string[] | string | undefined) ?? '';
         const targetStr = Array.isArray(target) ? target.join(',') : String(target);
+        // Colisão do sequencial por corrida (criação simultânea) → recalcula
+        // MAX(seq)+1 e re-tenta (até 5x).
+        if ((targetStr.includes('seq') || targetStr.includes('code')) && seqAttempt < 5) {
+          return this.create(tenantId, actorUserId, input, seqAttempt + 1);
+        }
         let field = 'identificador';
         if (targetStr.includes('pppoe')) field = 'PPPoE username';
         else if (targetStr.includes('circuit')) field = 'circuit-id';
         else if (targetStr.includes('mac')) field = 'MAC address';
+        else if (targetStr.includes('seq') || targetStr.includes('code')) field = 'código do contrato';
         throw new ConflictException(`${field} já em uso neste tenant`);
       }
       throw err;
@@ -1231,10 +1261,11 @@ export class ContractsService {
       throw new BadRequestException('Cancele o contrato antes de excluí-lo');
     }
 
-    // Libera os uniques (pppoe_username, circuit_id, mac_address, code) pra
-    // que um novo contrato com o mesmo identificador possa ser criado. O
-    // unique constraint do Postgres conta linhas soft-deletadas, então sem
-    // esse sufixo o re-cadastro do mesmo PPPoE/MAC dá P2002.
+    // Libera os uniques REUTILIZÁVEIS (pppoe_username, circuit_id, mac_address)
+    // pra que um novo contrato do mesmo cliente possa reusá-los. O unique do
+    // Postgres conta linhas soft-deletadas, então sem o sufixo o re-cadastro do
+    // mesmo PPPoE/MAC dá P2002. O `code`/`seq` NÃO são liberados — são a
+    // identidade sequencial permanente do contrato (nunca reusada).
     // Convenção: `<original>__deleted_<timestamp>` — preserva legibilidade
     // pra debug/auditoria, e o `__` é improvável colidir com username real.
     const stamp = Date.now().toString(36);
@@ -1254,7 +1285,6 @@ export class ContractsService {
         macAddress: existing.macAddress
           ? `${existing.macAddress}${suffix}`.slice(0, 32)
           : null,
-        code: existing.code ? `${existing.code}${suffix}`.slice(0, 32) : null,
       },
     });
     await this.audit.log({
@@ -1523,6 +1553,16 @@ export class ContractsService {
 // ---------------------------------------------------------------------------
 function utcMidnight(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+/**
+ * Prefixo default do código de contrato quando o tenant ainda não configurou
+ * um `contractPrefix`: 3 primeiros caracteres alfanuméricos do slug, em
+ * maiúsculas. Fallback "NTX" se o slug não render 3 chars.
+ */
+function deriveContractPrefix(slug?: string | null): string {
+  const base = (slug ?? '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+  return base.slice(0, 3) || 'NTX';
 }
 
 // ---------------------------------------------------------------------------
