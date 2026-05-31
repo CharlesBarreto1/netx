@@ -144,6 +144,10 @@ export function NewContractInline({
   });
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Seção técnica (auth, início, credenciais) fica recolhida por padrão — usa
+  // os defaults (PPPoE · Agendar instalação · credenciais auto). Operador abre
+  // só se precisar mexer.
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   // Catálogo de planos — opera ativos por padrão.
   const { data: plans } = useSWR<Plan[]>(plansApi.listPath(false), () =>
@@ -284,7 +288,12 @@ export function NewContractInline({
 
   async function onSubmit(ev: React.FormEvent) {
     ev.preventDefault();
-    if (!validate() || submitting) return;
+    if (submitting) return;
+    if (!validate()) {
+      // Abre o avançado pra os erros de credenciais (escondidos) ficarem visíveis.
+      setAdvancedOpen(true);
+      return;
+    }
     setSubmitting(true);
 
     const common = {
@@ -377,6 +386,29 @@ export function NewContractInline({
           <FieldError>{errors.customerId}</FieldError>
         </div>
       )}
+
+      {/* ─── Configurações avançadas (recolhível) ─────────────────────────
+          Auth + início do serviço + credenciais. Fechado por padrão: usa os
+          defaults (PPPoE · Agendar instalação · credenciais auto). O operador
+          "nem vê" a menos que precise abrir. */}
+      <div className="rounded-md border border-border">
+        <button
+          type="button"
+          onClick={() => setAdvancedOpen((o) => !o)}
+          aria-expanded={advancedOpen}
+          className="flex w-full items-center justify-between gap-2 rounded-md px-3 py-2.5 text-left hover:bg-surface-hover"
+        >
+          <span className="text-sm font-medium text-text">
+            Configurações avançadas
+            <span className="ml-2 text-xs font-normal text-text-subtle">
+              {authMethod === 'PPPOE' ? 'PPPoE' : 'IPoE'} ·{' '}
+              {initialStatus === 'ACTIVE' ? 'Ativar agora' : 'Agendar instalação'}
+            </span>
+          </span>
+          <span className="text-text-subtle">{advancedOpen ? '▾' : '▸'}</span>
+        </button>
+        {advancedOpen && (
+          <div className="space-y-5 border-t border-border p-3">
 
       {/* ─── Tipo de autenticação ─────────────────────────────────────── */}
       <div>
@@ -560,6 +592,10 @@ export function NewContractInline({
           </p>
         </div>
       )}
+          </div>
+        )}
+      </div>
+      {/* ─── fim das configurações avançadas ─────────────────────────────── */}
 
       <div>
         <Label htmlFor="contract-installationAddress" required>

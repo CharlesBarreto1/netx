@@ -49,10 +49,13 @@ export type TaxId = z.infer<typeof TaxIdSchema>;
 const baseCustomerFields = {
   code: z.string().max(32).optional(),
   status: CustomerStatusSchema.optional(),
-  taxId: TaxIdSchema.nullish(),
+  // Documento obrigatório (CPF/CI pra PF, CNPJ/RUC pra PJ) — decisão da
+  // operação. No Update vira opcional (o schema é `.partial()`).
+  taxId: TaxIdSchema,
 
   primaryEmail: z.string().email().max(255).nullish(),
-  primaryPhone: z.string().max(32).nullish(),
+  // Pelo menos 1 telefone obrigatório.
+  primaryPhone: z.string().min(1).max(32),
 
   preferredLanguage: z.string().max(10).nullish(),
   timezone: z.string().max(64).nullish(),
@@ -66,7 +69,7 @@ const individualFields = {
   type: z.literal('INDIVIDUAL'),
   firstName: z.string().min(1).max(120),
   lastName: z.string().min(1).max(120),
-  birthDate: z.string().date().nullish(), // YYYY-MM-DD
+  birthDate: z.string().date(), // YYYY-MM-DD — obrigatório pra pessoa física
   gender: z.string().max(32).nullish(),
   motherName: z.string().max(255).nullish(),
 };

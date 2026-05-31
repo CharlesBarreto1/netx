@@ -135,6 +135,28 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
     e.preventDefault();
     setFormError(null);
     setFieldErrors({});
+
+    // Obrigatórios no cadastro (documento, telefone e — pra PF — nascimento).
+    // Só no create: no edit o backend é tolerante (.partial()) pra não travar
+    // edição de registros legados. O DTO Zod valida no servidor também.
+    if (!isEdit) {
+      const reqErrs: Record<string, string> = {};
+      if (!v.taxIdType || !v.taxIdCountry || !v.taxIdValue?.trim()) {
+        reqErrs['taxId.value'] = 'Documento obrigatório — informe tipo, país e número';
+      }
+      if (!v.primaryPhone?.trim()) {
+        reqErrs.primaryPhone = 'Telefone obrigatório';
+      }
+      if (isPF && !v.birthDate) {
+        reqErrs.birthDate = 'Data de nascimento obrigatória';
+      }
+      if (Object.keys(reqErrs).length > 0) {
+        setFieldErrors(reqErrs);
+        setFormError('Preencha os campos obrigatórios destacados.');
+        return;
+      }
+    }
+
     setSubmitting(true);
 
     try {
@@ -248,13 +270,17 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
             <FieldError>{fieldErrors.lastName}</FieldError>
           </div>
           <div>
-            <Label htmlFor="birthDate">Data de nascimento</Label>
+            <Label htmlFor="birthDate" required={!isEdit}>
+              Data de nascimento
+            </Label>
             <Input
               id="birthDate"
               type="date"
               value={v.birthDate ?? ''}
               onChange={(e) => upd('birthDate', e.target.value || null)}
+              required={!isEdit}
             />
+            <FieldError>{fieldErrors.birthDate}</FieldError>
           </div>
           <div>
             <Label htmlFor="gender">Gênero</Label>
@@ -361,12 +387,15 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
             </Select>
           </div>
           <div>
-            <Label htmlFor="taxIdValue">Número</Label>
+            <Label htmlFor="taxIdValue" required={!isEdit}>
+              Número
+            </Label>
             <Input
               id="taxIdValue"
               value={v.taxIdValue ?? ''}
               onChange={(e) => upd('taxIdValue', autoFormatTaxId(v.taxIdType, e.target.value))}
               placeholder="Será validado pelo backend"
+              required={!isEdit}
             />
             <FieldHelp>
               O backend valida CPF/CNPJ (BR) e RUC (PY). Outros países aceitam valor livre.
@@ -393,12 +422,15 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
             <FieldError>{fieldErrors.primaryEmail}</FieldError>
           </div>
           <div>
-            <Label htmlFor="primaryPhone">Telefone</Label>
+            <Label htmlFor="primaryPhone" required={!isEdit}>
+              Telefone
+            </Label>
             <Input
               id="primaryPhone"
               value={v.primaryPhone ?? ''}
               onChange={(e) => upd('primaryPhone', e.target.value || null)}
               placeholder="+55 11 99999-8888"
+              required={!isEdit}
             />
             <FieldError>{fieldErrors.primaryPhone}</FieldError>
           </div>
