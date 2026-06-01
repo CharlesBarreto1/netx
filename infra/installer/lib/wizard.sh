@@ -126,15 +126,18 @@ wizard_apply_defaults() {
   touch "${NETX_ETC}/.secrets"
   chmod 600 "${NETX_ETC}/.secrets"
 
-  # 1) Email — usa env, ou recupera do .secrets, ou default
+  # 1) Email — usa env, ou recupera do .secrets, ou default.
+  # `|| true` evita disparar errexit quando .secrets está vazio (primeira run):
+  # grep sem match retorna 1, pipefail propaga, e `VAR=$(failing_pipeline)`
+  # mata o installer ANTES de aplicar o default. Já fui mordido por isso.
   if [[ -z "${NETX_ADMIN_EMAIL}" ]]; then
-    NETX_ADMIN_EMAIL=$(grep '^NETX_ADMIN_EMAIL=' "${NETX_ETC}/.secrets" 2>/dev/null | cut -d= -f2-)
+    NETX_ADMIN_EMAIL=$(grep '^NETX_ADMIN_EMAIL=' "${NETX_ETC}/.secrets" 2>/dev/null | cut -d= -f2- || true)
     [[ -z "${NETX_ADMIN_EMAIL}" ]] && NETX_ADMIN_EMAIL="admin@netx.local"
   fi
 
   # 2) Password — usa env, ou recupera do .secrets, ou gera novo
   if [[ -z "${NETX_ADMIN_PASSWORD}" ]]; then
-    NETX_ADMIN_PASSWORD=$(grep '^NETX_ADMIN_PASSWORD=' "${NETX_ETC}/.secrets" 2>/dev/null | cut -d= -f2-)
+    NETX_ADMIN_PASSWORD=$(grep '^NETX_ADMIN_PASSWORD=' "${NETX_ETC}/.secrets" 2>/dev/null | cut -d= -f2- || true)
     if [[ -z "${NETX_ADMIN_PASSWORD}" ]]; then
       NETX_ADMIN_PASSWORD="$(gen_secret 16)Aa1!"
       log_warn ""
