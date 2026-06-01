@@ -7,6 +7,7 @@
  * Empty state quando SIFEN não configurado → CTA leva a /settings/sifen.
  */
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -36,15 +37,17 @@ const STATUS_TONES: Record<SifenDocumentStatus, 'neutral' | 'success' | 'warning
   CANCELLED: 'neutral',
 };
 
-const TYPE_LABELS: Record<SifenDocumentType, string> = {
-  FACTURA: 'Factura',
-  NOTA_CREDITO: 'Nota de Crédito',
-  NOTA_DEBITO: 'Nota de Débito',
-  AUTOFACTURA: 'Autofactura',
-  NOTA_REMISION: 'Nota de Remisión',
+const TYPE_KEYS: Record<SifenDocumentType, string> = {
+  FACTURA: 'FACTURA',
+  NOTA_CREDITO: 'NOTA_CREDITO',
+  NOTA_DEBITO: 'NOTA_DEBITO',
+  AUTOFACTURA: 'AUTOFACTURA',
+  NOTA_REMISION: 'NOTA_REMISION',
 };
 
 export default function FiscalDocumentsPage() {
+  const t = useTranslations('fiscal.documents');
+  const tc = useTranslations('common');
   const canEmit = hasPermission('sifen.emit');
   const formatMoney = useFormatMoney();
 
@@ -79,15 +82,15 @@ export default function FiscalDocumentsPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Documentos Fiscais</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
           <p className="mt-1 text-sm text-text-muted">
-            DTEs SIFEN (Documentos Tributários Electrónicos) emitidos à SET — Paraguai.
+            {t('subtitle')}
           </p>
         </div>
         <div className="flex gap-2">
           {canEmit && (
             <Link href="/fiscal/documents/new">
-              <Button>Nova emissão</Button>
+              <Button>{t('newEmission')}</Button>
             </Link>
           )}
         </div>
@@ -99,29 +102,29 @@ export default function FiscalDocumentsPage() {
 
       {data.data.length === 0 ? (
         <div className="rounded-lg border border-border bg-surface p-10 text-center text-sm text-text-muted">
-          Nenhum documento encontrado com esses filtros.
+          {t('empty')}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full text-sm">
             <thead className="bg-surface-muted">
               <tr>
-                <th className="px-3 py-2 text-left font-medium">Número</th>
-                <th className="px-3 py-2 text-left font-medium">Tipo</th>
-                <th className="px-3 py-2 text-left font-medium">Receptor</th>
-                <th className="px-3 py-2 text-right font-medium">Total</th>
-                <th className="px-3 py-2 text-left font-medium">Status</th>
-                <th className="px-3 py-2 text-left font-medium">Emitido em</th>
-                <th className="px-3 py-2 text-right font-medium">Ações</th>
+                <th className="px-3 py-2 text-left font-medium">{t('col.number')}</th>
+                <th className="px-3 py-2 text-left font-medium">{tc('type')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('col.receiver')}</th>
+                <th className="px-3 py-2 text-right font-medium">{t('col.total')}</th>
+                <th className="px-3 py-2 text-left font-medium">{tc('status')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('col.issuedAt')}</th>
+                <th className="px-3 py-2 text-right font-medium">{tc('actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {data.data.map((d) => (
                 <tr key={d.id} className="hover:bg-surface-hover">
                   <td className="px-3 py-2 font-mono text-xs">{d.numeroDocumento}</td>
-                  <td className="px-3 py-2">{TYPE_LABELS[d.type] ?? d.type}</td>
+                  <td className="px-3 py-2">{TYPE_KEYS[d.type] ? t(`docType.${TYPE_KEYS[d.type]}`) : d.type}</td>
                   <td className="px-3 py-2">
-                    <div className="text-text">{d.receptorName ?? <em className="text-text-muted">Sem nome</em>}</div>
+                    <div className="text-text">{d.receptorName ?? <em className="text-text-muted">{t('noName')}</em>}</div>
                     {d.receptorTaxId && (
                       <div className="text-xs text-text-muted">{d.receptorTaxId}</div>
                     )}
@@ -142,7 +145,7 @@ export default function FiscalDocumentsPage() {
                   </td>
                   <td className="px-3 py-2 text-right">
                     <Link href={`/fiscal/documents/${d.id}`}>
-                      <Button size="sm" variant="ghost">Ver</Button>
+                      <Button size="sm" variant="ghost">{tc('seeDetails')}</Button>
                     </Link>
                   </td>
                 </tr>
@@ -155,8 +158,11 @@ export default function FiscalDocumentsPage() {
       {data.pagination && data.pagination.totalPages > 1 && (
         <div className="flex items-center justify-between text-sm text-text-muted">
           <span>
-            Página {data.pagination.page} de {data.pagination.totalPages} ·{' '}
-            {data.pagination.total} documento(s)
+            {t('pageStatus', {
+              page: data.pagination.page,
+              totalPages: data.pagination.totalPages,
+              total: data.pagination.total,
+            })}
           </span>
           <div className="flex gap-2">
             <Button
@@ -165,7 +171,7 @@ export default function FiscalDocumentsPage() {
               disabled={data.pagination.page <= 1}
               onClick={() => setParams((s) => ({ ...s, page: (s.page ?? 1) - 1 }))}
             >
-              Anterior
+              {tc('previous')}
             </Button>
             <Button
               size="sm"
@@ -173,7 +179,7 @@ export default function FiscalDocumentsPage() {
               disabled={data.pagination.page >= data.pagination.totalPages}
               onClick={() => setParams((s) => ({ ...s, page: (s.page ?? 1) + 1 }))}
             >
-              Próxima
+              {tc('next')}
             </Button>
           </div>
         </div>
@@ -183,14 +189,14 @@ export default function FiscalDocumentsPage() {
 }
 
 function NotConfiguredCta() {
+  const t = useTranslations('fiscal.documents');
   return (
     <div className="flex flex-col items-start gap-3 rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200 md:flex-row md:items-center md:justify-between">
       <div>
-        <strong>SIFEN não está configurado.</strong> Configure RUC, timbrado e
-        certificado .p12 para começar a emitir documentos eletrônicos.
+        <strong>{t('notConfigured.title')}</strong> {t('notConfigured.body')}
       </div>
       <Link href="/settings/sifen">
-        <Button>Configurar SIFEN</Button>
+        <Button>{t('notConfigured.cta')}</Button>
       </Link>
     </div>
   );
@@ -203,20 +209,22 @@ function Filters({
   params: ListSifenParams;
   update: <K extends keyof ListSifenParams>(k: K, v: ListSifenParams[K]) => void;
 }) {
+  const t = useTranslations('fiscal.documents');
+  const tc = useTranslations('common');
   return (
     <details className="rounded-lg border border-border bg-surface p-3">
       <summary className="cursor-pointer text-sm font-medium text-text">
-        Filtros
+        {tc('filter')}
       </summary>
       <div className="mt-3 grid gap-3 md:grid-cols-3 lg:grid-cols-4">
         <div>
-          <Label>Status</Label>
+          <Label>{tc('status')}</Label>
           <select
             value={params.status ?? ''}
             onChange={(e) => update('status', (e.target.value || undefined) as SifenDocumentStatus)}
             className="block w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
           >
-            <option value="">Todos</option>
+            <option value="">{tc('all')}</option>
             <option value="DRAFT">DRAFT</option>
             <option value="SIGNED">SIGNED</option>
             <option value="SENT">SENT</option>
@@ -226,31 +234,31 @@ function Filters({
           </select>
         </div>
         <div>
-          <Label>Tipo</Label>
+          <Label>{tc('type')}</Label>
           <select
             value={params.type ?? ''}
             onChange={(e) => update('type', (e.target.value || undefined) as SifenDocumentType)}
             className="block w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
           >
-            <option value="">Todos</option>
-            <option value="FACTURA">Factura</option>
-            <option value="NOTA_CREDITO">Nota de Crédito</option>
-            <option value="NOTA_DEBITO">Nota de Débito</option>
-            <option value="AUTOFACTURA">Autofactura</option>
-            <option value="NOTA_REMISION">Nota de Remisión</option>
+            <option value="">{tc('all')}</option>
+            <option value="FACTURA">{t('docType.FACTURA')}</option>
+            <option value="NOTA_CREDITO">{t('docType.NOTA_CREDITO')}</option>
+            <option value="NOTA_DEBITO">{t('docType.NOTA_DEBITO')}</option>
+            <option value="AUTOFACTURA">{t('docType.AUTOFACTURA')}</option>
+            <option value="NOTA_REMISION">{t('docType.NOTA_REMISION')}</option>
           </select>
         </div>
         <div>
-          <Label>CDC (busca exata)</Label>
+          <Label>{t('filter.cdc')}</Label>
           <Input
             value={params.cdc ?? ''}
             onChange={(e) => update('cdc', e.target.value || undefined)}
-            placeholder="44 dígitos"
+            placeholder={t('filter.cdcPlaceholder')}
             maxLength={44}
           />
         </div>
         <div>
-          <Label>Número fiscal</Label>
+          <Label>{t('filter.fiscalNumber')}</Label>
           <Input
             type="number"
             value={params.numero ?? ''}
@@ -258,7 +266,7 @@ function Filters({
           />
         </div>
         <div>
-          <Label>Emitido de</Label>
+          <Label>{t('filter.issuedFrom')}</Label>
           <Input
             type="date"
             value={params.issuedFrom ?? ''}
@@ -266,7 +274,7 @@ function Filters({
           />
         </div>
         <div>
-          <Label>Até</Label>
+          <Label>{t('filter.issuedTo')}</Label>
           <Input
             type="date"
             value={params.issuedTo ?? ''}

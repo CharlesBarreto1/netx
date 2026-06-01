@@ -35,6 +35,7 @@ import {
   Users,
   Wrench,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import {
   Suspense,
@@ -69,6 +70,8 @@ interface ApiCustomer {
 const HIGHLIGHT_LIMIT = 6;
 
 export function CommandPalette() {
+  const t = useTranslations('components.commandPalette');
+  const tc = useTranslations('common');
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -115,17 +118,17 @@ export function CommandPalette() {
       className="fixed inset-0 z-[100] flex items-start justify-center pt-[10vh]"
       role="dialog"
       aria-modal="true"
-      aria-label="Comando rápido"
+      aria-label={t('dialogLabel')}
     >
       <button
         type="button"
-        aria-label="Fechar"
+        aria-label={tc('close')}
         className="absolute inset-0 animate-fade-in bg-slate-900/40 backdrop-blur-sm"
         onClick={() => setOpen(false)}
       />
       <div className="relative z-10 w-full max-w-xl animate-fade-in-up overflow-hidden rounded-xl border border-border/80 bg-surface-elevated shadow-lg">
         <Command
-          label="Comando"
+          label={t('commandLabel')}
           shouldFilter={false /* fazemos filter manual + fetch */}
           className="flex flex-col"
         >
@@ -134,7 +137,7 @@ export function CommandPalette() {
             <Command.Input
               value={search}
               onValueChange={setSearch}
-              placeholder="Buscar clientes, contratos, faturas — ou digite um comando…"
+              placeholder={t('searchPlaceholder')}
               className="flex-1 bg-transparent py-3 text-sm text-text placeholder:text-text-subtle outline-hidden"
               autoFocus
             />
@@ -143,7 +146,7 @@ export function CommandPalette() {
 
           <Command.List className="max-h-[60vh] overflow-y-auto p-2">
             <Command.Empty className="px-3 py-6 text-center text-sm text-text-muted">
-              Sem resultados.
+              {tc('noResults')}
             </Command.Empty>
 
             {session && (
@@ -156,20 +159,20 @@ export function CommandPalette() {
               </Suspense>
             )}
 
-            <Group heading="Navegação">
-              <Item icon={LayoutDashboard} label="Dashboard" hint="g d" onSelect={() => go('/dashboard')} />
-              <Item icon={Users} label="Clientes" hint="g c" onSelect={() => go('/customers')} />
-              <Item icon={FileText} label="Contratos" hint="g k" onSelect={() => go('/contracts')} />
-              <Item icon={Receipt} label="Cobranças" onSelect={() => go('/finance/charges')} />
-              <Item icon={Wrench} label="Ordens de serviço" onSelect={() => go('/service-orders')} />
-              <Item icon={Building2} label="POPs" onSelect={() => go('/network/pops')} />
-              <Item icon={Settings} label="Configurações" onSelect={() => go('/settings/tenant')} />
+            <Group heading={t('groupNavigation')}>
+              <Item icon={LayoutDashboard} label={t('navDashboard')} hint="g d" onSelect={() => go('/dashboard')} />
+              <Item icon={Users} label={t('navCustomers')} hint="g c" onSelect={() => go('/customers')} />
+              <Item icon={FileText} label={t('navContracts')} hint="g k" onSelect={() => go('/contracts')} />
+              <Item icon={Receipt} label={t('navCharges')} onSelect={() => go('/finance/charges')} />
+              <Item icon={Wrench} label={t('navServiceOrders')} onSelect={() => go('/service-orders')} />
+              <Item icon={Building2} label={t('navPops')} onSelect={() => go('/network/pops')} />
+              <Item icon={Settings} label={t('navSettings')} onSelect={() => go('/settings/tenant')} />
             </Group>
 
-            <Group heading="Ações">
-              <Item icon={Plus} label="Novo cliente" onSelect={() => go('/customers/new')} />
-              <Item icon={Plus} label="Novo contrato" onSelect={() => go('/contracts/new')} />
-              <Item icon={User} label="Minha segurança" onSelect={() => go('/settings/security')} />
+            <Group heading={t('groupActions')}>
+              <Item icon={Plus} label={t('newCustomer')} onSelect={() => go('/customers/new')} />
+              <Item icon={Plus} label={t('newContract')} onSelect={() => go('/contracts/new')} />
+              <Item icon={User} label={t('mySecurity')} onSelect={() => go('/settings/security')} />
             </Group>
 
             <DensityGroup onClose={() => setOpen(false)} />
@@ -197,6 +200,7 @@ function ServerSearch({
   tenantId: string;
   onSelect: (href: string) => void;
 }) {
+  const t = useTranslations('components.commandPalette');
   const trimmed = query.trim();
   const key =
     trimmed.length >= 2
@@ -213,16 +217,16 @@ function ServerSearch({
     return data.data.map((c) => ({
       id: c.id,
       type: 'customer',
-      title: c.fullName ?? c.companyName ?? 'Sem nome',
+      title: c.fullName ?? c.companyName ?? t('noName'),
       subtitle: c.taxId,
       href: `/customers/${c.id}`,
     }));
-  }, [data, tenantId]);
+  }, [data, tenantId, t]);
 
   if (!key || results.length === 0) return null;
 
   return (
-    <Group heading="Clientes">
+    <Group heading={t('groupCustomers')}>
       {results.map((r) => (
         <Item
           key={r.id}
@@ -240,13 +244,14 @@ function ServerSearch({
 // ---------------------------------------------------------------------------
 
 function DensityGroup({ onClose }: { onClose: () => void }) {
+  const t = useTranslations('components.commandPalette');
   const { density, setDensity } = useDensity();
   return (
-    <Group heading="Densidade">
+    <Group heading={t('groupDensity')}>
       <Item
         icon={Rows4}
-        label="Compacto"
-        sub="Cabe mais informação na tela"
+        label={t('densityCompact')}
+        sub={t('densityCompactHint')}
         onSelect={() => {
           setDensity('compact');
           onClose();
@@ -255,8 +260,8 @@ function DensityGroup({ onClose }: { onClose: () => void }) {
       />
       <Item
         icon={Rows3}
-        label="Cozy"
-        sub="Equilíbrio (padrão)"
+        label={t('densityCozy')}
+        sub={t('densityCozyHint')}
         onSelect={() => {
           setDensity('cozy');
           onClose();
@@ -265,8 +270,8 @@ function DensityGroup({ onClose }: { onClose: () => void }) {
       />
       <Item
         icon={Rows2}
-        label="Confortável"
-        sub="Mais espaço, melhor pra leitura"
+        label={t('densityComfortable')}
+        sub={t('densityComfortableHint')}
         onSelect={() => {
           setDensity('comfortable');
           onClose();
@@ -278,6 +283,7 @@ function DensityGroup({ onClose }: { onClose: () => void }) {
 }
 
 function ThemeGroup({ onClose }: { onClose: () => void }) {
+  const t = useTranslations('components.commandPalette');
   const toggle = useCallback(
     (target: 'light' | 'dark') => {
       const html = document.documentElement;
@@ -293,9 +299,9 @@ function ThemeGroup({ onClose }: { onClose: () => void }) {
     [onClose],
   );
   return (
-    <Group heading="Aparência">
-      <Item icon={Sun} label="Tema claro" onSelect={() => toggle('light')} />
-      <Item icon={Moon} label="Tema escuro" onSelect={() => toggle('dark')} />
+    <Group heading={t('groupAppearance')}>
+      <Item icon={Sun} label={t('themeLight')} onSelect={() => toggle('light')} />
+      <Item icon={Moon} label={t('themeDark')} onSelect={() => toggle('dark')} />
     </Group>
   );
 }

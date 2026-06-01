@@ -10,6 +10,7 @@
  */
 import dynamic from 'next/dynamic';
 import { Plus, Pencil, Trash2, ImageIcon } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
 import useSWR from 'swr';
 
@@ -60,14 +61,16 @@ const LOSS_TONE: Record<
   bad: 'danger',
 };
 
-const LOSS_LABEL: Record<FiberSpliceLossClass, string> = {
-  unmeasured: 'Não medido',
-  good: 'OK',
-  warning: 'Atenção',
-  bad: 'Refazer',
+const LOSS_LABEL_KEY: Record<FiberSpliceLossClass, string> = {
+  unmeasured: 'lossUnmeasured',
+  good: 'lossGood',
+  warning: 'lossWarning',
+  bad: 'lossBad',
 };
 
 export default function FiberSplicesPage() {
+  const t = useTranslations('network.splices');
+  const tc = useTranslations('common');
   const canWrite = hasPermission('network.write');
   const canDelete = hasPermission('network.delete');
 
@@ -92,7 +95,7 @@ export default function FiberSplicesPage() {
   const [deleting, setDeleting] = useState<FiberSplice | null>(null);
   const [viewingPhoto, setViewingPhoto] = useState<FiberSplice | null>(null);
 
-  if (isLoading && !data) return <PageLoader label="Carregando fusões…" />;
+  if (isLoading && !data) return <PageLoader label={t('loadingSplices')} />;
 
   const rows = data?.data ?? [];
 
@@ -100,12 +103,8 @@ export default function FiberSplicesPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Fusões / emendas</h1>
-          <p className="text-sm text-text-muted">
-            Cada ponto onde fibra X do cabo A se conecta com fibra Y do cabo B.
-            Loss em dB classifica visualmente o estado (verde / amarelo /
-            vermelho).
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+          <p className="text-sm text-text-muted">{t('subtitle')}</p>
         </div>
         {canWrite && (
           <Button
@@ -113,25 +112,28 @@ export default function FiberSplicesPage() {
             disabled={cables.length < 1}
           >
             <Plus className="h-3.5 w-3.5" />
-            Nova fusão
+            {t('newSplice')}
           </Button>
         )}
       </header>
 
       {cables.length === 0 && (
         <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-          Cadastre <strong>cabos de fibra</strong> primeiro em{' '}
-          <a href="/network/fiber" className="underline">
-            Cabos de fibra
-          </a>{' '}
-          — fusões precisam de pelo menos 1 cabo.
+          {t.rich('noCablesWarning', {
+            strong: (chunks) => <strong>{chunks}</strong>,
+            link: (chunks) => (
+              <a href="/network/fiber" className="underline">
+                {chunks}
+              </a>
+            ),
+          })}
         </div>
       )}
 
       {/* Filtros */}
       <section className="grid grid-cols-1 gap-3 rounded-md border border-border bg-surface p-4 md:grid-cols-3">
         <div className="md:col-span-2">
-          <Label htmlFor="sp-cable">Cabo (filtrar fusões envolvendo)</Label>
+          <Label htmlFor="sp-cable">{t('filterCableLabel')}</Label>
           <Select
             id="sp-cable"
             value={cableFilter}
@@ -140,10 +142,10 @@ export default function FiberSplicesPage() {
               setPage(1);
             }}
           >
-            <option value="">Todos os cabos</option>
+            <option value="">{t('allCables')}</option>
             {cables.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.code} ({c.type} · {c.fiberCount} fibras)
+                {c.code} ({c.type} · {t('fibersCount', { count: c.fiberCount })})
               </option>
             ))}
           </Select>
@@ -157,7 +159,7 @@ export default function FiberSplicesPage() {
               setPage(1);
             }}
           >
-            Limpar
+            {tc('clear')}
           </Button>
         </div>
       </section>
@@ -167,21 +169,21 @@ export default function FiberSplicesPage() {
         <table className="min-w-full text-sm">
           <thead className="bg-surface-muted text-left text-[11px] font-semibold uppercase tracking-wider text-text-muted">
             <tr>
-              <th className="px-3 py-2">Cabo A · Fibra</th>
+              <th className="px-3 py-2">{t('colCableAFiber')}</th>
               <th className="px-3 py-2">↔</th>
-              <th className="px-3 py-2">Cabo B · Fibra</th>
-              <th className="px-3 py-2">Loss</th>
-              <th className="px-3 py-2">Estado</th>
-              <th className="px-3 py-2">Medido</th>
-              <th className="px-3 py-2">Foto</th>
-              <th className="px-3 py-2 text-right">Ações</th>
+              <th className="px-3 py-2">{t('colCableBFiber')}</th>
+              <th className="px-3 py-2">{t('colLoss')}</th>
+              <th className="px-3 py-2">{t('colState')}</th>
+              <th className="px-3 py-2">{t('colMeasured')}</th>
+              <th className="px-3 py-2">{t('colPhoto')}</th>
+              <th className="px-3 py-2 text-right">{tc('actions')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-3 py-6 text-center text-text-muted">
-                  Nenhuma fusão cadastrada com os filtros atuais.
+                  {t('empty')}
                 </td>
               </tr>
             ) : (
@@ -209,7 +211,7 @@ export default function FiberSplicesPage() {
                   </td>
                   <td className="px-3 py-2">
                     <Badge tone={LOSS_TONE[s.lossClass]}>
-                      {LOSS_LABEL[s.lossClass]}
+                      {t(LOSS_LABEL_KEY[s.lossClass])}
                     </Badge>
                   </td>
                   <td className="px-3 py-2 text-xs text-text-muted">
@@ -230,7 +232,7 @@ export default function FiberSplicesPage() {
                     {s.photoUrl ? (
                       <button
                         onClick={() => setViewingPhoto(s)}
-                        title="Ver foto"
+                        title={t('viewPhoto')}
                         className="text-brand-600 hover:text-brand-700"
                       >
                         <ImageIcon className="h-4 w-4" />
@@ -244,7 +246,7 @@ export default function FiberSplicesPage() {
                       {canWrite && (
                         <button
                           onClick={() => setEditing(s)}
-                          title="Editar"
+                          title={tc('edit')}
                           className="p-1 text-text-muted hover:text-text"
                         >
                           <Pencil className="h-4 w-4" />
@@ -253,7 +255,7 @@ export default function FiberSplicesPage() {
                       {canDelete && (
                         <button
                           onClick={() => setDeleting(s)}
-                          title="Excluir"
+                          title={tc('delete')}
                           className="p-1 text-text-muted hover:text-red-600"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -271,7 +273,8 @@ export default function FiberSplicesPage() {
       {data && data.pagination.totalPages > 1 && (
         <div className="flex items-center justify-between text-xs text-text-muted">
           <span>
-            Página {data.pagination.page} de {data.pagination.totalPages}
+            {tc('page')} {data.pagination.page} {tc('of')}{' '}
+            {data.pagination.totalPages}
           </span>
           <div className="flex gap-2">
             <Button
@@ -280,7 +283,7 @@ export default function FiberSplicesPage() {
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
-              Anterior
+              {tc('previous')}
             </Button>
             <Button
               variant="outline"
@@ -288,7 +291,7 @@ export default function FiberSplicesPage() {
               disabled={page >= data.pagination.totalPages}
               onClick={() => setPage((p) => p + 1)}
             >
-              Próxima
+              {tc('next')}
             </Button>
           </div>
         </div>
@@ -313,18 +316,18 @@ export default function FiberSplicesPage() {
           onConfirm={async () => {
             try {
               await fiberSplicesApi.remove(deleting.id);
-              toast.success('Fusão excluída');
+              toast.success(t('toastDeleted'));
               await mutate();
               setDeleting(null);
             } catch (err) {
               toast.error(
-                err instanceof ApiError ? err.friendlyMessage : 'Erro',
+                err instanceof ApiError ? err.friendlyMessage : tc('error'),
               );
             }
           }}
-          title="Excluir fusão?"
-          message="Histórico do audit log fica preservado."
-          confirmLabel="Excluir"
+          title={t('deleteConfirmTitle')}
+          message={t('deleteConfirmMessage')}
+          confirmLabel={tc('delete')}
           variant="danger"
         />
       )}
@@ -333,12 +336,17 @@ export default function FiberSplicesPage() {
         <Modal
           open
           onClose={() => setViewingPhoto(null)}
-          title={`Foto — ${viewingPhoto.cableA.code} f${viewingPhoto.fiberAIndex} ↔ ${viewingPhoto.cableB.code} f${viewingPhoto.fiberBIndex}`}
+          title={t('photoModalTitle', {
+            cableA: viewingPhoto.cableA.code,
+            fiberA: viewingPhoto.fiberAIndex,
+            cableB: viewingPhoto.cableB.code,
+            fiberB: viewingPhoto.fiberBIndex,
+          })}
           size="lg"
         >
           <img
             src={viewingPhoto.photoUrl}
-            alt="Foto da fusão"
+            alt={t('photoAlt')}
             className="w-full rounded-md"
           />
         </Modal>
@@ -361,6 +369,8 @@ function SpliceFormDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('network.splices');
+  const tc = useTranslations('common');
   const isNew = !initial;
   const [cableAId, setCableAId] = useState(initial?.cableAId ?? cables[0]?.id ?? '');
   const [fiberAIndex, setFiberAIndex] = useState(initial?.fiberAIndex ?? 1);
@@ -400,11 +410,11 @@ function SpliceFormDialog({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!cableAId || !cableBId)
-      return setError('Escolha cabo A e cabo B');
+      return setError(t('errChooseCables'));
     if (!location)
-      return setError('Marque a localização da fusão no mapa');
+      return setError(t('errMarkLocation'));
     if (cableAId === cableBId && fiberAIndex === fiberBIndex)
-      return setError('Fibra não pode ser fundida com ela mesma');
+      return setError(t('errSameFiber'));
     setSubmitting(true);
     try {
       const payload: CreateFiberSpliceInput = {
@@ -424,10 +434,10 @@ function SpliceFormDialog({
       } else {
         await fiberSplicesApi.update(initial!.id, payload);
       }
-      toast.success(isNew ? 'Fusão registrada' : 'Fusão atualizada');
+      toast.success(isNew ? t('toastCreated') : t('toastUpdated'));
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      setError(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setSubmitting(false);
     }
@@ -437,15 +447,15 @@ function SpliceFormDialog({
     <Modal
       open
       onClose={onClose}
-      title={isNew ? 'Nova fusão' : 'Editar fusão'}
+      title={isNew ? t('newSplice') : t('editSplice')}
       size="lg"
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button onClick={handleSubmit} loading={submitting}>
-            Salvar
+            {tc('save')}
           </Button>
         </>
       }
@@ -455,11 +465,11 @@ function SpliceFormDialog({
           {/* Lado A */}
           <div className="space-y-2 rounded-md border border-border bg-surface-muted p-3">
             <div className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-              Cabo A
+              {t('cableA')}
             </div>
             <div>
               <Label htmlFor="sp-cable-a" required>
-                Cabo
+                {t('cable')}
               </Label>
               <Select
                 id="sp-cable-a"
@@ -469,7 +479,7 @@ function SpliceFormDialog({
                 <option value="">—</option>
                 {cables.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.code} ({c.fiberCount}f)
+                    {c.code} ({t('fiberCountShort', { count: c.fiberCount })})
                   </option>
                 ))}
               </Select>
@@ -477,7 +487,7 @@ function SpliceFormDialog({
             {cableA && (
               <div>
                 <Label htmlFor="sp-fiber-a" required>
-                  Fibra
+                  {t('fiber')}
                 </Label>
                 <FiberPicker
                   id="sp-fiber-a"
@@ -492,11 +502,11 @@ function SpliceFormDialog({
           {/* Lado B */}
           <div className="space-y-2 rounded-md border border-border bg-surface-muted p-3">
             <div className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-              Cabo B
+              {t('cableB')}
             </div>
             <div>
               <Label htmlFor="sp-cable-b" required>
-                Cabo
+                {t('cable')}
               </Label>
               <Select
                 id="sp-cable-b"
@@ -506,7 +516,7 @@ function SpliceFormDialog({
                 <option value="">—</option>
                 {cables.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.code} ({c.fiberCount}f)
+                    {c.code} ({t('fiberCountShort', { count: c.fiberCount })})
                   </option>
                 ))}
               </Select>
@@ -514,7 +524,7 @@ function SpliceFormDialog({
             {cableB && (
               <div>
                 <Label htmlFor="sp-fiber-b" required>
-                  Fibra
+                  {t('fiber')}
                 </Label>
                 <FiberPicker
                   id="sp-fiber-b"
@@ -528,10 +538,8 @@ function SpliceFormDialog({
         </div>
 
         <div>
-          <Label required>Localização da fusão</Label>
-          <FieldHelp>
-            Ponto físico onde foi feita a emenda (caixa de emenda, poste, etc).
-          </FieldHelp>
+          <Label required>{t('locationLabel')}</Label>
+          <FieldHelp>{t('locationHelp')}</FieldHelp>
           <LocationPicker value={location} onChange={setLocation} />
         </div>
 
@@ -542,7 +550,7 @@ function SpliceFormDialog({
               checked={lossMeasured}
               onChange={(e) => setLossMeasured(e.target.checked)}
             />
-            Loss medido (OTDR / fusora)
+            {t('lossMeasuredLabel')}
           </label>
           {lossMeasured && (
             <div className="mt-2 flex items-center gap-2">
@@ -556,15 +564,13 @@ function SpliceFormDialog({
                 className="max-w-[140px]"
               />
               <span className="text-xs text-text-muted">dB</span>
-              <FieldHelp>
-                Padrão ITU-T ~0.1 dB. &gt; 0.2 dB = atenção. &gt; 0.5 dB = refazer.
-              </FieldHelp>
+              <FieldHelp>{t('lossHelp')}</FieldHelp>
             </div>
           )}
         </div>
 
         <div>
-          <Label htmlFor="sp-photo">Foto (URL)</Label>
+          <Label htmlFor="sp-photo">{t('photoUrlLabel')}</Label>
           <Input
             id="sp-photo"
             type="url"
@@ -572,19 +578,16 @@ function SpliceFormDialog({
             onChange={(e) => setPhotoUrl(e.target.value)}
             placeholder="https://…"
           />
-          <FieldHelp>
-            Upload integrado via MinIO chega numa iteração separada
-            (StorageModule). Por agora, hospede em qualquer storage e cole a URL.
-          </FieldHelp>
+          <FieldHelp>{t('photoUrlHelp')}</FieldHelp>
         </div>
 
         <div>
-          <Label>Observações</Label>
+          <Label>{tc('notes')}</Label>
           <Textarea
             rows={2}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder='Ex.: "tubo verde, sem reparo prévio"'
+            placeholder={t('notesPlaceholder')}
           />
         </div>
 

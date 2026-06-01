@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -24,33 +25,35 @@ import {
 
 const KINDS: MaintenanceKind[] = ['OIL_CHANGE', 'REVISION', 'TIRES', 'BRAKES', 'FILTERS', 'ALIGNMENT', 'OTHER'];
 
-const DUE_BADGE: Record<MaintenanceDueStatus, { cls: string; label: string }> = {
-  OVERDUE: { cls: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300', label: 'Vencida' },
-  DUE_SOON: { cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300', label: 'Próxima' },
-  OK: { cls: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300', label: 'Em dia' },
-  UNKNOWN: { cls: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300', label: '—' },
+const DUE_BADGE: Record<MaintenanceDueStatus, { cls: string; labelKey: string }> = {
+  OVERDUE: { cls: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300', labelKey: 'dueStatus.overdue' },
+  DUE_SOON: { cls: 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300', labelKey: 'dueStatus.dueSoon' },
+  OK: { cls: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300', labelKey: 'dueStatus.ok' },
+  UNKNOWN: { cls: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300', labelKey: 'dueStatus.unknown' },
 };
 
-function dueDetail(p: MaintenancePlan): string {
+function dueDetail(p: MaintenancePlan, t: ReturnType<typeof useTranslations>): string {
   const parts: string[] = [];
   if (p.nextDueOdometer != null) {
     parts.push(
       p.kmRemaining != null && p.kmRemaining <= 0
-        ? `${Math.abs(p.kmRemaining).toLocaleString('pt-BR')} km vencidos`
-        : `faltam ${(p.kmRemaining ?? 0).toLocaleString('pt-BR')} km`,
+        ? t('kmOverdue', { km: Math.abs(p.kmRemaining).toLocaleString('pt-BR') })
+        : t('kmRemaining', { km: (p.kmRemaining ?? 0).toLocaleString('pt-BR') }),
     );
   }
   if (p.nextDueDate != null) {
     parts.push(
       p.daysRemaining != null && p.daysRemaining <= 0
-        ? `${Math.abs(p.daysRemaining)} dia(s) vencido`
-        : `em ${p.daysRemaining} dia(s)`,
+        ? t('daysOverdue', { days: Math.abs(p.daysRemaining) })
+        : t('daysRemaining', { days: p.daysRemaining ?? 0 }),
     );
   }
   return parts.join(' · ') || '—';
 }
 
 export default function FleetMaintenancePage() {
+  const t = useTranslations('fleet.maintenance');
+  const tc = useTranslations('common');
   const [dueOnly, setDueOnly] = useState(false);
   const plansKey = fleetApi.plansPath({ dueOnly: dueOnly || undefined, pageSize: 200 });
   const { data: plans, isLoading, error, mutate } = useSWR<Paginated<MaintenancePlan>>(
@@ -90,35 +93,34 @@ export default function FleetMaintenancePage() {
     <div className="space-y-6">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Manutenções</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Planos preventivos por km e/ou tempo. Os alertas mostram o que está vencido ou perto
-            de vencer (ex.: troca de óleo, revisão).
+            {t('subtitle')}
           </p>
         </div>
         {canManage && (
           <div className="flex gap-2">
-            <Button variant="ghost" onClick={() => setRecordFor('new')}>Registrar manutenção</Button>
-            <Button onClick={() => setPlanModal('new')}>Novo plano</Button>
+            <Button variant="ghost" onClick={() => setRecordFor('new')}>{t('registerMaintenance')}</Button>
+            <Button onClick={() => setPlanModal('new')}>{t('newPlan')}</Button>
           </div>
         )}
       </header>
 
       <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
         <input type="checkbox" checked={dueOnly} onChange={(e) => setDueOnly(e.target.checked)} />
-        Mostrar só alertas (vencidas / próximas)
+        {t('dueOnlyFilter')}
       </label>
 
       {isLoading && <PageLoader />}
       {error && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-          Falha ao carregar planos.
+          {t('loadFailure')}
         </div>
       )}
 
       {plans && planRows.length === 0 && (
         <p className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
-          {dueOnly ? 'Nenhum alerta no momento.' : 'Nenhum plano de manutenção cadastrado.'}
+          {dueOnly ? t('emptyAlerts') : t('emptyPlans')}
         </p>
       )}
 
@@ -128,12 +130,12 @@ export default function FleetMaintenancePage() {
             <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
               <thead className="bg-slate-50 dark:bg-slate-900/40">
                 <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  <th className="px-4 py-3">Veículo</th>
-                  <th className="px-4 py-3">Item</th>
-                  <th className="px-4 py-3">Intervalo</th>
-                  <th className="px-4 py-3">Próximo</th>
-                  <th className="px-4 py-3">Situação</th>
-                  {canManage && <th className="px-4 py-3 text-right">Ações</th>}
+                  <th className="px-4 py-3">{t('col.vehicle')}</th>
+                  <th className="px-4 py-3">{t('col.item')}</th>
+                  <th className="px-4 py-3">{t('col.interval')}</th>
+                  <th className="px-4 py-3">{t('col.next')}</th>
+                  <th className="px-4 py-3">{t('col.situation')}</th>
+                  {canManage && <th className="px-4 py-3 text-right">{tc('actions')}</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -158,16 +160,16 @@ export default function FleetMaintenancePage() {
                           p.nextDueOdometer != null ? `${p.nextDueOdometer.toLocaleString('pt-BR')} km` : null,
                           p.nextDueDate ? new Date(p.nextDueDate).toLocaleDateString('pt-BR') : null,
                         ].filter(Boolean).join(' · ') || '—'}
-                        <span className="block text-xs text-slate-400">{dueDetail(p)}</span>
+                        <span className="block text-xs text-slate-400">{dueDetail(p, t)}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs ${badge.cls}`}>{badge.label}</span>
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs ${badge.cls}`}>{t(badge.labelKey)}</span>
                       </td>
                       {canManage && (
                         <td className="px-4 py-3 text-right whitespace-nowrap">
-                          <Button variant="ghost" size="sm" onClick={() => setRecordFor(p)}>Registrar</Button>
-                          <Button variant="ghost" size="sm" onClick={() => setPlanModal(p)}>Editar</Button>
-                          <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(p)}>Excluir</Button>
+                          <Button variant="ghost" size="sm" onClick={() => setRecordFor(p)}>{t('register')}</Button>
+                          <Button variant="ghost" size="sm" onClick={() => setPlanModal(p)}>{tc('edit')}</Button>
+                          <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(p)}>{tc('delete')}</Button>
                         </td>
                       )}
                     </tr>
@@ -181,17 +183,17 @@ export default function FleetMaintenancePage() {
 
       {recordRows.length > 0 && (
         <section>
-          <h2 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">Manutenções realizadas</h2>
+          <h2 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">{t('doneTitle')}</h2>
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
                 <thead className="bg-slate-50 dark:bg-slate-900/40">
                   <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    <th className="px-4 py-3">Data</th>
-                    <th className="px-4 py-3">Veículo</th>
-                    <th className="px-4 py-3">Item</th>
-                    <th className="px-4 py-3">Odômetro</th>
-                    <th className="px-4 py-3">Oficina</th>
+                    <th className="px-4 py-3">{t('col.date')}</th>
+                    <th className="px-4 py-3">{t('col.vehicle')}</th>
+                    <th className="px-4 py-3">{t('col.item')}</th>
+                    <th className="px-4 py-3">{t('col.odometer')}</th>
+                    <th className="px-4 py-3">{t('col.workshop')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -236,9 +238,9 @@ export default function FleetMaintenancePage() {
       {confirmDelete && (
         <ConfirmDialog
           open
-          title="Excluir plano de manutenção?"
-          message="O plano deixa de gerar alertas. As manutenções já registradas ficam preservadas."
-          confirmLabel="Excluir"
+          title={t('deleteTitle')}
+          message={t('deleteMessage')}
+          confirmLabel={tc('delete')}
           loading={deleting}
           onConfirm={() => handleDelete(confirmDelete)}
           onClose={() => setConfirmDelete(null)}
@@ -257,6 +259,8 @@ function PlanFormModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('fleet.maintenance');
+  const tc = useTranslations('common');
   const isNew = !initial;
   const { data: vehicles } = useSWR<Paginated<Vehicle>>(fleetApi.vehiclesPath({ pageSize: 200 }), swrFetcher);
   const [form, setForm] = useState({
@@ -274,8 +278,8 @@ function PlanFormModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (isNew && !form.vehicleId) return setError('Selecione o veículo');
-    if (!form.intervalKm && !form.intervalDays) return setError('Informe um intervalo (km e/ou dias)');
+    if (isNew && !form.vehicleId) return setError(t('errSelectVehicle'));
+    if (!form.intervalKm && !form.intervalDays) return setError(t('errInterval'));
     setSubmitting(true);
     try {
       if (isNew) {
@@ -303,18 +307,18 @@ function PlanFormModal({
       }
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro ao salvar');
+      setError(err instanceof ApiError ? err.friendlyMessage : t('errSave'));
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Modal open onClose={onClose} title={isNew ? 'Novo plano de manutenção' : 'Editar plano'}>
+    <Modal open onClose={onClose} title={isNew ? t('planModalNewTitle') : t('planModalEditTitle')}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <Label htmlFor="vehicle">Veículo *</Label>
+            <Label htmlFor="vehicle">{t('field.vehicleRequired')}</Label>
             <select
               id="vehicle"
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900"
@@ -323,14 +327,14 @@ function PlanFormModal({
               disabled={!isNew}
               required={isNew}
             >
-              <option value="">Selecione…</option>
+              <option value="">{t('selectPlaceholder')}</option>
               {(vehicles?.data ?? []).map((v) => (
                 <option key={v.id} value={v.id}>{v.plate} {[v.brand, v.model].filter(Boolean).join(' ')}</option>
               ))}
             </select>
           </div>
           <div>
-            <Label htmlFor="kind">Item</Label>
+            <Label htmlFor="kind">{t('field.item')}</Label>
             <select
               id="kind"
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
@@ -346,41 +350,41 @@ function PlanFormModal({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <Label htmlFor="ikm">Intervalo (km)</Label>
-            <Input id="ikm" type="number" value={form.intervalKm} onChange={(e) => setForm({ ...form, intervalKm: e.target.value })} placeholder="ex. 10000" />
+            <Label htmlFor="ikm">{t('field.intervalKm')}</Label>
+            <Input id="ikm" type="number" value={form.intervalKm} onChange={(e) => setForm({ ...form, intervalKm: e.target.value })} placeholder={t('ph.intervalKm')} />
           </div>
           <div>
-            <Label htmlFor="idays">Intervalo (dias)</Label>
-            <Input id="idays" type="number" value={form.intervalDays} onChange={(e) => setForm({ ...form, intervalDays: e.target.value })} placeholder="ex. 180" />
+            <Label htmlFor="idays">{t('field.intervalDays')}</Label>
+            <Input id="idays" type="number" value={form.intervalDays} onChange={(e) => setForm({ ...form, intervalDays: e.target.value })} placeholder={t('ph.intervalDays')} />
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <Label htmlFor="lso">Último serviço (km)</Label>
-            <Input id="lso" type="number" value={form.lastServiceOdometer} onChange={(e) => setForm({ ...form, lastServiceOdometer: e.target.value })} placeholder="usa odômetro atual se vazio" />
+            <Label htmlFor="lso">{t('field.lastServiceKm')}</Label>
+            <Input id="lso" type="number" value={form.lastServiceOdometer} onChange={(e) => setForm({ ...form, lastServiceOdometer: e.target.value })} placeholder={t('ph.lastServiceKm')} />
           </div>
           <div>
-            <Label htmlFor="lsd">Último serviço (data)</Label>
+            <Label htmlFor="lsd">{t('field.lastServiceDate')}</Label>
             <Input id="lsd" type="date" value={form.lastServiceDate ?? ''} onChange={(e) => setForm({ ...form, lastServiceDate: e.target.value })} />
           </div>
         </div>
 
         <div>
-          <Label htmlFor="desc">Descrição</Label>
+          <Label htmlFor="desc">{tc('description')}</Label>
           <Textarea id="desc" rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
         </div>
 
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={form.active} onChange={(e) => setForm({ ...form, active: e.target.checked })} />
-          Ativo
+          {t('field.active')}
         </label>
 
         {error && <FieldError>{error}</FieldError>}
 
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>Cancelar</Button>
-          <Button type="submit" loading={submitting}>{isNew ? 'Criar' : 'Salvar'}</Button>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>{tc('cancel')}</Button>
+          <Button type="submit" loading={submitting}>{isNew ? tc('create') : tc('save')}</Button>
         </div>
       </form>
     </Modal>
@@ -396,6 +400,8 @@ function RecordFormModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('fleet.maintenance');
+  const tc = useTranslations('common');
   const { data: vehicles } = useSWR<Paginated<Vehicle>>(fleetApi.vehiclesPath({ pageSize: 200 }), swrFetcher);
   const [form, setForm] = useState({
     vehicleId: plan?.vehicleId ?? '',
@@ -411,7 +417,7 @@ function RecordFormModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.vehicleId) return setError('Selecione o veículo');
+    if (!form.vehicleId) return setError(t('errSelectVehicle'));
     setSubmitting(true);
     try {
       const payload: CreateMaintenanceRecordInput = {
@@ -427,18 +433,18 @@ function RecordFormModal({
       await fleetApi.createRecord(payload);
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro ao salvar');
+      setError(err instanceof ApiError ? err.friendlyMessage : t('errSave'));
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Modal open onClose={onClose} title={plan ? `Registrar: ${MAINTENANCE_KIND_LABELS[plan.kind]}` : 'Registrar manutenção'}>
+    <Modal open onClose={onClose} title={plan ? t('recordModalTitleFor', { item: MAINTENANCE_KIND_LABELS[plan.kind] }) : t('registerMaintenance')}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <Label htmlFor="rv">Veículo *</Label>
+            <Label htmlFor="rv">{t('field.vehicleRequired')}</Label>
             <select
               id="rv"
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm disabled:opacity-60 dark:border-slate-600 dark:bg-slate-900"
@@ -447,14 +453,14 @@ function RecordFormModal({
               disabled={!!plan}
               required
             >
-              <option value="">Selecione…</option>
+              <option value="">{t('selectPlaceholder')}</option>
               {(vehicles?.data ?? []).map((v) => (
                 <option key={v.id} value={v.id}>{v.plate} {[v.brand, v.model].filter(Boolean).join(' ')}</option>
               ))}
             </select>
           </div>
           <div>
-            <Label htmlFor="rk">Item</Label>
+            <Label htmlFor="rk">{t('field.item')}</Label>
             <select
               id="rk"
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
@@ -470,37 +476,37 @@ function RecordFormModal({
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <Label htmlFor="rd">Data</Label>
+            <Label htmlFor="rd">{t('field.date')}</Label>
             <Input id="rd" type="date" value={form.performedAt} onChange={(e) => setForm({ ...form, performedAt: e.target.value })} />
           </div>
           <div>
-            <Label htmlFor="ro">Odômetro (km)</Label>
+            <Label htmlFor="ro">{t('field.odometerKm')}</Label>
             <Input id="ro" type="number" value={form.odometer} onChange={(e) => setForm({ ...form, odometer: e.target.value })} />
           </div>
           <div>
-            <Label htmlFor="rc">Custo</Label>
+            <Label htmlFor="rc">{t('field.cost')}</Label>
             <Input id="rc" type="number" step="0.01" value={form.cost} onChange={(e) => setForm({ ...form, cost: e.target.value })} />
           </div>
         </div>
 
         <div>
-          <Label htmlFor="rw">Oficina</Label>
+          <Label htmlFor="rw">{t('field.workshop')}</Label>
           <Input id="rw" value={form.workshop} onChange={(e) => setForm({ ...form, workshop: e.target.value })} />
         </div>
         <div>
-          <Label htmlFor="rdesc">Descrição</Label>
+          <Label htmlFor="rdesc">{tc('description')}</Label>
           <Textarea id="rdesc" rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
         </div>
 
         <p className="text-xs text-slate-400">
-          Custo aqui é informativo. Pra lançar a saída no caixa, registre também em Despesas (tipo Reparo).
+          {t('costHint')}
         </p>
 
         {error && <FieldError>{error}</FieldError>}
 
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>Cancelar</Button>
-          <Button type="submit" loading={submitting}>Registrar</Button>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>{tc('cancel')}</Button>
+          <Button type="submit" loading={submitting}>{t('register')}</Button>
         </div>
       </form>
     </Modal>

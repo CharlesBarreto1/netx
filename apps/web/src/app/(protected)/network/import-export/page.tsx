@@ -13,6 +13,7 @@
  * Export: 1 clique, download direto. Abre em Google Earth/QGIS.
  */
 import { Download, Upload } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 
 import { Badge } from '@/components/ui/Badge';
@@ -30,6 +31,7 @@ import type { OpticalEnclosureType } from '@/lib/optical-api';
 import { hasPermission } from '@/lib/session';
 
 export default function KmlImportExportPage() {
+  const t = useTranslations('network.importExport');
   const canWrite = hasPermission('network.write');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -54,10 +56,10 @@ export default function KmlImportExportPage() {
       const data = await kmlApi.preview(file);
       setPreview(data);
       if (data.warnings.length > 0) {
-        toast.warning(`Preview com ${data.warnings.length} aviso(s)`);
+        toast.warning(t('toastPreviewWarnings', { count: data.warnings.length }));
       }
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao parsear');
+      toast.error(err instanceof Error ? err.message : t('errorParse'));
     } finally {
       setParsing(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -81,15 +83,21 @@ export default function KmlImportExportPage() {
       setPreview(null);
       if (r.errors.length > 0) {
         toast.warning(
-          `Importou ${r.enclosuresCreated + r.cablesCreated} itens com ${r.errors.length} erro(s)`,
+          t('toastImportedWithErrors', {
+            items: r.enclosuresCreated + r.cablesCreated,
+            errors: r.errors.length,
+          }),
         );
       } else {
         toast.success(
-          `Importou ${r.enclosuresCreated} caixas + ${r.cablesCreated} cabos`,
+          t('toastImportedSuccess', {
+            enclosures: r.enclosuresCreated,
+            cables: r.cablesCreated,
+          }),
         );
       }
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      toast.error(err instanceof ApiError ? err.friendlyMessage : t('errorImport'));
     } finally {
       setImporting(false);
     }
@@ -98,11 +106,8 @@ export default function KmlImportExportPage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="text-2xl font-bold tracking-tight">Importar / exportar</h1>
-        <p className="text-sm text-text-muted">
-          Importe planta desenhada no Google Earth / QGIS (.kml ou .kmz) ou
-          exporte tudo do NetX pra abrir lá. Ida e volta sem retrabalho.
-        </p>
+        <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+        <p className="text-sm text-text-muted">{t('subtitle')}</p>
       </header>
 
       <div className="grid gap-5 md:grid-cols-2">
@@ -110,17 +115,14 @@ export default function KmlImportExportPage() {
         <section className="space-y-3 rounded-md border border-border bg-surface p-5">
           <h2 className="flex items-center gap-2 text-sm font-semibold">
             <Upload className="h-4 w-4" />
-            Importar planta
+            {t('importTitle')}
           </h2>
-          <p className="text-xs text-text-muted">
-            Pontos viram caixas, linhas viram cabos. Defaults aplicam a todos
-            — você ajusta caso-a-caso depois.
-          </p>
+          <p className="text-xs text-text-muted">{t('importDescription')}</p>
 
           {/* Form de defaults */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label htmlFor="imp-encl-type">Tipo de caixa</Label>
+              <Label htmlFor="imp-encl-type">{t('enclosureType')}</Label>
               <Select
                 id="imp-encl-type"
                 value={enclosureType}
@@ -132,11 +134,11 @@ export default function KmlImportExportPage() {
                 <option value="CTO">CTO</option>
                 <option value="NAP">NAP</option>
                 <option value="SPLITTER">Splitter</option>
-                <option value="EMENDA">Emenda</option>
+                <option value="EMENDA">{t('enclosureTypeSplice')}</option>
               </Select>
             </div>
             <div>
-              <Label htmlFor="imp-encl-cap">Capacidade</Label>
+              <Label htmlFor="imp-encl-cap">{t('capacity')}</Label>
               <Select
                 id="imp-encl-cap"
                 value={String(enclosureCapacity)}
@@ -145,13 +147,13 @@ export default function KmlImportExportPage() {
               >
                 {[8, 16, 32, 64].map((n) => (
                   <option key={n} value={n}>
-                    {n} portas
+                    {t('ports', { count: n })}
                   </option>
                 ))}
               </Select>
             </div>
             <div>
-              <Label htmlFor="imp-cab-type">Tipo de cabo</Label>
+              <Label htmlFor="imp-cab-type">{t('cableType')}</Label>
               <Select
                 id="imp-cab-type"
                 value={cableType}
@@ -161,12 +163,12 @@ export default function KmlImportExportPage() {
                 disabled={!canWrite}
               >
                 <option value="BACKBONE">Backbone</option>
-                <option value="DISTRIBUTION">Distribuição</option>
+                <option value="DISTRIBUTION">{t('cableTypeDistribution')}</option>
                 <option value="DROP">Drop</option>
               </Select>
             </div>
             <div>
-              <Label htmlFor="imp-cab-fiber">Fibras</Label>
+              <Label htmlFor="imp-cab-fiber">{t('fibers')}</Label>
               <Select
                 id="imp-cab-fiber"
                 value={String(cableFiberCount)}
@@ -175,7 +177,7 @@ export default function KmlImportExportPage() {
               >
                 {[2, 6, 12, 24, 48, 96, 144, 288].map((n) => (
                   <option key={n} value={n}>
-                    {n} fibras
+                    {t('fibersCount', { count: n })}
                   </option>
                 ))}
               </Select>
@@ -191,24 +193,26 @@ export default function KmlImportExportPage() {
               disabled={!canWrite || parsing}
               className="block w-full text-sm text-text-muted file:mr-3 file:rounded-md file:border-0 file:bg-brand-500 file:px-3 file:py-1.5 file:text-white hover:file:bg-brand-600 file:cursor-pointer file:font-medium"
             />
-            <FieldHelp>
-              Máximo 20 MB. Aceita .kml (XML puro) ou .kmz (zip).
-            </FieldHelp>
+            <FieldHelp>{t('fileHelp')}</FieldHelp>
           </div>
 
           {parsing && (
-            <div className="text-sm text-text-muted">Parseando arquivo…</div>
+            <div className="text-sm text-text-muted">{t('parsing')}</div>
           )}
 
           {/* Preview do que será criado */}
           {preview && (
             <div className="space-y-3 rounded-md border border-border bg-surface-muted p-3">
               <div className="flex items-center gap-2">
-                <Badge tone="info">{preview.enclosures.length} caixas</Badge>
-                <Badge tone="brand">{preview.cables.length} cabos</Badge>
+                <Badge tone="info">
+                  {t('enclosuresCount', { count: preview.enclosures.length })}
+                </Badge>
+                <Badge tone="brand">
+                  {t('cablesCount', { count: preview.cables.length })}
+                </Badge>
                 {preview.warnings.length > 0 && (
                   <Badge tone="warning">
-                    {preview.warnings.length} aviso(s)
+                    {t('warningsCount', { count: preview.warnings.length })}
                   </Badge>
                 )}
               </div>
@@ -216,7 +220,7 @@ export default function KmlImportExportPage() {
               {preview.warnings.length > 0 && (
                 <details className="text-xs">
                   <summary className="cursor-pointer text-text-muted">
-                    Ver avisos
+                    {t('viewWarnings')}
                   </summary>
                   <ul className="mt-1 space-y-0.5 ml-4 list-disc text-text-muted">
                     {preview.warnings.map((w, i) => (
@@ -229,7 +233,7 @@ export default function KmlImportExportPage() {
               {preview.enclosures.length > 0 && (
                 <details className="text-xs" open>
                   <summary className="cursor-pointer font-semibold">
-                    Caixas ({preview.enclosures.length})
+                    {t('enclosuresSection', { count: preview.enclosures.length })}
                   </summary>
                   <div className="mt-1 max-h-32 overflow-y-auto">
                     <table className="w-full">
@@ -246,7 +250,7 @@ export default function KmlImportExportPage() {
                     </table>
                     {preview.enclosures.length > 100 && (
                       <p className="mt-1 text-text-muted">
-                        … +{preview.enclosures.length - 100} mais
+                        {t('moreItems', { count: preview.enclosures.length - 100 })}
                       </p>
                     )}
                   </div>
@@ -256,7 +260,7 @@ export default function KmlImportExportPage() {
               {preview.cables.length > 0 && (
                 <details className="text-xs" open>
                   <summary className="cursor-pointer font-semibold">
-                    Cabos ({preview.cables.length})
+                    {t('cablesSection', { count: preview.cables.length })}
                   </summary>
                   <div className="mt-1 max-h-32 overflow-y-auto">
                     <table className="w-full">
@@ -265,7 +269,8 @@ export default function KmlImportExportPage() {
                           <tr key={i}>
                             <td className="py-0.5 font-mono">{c.name}</td>
                             <td className="py-0.5 text-text-muted">
-                              {c.path.length}p · {formatLength(c.lengthMeters)}
+                              {t('pointsAbbr', { count: c.path.length })} ·{' '}
+                              {formatLength(c.lengthMeters)}
                             </td>
                           </tr>
                         ))}
@@ -284,7 +289,7 @@ export default function KmlImportExportPage() {
                 }
                 className="w-full"
               >
-                Confirmar import
+                {t('confirmImport')}
               </Button>
             </div>
           )}
@@ -293,16 +298,18 @@ export default function KmlImportExportPage() {
           {result && (
             <div className="rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm dark:border-emerald-900 dark:bg-emerald-950/40">
               <div className="font-semibold text-emerald-800 dark:text-emerald-200">
-                ✓ Import concluído
+                {t('importDone')}
               </div>
               <div className="mt-1 text-emerald-700 dark:text-emerald-300">
-                {result.enclosuresCreated} caixas + {result.cablesCreated} cabos
-                criados.
+                {t('importDoneDetail', {
+                  enclosures: result.enclosuresCreated,
+                  cables: result.cablesCreated,
+                })}
               </div>
               {result.errors.length > 0 && (
                 <details className="mt-2 text-xs">
                   <summary className="cursor-pointer text-red-700 dark:text-red-300">
-                    {result.errors.length} erro(s)
+                    {t('errorsCount', { count: result.errors.length })}
                   </summary>
                   <ul className="mt-1 list-disc ml-4">
                     {result.errors.map((e, i) => (
@@ -319,18 +326,14 @@ export default function KmlImportExportPage() {
         <section className="space-y-3 rounded-md border border-border bg-surface p-5">
           <h2 className="flex items-center gap-2 text-sm font-semibold">
             <Download className="h-4 w-4" />
-            Exportar planta
+            {t('exportTitle')}
           </h2>
-          <p className="text-xs text-text-muted">
-            Baixa todas as caixas e cabos como KML 2.2 — abre direto em
-            Google Earth, Google Maps customizado, QGIS ou qualquer GIS
-            que aceite o padrão.
-          </p>
+          <p className="text-xs text-text-muted">{t('exportDescription')}</p>
 
           <ul className="list-disc pl-4 text-xs text-text-muted space-y-1">
-            <li>Estilos pré-definidos por tipo de caixa/cabo</li>
-            <li>Notas de cada caixa viram &lt;description&gt;</li>
-            <li>Coordenadas em WGS84 (padrão GPS)</li>
+            <li>{t('exportFeatureStyles')}</li>
+            <li>{t('exportFeatureNotes')}</li>
+            <li>{t('exportFeatureCoords')}</li>
           </ul>
 
           <a
@@ -339,13 +342,10 @@ export default function KmlImportExportPage() {
             className="inline-flex items-center gap-2 rounded-md bg-brand-500 px-3 py-2 text-sm font-medium text-white hover:bg-brand-600"
           >
             <Download className="h-4 w-4" />
-            Baixar KML completo
+            {t('downloadKml')}
           </a>
 
-          <FieldHelp>
-            Pra reimportar depois (round-trip), o arquivo gerado é compatível
-            com o próprio /import desta tela.
-          </FieldHelp>
+          <FieldHelp>{t('exportHelp')}</FieldHelp>
         </section>
       </div>
     </div>

@@ -8,6 +8,7 @@
  */
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -30,14 +31,15 @@ const CustomerMap = dynamic(
   { ssr: false, loading: () => <div className="h-[600px] animate-pulse rounded-lg bg-surface-muted" /> },
 );
 
-const ALL_STATUSES: Array<{ value: ContractStatus; label: string }> = [
-  { value: 'ACTIVE', label: 'Ativos' },
-  { value: 'SUSPENDED', label: 'Suspensos' },
-  { value: 'PENDING_INSTALL', label: 'Pendentes' },
-  { value: 'CANCELLED', label: 'Cancelados' },
+const ALL_STATUSES: Array<{ value: ContractStatus; labelKey: string }> = [
+  { value: 'ACTIVE', labelKey: 'statusActive' },
+  { value: 'SUSPENDED', labelKey: 'statusSuspended' },
+  { value: 'PENDING_INSTALL', labelKey: 'statusPendingInstall' },
+  { value: 'CANCELLED', labelKey: 'statusCancelled' },
 ];
 
 export default function MappingCustomersPage() {
+  const t = useTranslations('mapping.customers');
   const tenantConfig = useTenantConfig();
   const country = tenantConfig?.tenant?.country ?? null;
 
@@ -86,24 +88,21 @@ export default function MappingCustomersPage() {
     <div className="space-y-4">
       <header className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Mapa de Clientes</h1>
-          <p className="text-sm text-text-muted">
-            Visualização geográfica em tempo quase real. Pinos verdes = online,
-            vermelhos = offline (ACTIVE sem sessão), amarelos = suspensos.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+          <p className="text-sm text-text-muted">{t('subtitle')}</p>
         </div>
         <div className="text-xs text-text-muted">
-          Atualiza a cada 60s · {filteredPoints.length} de {stats.total} clientes
+          {t('refreshLine', { shown: filteredPoints.length, total: stats.total })}
         </div>
       </header>
 
       {/* Stats cards */}
       <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
-        <StatCard label="Mapeados" value={stats.total} tone="neutral" />
-        <StatCard label="Online" value={stats.online} tone="success" />
-        <StatCard label="Offline" value={stats.offline} tone="danger" />
-        <StatCard label="Suspensos" value={stats.suspended} tone="warning" />
-        <StatCard label="Pendentes" value={stats.pendingInstall} tone="info" />
+        <StatCard label={t('statMapped')} value={stats.total} tone="neutral" />
+        <StatCard label={t('statOnline')} value={stats.online} tone="success" />
+        <StatCard label={t('statOffline')} value={stats.offline} tone="danger" />
+        <StatCard label={t('statSuspended')} value={stats.suspended} tone="warning" />
+        <StatCard label={t('statPendingInstall')} value={stats.pendingInstall} tone="info" />
       </div>
 
       {/* Filtros */}
@@ -121,7 +120,7 @@ export default function MappingCustomersPage() {
                   : 'border-border text-text-muted hover:bg-surface-hover')
               }
             >
-              {s.label}
+              {t(s.labelKey)}
             </button>
           ))}
         </div>
@@ -131,12 +130,12 @@ export default function MappingCustomersPage() {
             checked={onlineOnly}
             onChange={(e) => setOnlineOnly(e.target.checked)}
           />
-          Só online
+          {t('onlineOnly')}
         </label>
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar nome, código, PPPoE…"
+          placeholder={t('searchPlaceholder')}
           className="ml-auto max-w-xs"
         />
       </div>
@@ -146,7 +145,7 @@ export default function MappingCustomersPage() {
         <EmptyState />
       ) : filteredPoints.length === 0 ? (
         <div className="rounded-lg border border-border bg-surface p-10 text-center text-sm text-text-muted">
-          Nenhum cliente bate com os filtros atuais.
+          {t('noMatch')}
         </div>
       ) : (
         <CustomerMap points={filteredPoints} center={center} height="calc(100vh - 380px)" />
@@ -180,17 +179,18 @@ function StatCard({
 }
 
 function EmptyState() {
+  const t = useTranslations('mapping.customers');
   return (
     <div className="rounded-lg border border-dashed border-border bg-surface p-10 text-center">
-      <div className="text-base font-medium text-text">Nenhum cliente georreferenciado ainda</div>
+      <div className="text-base font-medium text-text">{t('emptyTitle')}</div>
       <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
-        Pra ver clientes no mapa, abra um contrato em{' '}
-        <Link href="/contracts" className="text-brand-500 hover:underline">
-          Contratos
-        </Link>{' '}
-        e marque a localização no campo &quot;Localização&quot;. Você pode
-        clicar no mapa, arrastar o pino ou usar &quot;Usar minha
-        localização&quot; (se estiver visitando o cliente em campo).
+        {t.rich('emptyBody', {
+          link: (chunks) => (
+            <Link href="/contracts" className="text-brand-500 hover:underline">
+              {chunks}
+            </Link>
+          ),
+        })}
       </p>
     </div>
   );

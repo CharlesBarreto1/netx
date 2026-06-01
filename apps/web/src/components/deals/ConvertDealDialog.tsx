@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 
 import { NewContractInline } from '@/components/contracts/NewContractInline';
@@ -48,6 +49,8 @@ export function ConvertDealDialog({
   /** Chamado depois que o deal é marcado como WON. */
   onConverted: () => void;
 }) {
+  const t = useTranslations('dealsComponents');
+  const tc = useTranslations('common');
   const initialStep: Step = deal.customerId ? 'contract' : 'customer';
   const [step, setStep] = useState<Step>(initialStep);
   const [customerId, setCustomerId] = useState<string | null>(deal.customerId);
@@ -68,7 +71,7 @@ export function ConvertDealDialog({
     // Pré-preenche shortNote com referência ao deal (ajuda no rastreio).
     const body = { ...payload };
     if (!body.shortNote) {
-      body.shortNote = `Cliente convertido a partir do deal "${deal.title}".`;
+      body.shortNote = t('convert.customerShortNote', { title: deal.title });
     }
     const created = await api.post<Customer>('/v1/customers', body);
     setCustomerId(created.id);
@@ -82,11 +85,11 @@ export function ConvertDealDialog({
       const msg =
         err instanceof ApiError
           ? err.friendlyMessage
-          : 'Cliente criado, mas falhou ao vincular ao deal';
+          : t('convert.linkFailed');
       toast.error(msg);
     }
 
-    toast.success('Cliente criado');
+    toast.success(t('convert.customerCreated'));
     setStep('contract');
   }
 
@@ -94,16 +97,16 @@ export function ConvertDealDialog({
     // Fecha o deal como WON com nota referenciando o contractId.
     try {
       const note = contract.code
-        ? `Contrato gerado: ${contract.code} (${contract.id})`
-        : `Contrato gerado: ${contract.id}`;
+        ? t('convert.contractNoteWithCode', { code: contract.code, id: contract.id })
+        : t('convert.contractNote', { id: contract.id });
       await dealsApi.win(deal.id, { note });
-      toast.success('Deal convertido em contrato');
+      toast.success(t('convert.dealConverted'));
       onConverted();
     } catch (err) {
       const msg =
         err instanceof ApiError
           ? err.friendlyMessage
-          : 'Contrato criado, mas falhou ao marcar o deal como ganho';
+          : t('convert.winFailed');
       toast.error(msg);
       // Mesmo assim segue o fluxo de fechamento — o contrato existe.
       onConverted();
@@ -116,16 +119,17 @@ export function ConvertDealDialog({
        <div className="max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex flex-wrap items-center gap-2">
-            <DialogTitle>Converter deal em contrato</DialogTitle>
+            <DialogTitle>{t('convert.title')}</DialogTitle>
             <Badge tone={step === 'customer' ? 'info' : 'success'}>
-              {step === 'customer' ? '1/2 — Cliente' : '2/2 — Contrato'}
+              {step === 'customer' ? t('convert.stepCustomer') : t('convert.stepContract')}
             </Badge>
           </div>
           <DialogDescription>
-            Deal: <span className="font-medium text-text">{deal.title}</span>
+            {t('convert.dealLabel')}{' '}
+            <span className="font-medium text-text">{deal.title}</span>
             {customerName && (
               <>
-                {' · Cliente: '}
+                {` · ${t('convert.customerLabel')} `}
                 <span className="font-medium text-text">{customerName}</span>
               </>
             )}
@@ -136,8 +140,7 @@ export function ConvertDealDialog({
           {step === 'customer' && (
             <>
               <p className="mb-4 text-xs text-text-muted">
-                Esse deal ainda não está vinculado a um cliente. Cadastre os dados do
-                cliente abaixo — em seguida você gera o contrato.
+                {t('convert.customerStepHint')}
               </p>
               <CustomerForm
                 mode="create"
@@ -153,7 +156,7 @@ export function ConvertDealDialog({
               initial={{
                 monthlyValue: deal.value && deal.value > 0 ? deal.value : '',
               }}
-              submitLabel="Criar contrato e marcar como ganho"
+              submitLabel={t('convert.contractSubmit')}
               onCreated={handleContractCreated}
               onCancel={() => onOpenChange(false)}
             />
@@ -162,8 +165,7 @@ export function ConvertDealDialog({
 
         {step === 'contract' && customerId && !deal.customerId && (
           <div className="mx-5 mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
-            Cliente já criado e vinculado ao deal. Se você fechar agora, o deal continua
-            aberto, mas o cliente fica salvo e pode ser usado em qualquer contrato depois.
+            {t('convert.customerSavedWarning')}
           </div>
         )}
 
@@ -175,7 +177,7 @@ export function ConvertDealDialog({
               size="sm"
               onClick={() => onOpenChange(false)}
             >
-              Cancelar conversão
+              {t('convert.cancelConversion')}
             </Button>
           </div>
         )}

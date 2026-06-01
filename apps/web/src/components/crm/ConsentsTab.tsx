@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 
@@ -42,12 +43,13 @@ export function ConsentsTab({ customerId }: { customerId: string }) {
   const { data, isLoading, error, mutate } = useSWR<CustomerConsent[]>(key);
   const canManage = hasPermission('customers.consents.manage');
   const [open, setOpen] = useState(false);
+  const t = useTranslations('crmTabs');
 
   if (isLoading) return <PageLoader />;
   if (error) {
     return (
       <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-        Falha ao carregar consentimentos.
+        {t('consents.loadError')}
       </div>
     );
   }
@@ -57,22 +59,22 @@ export function ConsentsTab({ customerId }: { customerId: string }) {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-            Histórico imutável — {data?.length ?? 0} registro(s)
+            {t('consents.title', { count: data?.length ?? 0 })}
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            Cada registro é uma evidência LGPD/GDPR com IP e User-Agent capturados.
+            {t('consents.subtitle')}
           </p>
         </div>
         {canManage && (
           <Button size="sm" onClick={() => setOpen(true)}>
-            Registrar consentimento
+            {t('consents.register')}
           </Button>
         )}
       </div>
 
       {(!data || data.length === 0) && (
         <p className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
-          Nenhum consentimento registrado.
+          {t('consents.empty')}
         </p>
       )}
 
@@ -86,18 +88,18 @@ export function ConsentsTab({ customerId }: { customerId: string }) {
               <Badge tone={consentTone(c.status)}>{CONSENT_STATUS_LABEL[c.status]}</Badge>
               <strong className="text-sm">{CONSENT_PURPOSE_LABEL[c.purpose]}</strong>
               <span className="text-xs text-slate-500 dark:text-slate-400">
-                via {CONSENT_METHOD_LABEL[c.method]}
+                {t('consents.via', { method: CONSENT_METHOD_LABEL[c.method] })}
               </span>
             </div>
             <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              Registrado em {formatDateTime(c.createdAt)}
-              {c.grantedAt && ` · Concedido em ${formatDateTime(c.grantedAt)}`}
-              {c.revokedAt && ` · Revogado em ${formatDateTime(c.revokedAt)}`}
-              {c.expiresAt && ` · Expira em ${formatDateTime(c.expiresAt)}`}
+              {t('consents.recordedAt', { date: formatDateTime(c.createdAt) })}
+              {c.grantedAt && ` · ${t('consents.grantedAt', { date: formatDateTime(c.grantedAt) })}`}
+              {c.revokedAt && ` · ${t('consents.revokedAt', { date: formatDateTime(c.revokedAt) })}`}
+              {c.expiresAt && ` · ${t('consents.expiresAt', { date: formatDateTime(c.expiresAt) })}`}
             </div>
             {c.policyVersion && (
               <div className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                Política: <code className="font-mono">{c.policyVersion}</code>
+                {t('consents.policy')}: <code className="font-mono">{c.policyVersion}</code>
               </div>
             )}
             {c.notes && (
@@ -105,7 +107,7 @@ export function ConsentsTab({ customerId }: { customerId: string }) {
             )}
             {(c.sourceIp || c.sourceUserAgent) && (
               <details className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                <summary className="cursor-pointer select-none">Evidência técnica</summary>
+                <summary className="cursor-pointer select-none">{t('consents.techEvidence')}</summary>
                 <div className="mt-1 space-y-0.5">
                   {c.sourceIp && <div>IP: {c.sourceIp}</div>}
                   {c.sourceUserAgent && (
@@ -150,6 +152,8 @@ function ConsentFormModal({
   customerId: string;
   onSaved: () => void;
 }) {
+  const t = useTranslations('crmTabs');
+  const tc = useTranslations('common');
   const [purpose, setPurpose] = useState<ConsentPurpose>('MARKETING_EMAIL');
   const [status, setStatus] = useState<ConsentStatus>('GRANTED');
   const [method, setMethod] = useState<ConsentMethod>('WEB_FORM');
@@ -213,15 +217,15 @@ function ConsentFormModal({
     <Modal
       open={open}
       onClose={onClose}
-      title="Registrar consentimento"
+      title={t('consents.register')}
       size="lg"
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={saving}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button form="consent-form" type="submit" loading={saving}>
-            Registrar
+            {t('consents.registerAction')}
           </Button>
         </>
       }
@@ -234,7 +238,7 @@ function ConsentFormModal({
         )}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div>
-            <Label required>Finalidade</Label>
+            <Label required>{t('consents.purpose')}</Label>
             <Select value={purpose} onChange={(e) => setPurpose(e.target.value as ConsentPurpose)}>
               {CONSENT_PURPOSES.map((p) => (
                 <option key={p} value={p}>
@@ -244,7 +248,7 @@ function ConsentFormModal({
             </Select>
           </div>
           <div>
-            <Label required>Status</Label>
+            <Label required>{tc('status')}</Label>
             <Select value={status} onChange={(e) => setStatus(e.target.value as ConsentStatus)}>
               {CONSENT_STATUSES.map((s) => (
                 <option key={s} value={s}>
@@ -254,7 +258,7 @@ function ConsentFormModal({
             </Select>
           </div>
           <div>
-            <Label>Método de captura</Label>
+            <Label>{t('consents.captureMethod')}</Label>
             <Select value={method} onChange={(e) => setMethod(e.target.value as ConsentMethod)}>
               {CONSENT_METHODS.map((m) => (
                 <option key={m} value={m}>
@@ -264,7 +268,7 @@ function ConsentFormModal({
             </Select>
           </div>
           <div>
-            <Label>Versão da política</Label>
+            <Label>{t('consents.policyVersion')}</Label>
             <Input
               value={policyVersion}
               onChange={(e) => setPolicyVersion(e.target.value)}
@@ -272,7 +276,7 @@ function ConsentFormModal({
             />
           </div>
           <div className="md:col-span-2">
-            <Label>URL de evidência</Label>
+            <Label>{t('consents.evidenceUrl')}</Label>
             <Input
               value={evidenceUrl}
               onChange={(e) => setEvidenceUrl(e.target.value)}
@@ -281,7 +285,7 @@ function ConsentFormModal({
             <FieldError>{fieldErr.evidenceUrl}</FieldError>
           </div>
           <div>
-            <Label>Expira em</Label>
+            <Label>{t('consents.expires')}</Label>
             <Input
               type="datetime-local"
               value={expiresAt}
@@ -289,7 +293,7 @@ function ConsentFormModal({
             />
           </div>
           <div className="md:col-span-3">
-            <Label>Observações</Label>
+            <Label>{tc('notes')}</Label>
             <Textarea rows={3} maxLength={500} value={notes} onChange={(e) => setNotes(e.target.value)} />
           </div>
         </div>

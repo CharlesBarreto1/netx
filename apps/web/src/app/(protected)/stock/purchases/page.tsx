@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
 import useSWR from 'swr';
 
@@ -25,6 +26,8 @@ export default function PurchasesPage() {
     () => stockApi.listPurchases(),
   );
   const canCreate = hasPermission('stock.purchase.create');
+  const t = useTranslations('stock.purchases');
+  const tc = useTranslations('common');
 
   const [creating, setCreating] = useState(false);
   const [viewing, setViewing] = useState<Purchase | null>(null);
@@ -33,25 +36,24 @@ export default function PurchasesPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Compras</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Entradas por compra de fornecedor. Atualiza saldo e recalcula o custo médio
-            ponderado de cada produto automaticamente.
+            {t('subtitle')}
           </p>
         </div>
-        {canCreate && <Button onClick={() => setCreating(true)}>Nova compra</Button>}
+        {canCreate && <Button onClick={() => setCreating(true)}>{t('new')}</Button>}
       </header>
 
       {isLoading && <PageLoader />}
       {error && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-          Falha ao carregar compras.
+          {t('loadFailed')}
         </div>
       )}
 
       {data && data.length === 0 && (
         <p className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
-          Nenhuma compra registrada ainda.
+          {t('empty')}
         </p>
       )}
 
@@ -61,13 +63,13 @@ export default function PurchasesPage() {
             <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
               <thead className="bg-slate-50 dark:bg-slate-900/40">
                 <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  <th className="px-4 py-3">Data</th>
-                  <th className="px-4 py-3">Fornecedor</th>
-                  <th className="px-4 py-3">Nota fiscal</th>
-                  <th className="px-4 py-3 text-right">Itens</th>
-                  <th className="px-4 py-3 text-right">Valor total</th>
-                  <th className="px-4 py-3">Operador</th>
-                  <th className="px-4 py-3 text-right">Ações</th>
+                  <th className="px-4 py-3">{t('th.date')}</th>
+                  <th className="px-4 py-3">{t('th.supplier')}</th>
+                  <th className="px-4 py-3">{t('th.invoice')}</th>
+                  <th className="px-4 py-3 text-right">{t('th.items')}</th>
+                  <th className="px-4 py-3 text-right">{t('th.total')}</th>
+                  <th className="px-4 py-3">{t('th.operator')}</th>
+                  <th className="px-4 py-3 text-right">{tc('actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -83,7 +85,7 @@ export default function PurchasesPage() {
                     <td className="px-4 py-3 text-xs text-slate-500">{p.createdByName ?? '—'}</td>
                     <td className="px-4 py-3 text-right">
                       <Button variant="ghost" size="sm" onClick={() => setViewing(p)}>
-                        Ver
+                        {t('view')}
                       </Button>
                     </td>
                   </tr>
@@ -126,46 +128,48 @@ function PurchaseDetailsModal({
   purchase: Purchase;
   onClose: () => void;
 }) {
+  const t = useTranslations('stock.purchases');
+  const tc = useTranslations('common');
   return (
-    <Modal open onClose={onClose} title={`Compra de ${new Date(purchase.date).toLocaleDateString()}`}>
+    <Modal open onClose={onClose} title={t('details.title', { date: new Date(purchase.date).toLocaleDateString() })}>
       <div className="space-y-4">
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
           <div>
-            <dt className="text-xs text-slate-500">Fornecedor</dt>
+            <dt className="text-xs text-slate-500">{t('th.supplier')}</dt>
             <dd>{purchase.supplierName ?? '—'}</dd>
           </div>
           <div>
-            <dt className="text-xs text-slate-500">Nota fiscal</dt>
+            <dt className="text-xs text-slate-500">{t('th.invoice')}</dt>
             <dd className="font-mono">{purchase.invoiceNumber ?? '—'}</dd>
           </div>
           <div>
-            <dt className="text-xs text-slate-500">Valor total</dt>
+            <dt className="text-xs text-slate-500">{t('th.total')}</dt>
             <dd className="font-semibold">{formatMoney(purchase.totalCost)}</dd>
           </div>
           <div>
-            <dt className="text-xs text-slate-500">Registrado por</dt>
+            <dt className="text-xs text-slate-500">{t('details.registeredBy')}</dt>
             <dd>{purchase.createdByName ?? '—'}</dd>
           </div>
         </dl>
 
         {purchase.notes && (
           <div className="rounded-md bg-slate-50 p-3 text-sm dark:bg-slate-900/40">
-            <p className="text-xs text-slate-500 mb-1">Observações</p>
+            <p className="text-xs text-slate-500 mb-1">{tc('notes')}</p>
             <p>{purchase.notes}</p>
           </div>
         )}
 
         <div>
-          <h3 className="text-sm font-semibold mb-2">Itens ({purchase.items.length})</h3>
+          <h3 className="text-sm font-semibold mb-2">{t('items.heading', { count: purchase.items.length })}</h3>
           <div className="rounded-md border border-slate-200 dark:border-slate-700 overflow-hidden">
             <table className="min-w-full divide-y divide-slate-200 text-xs dark:divide-slate-700">
               <thead className="bg-slate-50 dark:bg-slate-900/40">
                 <tr className="text-left">
-                  <th className="px-3 py-2">Produto</th>
-                  <th className="px-3 py-2">Local</th>
-                  <th className="px-3 py-2 text-right">Qty</th>
-                  <th className="px-3 py-2 text-right">Custo unit.</th>
-                  <th className="px-3 py-2 text-right">Total</th>
+                  <th className="px-3 py-2">{t('th.product')}</th>
+                  <th className="px-3 py-2">{t('th.location')}</th>
+                  <th className="px-3 py-2 text-right">{t('th.qty')}</th>
+                  <th className="px-3 py-2 text-right">{t('th.unitCost')}</th>
+                  <th className="px-3 py-2 text-right">{t('th.total')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -176,7 +180,7 @@ function PurchaseDetailsModal({
                         <strong>{it.productName ?? it.productId.slice(0, 8)}</strong>
                         {it.productType === 'PATRIMONIAL' && it.serials.length > 0 && (
                           <p className="text-xs text-slate-500 mt-0.5">
-                            Seriais: {it.serials.join(', ')}
+                            {t('serialsLabel', { serials: it.serials.join(', ') })}
                           </p>
                         )}
                       </div>
@@ -195,7 +199,7 @@ function PurchaseDetailsModal({
         </div>
 
         <div className="flex justify-end pt-2">
-          <Button variant="ghost" onClick={onClose}>Fechar</Button>
+          <Button variant="ghost" onClick={onClose}>{tc('close')}</Button>
         </div>
       </div>
     </Modal>
@@ -212,6 +216,8 @@ function PurchaseFormModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('stock.purchases');
+  const tc = useTranslations('common');
   const { data: suppliers } = useSWR<Supplier[]>(stockApi.suppliersPath({ isActive: true }), () =>
     stockApi.listSuppliers({ isActive: true }),
   );
@@ -262,36 +268,34 @@ function PurchaseFormModal({
     e.preventDefault();
     setError(null);
 
-    if (!supplierId) return setError('Selecione um fornecedor');
-    if (items.length === 0) return setError('Adicione ao menos 1 item');
+    if (!supplierId) return setError(t('errors.selectSupplier'));
+    if (items.length === 0) return setError(t('errors.addItem'));
 
     // Validação client-side dos serials pra patrimoniais
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
-      if (!it.productId) return setError(`Item ${i + 1}: selecione o produto`);
-      if (!it.locationId) return setError(`Item ${i + 1}: selecione o local`);
+      if (!it.productId) return setError(t('errors.itemSelectProduct', { n: i + 1 }));
+      if (!it.locationId) return setError(t('errors.itemSelectLocation', { n: i + 1 }));
       const product = productsById.get(it.productId);
       const qty = Number(it.quantity);
       const cost = Number(it.unitCost);
       if (!Number.isFinite(qty) || qty <= 0)
-        return setError(`Item ${i + 1}: quantidade inválida`);
+        return setError(t('errors.itemInvalidQty', { n: i + 1 }));
       if (!Number.isFinite(cost) || cost <= 0)
-        return setError(`Item ${i + 1}: custo unitário inválido`);
+        return setError(t('errors.itemInvalidCost', { n: i + 1 }));
       if (product?.type === 'PATRIMONIAL') {
         const serials = it.serials ?? [];
         if (serials.length !== qty) {
           return setError(
-            `Item ${i + 1} (${product.name}): patrimonial precisa de exatamente ${qty} serial(is), tem ${serials.length}`,
+            t('errors.serialsCount', { n: i + 1, product: product.name, expected: qty, got: serials.length }),
           );
         }
         if (new Set(serials).size !== serials.length) {
-          return setError(`Item ${i + 1}: seriais duplicados no mesmo item`);
+          return setError(t('errors.serialsDuplicate', { n: i + 1 }));
         }
       } else {
         if ((it.serials ?? []).length > 0) {
-          return setError(
-            `Item ${i + 1}: produto consumível não aceita seriais (remova ou troque produto)`,
-          );
+          return setError(t('errors.serialsNotAllowed', { n: i + 1 }));
         }
       }
     }
@@ -313,18 +317,18 @@ function PurchaseFormModal({
       await stockApi.createPurchase(payload);
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro ao salvar');
+      setError(err instanceof ApiError ? err.friendlyMessage : t('errors.saveFailed'));
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Modal open onClose={onClose} title="Nova compra" size="xl">
+    <Modal open onClose={onClose} title={t('new')} size="xl">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <div>
-            <Label>Fornecedor *</Label>
+            <Label>{t('form.supplierRequired')}</Label>
             <select
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
               value={supplierId}
@@ -338,7 +342,7 @@ function PurchaseFormModal({
             </select>
           </div>
           <div>
-            <Label>Nota fiscal</Label>
+            <Label>{t('th.invoice')}</Label>
             <Input
               value={invoiceNumber}
               onChange={(e) => setInvoiceNumber(e.target.value)}
@@ -346,7 +350,7 @@ function PurchaseFormModal({
             />
           </div>
           <div>
-            <Label>Data *</Label>
+            <Label>{t('form.dateRequired')}</Label>
             <Input
               type="date"
               value={date}
@@ -358,9 +362,9 @@ function PurchaseFormModal({
 
         <div>
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold">Itens</h3>
+            <h3 className="text-sm font-semibold">{t('th.items')}</h3>
             <Button type="button" variant="ghost" size="sm" onClick={addItem}>
-              + Adicionar item
+              {t('form.addItem')}
             </Button>
           </div>
 
@@ -375,7 +379,7 @@ function PurchaseFormModal({
                 >
                   <div className="grid grid-cols-12 gap-2">
                     <div className="col-span-4">
-                      <Label className="text-xs">Produto</Label>
+                      <Label className="text-xs">{t('th.product')}</Label>
                       <select
                         className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
                         value={it.productId}
@@ -384,13 +388,13 @@ function PurchaseFormModal({
                         <option value="">—</option>
                         {products?.map((p) => (
                           <option key={p.id} value={p.id}>
-                            {p.sku} · {p.name} ({p.type === 'PATRIMONIAL' ? 'pat.' : 'cons.'})
+                            {p.sku} · {p.name} ({p.type === 'PATRIMONIAL' ? t('form.patShort') : t('form.consShort')})
                           </option>
                         ))}
                       </select>
                     </div>
                     <div className="col-span-3">
-                      <Label className="text-xs">Local</Label>
+                      <Label className="text-xs">{t('th.location')}</Label>
                       <select
                         className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
                         value={it.locationId}
@@ -403,7 +407,7 @@ function PurchaseFormModal({
                       </select>
                     </div>
                     <div className="col-span-2">
-                      <Label className="text-xs">Qty</Label>
+                      <Label className="text-xs">{t('th.qty')}</Label>
                       <Input
                         type="number"
                         step="0.0001"
@@ -425,7 +429,7 @@ function PurchaseFormModal({
                       />
                     </div>
                     <div className="col-span-2">
-                      <Label className="text-xs">Custo unit.</Label>
+                      <Label className="text-xs">{t('th.unitCost')}</Label>
                       <Input
                         type="number"
                         step="0.0001"
@@ -443,7 +447,7 @@ function PurchaseFormModal({
                           onClick={() => removeItem(idx)}
                           className="text-xs text-red-600 hover:underline"
                         >
-                          Remover
+                          {t('form.remove')}
                         </button>
                       )}
                     </div>
@@ -453,13 +457,13 @@ function PurchaseFormModal({
                   {isPatrimonial && Number(it.quantity) > 0 && (
                     <div className="mt-2">
                       <Label className="text-xs">
-                        Seriais ({(it.serials ?? []).filter(Boolean).length}/{Number(it.quantity)})
+                        {t('form.serials', { filled: (it.serials ?? []).filter(Boolean).length, total: Number(it.quantity) })}
                       </Label>
                       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                         {Array.from({ length: Math.floor(Number(it.quantity)) }, (_, sidx) => (
                           <Input
                             key={sidx}
-                            placeholder={`Serial #${sidx + 1}`}
+                            placeholder={t('form.serialPlaceholder', { n: sidx + 1 })}
                             value={it.serials?.[sidx] ?? ''}
                             onChange={(e) => {
                               const next = [...(it.serials ?? [])];
@@ -473,7 +477,7 @@ function PurchaseFormModal({
                   )}
 
                   <div className="mt-1 text-right text-xs text-slate-500">
-                    Subtotal: {formatMoney(Number(it.quantity) * Number(it.unitCost))}
+                    {t('form.subtotal', { value: formatMoney(Number(it.quantity) * Number(it.unitCost)) })}
                   </div>
                 </div>
               );
@@ -482,7 +486,7 @@ function PurchaseFormModal({
         </div>
 
         <div>
-          <Label>Observações</Label>
+          <Label>{tc('notes')}</Label>
           <Textarea
             rows={2}
             value={notes}
@@ -492,17 +496,17 @@ function PurchaseFormModal({
 
         <div className="flex items-center justify-between border-t border-slate-200 pt-3 dark:border-slate-700">
           <div className="text-sm">
-            Total: <strong className="text-lg">{formatMoney(total)}</strong>
+            {t('th.total')}: <strong className="text-lg">{formatMoney(total)}</strong>
           </div>
           {error && <FieldError>{error}</FieldError>}
         </div>
 
         <div className="flex justify-end gap-2">
           <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button type="submit" loading={submitting}>
-            Registrar compra
+            {t('form.submit')}
           </Button>
         </div>
       </form>

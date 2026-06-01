@@ -13,6 +13,7 @@
  */
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
@@ -26,17 +27,26 @@ import {
 import { sifenApi, type SifenDocumentType } from '@/lib/sifen-api';
 import { useFormatMoney } from '@/lib/use-money';
 
-const TYPE_OPTIONS: Array<{ value: SifenDocumentType; label: string; help: string }> = [
-  { value: 'FACTURA', label: 'Factura (1)', help: 'Venda de serviço — mais comum' },
-  { value: 'NOTA_CREDITO', label: 'Nota de Crédito (5)', help: 'Devolução / desconto pós-emissão; exige CDC associado' },
-  { value: 'NOTA_DEBITO', label: 'Nota de Débito (6)', help: 'Cobrança adicional; exige CDC associado' },
-  { value: 'AUTOFACTURA', label: 'Autofactura (4)', help: 'Compra de serviço de contribuyente sem timbrado' },
-  { value: 'NOTA_REMISION', label: 'Nota de Remisión (7)', help: 'Transporte de mercadoria' },
+const TYPE_VALUES: SifenDocumentType[] = [
+  'FACTURA',
+  'NOTA_CREDITO',
+  'NOTA_DEBITO',
+  'AUTOFACTURA',
+  'NOTA_REMISION',
 ];
 
 export default function NewFiscalDocumentPage() {
+  const t = useTranslations('fiscal.documentNew');
+  const tc = useTranslations('common');
   const router = useRouter();
   const formatMoney = useFormatMoney();
+
+  const TYPE_OPTIONS: Array<{ value: SifenDocumentType; label: string; help: string }> =
+    TYPE_VALUES.map((value) => ({
+      value,
+      label: t(`docType.${value}`),
+      help: t(`help.${value}`),
+    }));
 
   const [type, setType] = useState<SifenDocumentType>('FACTURA');
   const [search, setSearch] = useState('');
@@ -53,7 +63,7 @@ export default function NewFiscalDocumentPage() {
       return;
     }
     let cancelled = false;
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       try {
         const res = await contractInvoicesApi.list({
           page: 1,
@@ -78,13 +88,13 @@ export default function NewFiscalDocumentPage() {
     }, 300);
     return () => {
       cancelled = true;
-      clearTimeout(t);
+      clearTimeout(timer);
     };
   }, [search]);
 
   async function submit() {
     const e: Record<string, string> = {};
-    if (!selectedInvoice) e.invoice = 'Selecione uma fatura';
+    if (!selectedInvoice) e.invoice = t('errorSelectInvoice');
     setErrors(e);
     if (Object.keys(e).length > 0) return;
 
@@ -97,13 +107,13 @@ export default function NewFiscalDocumentPage() {
       });
       toast.success(
         doc.status === 'APPROVED'
-          ? 'DTE emitido e aprovado pelo SET'
-          : `DTE criado com status ${doc.status}`,
+          ? t('toastApproved')
+          : t('toastCreated', { status: doc.status }),
       );
       router.push(`/fiscal/documents/${doc.id}`);
     } catch (err) {
       const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
-      toast.error(`Falha: ${msg}`);
+      toast.error(`${tc('failure')}: ${msg}`);
       setSubmitting(false);
     }
   }
@@ -112,17 +122,14 @@ export default function NewFiscalDocumentPage() {
     <div className="space-y-5">
       <header>
         <Link href="/fiscal/documents" className="text-xs text-brand-500 hover:underline">
-          ← Documentos fiscais
+          ← {t('backLink')}
         </Link>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight">Nova emissão</h1>
-        <p className="text-sm text-text-muted">
-          Emita um DTE SIFEN a partir de uma fatura do contrato. O sistema
-          gera o XML, assina com o .p12 do tenant, embute o QR e envia ao SET.
-        </p>
+        <h1 className="mt-1 text-2xl font-bold tracking-tight">{t('title')}</h1>
+        <p className="text-sm text-text-muted">{t('description')}</p>
       </header>
 
       <section className="rounded-lg border border-border bg-surface p-4 shadow-sm">
-        <Label>Tipo de documento</Label>
+        <Label>{t('typeLabel')}</Label>
         <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
           {TYPE_OPTIONS.map((opt) => (
             <button
@@ -145,11 +152,11 @@ export default function NewFiscalDocumentPage() {
       </section>
 
       <section className="rounded-lg border border-border bg-surface p-4 shadow-sm">
-        <Label>Origem — fatura do contrato</Label>
+        <Label>{t('originLabel')}</Label>
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar por código, cliente, PPPoE, referência…"
+          placeholder={t('searchPlaceholder')}
         />
         <FieldError>{errors.invoice}</FieldError>
 
@@ -158,11 +165,11 @@ export default function NewFiscalDocumentPage() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="font-medium text-text">
-                  {selectedInvoice.reference ?? `Fatura ${selectedInvoice.id.slice(0, 8)}`}
+                  {selectedInvoice.reference ?? t('invoiceFallback', { id: selectedInvoice.id.slice(0, 8) })}
                 </div>
                 <div className="text-xs text-text-muted">
-                  Contrato {selectedInvoice.contract?.code ?? '—'} ·{' '}
-                  Vence {selectedInvoice.dueDate}
+                  {t('contractLabel', { code: selectedInvoice.contract?.code ?? '—' })} ·{' '}
+                  {t('dueLabel', { date: selectedInvoice.dueDate })}
                 </div>
               </div>
               <div className="text-right">
@@ -172,7 +179,7 @@ export default function NewFiscalDocumentPage() {
                   className="text-xs text-rose-500 hover:underline"
                   onClick={() => setSelectedInvoice(null)}
                 >
-                  remover
+                  {t('remove')}
                 </button>
               </div>
             </div>
@@ -192,9 +199,9 @@ export default function NewFiscalDocumentPage() {
                 }}
               >
                 <div>
-                  <div className="text-text">{inv.reference ?? `Fatura ${inv.id.slice(0, 8)}`}</div>
+                  <div className="text-text">{inv.reference ?? t('invoiceFallback', { id: inv.id.slice(0, 8) })}</div>
                   <div className="text-xs text-text-muted">
-                    {inv.contract?.code ?? '—'} · vence {inv.dueDate}
+                    {inv.contract?.code ?? '—'} · {t('dueShort', { date: inv.dueDate })}
                   </div>
                 </div>
                 <div className="text-text">{formatMoney(inv.amount)}</div>
@@ -203,26 +210,26 @@ export default function NewFiscalDocumentPage() {
           </ul>
         )}
         {!selectedInvoice && search.length >= 2 && invoices.length === 0 && (
-          <FieldHelp>Nenhuma fatura OPEN encontrada com esse texto.</FieldHelp>
+          <FieldHelp>{t('noInvoicesFound')}</FieldHelp>
         )}
       </section>
 
       <section className="rounded-lg border border-border bg-surface p-4 shadow-sm">
-        <Label>Observação (opcional)</Label>
+        <Label>{t('noteLabel')}</Label>
         <Textarea
           rows={2}
           value={note}
           onChange={(e) => setNote(e.target.value)}
-          placeholder="Anotação interna — não vai pro SET"
+          placeholder={t('notePlaceholder')}
         />
       </section>
 
       <div className="flex justify-end gap-2">
         <Link href="/fiscal/documents">
-          <Button variant="ghost">Cancelar</Button>
+          <Button variant="ghost">{tc('cancel')}</Button>
         </Link>
         <Button onClick={submit} loading={submitting} disabled={!selectedInvoice}>
-          Emitir DTE
+          {t('submit')}
         </Button>
       </div>
     </div>

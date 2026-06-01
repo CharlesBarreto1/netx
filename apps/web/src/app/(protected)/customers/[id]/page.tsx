@@ -19,7 +19,7 @@ import { ContractsTab } from '@/components/crm/ContractsTab';
 import { CustomerTagsTab } from '@/components/crm/CustomerTagsTab';
 import { FinanceTab } from '@/components/crm/FinanceTab';
 import { NotesTab } from '@/components/crm/NotesTab';
-import { Badge, STATUS_LABEL, statusTone } from '@/components/ui/Badge';
+import { Badge, statusTone, useStatusLabel } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { PageLoader } from '@/components/ui/Spinner';
@@ -64,6 +64,9 @@ export default function CustomerDetailPage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const tTabs = useTranslations('customers.tabs');
+  const t = useTranslations('customersDetail');
+  const tc = useTranslations('common');
+  const STATUS_LABEL = useStatusLabel();
   const id = params?.id;
   const key = id ? `/v1/customers/${id}` : null;
 
@@ -97,7 +100,7 @@ export default function CustomerDetailPage() {
   if (error) {
     return (
       <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-        Falha ao carregar cliente.
+        {t('loadError')}
       </div>
     );
   }
@@ -128,7 +131,7 @@ export default function CustomerDetailPage() {
     <div className="animate-fade-in-up space-y-5">
       <Breadcrumb
         items={[
-          { label: 'Clientes', href: '/customers' },
+          { label: t('breadcrumb'), href: '/customers' },
           { label: customer.displayName },
         ]}
       />
@@ -163,9 +166,9 @@ export default function CustomerDetailPage() {
               </p>
               {customer.tags && customer.tags.length > 0 && (
                 <div className="flex flex-wrap gap-1 pt-1">
-                  {customer.tags.map((t) => (
-                    <Badge key={t.id} tone="neutral" dot={t.color ?? undefined}>
-                      {t.name}
+                  {customer.tags.map((tag) => (
+                    <Badge key={tag.id} tone="neutral" dot={tag.color ?? undefined}>
+                      {tag.name}
                     </Badge>
                   ))}
                 </div>
@@ -175,27 +178,27 @@ export default function CustomerDetailPage() {
           <div className="flex flex-wrap items-center gap-2">
             {canUpdate && (
               <Link href={`/customers/${customer.id}/edit`}>
-                <Button variant="secondary">Editar</Button>
+                <Button variant="secondary">{tc('edit')}</Button>
               </Link>
             )}
             {canUpdate && <PortalAccessButton customerId={customer.id} />}
             {canDelete && (
               <Button variant="danger" onClick={() => setConfirmDelete(true)}>
-                Excluir
+                {tc('delete')}
               </Button>
             )}
           </div>
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-3 border-t border-border pt-4 md:grid-cols-4">
-          <InfoChip icon={Mail} label="Email" value={customer.primaryEmail ?? '—'} />
+          <InfoChip icon={Mail} label={tc('email')} value={customer.primaryEmail ?? '—'} />
           <InfoChip
             icon={Phone}
-            label="Telefone"
+            label={tc('phone')}
             value={customer.primaryPhone ? formatPhone(customer.primaryPhone) : '—'}
           />
-          <InfoChip icon={Calendar} label="Criado" value={formatDateTime(customer.createdAt)} />
-          <InfoChip icon={Clock} label="Atualizado" value={formatDateTime(customer.updatedAt)} />
+          <InfoChip icon={Calendar} label={tc('createdAt')} value={formatDateTime(customer.createdAt)} />
+          <InfoChip icon={Clock} label={tc('updatedAt')} value={formatDateTime(customer.updatedAt)} />
         </div>
       </header>
 
@@ -226,9 +229,9 @@ export default function CustomerDetailPage() {
         open={confirmDelete}
         onClose={() => setConfirmDelete(false)}
         onConfirm={handleDelete}
-        title="Excluir cliente"
-        message={`Tem certeza que deseja excluir "${customer.displayName}"? O cliente será arquivado (soft-delete).`}
-        confirmLabel="Excluir"
+        title={t('deleteTitle')}
+        message={t('deleteMessage', { name: customer.displayName })}
+        confirmLabel={tc('delete')}
         variant="danger"
         loading={deleting}
       />
@@ -257,33 +260,35 @@ function InfoChip({
 }
 
 function DataTab({ customer }: { customer: Customer }) {
+  const t = useTranslations('customersDetail');
+  const tc = useTranslations('common');
   return (
     <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm md:grid-cols-2">
       {customer.type === 'INDIVIDUAL' ? (
         <>
-          <Row label="Nome" value={customer.firstName} />
-          <Row label="Sobrenome" value={customer.lastName} />
-          <Row label="Data de nascimento" value={customer.birthDate} />
-          <Row label="Gênero" value={customer.gender} />
-          <Row label="Nome da mãe" value={customer.motherName} className="md:col-span-2" />
+          <Row label={tc('name')} value={customer.firstName} />
+          <Row label={t('lastName')} value={customer.lastName} />
+          <Row label={t('birthDate')} value={customer.birthDate} />
+          <Row label={t('gender')} value={customer.gender} />
+          <Row label={t('motherName')} value={customer.motherName} className="md:col-span-2" />
         </>
       ) : (
         <>
-          <Row label="Razão social" value={customer.companyName} />
-          <Row label="Nome fantasia" value={customer.tradeName} />
-          <Row label="Fundação" value={customer.foundedAt} />
-          <Row label="Inscrição estadual" value={customer.stateRegistration} />
-          <Row label="Inscrição municipal" value={customer.municipalRegistration} />
+          <Row label={t('companyName')} value={customer.companyName} />
+          <Row label={t('tradeName')} value={customer.tradeName} />
+          <Row label={t('foundedAt')} value={customer.foundedAt} />
+          <Row label={t('stateRegistration')} value={customer.stateRegistration} />
+          <Row label={t('municipalRegistration')} value={customer.municipalRegistration} />
         </>
       )}
 
-      <Row label="Idioma preferido" value={customer.preferredLanguage} />
-      <Row label="Fuso horário" value={customer.timezone} />
+      <Row label={t('preferredLanguage')} value={customer.preferredLanguage} />
+      <Row label={t('timezone')} value={customer.timezone} />
 
       {customer.shortNote && (
         <div className="md:col-span-2">
           <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Observações rápidas
+            {t('shortNote')}
           </dt>
           <dd className="mt-1 whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm text-slate-800 dark:bg-slate-900/40 dark:text-slate-100">
             {customer.shortNote}

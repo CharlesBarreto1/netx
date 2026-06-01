@@ -13,6 +13,7 @@
  * Segredos nunca voltam do backend — só a flag de presença (hasCredentials/
  * hasCertificate). Habilitar exige credenciais; Pix exige certificado .p12.
  */
+import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import useSWR from 'swr';
 
@@ -26,6 +27,7 @@ import { efiApi, type EfiChargeKind, type EfiConfigView } from '@/lib/finance-ap
 import { hasPermission } from '@/lib/session';
 
 export default function EfiSettingsPage() {
+  const t = useTranslations('settings.efi');
   const canWrite = hasPermission('efi.config.write');
   const { data: config, mutate, isLoading } = useSWR<EfiConfigView>(
     efiApi.configPath(),
@@ -37,12 +39,8 @@ export default function EfiSettingsPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-2xl font-bold tracking-tight">Pagamentos — EFI</h1>
-        <p className="mt-1 text-sm text-text-muted">
-          Configure as credenciais EFI/EfiPay (somente Brasil) para cobrar
-          faturas por Pix imediato e boleto híbrido com Pix (Bolix). Cada
-          provedor usa a própria conta — os recebíveis caem direto nela.
-        </p>
+        <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+        <p className="mt-1 text-sm text-text-muted">{t('description')}</p>
       </header>
 
       <StatusCard config={config} canWrite={canWrite} onSaved={() => mutate()} />
@@ -65,6 +63,8 @@ function StatusCard({
   canWrite: boolean;
   onSaved: () => void;
 }) {
+  const t = useTranslations('settings.efi');
+  const tc = useTranslations('common');
   const [enabled, setEnabled] = useState(config.enabled);
   const [environment, setEnvironment] = useState(config.environment);
   const [saving, setSaving] = useState(false);
@@ -78,33 +78,33 @@ function StatusCard({
     setSaving(true);
     try {
       await efiApi.saveConfig({ enabled, environment });
-      toast.success('Status atualizado');
+      toast.success(t('statusUpdated'));
       onSaved();
     } catch (err) {
       const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
-      toast.error(`Falha: ${msg}`);
+      toast.error(`${tc('failure')}: ${msg}`);
     } finally {
       setSaving(false);
     }
   }
 
   const statusBadge = (() => {
-    if (!config.hasCredentials) return <Badge tone="neutral">Sem credenciais</Badge>;
+    if (!config.hasCredentials) return <Badge tone="neutral">{t('noCredentials')}</Badge>;
     if (config.enabled) {
       return (
         <Badge tone={config.environment === 'PRODUCTION' ? 'success' : 'warning'}>
-          Ativo · {config.environment === 'PRODUCTION' ? 'Produção' : 'Homologação'}
+          {config.environment === 'PRODUCTION' ? t('activeProduction') : t('activeSandbox')}
         </Badge>
       );
     }
-    return <Badge tone="neutral">Configurado, desativado</Badge>;
+    return <Badge tone="neutral">{t('configuredDisabled')}</Badge>;
   })();
 
   return (
-    <Section title="Status" rightSlot={statusBadge}>
+    <Section title={t('statusSection')} rightSlot={statusBadge}>
       <div className="grid gap-4 md:grid-cols-2">
         <div>
-          <Label>Habilitar EFI</Label>
+          <Label>{t('enableEfi')}</Label>
           <div className="flex items-center gap-3">
             <input
               type="checkbox"
@@ -115,27 +115,24 @@ function StatusCard({
               id="efi-enabled"
             />
             <label htmlFor="efi-enabled" className="text-sm text-text">
-              Permitir gerar cobranças EFI por este provedor
+              {t('enableEfiHelp')}
             </label>
           </div>
-          <FieldHelp>
-            Ao habilitar, o sistema exige credenciais configuradas. O Pix imediato
-            exige também o certificado .p12.
-          </FieldHelp>
+          <FieldHelp>{t('enableEfiFieldHelp')}</FieldHelp>
         </div>
         <div>
-          <Label>Ambiente</Label>
+          <Label>{t('environment')}</Label>
           <div className="flex gap-2">
             <EnvRadio
-              label="Homologação"
-              description="Sandbox EFI — para testes (pix-h / cobrancas-h)"
+              label={t('sandboxLabel')}
+              description={t('sandboxDescription')}
               active={environment === 'SANDBOX'}
               onClick={() => setEnvironment('SANDBOX')}
               disabled={!canWrite}
             />
             <EnvRadio
-              label="Produção"
-              description="Conta real — cobranças válidas"
+              label={t('productionLabel')}
+              description={t('productionDescription')}
               active={environment === 'PRODUCTION'}
               onClick={() => setEnvironment('PRODUCTION')}
               disabled={!canWrite}
@@ -146,7 +143,7 @@ function StatusCard({
       {canWrite && (
         <div className="mt-4 flex justify-end">
           <Button onClick={save} loading={saving}>
-            Salvar status
+            {t('saveStatus')}
           </Button>
         </div>
       )}
@@ -199,6 +196,8 @@ function CredentialsCard({
   canWrite: boolean;
   onSaved: () => void;
 }) {
+  const t = useTranslations('settings.efi');
+  const tc = useTranslations('common');
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
   const [savingCreds, setSavingCreds] = useState(false);
@@ -209,19 +208,19 @@ function CredentialsCard({
 
   async function saveCreds() {
     if (!clientId || !clientSecret) {
-      toast.error('Informe Client ID e Client Secret');
+      toast.error(t('informCredentials'));
       return;
     }
     setSavingCreds(true);
     try {
       await efiApi.saveConfig({ clientId, clientSecret });
-      toast.success('Credenciais salvas');
+      toast.success(t('credentialsSaved'));
       setClientId('');
       setClientSecret('');
       onSaved();
     } catch (err) {
       const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
-      toast.error(`Falha: ${msg}`);
+      toast.error(`${tc('failure')}: ${msg}`);
     } finally {
       setSavingCreds(false);
     }
@@ -230,7 +229,7 @@ function CredentialsCard({
   async function uploadCert() {
     const f = fileRef.current?.files?.[0];
     if (!f) {
-      toast.error('Selecione o arquivo .p12');
+      toast.error(t('selectP12'));
       return;
     }
     setUploadingCert(true);
@@ -240,13 +239,13 @@ function CredentialsCard({
         certificateBase64: base64,
         certificatePassword: certPwd, // EFI normalmente é vazia
       });
-      toast.success('Certificado salvo');
+      toast.success(t('certificateSaved'));
       setCertPwd('');
       if (fileRef.current) fileRef.current.value = '';
       onSaved();
     } catch (err) {
       const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
-      toast.error(`Falha: ${msg}`);
+      toast.error(`${tc('failure')}: ${msg}`);
     } finally {
       setUploadingCert(false);
     }
@@ -254,23 +253,19 @@ function CredentialsCard({
 
   return (
     <Section
-      title="Credenciais e certificado"
+      title={t('credentialsSection')}
       rightSlot={
         <div className="flex gap-2">
           <Badge tone={config.hasCredentials ? 'success' : 'neutral'}>
-            {config.hasCredentials ? 'Credenciais OK' : 'Sem credenciais'}
+            {config.hasCredentials ? t('credentialsOk') : t('noCredentials')}
           </Badge>
           <Badge tone={config.hasCertificate ? 'success' : 'neutral'}>
-            {config.hasCertificate ? 'Certificado OK' : 'Sem .p12'}
+            {config.hasCertificate ? t('certificateOk') : t('noP12')}
           </Badge>
         </div>
       }
     >
-      <p className="mb-3 text-xs text-text-muted">
-        Crie uma aplicação no painel EFI (menu API → Criar aplicação) com os
-        escopos de cobranças e Pix. Baixe o certificado .p12 da conta — ele é
-        exigido pelo Pix (mTLS).
-      </p>
+      <p className="mb-3 text-xs text-text-muted">{t('credentialsHelp')}</p>
 
       <div className="grid gap-4 md:grid-cols-2">
         <div>
@@ -278,7 +273,7 @@ function CredentialsCard({
           <Input
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
-            placeholder={config.hasCredentials ? 'manter atual (deixe vazio)' : 'Client_Id_...'}
+            placeholder={config.hasCredentials ? t('keepCurrent') : 'Client_Id_...'}
             disabled={!canWrite}
             autoComplete="off"
           />
@@ -289,17 +284,17 @@ function CredentialsCard({
             type="password"
             value={clientSecret}
             onChange={(e) => setClientSecret(e.target.value)}
-            placeholder={config.hasCredentials ? 'manter atual (deixe vazio)' : 'Client_Secret_...'}
+            placeholder={config.hasCredentials ? t('keepCurrent') : 'Client_Secret_...'}
             disabled={!canWrite}
             autoComplete="new-password"
           />
-          <FieldHelp>Cifrado AES-256-GCM antes de salvar (KMS_MASTER_KEY).</FieldHelp>
+          <FieldHelp>{t('clientSecretHelp')}</FieldHelp>
         </div>
       </div>
       {canWrite && (
         <div className="mt-3 flex justify-end">
           <Button onClick={saveCreds} loading={savingCreds}>
-            Salvar credenciais
+            {t('saveCredentials')}
           </Button>
         </div>
       )}
@@ -307,29 +302,27 @@ function CredentialsCard({
       <hr className="my-5 border-border" />
 
       <div>
-        <h3 className="text-sm font-semibold text-text">Certificado .p12 (Pix / mTLS)</h3>
-        <p className="mt-1 text-xs text-text-muted">
-          Obrigatório só para Pix imediato. Boleto/Bolix não usa certificado.
-        </p>
+        <h3 className="text-sm font-semibold text-text">{t('certificateTitle')}</h3>
+        <p className="mt-1 text-xs text-text-muted">{t('certificateHelp')}</p>
         {canWrite && (
           <div className="mt-3 grid gap-4 md:grid-cols-2">
             <div>
-              <Label>Arquivo .p12</Label>
+              <Label>{t('p12File')}</Label>
               <input
                 ref={fileRef}
                 type="file"
                 accept=".p12,application/x-pkcs12"
                 className="block w-full text-sm file:mr-3 file:rounded-md file:border-0 file:bg-accent-muted file:px-3 file:py-1.5 file:text-text hover:file:bg-accent-muted/80"
               />
-              <FieldHelp>PKCS#12 baixado da conta EFI.</FieldHelp>
+              <FieldHelp>{t('p12FileHelp')}</FieldHelp>
             </div>
             <div>
-              <Label>Senha do .p12</Label>
+              <Label>{t('p12Password')}</Label>
               <Input
                 type="password"
                 value={certPwd}
                 onChange={(e) => setCertPwd(e.target.value)}
-                placeholder="geralmente vazia no EFI"
+                placeholder={t('p12PasswordPlaceholder')}
                 autoComplete="new-password"
               />
             </div>
@@ -338,7 +331,7 @@ function CredentialsCard({
         {canWrite && (
           <div className="mt-3 flex justify-end">
             <Button onClick={uploadCert} loading={uploadingCert} variant="outline">
-              Subir certificado
+              {t('uploadCertificate')}
             </Button>
           </div>
         )}
@@ -359,6 +352,8 @@ function ChargingCard({
   canWrite: boolean;
   onSaved: () => void;
 }) {
+  const t = useTranslations('settings.efi');
+  const tc = useTranslations('common');
   const [pixKey, setPixKey] = useState(config.pixKey ?? '');
   const [defaultChargeKind, setKind] = useState<EfiChargeKind>(config.defaultChargeKind);
   const [expirationDays, setExpiration] = useState(config.expirationDays);
@@ -387,42 +382,42 @@ function ChargingCard({
         finePercent: finePercent === '' ? null : Number(finePercent),
         interestPercent: interestPercent === '' ? null : Number(interestPercent),
       });
-      toast.success('Preferências de cobrança salvas');
+      toast.success(t('chargingSaved'));
       onSaved();
     } catch (err) {
       const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
-      toast.error(`Falha: ${msg}`);
+      toast.error(`${tc('failure')}: ${msg}`);
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Section title="Cobrança">
+    <Section title={t('chargingSection')}>
       <div className="grid gap-4 md:grid-cols-2">
         <div>
-          <Label>Chave Pix recebedora</Label>
+          <Label>{t('pixKey')}</Label>
           <Input
             value={pixKey}
             onChange={(e) => setPixKey(e.target.value)}
-            placeholder="CNPJ, e-mail, telefone ou chave aleatória"
+            placeholder={t('pixKeyPlaceholder')}
             disabled={!canWrite}
           />
-          <FieldHelp>Exigida para gerar Pix imediato.</FieldHelp>
+          <FieldHelp>{t('pixKeyHelp')}</FieldHelp>
         </div>
         <div>
-          <Label>Tipo padrão de cobrança</Label>
+          <Label>{t('defaultChargeKind')}</Label>
           <div className="flex gap-2">
             <EnvRadio
-              label="Boleto + Pix"
-              description="Bolix — boleto com QR Pix"
+              label={t('bolixLabel')}
+              description={t('bolixDescription')}
               active={defaultChargeKind === 'BOLIX'}
               onClick={() => setKind('BOLIX')}
               disabled={!canWrite}
             />
             <EnvRadio
-              label="Pix"
-              description="Pix imediato (QR)"
+              label={t('pixLabel')}
+              description={t('pixDescription')}
               active={defaultChargeKind === 'PIX'}
               onClick={() => setKind('PIX')}
               disabled={!canWrite}
@@ -430,7 +425,7 @@ function ChargingCard({
           </div>
         </div>
         <div>
-          <Label>Dias até expirar</Label>
+          <Label>{t('expirationDays')}</Label>
           <Input
             type="number"
             min={1}
@@ -439,11 +434,11 @@ function ChargingCard({
             onChange={(e) => setExpiration(Number(e.target.value))}
             disabled={!canWrite}
           />
-          <FieldHelp>Validade do Pix / vencimento do boleto.</FieldHelp>
+          <FieldHelp>{t('expirationDaysHelp')}</FieldHelp>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <Label>Multa (%)</Label>
+            <Label>{t('fine')}</Label>
             <Input
               type="number"
               min={0}
@@ -451,12 +446,12 @@ function ChargingCard({
               step="0.01"
               value={finePercent}
               onChange={(e) => setFine(e.target.value)}
-              placeholder="sem multa"
+              placeholder={t('finePlaceholder')}
               disabled={!canWrite}
             />
           </div>
           <div>
-            <Label>Juros a.m. (%)</Label>
+            <Label>{t('interest')}</Label>
             <Input
               type="number"
               min={0}
@@ -464,13 +459,13 @@ function ChargingCard({
               step="0.01"
               value={interestPercent}
               onChange={(e) => setInterest(e.target.value)}
-              placeholder="sem juros"
+              placeholder={t('interestPlaceholder')}
               disabled={!canWrite}
             />
           </div>
         </div>
         <div>
-          <Label>Geração automática</Label>
+          <Label>{t('autoGenerate')}</Label>
           <div className="flex items-center gap-3">
             <input
               type="checkbox"
@@ -481,19 +476,16 @@ function ChargingCard({
               id="efi-autogen"
             />
             <label htmlFor="efi-autogen" className="text-sm text-text">
-              Emitir cobrança automaticamente para faturas a vencer
+              {t('autoGenerateHelp')}
             </label>
           </div>
-          <FieldHelp>
-            Um job emite a cobrança (tipo padrão) para faturas em aberto vencendo
-            nos próximos 10 dias.
-          </FieldHelp>
+          <FieldHelp>{t('autoGenerateFieldHelp')}</FieldHelp>
         </div>
       </div>
       {canWrite && (
         <div className="mt-4 flex justify-end">
           <Button onClick={save} loading={saving}>
-            Salvar cobrança
+            {t('saveCharging')}
           </Button>
         </div>
       )}
@@ -513,17 +505,19 @@ function WebhookCard({
   canWrite: boolean;
   onSaved: () => void;
 }) {
+  const t = useTranslations('settings.efi');
+  const tc = useTranslations('common');
   const [registering, setRegistering] = useState(false);
 
   async function register() {
     setRegistering(true);
     try {
       const r = await efiApi.registerWebhook();
-      toast.success(`Webhook Pix registrado: ${r.url}`);
+      toast.success(t('webhookRegistered', { url: r.url }));
       onSaved();
     } catch (err) {
       const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
-      toast.error(`Falha: ${msg}`);
+      toast.error(`${tc('failure')}: ${msg}`);
     } finally {
       setRegistering(false);
     }
@@ -531,21 +525,17 @@ function WebhookCard({
 
   return (
     <Section
-      title="Webhooks"
+      title={t('webhooksSection')}
       rightSlot={
         <Badge tone={config.pixWebhookRegistered ? 'success' : 'warning'}>
-          {config.pixWebhookRegistered ? 'Pix registrado' : 'Pix não registrado'}
+          {config.pixWebhookRegistered ? t('pixRegistered') : t('pixNotRegistered')}
         </Badge>
       }
     >
-      <p className="mb-3 text-xs text-text-muted">
-        O EFI notifica os pagamentos nestas URLs. Cadastre a de boleto no painel
-        EFI; a de Pix é registrada automaticamente pelo botão abaixo (exige
-        certificado, chave Pix e o servidor com a URL pública configurada).
-      </p>
+      <p className="mb-3 text-xs text-text-muted">{t('webhooksHelp')}</p>
       <div className="space-y-2">
-        <UrlRow label="Webhook Pix" url={config.pixWebhookUrl} />
-        <UrlRow label="Notificação boleto" url={config.boletoNotificationUrl} />
+        <UrlRow label={t('pixWebhook')} url={config.pixWebhookUrl} />
+        <UrlRow label={t('boletoNotification')} url={config.boletoNotificationUrl} />
       </div>
       {canWrite && (
         <div className="mt-4 flex justify-end">
@@ -556,11 +546,11 @@ function WebhookCard({
             disabled={!config.hasCertificate || !config.pixKey}
             title={
               !config.hasCertificate || !config.pixKey
-                ? 'Requer certificado .p12 e chave Pix configurados'
+                ? t('registerWebhookDisabledHint')
                 : undefined
             }
           >
-            Registrar webhook Pix no EFI
+            {t('registerWebhook')}
           </Button>
         </div>
       )}
@@ -569,6 +559,7 @@ function WebhookCard({
 }
 
 function UrlRow({ label, url }: { label: string; url: string | null }) {
+  const t = useTranslations('settings.efi');
   return (
     <div className="flex items-center justify-between gap-3 rounded-md border border-border bg-surface-muted px-3 py-2 text-xs">
       <span className="text-text-muted">{label}</span>
@@ -576,7 +567,7 @@ function UrlRow({ label, url }: { label: string; url: string | null }) {
         <code className="truncate font-mono text-text">{url}</code>
       ) : (
         <span className="text-amber-700 dark:text-amber-400">
-          EFI_PUBLIC_WEBHOOK_BASE não configurada no servidor
+          {t('publicBaseNotConfigured')}
         </span>
       )}
     </div>

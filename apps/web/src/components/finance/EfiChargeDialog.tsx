@@ -1,6 +1,7 @@
 'use client';
 
 import { Check, Copy, ExternalLink, FileText, Loader2, QrCode } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import useSWR from 'swr';
@@ -51,6 +52,8 @@ export function EfiChargeDialog({
   description,
   onGenerated,
 }: EfiChargeDialogProps) {
+  const t = useTranslations('financeDialogs');
+  const tc = useTranslations('common');
   const formatMoney = useFormatMoney();
   const [generating, setGenerating] = useState<EfiChargeKind | null>(null);
 
@@ -71,9 +74,9 @@ export function EfiChargeDialog({
       const result = await efiApi.generate(invoiceId, { kind, force });
       await mutate(result, { revalidate: false });
       onGenerated?.();
-      toast.success(kind === 'PIX' ? 'Pix gerado' : 'Boleto gerado');
+      toast.success(kind === 'PIX' ? t('efi.pixGenerated') : t('efi.boletoGenerated'));
     } catch (e) {
-      const msg = e instanceof ApiError ? e.friendlyMessage : 'Falha ao gerar cobrança';
+      const msg = e instanceof ApiError ? e.friendlyMessage : t('efi.generateError');
       toast.error(msg);
     } finally {
       setGenerating(null);
@@ -84,7 +87,7 @@ export function EfiChargeDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Cobrança EFI</DialogTitle>
+          <DialogTitle>{t('efi.title')}</DialogTitle>
           <DialogDescription>
             {description ? `${description} · ` : ''}
             {formatMoney(amount)}
@@ -94,8 +97,7 @@ export function EfiChargeDialog({
         <DialogBody className="space-y-4">
           {!enabled && (
             <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
-              A integração EFI não está habilitada para este provedor. Configure
-              em Configurações → Pagamentos (EFI).
+              {t('efi.notEnabled')}
             </p>
           )}
 
@@ -108,7 +110,7 @@ export function EfiChargeDialog({
           {enabled && !isLoading && !active && (
             <div className="space-y-3">
               <p className="text-sm text-text-muted">
-                Gere uma cobrança para enviar ao cliente:
+                {t('efi.generatePrompt')}
               </p>
               <div className="flex gap-2">
                 <Button
@@ -130,7 +132,7 @@ export function EfiChargeDialog({
               </div>
               {charge && charge.status === 'ERROR' && charge.lastError && (
                 <p className="text-2xs text-red-600 dark:text-red-400">
-                  Última tentativa falhou: {charge.lastError}
+                  {t('efi.lastAttemptFailed', { error: charge.lastError })}
                 </p>
               )}
             </div>
@@ -146,13 +148,13 @@ export function EfiChargeDialog({
               size="sm"
               onClick={() => generate(active.kind, true)}
               loading={generating != null}
-              title="Cancela a cobrança atual e emite uma nova"
+              title={t('efi.reissueTooltip')}
             >
-              Reemitir
+              {t('efi.reissue')}
             </Button>
           )}
           <Button variant="secondary" size="sm" onClick={() => onOpenChange(false)}>
-            Fechar
+            {tc('close')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -162,6 +164,7 @@ export function EfiChargeDialog({
 
 /** Exibe os artefatos de uma cobrança ATIVA (QR, copia-e-cola, boleto, PDF). */
 function ChargeView({ charge }: { charge: EfiCharge }) {
+  const t = useTranslations('financeDialogs');
   const hasPix = !!(charge.pixCopiaECola || charge.pixQrImage);
   const hasBoleto = !!(charge.barcode || charge.pdfUrl || charge.paymentLink);
 
@@ -169,7 +172,9 @@ function ChargeView({ charge }: { charge: EfiCharge }) {
     <div className="space-y-4">
       {charge.expiresAt && (
         <p className="text-2xs text-text-muted">
-          Expira em {new Date(charge.expiresAt).toLocaleString('pt-BR')}
+          {t('efi.expiresAt', {
+            date: new Date(charge.expiresAt).toLocaleString('pt-BR'),
+          })}
         </p>
       )}
 
@@ -181,13 +186,13 @@ function ChargeView({ charge }: { charge: EfiCharge }) {
                   não agrega aqui e exigiria allowlist de domínio. */}
               <img
                 src={charge.pixQrImage}
-                alt="QR Code Pix"
+                alt={t('efi.pixQrAlt')}
                 className="h-44 w-44 rounded-md border border-border bg-white p-2"
               />
             </div>
           )}
           {charge.pixCopiaECola && (
-            <CopyField label="Pix copia-e-cola" value={charge.pixCopiaECola} mono />
+            <CopyField label={t('efi.pixCopyPaste')} value={charge.pixCopiaECola} mono />
           )}
         </div>
       )}
@@ -195,20 +200,20 @@ function ChargeView({ charge }: { charge: EfiCharge }) {
       {hasBoleto && (
         <div className="space-y-2">
           {charge.barcode && (
-            <CopyField label="Linha digitável" value={charge.barcode} mono />
+            <CopyField label={t('efi.barcodeLine')} value={charge.barcode} mono />
           )}
           <div className="flex gap-2">
             {charge.pdfUrl && (
               <a href={charge.pdfUrl} target="_blank" rel="noopener noreferrer">
                 <Button variant="outline" size="sm">
-                  <FileText className="mr-1.5 h-4 w-4" /> Abrir PDF
+                  <FileText className="mr-1.5 h-4 w-4" /> {t('efi.openPdf')}
                 </Button>
               </a>
             )}
             {charge.paymentLink && (
               <a href={charge.paymentLink} target="_blank" rel="noopener noreferrer">
                 <Button variant="ghost" size="sm">
-                  <ExternalLink className="mr-1.5 h-4 w-4" /> Link de pagamento
+                  <ExternalLink className="mr-1.5 h-4 w-4" /> {t('efi.paymentLink')}
                 </Button>
               </a>
             )}
@@ -221,11 +226,12 @@ function ChargeView({ charge }: { charge: EfiCharge }) {
 
 /** Campo somente-leitura com botão de copiar. */
 function CopyField({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  const t = useTranslations('financeDialogs');
   const [copied, setCopied] = useState(false);
   function copy() {
     void navigator.clipboard?.writeText(value);
     setCopied(true);
-    toast.success('Copiado');
+    toast.success(t('efi.copied'));
     setTimeout(() => setCopied(false), 1500);
   }
   return (
@@ -241,7 +247,7 @@ function CopyField({ label, value, mono }: { label: string; value: string; mono?
         >
           {value}
         </code>
-        <Button variant="outline" size="icon" onClick={copy} title="Copiar">
+        <Button variant="outline" size="icon" onClick={copy} title={t('efi.copy')}>
           {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
         </Button>
       </div>

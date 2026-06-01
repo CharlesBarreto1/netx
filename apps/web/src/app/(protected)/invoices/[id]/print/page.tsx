@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { useParams } from 'next/navigation';
 import useSWR from 'swr';
 
@@ -29,6 +30,8 @@ import { useFormatMoney } from '@/lib/use-money';
  *   - Layout em CSS-only com `@media print` removendo botões/sombra.
  */
 export default function InvoicePrintPage() {
+  const t = useTranslations('invoicePrint');
+  const tc = useTranslations('common');
   const params = useParams<{ id: string }>();
   const id = params?.id;
   const formatMoney = useFormatMoney();
@@ -45,30 +48,31 @@ export default function InvoicePrintPage() {
   // Dispara impressão quando tudo carregou.
   useEffect(() => {
     if (invoice && contract && customer) {
-      const t = window.setTimeout(() => window.print(), 350);
-      return () => window.clearTimeout(t);
+      const timer = window.setTimeout(() => window.print(), 350);
+      return () => window.clearTimeout(timer);
     }
     return undefined;
   }, [invoice, contract, customer]);
 
   if (invErr) {
     const msg =
-      invErr instanceof ApiError ? invErr.friendlyMessage : 'Falha ao carregar fatura';
+      invErr instanceof ApiError ? invErr.friendlyMessage : tc('failureLoading');
     return <p className="p-6 text-sm text-red-600">{msg}</p>;
   }
 
   if (!invoice || !contract || !customer) {
-    return <PageLoader label="Carregando fatura…" />;
+    return <PageLoader label={t('loading')} />;
   }
 
   const statusLabel: Record<typeof invoice.status, string> = {
-    OPEN: 'Em aberto',
-    PAID: 'Paga',
-    OVERDUE: 'Em atraso',
-    CANCELLED: 'Cancelada',
+    OPEN: t('statusOpen'),
+    PAID: t('statusPaid'),
+    OVERDUE: t('statusOverdue'),
+    CANCELLED: t('statusCancelled'),
   };
 
-  const reference = invoice.reference ?? `Mensalidade — vence ${formatDate(invoice.dueDate)}`;
+  const reference =
+    invoice.reference ?? t('defaultReference', { date: formatDate(invoice.dueDate) });
 
   return (
     <div className="mx-auto max-w-[820px] bg-white p-8 text-slate-900 print:p-0">
@@ -79,14 +83,14 @@ export default function InvoicePrintPage() {
           onClick={() => window.print()}
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
         >
-          Imprimir / salvar PDF
+          {t('printPdf')}
         </button>
         <button
           type="button"
           onClick={() => window.history.back()}
           className="text-sm text-slate-600 hover:underline"
         >
-          ← Voltar
+          ← {tc('back')}
         </button>
       </div>
 
@@ -94,20 +98,20 @@ export default function InvoicePrintPage() {
       <header className="border-b-2 border-slate-900 pb-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Demonstrativo de Fatura</h1>
+            <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
             <p className="text-xs text-slate-500">
-              Referência: <strong>{reference}</strong>
+              {t('reference')} <strong>{reference}</strong>
             </p>
             <p className="text-xs text-slate-500">
-              Emitido em {formatDateTime(invoice.issuedAt)}
+              {t('issuedAt', { date: formatDateTime(invoice.issuedAt) })}
             </p>
           </div>
           <div className="text-right">
-            <p className="text-xs uppercase tracking-wider text-slate-500">Status</p>
+            <p className="text-xs uppercase tracking-wider text-slate-500">{tc('status')}</p>
             <p className="text-base font-semibold">{statusLabel[invoice.status]}</p>
             {invoice.status === 'PAID' && invoice.paidAt && (
               <p className="text-xs text-emerald-700">
-                Pago em {formatDate(invoice.paidAt)}
+                {t('paidAt', { date: formatDate(invoice.paidAt) })}
               </p>
             )}
           </div>
@@ -118,7 +122,7 @@ export default function InvoicePrintPage() {
       <section className="mt-6 grid grid-cols-2 gap-6 text-sm">
         <div>
           <h2 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-            Cliente
+            {t('customer')}
           </h2>
           <p className="mt-1 font-medium">{customer.displayName}</p>
           {customer.taxId && (
@@ -136,7 +140,7 @@ export default function InvoicePrintPage() {
 
         <div>
           <h2 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-            Contrato
+            {t('contract')}
           </h2>
           <p className="mt-1 font-medium">
             {contract.code ?? `#${contract.id.slice(0, 8)}`}
@@ -145,10 +149,13 @@ export default function InvoicePrintPage() {
             <p className="text-xs text-slate-600">PPPoE: {contract.pppoeUsername}</p>
           )}
           <p className="text-xs text-slate-600">
-            Plano: {contract.bandwidthMbps} Mbps · {formatMoney(contract.monthlyValue)} /mês
+            {t('plan', {
+              mbps: contract.bandwidthMbps,
+              value: formatMoney(contract.monthlyValue),
+            })}
           </p>
           <p className="text-xs text-slate-600">
-            Endereço: {contract.installationAddress}
+            {t('address', { address: contract.installationAddress })}
           </p>
         </div>
       </section>
@@ -156,16 +163,16 @@ export default function InvoicePrintPage() {
       {/* Detalhes da fatura */}
       <section className="mt-8">
         <h2 className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-          Detalhes do lançamento
+          {t('entryDetails')}
         </h2>
 
         <div className="overflow-x-auto">
           <table className="mt-2 w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-slate-300 text-left">
-                <th className="py-2">Descrição</th>
-                <th className="py-2 text-right">Vencimento</th>
-                <th className="py-2 text-right">Valor</th>
+                <th className="py-2">{tc('description')}</th>
+                <th className="py-2 text-right">{t('dueDate')}</th>
+                <th className="py-2 text-right">{t('amount')}</th>
               </tr>
             </thead>
             <tbody>
@@ -178,7 +185,7 @@ export default function InvoicePrintPage() {
             <tfoot>
               <tr>
                 <td colSpan={2} className="pt-3 text-right font-semibold">
-                  Total
+                  {t('total')}
                 </td>
                 <td className="pt-3 text-right text-lg font-bold tabular-nums">
                   {formatMoney(invoice.amount)}
@@ -187,7 +194,7 @@ export default function InvoicePrintPage() {
               {invoice.status === 'PAID' && invoice.paidAmount != null && (
                 <tr>
                   <td colSpan={2} className="pt-1 text-right text-xs text-emerald-700">
-                    Valor pago
+                    {t('paidAmount')}
                   </td>
                   <td className="pt-1 text-right text-xs tabular-nums text-emerald-700">
                     {formatMoney(invoice.paidAmount)}
@@ -200,14 +207,14 @@ export default function InvoicePrintPage() {
 
         {invoice.paymentNote && (
           <p className="mt-4 text-xs text-slate-600">
-            <strong>Nota de pagamento:</strong> {invoice.paymentNote}
+            <strong>{t('paymentNote')}</strong> {invoice.paymentNote}
           </p>
         )}
       </section>
 
       {/* Rodapé */}
       <footer className="mt-12 border-t border-slate-300 pt-3 text-[10px] text-slate-500">
-        Documento de uso interno — não substitui o boleto bancário oficial. ID da fatura:
+        {t('footerNote')}
         <span className="ml-1 font-mono">{invoice.id}</span>
       </footer>
 

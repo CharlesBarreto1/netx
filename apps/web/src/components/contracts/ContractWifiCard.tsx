@@ -11,6 +11,7 @@
  *
  * @provenance Y2hhcmxlc2JhcnJldG86MDg0NzI5Njg5MDE=
  */
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -39,13 +40,15 @@ function generatePassword(): string {
   return out;
 }
 
-function fmtRelative(iso: string | null): string {
+type WifiTranslate = ReturnType<typeof useTranslations>;
+
+function fmtRelative(iso: string | null, t: WifiTranslate): string {
   if (!iso) return '—';
   const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (diff < 60) return `${Math.floor(diff)}s atrás`;
-  if (diff < 3600) return `${Math.floor(diff / 60)}min atrás`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h atrás`;
-  return `${Math.floor(diff / 86400)}d atrás`;
+  if (diff < 60) return t('wifi.agoSeconds', { count: Math.floor(diff) });
+  if (diff < 3600) return t('wifi.agoMinutes', { count: Math.floor(diff / 60) });
+  if (diff < 86400) return t('wifi.agoHours', { count: Math.floor(diff / 3600) });
+  return t('wifi.agoDays', { count: Math.floor(diff / 86400) });
 }
 
 function taskBadgeTone(status: string): string {
@@ -64,6 +67,7 @@ function taskBadgeTone(status: string): string {
 }
 
 export function ContractWifiCard({ contractId }: Props) {
+  const t = useTranslations('contractCards');
   const { data, isLoading, mutate } = useSWR<ContractWifiStatus>(
     `/v1/contracts/${contractId}/wifi`,
     () => contractsApi.wifiStatus(contractId),
@@ -84,7 +88,7 @@ export function ContractWifiCard({ contractId }: Props) {
   if (isLoading || !data) {
     return (
       <div className="rounded-md border border-border bg-surface p-4 text-sm text-text-muted">
-        Carregando Wi-Fi…
+        {t('wifi.loading')}
       </div>
     );
   }
@@ -111,38 +115,40 @@ export function ContractWifiCard({ contractId }: Props) {
                 </span>
               </div>
               <p className="text-xs text-text-muted">
-                Senha:{' '}
+                {t('wifi.password')}:{' '}
                 {data.hasWifiPassword ? (
                   <span className="font-mono">••••••••••</span>
                 ) : (
-                  <span className="italic">não configurada</span>
+                  <span className="italic">{t('wifi.notConfigured')}</span>
                 )}
               </p>
             </>
           ) : (
             <p className="text-sm text-text-muted italic">
-              Wi-Fi ainda não configurado neste contrato.
+              {t('wifi.notConfiguredYet')}
             </p>
           )}
         </div>
         {canEdit && data.hasTr069Device && (
           <Button size="sm" onClick={() => setEditing(true)}>
-            Editar Wi-Fi
+            {t('wifi.editWifi')}
           </Button>
         )}
       </div>
 
       {!data.hasTr069Device && (
         <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-          ⚠️ Contrato sem ONT TR-069 vinculada. Ative o cliente em{' '}
-          <code>/provisioning/install</code> primeiro pra liberar a gestão de Wi-Fi.
+          ⚠️{' '}
+          {t.rich('wifi.noTr069', {
+            code: (chunks) => <code>{chunks}</code>,
+          })}
         </div>
       )}
 
       {data.lastTask && (
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-border pt-3">
           <span className="text-xs uppercase tracking-wide text-text-muted">
-            Última task TR-069:
+            {t('wifi.lastTask')}:
           </span>
           <span
             className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${taskBadgeTone(
@@ -152,9 +158,9 @@ export function ContractWifiCard({ contractId }: Props) {
             {data.lastTask.action} · {data.lastTask.status}
           </span>
           <span className="text-xs text-text-muted">
-            criada {fmtRelative(data.lastTask.createdAt)}
+            {t('wifi.createdAgo', { when: fmtRelative(data.lastTask.createdAt, t) })}
             {data.lastTask.completedAt
-              ? ` · concluída ${fmtRelative(data.lastTask.completedAt)}`
+              ? ` · ${t('wifi.completedAgo', { when: fmtRelative(data.lastTask.completedAt, t) })}`
               : ''}
           </span>
           {data.lastTask.error && (
@@ -167,7 +173,7 @@ export function ContractWifiCard({ contractId }: Props) {
 
       {data.lastInformAt && (
         <p className="mt-2 text-xs text-text-muted">
-          📡 Último Inform do CPE: {fmtRelative(data.lastInformAt)}
+          📡 {t('wifi.lastInform', { when: fmtRelative(data.lastInformAt, t) })}
         </p>
       )}
 
@@ -199,6 +205,8 @@ function EditWifiModal({
   onClose,
   onSaved,
 }: EditWifiModalProps) {
+  const t = useTranslations('contractCards');
+  const tc = useTranslations('common');
   const [ssid, setSsid] = useState(initialSsid);
   const [pwd, setPwd] = useState('');
   const [reboot, setReboot] = useState(false);
@@ -222,7 +230,7 @@ function EditWifiModal({
   }
 
   return (
-    <Modal open onClose={onClose} title="Editar Wi-Fi">
+    <Modal open onClose={onClose} title={t('wifi.editTitle')}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <Label htmlFor="ssid" required>
@@ -237,14 +245,15 @@ function EditWifiModal({
             placeholder="Silva-Casa"
           />
           <p className="mt-1 text-xs text-text-muted">
-            Aplicado em 2.4&nbsp;GHz como informado e em 5&nbsp;GHz com sufixo{' '}
-            <code>-5G</code> automático.
+            {t.rich('wifi.ssidHelp', {
+              code: (chunks) => <code>{chunks}</code>,
+            })}
           </p>
         </div>
 
         <div>
           <Label htmlFor="wifiPwd" required>
-            Senha Wi-Fi
+            {t('wifi.wifiPasswordLabel')}
           </Label>
           <div className="flex gap-2">
             <Input
@@ -254,7 +263,7 @@ function EditWifiModal({
               maxLength={63}
               value={pwd}
               onChange={(e) => setPwd(e.target.value)}
-              placeholder="Mínimo 8 caracteres"
+              placeholder={t('wifi.passwordPlaceholder')}
               className="flex-1"
             />
             <Button
@@ -262,11 +271,11 @@ function EditWifiModal({
               variant="secondary"
               onClick={() => setPwd(generatePassword())}
             >
-              Gerar
+              {t('wifi.generate')}
             </Button>
           </div>
           <p className="mt-1 text-xs text-text-muted">
-            Padrão WPA2-PSK (8–63 chars). Senha será cifrada at-rest com KMS.
+            {t('wifi.passwordHelp')}
           </p>
         </div>
 
@@ -278,18 +287,15 @@ function EditWifiModal({
             className="mt-0.5"
           />
           <span>
-            <span className="font-medium">Reiniciar ONT após aplicar</span>
+            <span className="font-medium">{t('wifi.rebootLabel')}</span>
             <span className="block text-xs text-text-muted">
-              Recomendado se cliente reclamar que o Wi-Fi novo não apareceu.
-              Adiciona ~60s de downtime. Sem marcar, a Huawei aplica sem
-              reboot na maioria dos casos.
+              {t('wifi.rebootHelp')}
             </span>
           </span>
         </label>
 
         <div className="rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-200">
-          ℹ️ Aplicação acontece no próximo Inform do CPE (típico até ~60s).
-          O cartão da tela mostrará o status (PENDING → RUNNING → DONE).
+          ℹ️ {t('wifi.applyInfo')}
         </div>
 
         {error && (
@@ -298,10 +304,10 @@ function EditWifiModal({
 
         <div className="flex justify-end gap-2 border-t border-border pt-3">
           <Button type="button" variant="ghost" onClick={onClose}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button type="submit" loading={saving}>
-            Aplicar
+            {tc('apply')}
           </Button>
         </div>
       </form>

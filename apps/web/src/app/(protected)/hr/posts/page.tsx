@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -10,13 +11,15 @@ import { PageLoader } from '@/components/ui/Spinner';
 import { ApiError } from '@/lib/api';
 import { hrApi, type CompanyPost, type CompanyPostStatus, type Paginated } from '@/lib/hr-api';
 
-const STATUS_LABEL: Record<CompanyPostStatus, string> = {
-  DRAFT: 'Rascunho',
-  PUBLISHED: 'Publicado',
-  ARCHIVED: 'Arquivado',
+const STATUS_KEY: Record<CompanyPostStatus, string> = {
+  DRAFT: 'statusDraft',
+  PUBLISHED: 'statusPublished',
+  ARCHIVED: 'statusArchived',
 };
 
 export default function HrPostsPage() {
+  const t = useTranslations('hr.posts');
+  const tc = useTranslations('common');
   const { data, isLoading, mutate } = useSWR<Paginated<CompanyPost>>(
     hrApi.postsPath({ pageSize: 100 }),
     () => hrApi.listPosts({ pageSize: 100 }),
@@ -31,18 +34,18 @@ export default function HrPostsPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Notícias da empresa</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Feed do portal do colaborador. Publique avisos, comunicados e novidades.
+            {t('subtitle')}
           </p>
         </div>
-        <Button onClick={() => setCreating(true)}>Nova publicação</Button>
+        <Button onClick={() => setCreating(true)}>{t('new')}</Button>
       </header>
 
       {isLoading && <PageLoader />}
       {rows.length === 0 && !isLoading && (
         <p className="rounded-md border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700">
-          Nenhuma publicação.
+          {t('empty')}
         </p>
       )}
 
@@ -52,12 +55,12 @@ export default function HrPostsPage() {
             <div>
               {p.pinned && <span className="mr-1">📌</span>}
               <strong>{p.title}</strong>
-              <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs dark:bg-slate-700">{STATUS_LABEL[p.status]}</span>
+              <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs dark:bg-slate-700">{t(STATUS_KEY[p.status])}</span>
               {p.publishedAt && <span className="ml-2 text-xs text-slate-400">{new Date(p.publishedAt).toLocaleDateString('pt-BR')}</span>}
             </div>
             <div className="flex gap-1">
-              <Button size="sm" variant="ghost" onClick={() => setEditing(p)}>Editar</Button>
-              <Button size="sm" variant="ghost" onClick={() => del(p)}>Excluir</Button>
+              <Button size="sm" variant="ghost" onClick={() => setEditing(p)}>{tc('edit')}</Button>
+              <Button size="sm" variant="ghost" onClick={() => del(p)}>{tc('delete')}</Button>
             </div>
           </div>
         ))}
@@ -75,6 +78,8 @@ export default function HrPostsPage() {
 }
 
 function PostModal({ initial, onClose, onSaved }: { initial: CompanyPost | null; onClose: () => void; onSaved: () => void }) {
+  const t = useTranslations('hr.posts');
+  const tc = useTranslations('common');
   const isNew = !initial;
   const [title, setTitle] = useState(initial?.title ?? '');
   const [excerpt, setExcerpt] = useState(initial?.excerpt ?? '');
@@ -85,7 +90,7 @@ function PostModal({ initial, onClose, onSaved }: { initial: CompanyPost | null;
   const [error, setError] = useState<string | null>(null);
 
   async function submit() {
-    if (!title.trim() || !body.trim()) return setError('Título e conteúdo são obrigatórios');
+    if (!title.trim() || !body.trim()) return setError(t('validationRequired'));
     setBusy(true);
     setError(null);
     try {
@@ -94,7 +99,7 @@ function PostModal({ initial, onClose, onSaved }: { initial: CompanyPost | null;
       else await hrApi.updatePost(initial!.id, payload);
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      setError(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setBusy(false);
     }
@@ -104,31 +109,31 @@ function PostModal({ initial, onClose, onSaved }: { initial: CompanyPost | null;
     <Modal
       open
       onClose={onClose}
-      title={isNew ? 'Nova publicação' : 'Editar publicação'}
+      title={isNew ? t('new') : t('editTitle')}
       size="lg"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose} disabled={busy}>Cancelar</Button>
-          <Button onClick={submit} loading={busy}>Salvar</Button>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>{tc('cancel')}</Button>
+          <Button onClick={submit} loading={busy}>{tc('save')}</Button>
         </>
       }
     >
       <div className="space-y-3">
         {error && <div className="rounded-md bg-red-50 p-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</div>}
-        <div><Label>Título</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} /></div>
-        <div><Label>Resumo (opcional)</Label><Input value={excerpt} onChange={(e) => setExcerpt(e.target.value)} /></div>
-        <div><Label>Conteúdo (markdown)</Label><Textarea rows={10} value={body} onChange={(e) => setBody(e.target.value)} /></div>
+        <div><Label>{t('fieldTitle')}</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} /></div>
+        <div><Label>{t('fieldExcerpt')}</Label><Input value={excerpt} onChange={(e) => setExcerpt(e.target.value)} /></div>
+        <div><Label>{t('fieldBody')}</Label><Textarea rows={10} value={body} onChange={(e) => setBody(e.target.value)} /></div>
         <div className="flex items-center gap-4">
           <div>
-            <Label>Status</Label>
+            <Label>{tc('status')}</Label>
             <select className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" value={status} onChange={(e) => setStatus(e.target.value as CompanyPostStatus)}>
-              <option value="DRAFT">Rascunho</option>
-              <option value="PUBLISHED">Publicado</option>
-              <option value="ARCHIVED">Arquivado</option>
+              <option value="DRAFT">{t('statusDraft')}</option>
+              <option value="PUBLISHED">{t('statusPublished')}</option>
+              <option value="ARCHIVED">{t('statusArchived')}</option>
             </select>
           </div>
           <label className="mt-5 flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} /> Fixar no topo
+            <input type="checkbox" checked={pinned} onChange={(e) => setPinned(e.target.checked)} /> {t('pinToTop')}
           </label>
         </div>
       </div>

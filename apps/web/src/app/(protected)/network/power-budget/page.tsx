@@ -11,6 +11,7 @@
  * sobrescrever pra OLT/SFP específicos.
  */
 import { Calculator } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Badge } from '@/components/ui/Badge';
@@ -43,13 +44,16 @@ const STATUS_TONE: Record<
   fail: 'danger',
 };
 
-const STATUS_LABEL: Record<PowerBudgetResult['status'], string> = {
-  safe: 'Margem confortável',
-  tight: 'Margem apertada',
-  fail: 'Sem link — refazer planta',
-};
-
 export default function PowerBudgetPage() {
+  const t = useTranslations('network.powerBudget');
+  const tc = useTranslations('common');
+
+  const STATUS_LABEL: Record<PowerBudgetResult['status'], string> = {
+    safe: t('status.safe'),
+    tight: t('status.tight'),
+    fail: t('status.fail'),
+  };
+
   // Parâmetros do caminho
   const [fiberMeters, setFiberMeters] = useState(2000);
   const [wavelength, setWavelength] = useState<WavelengthNm>('1490');
@@ -85,7 +89,7 @@ export default function PowerBudgetPage() {
       });
       setResult(r);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      toast.error(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setCalculating(false);
     }
@@ -96,22 +100,19 @@ export default function PowerBudgetPage() {
       <header>
         <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
           <Calculator className="h-6 w-6" />
-          Power budget
+          {t('title')}
         </h1>
-        <p className="text-sm text-text-muted">
-          Calcula a perda total entre OLT e ONT e prevê potência recebida no
-          cliente. Defaults: GPON Class B+ a 1490 nm (downstream).
-        </p>
+        <p className="text-sm text-text-muted">{t('subtitle')}</p>
       </header>
 
       <div className="grid gap-5 md:grid-cols-2">
         {/* Form */}
         <section className="space-y-4 rounded-md border border-border bg-surface p-4">
-          <h2 className="text-sm font-semibold text-text">Parâmetros</h2>
+          <h2 className="text-sm font-semibold text-text">{t('params')}</h2>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label htmlFor="pb-fiber">Fibra (m)</Label>
+              <Label htmlFor="pb-fiber">{t('fiberMeters')}</Label>
               <Input
                 id="pb-fiber"
                 type="number"
@@ -127,16 +128,16 @@ export default function PowerBudgetPage() {
                 value={wavelength}
                 onChange={(e) => setWavelength(e.target.value as WavelengthNm)}
               >
-                <option value="1310">1310 (upstream GPON, 0.4 dB/km)</option>
-                <option value="1490">1490 (downstream GPON, 0.3 dB/km)</option>
-                <option value="1550">1550 (RFoG/XG-PON, 0.25 dB/km)</option>
+                <option value="1310">{t('lambda1310')}</option>
+                <option value="1490">{t('lambda1490')}</option>
+                <option value="1550">{t('lambda1550')}</option>
               </Select>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label htmlFor="pb-sp1">Splitter 1</Label>
+              <Label htmlFor="pb-sp1">{t('splitter1')}</Label>
               <Select
                 id="pb-sp1"
                 value={splitter1}
@@ -144,7 +145,7 @@ export default function PowerBudgetPage() {
                   setSplitter1(e.target.value as SplitterRatio | '')
                 }
               >
-                <option value="">— sem splitter —</option>
+                <option value="">{t('noSplitter')}</option>
                 {SPLITTER_OPTIONS.map((s) => (
                   <option key={s.value} value={s.value}>
                     {s.label}
@@ -153,7 +154,7 @@ export default function PowerBudgetPage() {
               </Select>
             </div>
             <div>
-              <Label htmlFor="pb-sp2">Splitter 2 (cascata)</Label>
+              <Label htmlFor="pb-sp2">{t('splitter2')}</Label>
               <Select
                 id="pb-sp2"
                 value={splitter2}
@@ -161,22 +162,20 @@ export default function PowerBudgetPage() {
                   setSplitter2(e.target.value as SplitterRatio | '')
                 }
               >
-                <option value="">— sem 2º splitter —</option>
+                <option value="">{t('noSplitter2')}</option>
                 {SPLITTER_OPTIONS.map((s) => (
                   <option key={s.value} value={s.value}>
                     {s.label}
                   </option>
                 ))}
               </Select>
-              <FieldHelp>
-                Cascata típica: 1:8 → 1:8 (= 1:64 efetivo).
-              </FieldHelp>
+              <FieldHelp>{t('splitter2Help')}</FieldHelp>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label htmlFor="pb-splices">Fusões</Label>
+              <Label htmlFor="pb-splices">{t('splices')}</Label>
               <Input
                 id="pb-splices"
                 type="number"
@@ -184,10 +183,10 @@ export default function PowerBudgetPage() {
                 value={spliceCount}
                 onChange={(e) => setSpliceCount(Number(e.target.value))}
               />
-              <FieldHelp>0.1 dB cada (ITU típico).</FieldHelp>
+              <FieldHelp>{t('splicesHelp')}</FieldHelp>
             </div>
             <div>
-              <Label htmlFor="pb-conn">Conectores</Label>
+              <Label htmlFor="pb-conn">{t('connectors')}</Label>
               <Input
                 id="pb-conn"
                 type="number"
@@ -195,13 +194,13 @@ export default function PowerBudgetPage() {
                 value={connectorCount}
                 onChange={(e) => setConnectorCount(Number(e.target.value))}
               />
-              <FieldHelp>0.5 dB cada (SC/APC).</FieldHelp>
+              <FieldHelp>{t('connectorsHelp')}</FieldHelp>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3 border-t border-border pt-3">
             <div>
-              <Label htmlFor="pb-tx">OLT TX (dBm)</Label>
+              <Label htmlFor="pb-tx">{t('oltTx')}</Label>
               <Input
                 id="pb-tx"
                 type="number"
@@ -209,10 +208,10 @@ export default function PowerBudgetPage() {
                 value={oltTxDbm}
                 onChange={(e) => setOltTxDbm(Number(e.target.value))}
               />
-              <FieldHelp>+3 dBm = GPON Class B+ (default).</FieldHelp>
+              <FieldHelp>{t('oltTxHelp')}</FieldHelp>
             </div>
             <div>
-              <Label htmlFor="pb-rx">ONT RX mín (dBm)</Label>
+              <Label htmlFor="pb-rx">{t('ontRxMin')}</Label>
               <Input
                 id="pb-rx"
                 type="number"
@@ -220,39 +219,34 @@ export default function PowerBudgetPage() {
                 value={ontRxMinDbm}
                 onChange={(e) => setOntRxMinDbm(Number(e.target.value))}
               />
-              <FieldHelp>-28 dBm típico. Abaixo = sem link.</FieldHelp>
+              <FieldHelp>{t('ontRxMinHelp')}</FieldHelp>
             </div>
           </div>
 
           <div className="border-t border-border pt-3">
-            <Label htmlFor="pb-measured">Medido no ONT (dBm) — opcional</Label>
+            <Label htmlFor="pb-measured">{t('measuredOntRx')}</Label>
             <Input
               id="pb-measured"
               type="number"
               step={0.1}
               value={measuredOntRxDbm}
               onChange={(e) => setMeasuredOntRxDbm(e.target.value)}
-              placeholder="ex.: -21.8"
+              placeholder={t('measuredOntRxPlaceholder')}
             />
-            <FieldHelp>
-              Quando informado, compara orçado vs real pra diagnosticar
-              degradação.
-            </FieldHelp>
+            <FieldHelp>{t('measuredOntRxHelp')}</FieldHelp>
           </div>
 
           <Button onClick={calculate} loading={calculating} className="w-full">
-            Calcular
+            {t('calculate')}
           </Button>
         </section>
 
         {/* Resultado */}
         <section className="space-y-4 rounded-md border border-border bg-surface p-4">
-          <h2 className="text-sm font-semibold text-text">Resultado</h2>
+          <h2 className="text-sm font-semibold text-text">{t('result')}</h2>
 
           {!result ? (
-            <p className="text-sm text-text-muted">
-              Preencha os parâmetros e clique em &quot;Calcular&quot;.
-            </p>
+            <p className="text-sm text-text-muted">{t('resultEmpty')}</p>
           ) : (
             <div className="space-y-4">
               {/* Status badge gigante */}
@@ -266,7 +260,7 @@ export default function PowerBudgetPage() {
               <div className="grid grid-cols-3 gap-3 text-center">
                 <div className="rounded-md bg-surface-muted p-3">
                   <div className="text-2xs uppercase tracking-wider text-text-muted">
-                    Loss total
+                    {t('totalLoss')}
                   </div>
                   <div className="text-2xl font-bold font-mono mt-1">
                     {result.totalLossDb.toFixed(2)}
@@ -275,7 +269,7 @@ export default function PowerBudgetPage() {
                 </div>
                 <div className="rounded-md bg-surface-muted p-3">
                   <div className="text-2xs uppercase tracking-wider text-text-muted">
-                    ONT previsto
+                    {t('ontPredicted')}
                   </div>
                   <div className="text-2xl font-bold font-mono mt-1">
                     {result.predictedOntRxDbm.toFixed(2)}
@@ -284,7 +278,7 @@ export default function PowerBudgetPage() {
                 </div>
                 <div className="rounded-md bg-surface-muted p-3">
                   <div className="text-2xs uppercase tracking-wider text-text-muted">
-                    Margem
+                    {t('margin')}
                   </div>
                   <div
                     className={`text-2xl font-bold font-mono mt-1 ${
@@ -304,7 +298,7 @@ export default function PowerBudgetPage() {
               {/* Breakdown */}
               <div className="rounded-md border border-border overflow-hidden">
                 <div className="bg-surface-muted px-3 py-2 text-xs font-semibold uppercase tracking-wider text-text-muted">
-                  Quebra das perdas
+                  {t('breakdown')}
                 </div>
                 <table className="w-full text-sm">
                   <tbody className="divide-y divide-border">
@@ -324,7 +318,7 @@ export default function PowerBudgetPage() {
                       </tr>
                     ))}
                     <tr className="bg-surface-muted">
-                      <td className="px-3 py-1.5 font-semibold">Total</td>
+                      <td className="px-3 py-1.5 font-semibold">{t('total')}</td>
                       <td className="px-3 py-1.5 text-right font-mono font-semibold">
                         {result.totalLossDb.toFixed(2)} dB
                       </td>
@@ -335,33 +329,33 @@ export default function PowerBudgetPage() {
 
               {/* Janela útil */}
               <div className="text-xs text-text-muted text-center">
-                Janela total disponível:{' '}
+                {t('windowLabel')}{' '}
                 <span className="font-mono">
                   {result.totalBudgetDb.toFixed(2)} dB
                 </span>{' '}
-                (OLT TX − ONT RX mín)
+                {t('windowFormula')}
               </div>
 
               {/* Medição (opcional) */}
               {result.measurement && (
                 <div className="rounded-md border border-border bg-surface-muted p-3">
                   <div className="text-xs font-semibold uppercase tracking-wider text-text-muted mb-2">
-                    Orçado vs medido
+                    {t('budgetedVsMeasured')}
                   </div>
                   <div className="flex items-center justify-between text-sm">
-                    <span>Previsto</span>
+                    <span>{t('predicted')}</span>
                     <span className="font-mono">
                       {result.predictedOntRxDbm.toFixed(2)} dBm
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm">
-                    <span>Medido</span>
+                    <span>{t('measured')}</span>
                     <span className="font-mono">
                       {result.measurement.measuredOntRxDbm.toFixed(2)} dBm
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm pt-1 border-t border-border mt-1">
-                    <span>Diferença</span>
+                    <span>{t('difference')}</span>
                     <span
                       className={`font-mono font-semibold ${
                         result.measurement.diffClass === 'degraded'
@@ -377,11 +371,11 @@ export default function PowerBudgetPage() {
                   </div>
                   <p className="mt-2 text-2xs text-text-muted">
                     {result.measurement.diffClass === 'matches' &&
-                      '✓ Medida coerente com o orçado (±1 dB).'}
+                      t('diffMatches')}
                     {result.measurement.diffClass === 'better' &&
-                      '✓ Planta melhor que o orçado — fibras/fusões em ótimo estado.'}
+                      t('diffBetter')}
                     {result.measurement.diffClass === 'degraded' &&
-                      '⚠ Degradação real. Investigue fusões, conectores ou cabo danificado.'}
+                      t('diffDegraded')}
                   </p>
                 </div>
               )}

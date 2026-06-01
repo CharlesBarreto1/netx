@@ -13,6 +13,7 @@
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { Plus, Pencil, Trash2, Layers, Eye } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -60,21 +61,6 @@ const TYPES: OpticalEnclosureType[] = [
   'RESERVA',
 ];
 
-const TYPE_LABEL: Record<OpticalEnclosureType, string> = {
-  CTO: 'CTO',
-  NAP: 'NAP',
-  SPLITTER: 'Splitter',
-  EMENDA: 'Emenda',
-  RESERVA: 'Reserva',
-};
-
-const STATUS_LABEL: Record<OpticalPortStatus, string> = {
-  FREE: 'Livre',
-  RESERVED: 'Reservada',
-  USED: 'Em uso',
-  DAMAGED: 'Danificada',
-};
-
 const STATUS_TONE: Record<
   OpticalPortStatus,
   'success' | 'warning' | 'info' | 'danger' | 'neutral'
@@ -85,7 +71,23 @@ const STATUS_TONE: Record<
   DAMAGED: 'danger',
 };
 
+function typeLabel(
+  t: ReturnType<typeof useTranslations>,
+  type: OpticalEnclosureType,
+): string {
+  return t(`typeLabel.${type}`);
+}
+
+function statusLabel(
+  t: ReturnType<typeof useTranslations>,
+  status: OpticalPortStatus,
+): string {
+  return t(`statusLabel.${status}`);
+}
+
 export default function OpticalEnclosuresPage() {
+  const t = useTranslations('network.optical');
+  const tc = useTranslations('common');
   const canWrite = hasPermission('network.write');
   const canDelete = hasPermission('network.delete');
 
@@ -128,12 +130,12 @@ export default function OpticalEnclosuresPage() {
     setBulkBusy(true);
     try {
       const r = await opticalApi.assignOlt([...selected], bulkOltId || null);
-      toast.success(`OLT atribuída a ${r.updated} caixa(s)`);
+      toast.success(t('toast.oltAssigned', { count: r.updated }));
       setSelected(new Set());
       setBulkOltId('');
       await mutate();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      toast.error(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setBulkBusy(false);
     }
@@ -146,13 +148,13 @@ export default function OpticalEnclosuresPage() {
         search: search || undefined,
       });
       setSelected(new Set(ids));
-      toast.success(`${ids.length} caixa(s) selecionada(s)`);
+      toast.success(t('toast.selected', { count: ids.length }));
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      toast.error(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     }
   }
 
-  if (isLoading && !data) return <PageLoader label="Carregando caixas…" />;
+  if (isLoading && !data) return <PageLoader label={t('loadingBoxes')} />;
 
   const rows = data?.data ?? [];
   const total = data?.pagination.total ?? 0;
@@ -169,16 +171,13 @@ export default function OpticalEnclosuresPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Caixas ópticas</h1>
-          <p className="text-sm text-text-muted">
-            CTOs, NAPs, splitters e caixas de emenda. Atribua portas a
-            contratos pra montar a rede FTTH.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+          <p className="text-sm text-text-muted">{t('subtitle')}</p>
         </div>
         {canWrite && (
           <Button onClick={() => setEditing('new')}>
             <Plus className="h-3.5 w-3.5" />
-            Nova caixa
+            {t('newBox')}
           </Button>
         )}
       </header>
@@ -186,10 +185,10 @@ export default function OpticalEnclosuresPage() {
       {/* Filtros */}
       <section className="grid grid-cols-1 gap-3 rounded-md border border-border bg-surface p-4 md:grid-cols-4">
         <div className="md:col-span-2">
-          <Label htmlFor="opt-search">Buscar</Label>
+          <Label htmlFor="opt-search">{tc('search')}</Label>
           <Input
             id="opt-search"
-            placeholder="Código ou localização…"
+            placeholder={t('searchPlaceholder')}
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
@@ -198,7 +197,7 @@ export default function OpticalEnclosuresPage() {
           />
         </div>
         <div>
-          <Label htmlFor="opt-type">Tipo</Label>
+          <Label htmlFor="opt-type">{tc('type')}</Label>
           <Select
             id="opt-type"
             value={type}
@@ -207,10 +206,10 @@ export default function OpticalEnclosuresPage() {
               setPage(1);
             }}
           >
-            <option value="">Todos</option>
-            {TYPES.map((t) => (
-              <option key={t} value={t}>
-                {TYPE_LABEL[t]}
+            <option value="">{tc('all')}</option>
+            {TYPES.map((tp) => (
+              <option key={tp} value={tp}>
+                {typeLabel(t, tp)}
               </option>
             ))}
           </Select>
@@ -225,7 +224,7 @@ export default function OpticalEnclosuresPage() {
               setPage(1);
             }}
           >
-            Limpar
+            {tc('clear')}
           </Button>
         </div>
       </section>
@@ -233,15 +232,15 @@ export default function OpticalEnclosuresPage() {
       {/* Ação em massa: atribuir OLT às caixas selecionadas */}
       {canWrite && selected.size > 0 && (
         <section className="flex flex-wrap items-end gap-3 rounded-md border border-brand-300 bg-brand-50 p-3 dark:border-brand-900 dark:bg-brand-950">
-          <div className="text-sm font-medium">{selected.size} caixa(s) selecionada(s)</div>
+          <div className="text-sm font-medium">{t('selectedCount', { count: selected.size })}</div>
           <div className="min-w-[240px] flex-1">
-            <Label htmlFor="bulk-olt">Atribuir OLT</Label>
+            <Label htmlFor="bulk-olt">{t('assignOlt')}</Label>
             <Select
               id="bulk-olt"
               value={bulkOltId}
               onChange={(e) => setBulkOltId(e.target.value)}
             >
-              <option value="">— sem OLT (limpar vínculo) —</option>
+              <option value="">{t('noOltClear')}</option>
               {bulkOlts.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.name} ({o.vendor}/{o.providerMode})
@@ -250,15 +249,15 @@ export default function OpticalEnclosuresPage() {
             </Select>
           </div>
           <Button type="button" loading={bulkBusy} onClick={handleBulkAssign}>
-            Atribuir a {selected.size}
+            {t('assignTo', { count: selected.size })}
           </Button>
           {total > selected.size && (
             <Button type="button" variant="secondary" onClick={selectAllFiltered}>
-              Selecionar todas as {total}
+              {t('selectAll', { count: total })}
             </Button>
           )}
           <Button type="button" variant="ghost" onClick={() => setSelected(new Set())}>
-            Limpar seleção
+            {t('clearSelection')}
           </Button>
         </section>
       )}
@@ -272,25 +271,25 @@ export default function OpticalEnclosuresPage() {
                 {canWrite && rows.length > 0 && (
                   <input
                     type="checkbox"
-                    aria-label="Selecionar todas as visíveis"
+                    aria-label={t('selectAllVisible')}
                     checked={allVisibleSelected}
                     onChange={toggleAllVisible}
                   />
                 )}
               </th>
-              <th className="px-3 py-2">Código</th>
-              <th className="px-3 py-2">Tipo</th>
-              <th className="px-3 py-2">Splitter</th>
-              <th className="px-3 py-2">Ocupação</th>
-              <th className="px-3 py-2">Localização</th>
-              <th className="px-3 py-2 text-right">Ações</th>
+              <th className="px-3 py-2">{tc('code')}</th>
+              <th className="px-3 py-2">{tc('type')}</th>
+              <th className="px-3 py-2">{t('col.splitter')}</th>
+              <th className="px-3 py-2">{t('col.occupancy')}</th>
+              <th className="px-3 py-2">{t('col.location')}</th>
+              <th className="px-3 py-2 text-right">{tc('actions')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-3 py-6 text-center text-text-muted">
-                  Nenhuma caixa cadastrada ainda.
+                  {t('empty')}
                 </td>
               </tr>
             ) : (
@@ -305,14 +304,14 @@ export default function OpticalEnclosuresPage() {
                   <td className="px-3 py-2" onClick={(ev) => ev.stopPropagation()}>
                     <input
                       type="checkbox"
-                      aria-label={`Selecionar ${e.code}`}
+                      aria-label={t('selectOne', { code: e.code })}
                       checked={selected.has(e.id)}
                       onChange={() => toggleSelected(e.id)}
                     />
                   </td>
                   <td className="px-3 py-2 font-medium text-text">{e.code}</td>
                   <td className="px-3 py-2 text-text-muted">
-                    {TYPE_LABEL[e.type]}
+                    {typeLabel(t, e.type)}
                   </td>
                   <td className="px-3 py-2 text-text-muted">
                     {e.splitterRatio
@@ -337,7 +336,7 @@ export default function OpticalEnclosuresPage() {
                       <Link
                         href={`/network/optical/${e.id}`}
                         onClick={(ev) => ev.stopPropagation()}
-                        title="Ver vista esquemática"
+                        title={t('viewSchematic')}
                         className="p-1 text-text-muted hover:text-text"
                       >
                         <Eye className="h-4 w-4" />
@@ -347,7 +346,7 @@ export default function OpticalEnclosuresPage() {
                           ev.stopPropagation();
                           setShowingPorts(e);
                         }}
-                        title="Ver portas (modal)"
+                        title={t('viewPorts')}
                         className="p-1 text-text-muted hover:text-text"
                       >
                         <Layers className="h-4 w-4" />
@@ -358,7 +357,7 @@ export default function OpticalEnclosuresPage() {
                             ev.stopPropagation();
                             setEditing(e);
                           }}
-                          title="Editar"
+                          title={tc('edit')}
                           className="p-1 text-text-muted hover:text-text"
                         >
                           <Pencil className="h-4 w-4" />
@@ -370,7 +369,7 @@ export default function OpticalEnclosuresPage() {
                             ev.stopPropagation();
                             setDeleting(e);
                           }}
-                          title="Excluir"
+                          title={tc('delete')}
                           className="p-1 text-text-muted hover:text-red-600"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -388,7 +387,7 @@ export default function OpticalEnclosuresPage() {
       {data && data.pagination.totalPages > 1 && (
         <div className="flex items-center justify-between text-xs text-text-muted">
           <span>
-            Página {data.pagination.page} de {data.pagination.totalPages}
+            {tc('page')} {data.pagination.page} {tc('of')} {data.pagination.totalPages}
           </span>
           <div className="flex gap-2">
             <Button
@@ -397,7 +396,7 @@ export default function OpticalEnclosuresPage() {
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
-              Anterior
+              {tc('previous')}
             </Button>
             <Button
               variant="outline"
@@ -405,7 +404,7 @@ export default function OpticalEnclosuresPage() {
               disabled={page >= data.pagination.totalPages}
               onClick={() => setPage((p) => p + 1)}
             >
-              Próxima
+              {tc('next')}
             </Button>
           </div>
         </div>
@@ -429,18 +428,18 @@ export default function OpticalEnclosuresPage() {
           onConfirm={async () => {
             try {
               await opticalApi.remove(deleting.id);
-              toast.success('Caixa excluída');
+              toast.success(t('toast.deleted'));
               await mutate();
               setDeleting(null);
             } catch (err) {
               toast.error(
-                err instanceof ApiError ? err.friendlyMessage : 'Erro',
+                err instanceof ApiError ? err.friendlyMessage : tc('error'),
               );
             }
           }}
-          title={`Excluir ${deleting.code}?`}
-          message="Só permitido se nenhuma porta estiver em uso ou reservada."
-          confirmLabel="Excluir"
+          title={t('deleteTitle', { code: deleting.code })}
+          message={t('deleteMessage')}
+          confirmLabel={tc('delete')}
           variant="danger"
         />
       )}
@@ -496,6 +495,8 @@ function EnclosureFormDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('network.optical');
+  const tc = useTranslations('common');
   const isNew = !initial;
   const [form, setForm] = useState<CreateEnclosureInput>({
     code: initial?.code ?? '',
@@ -542,8 +543,8 @@ function EnclosureFormDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.code.trim()) return setError('Código obrigatório');
-    if (!location) return setError('Marque a localização no mapa');
+    if (!form.code.trim()) return setError(t('err.codeRequired'));
+    if (!location) return setError(t('err.markLocation'));
     setSubmitting(true);
     try {
       const payload: CreateEnclosureInput = {
@@ -556,10 +557,10 @@ function EnclosureFormDialog({
       } else {
         await opticalApi.update(initial!.id, payload);
       }
-      toast.success(isNew ? 'Caixa criada' : 'Caixa atualizada');
+      toast.success(isNew ? t('toast.created') : t('toast.updated'));
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      setError(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setSubmitting(false);
     }
@@ -569,14 +570,14 @@ function EnclosureFormDialog({
     <Modal
       open
       onClose={onClose}
-      title={isNew ? 'Nova caixa óptica' : `Editar ${initial!.code}`}
+      title={isNew ? t('newBoxTitle') : t('editTitle', { code: initial!.code })}
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button onClick={handleSubmit} loading={submitting}>
-            Salvar
+            {tc('save')}
           </Button>
         </>
       }
@@ -584,7 +585,7 @@ function EnclosureFormDialog({
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="grid gap-3 md:grid-cols-2">
           <div>
-            <Label required>Código</Label>
+            <Label required>{tc('code')}</Label>
             <Input
               value={form.code}
               onChange={(e) => setForm({ ...form, code: e.target.value })}
@@ -593,7 +594,7 @@ function EnclosureFormDialog({
             />
           </div>
           <div>
-            <Label required>Tipo</Label>
+            <Label required>{tc('type')}</Label>
             <Select
               value={form.type}
               onChange={(e) =>
@@ -603,15 +604,15 @@ function EnclosureFormDialog({
                 })
               }
             >
-              {TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {TYPE_LABEL[t]}
+              {TYPES.map((tp) => (
+                <option key={tp} value={tp}>
+                  {typeLabel(t, tp)}
                 </option>
               ))}
             </Select>
           </div>
           <div>
-            <Label>Splitter</Label>
+            <Label>{t('col.splitter')}</Label>
             <Select
               value={form.splitterRatio ?? ''}
               onChange={(e) =>
@@ -620,7 +621,7 @@ function EnclosureFormDialog({
                 )
               }
             >
-              <option value="">Sem splitter</option>
+              <option value="">{t('noSplitter')}</option>
               {(
                 ['ONE_TO_2', 'ONE_TO_4', 'ONE_TO_8', 'ONE_TO_16', 'ONE_TO_32', 'ONE_TO_64'] as SplitterRatio[]
               ).map((r) => (
@@ -629,12 +630,10 @@ function EnclosureFormDialog({
                 </option>
               ))}
             </Select>
-            <FieldHelp>
-              Loss usado depois no power budget (R5).
-            </FieldHelp>
+            <FieldHelp>{t('help.splitterLoss')}</FieldHelp>
           </div>
           <div>
-            <Label required>Capacidade (portas)</Label>
+            <Label required>{t('capacityLabel')}</Label>
             <Input
               type="number"
               min={1}
@@ -644,13 +643,10 @@ function EnclosureFormDialog({
                 setForm({ ...form, capacity: Number(e.target.value) })
               }
             />
-            <FieldHelp>
-              Portas físicas. Em edit, reduzir capacity só se as portas
-              sobressalentes estiverem livres.
-            </FieldHelp>
+            <FieldHelp>{t('help.capacity')}</FieldHelp>
           </div>
           <div>
-            <Label>Montagem</Label>
+            <Label>{t('mountLabel')}</Label>
             <Select
               value={form.mountType ?? ''}
               onChange={(e) =>
@@ -661,15 +657,15 @@ function EnclosureFormDialog({
               }
             >
               <option value="">—</option>
-              <option value="POSTE">Poste</option>
-              <option value="AEREO">Aérea</option>
-              <option value="SUBTERRANEO">Subterrânea</option>
-              <option value="PAREDE">Parede</option>
-              <option value="RACK">Rack</option>
+              <option value="POSTE">{t('mount.POSTE')}</option>
+              <option value="AEREO">{t('mount.AEREO')}</option>
+              <option value="SUBTERRANEO">{t('mount.SUBTERRANEO')}</option>
+              <option value="PAREDE">{t('mount.PAREDE')}</option>
+              <option value="RACK">{t('mount.RACK')}</option>
             </Select>
           </div>
           <div>
-            <Label>Endereço/marco</Label>
+            <Label>{t('addressLabel')}</Label>
             <Input
               value={form.locationLabel ?? ''}
               onChange={(e) =>
@@ -679,34 +675,32 @@ function EnclosureFormDialog({
             />
           </div>
           <div>
-            <Label>OLT (rede)</Label>
+            <Label>{t('oltLabel')}</Label>
             <Select
               value={form.oltId ?? ''}
               onChange={(e) =>
                 setForm({ ...form, oltId: e.target.value || null, ponPortId: null })
               }
             >
-              <option value="">— sem OLT —</option>
+              <option value="">{t('noOlt')}</option>
               {olts.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.name} ({o.vendor}/{o.providerMode})
                 </option>
               ))}
             </Select>
-            <FieldHelp>
-              OLT que atende esta caixa. Pra OLT Ufinet (orquestrador) não há PON.
-            </FieldHelp>
+            <FieldHelp>{t('help.olt')}</FieldHelp>
           </div>
           {oltIsDirect && (
             <div>
-              <Label>Porta PON</Label>
+              <Label>{t('ponPortLabel')}</Label>
               <Select
                 value={form.ponPortId ?? ''}
                 onChange={(e) =>
                   setForm({ ...form, ponPortId: e.target.value || null })
                 }
               >
-                <option value="">— sem PON —</option>
+                <option value="">{t('noPon')}</option>
                 {(ponPorts ?? []).map((p) => (
                   <option key={p.id} value={p.id}>
                     PON {p.ponIndex}
@@ -719,16 +713,13 @@ function EnclosureFormDialog({
         </div>
 
         <div>
-          <Label required>Localização no mapa</Label>
-          <FieldHelp>
-            Caixa sem coord não aparece no mapa de rede. Use o pino ou
-            &quot;Mi ubicación&quot; se estiver em campo.
-          </FieldHelp>
+          <Label required>{t('mapLocationLabel')}</Label>
+          <FieldHelp>{t('help.mapLocation')}</FieldHelp>
           <LocationPicker value={location} onChange={setLocation} />
         </div>
 
         <div>
-          <Label>Observações</Label>
+          <Label>{tc('notes')}</Label>
           <Textarea
             rows={2}
             value={form.notes ?? ''}
@@ -744,7 +735,7 @@ function EnclosureFormDialog({
             checked={form.isActive ?? true}
             onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
           />
-          Ativa
+          {t('active')}
         </label>
 
         {error && <p className="text-xs text-red-600">{error}</p>}
@@ -763,6 +754,8 @@ function PortsModal({
   enclosure: OpticalEnclosure;
   onClose: () => void;
 }) {
+  const t = useTranslations('network.optical');
+  const tc = useTranslations('common');
   const canWrite = hasPermission('network.write');
 
   const { data: ports, mutate } = useSWR<OpticalPort[]>(
@@ -775,14 +768,14 @@ function PortsModal({
     <Modal
       open
       onClose={onClose}
-      title={`Portas — ${enclosure.code}`}
+      title={t('portsTitle', { code: enclosure.code })}
       size="lg"
     >
       <div className="space-y-3">
         <div className="text-sm text-text-muted">
-          {enclosure.capacity} portas no total.
+          {t('portsTotal', { count: enclosure.capacity })}
           {enclosure.splitterRatio
-            ? ` Splitter 1:${SPLITTER_OUTPUT_COUNT[enclosure.splitterRatio]}.`
+            ? ` ${t('splitterSuffix', { count: SPLITTER_OUTPUT_COUNT[enclosure.splitterRatio] })}`
             : ''}
         </div>
 
@@ -791,10 +784,10 @@ function PortsModal({
             <thead className="sticky top-0 bg-surface-muted text-left text-[11px] font-semibold uppercase tracking-wider text-text-muted">
               <tr>
                 <th className="px-3 py-2">#</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Contrato / cliente</th>
-                <th className="px-3 py-2">Observação</th>
-                <th className="px-3 py-2 text-right">Ação</th>
+                <th className="px-3 py-2">{tc('status')}</th>
+                <th className="px-3 py-2">{t('contractCustomer')}</th>
+                <th className="px-3 py-2">{t('portNote')}</th>
+                <th className="px-3 py-2 text-right">{t('portAction')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -803,7 +796,7 @@ function PortsModal({
                   <td className="px-3 py-2 font-mono text-xs">{p.number}</td>
                   <td className="px-3 py-2">
                     <Badge tone={STATUS_TONE[p.status]}>
-                      {STATUS_LABEL[p.status]}
+                      {statusLabel(t, p.status)}
                     </Badge>
                   </td>
                   <td className="px-3 py-2 text-text-muted">
@@ -821,7 +814,7 @@ function PortsModal({
                         variant="outline"
                         onClick={() => setEditingPort(p)}
                       >
-                        Atribuir
+                        {t('assign')}
                       </Button>
                     )}
                   </td>
@@ -858,6 +851,8 @@ function PortAssignDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('network.optical');
+  const tc = useTranslations('common');
   const [status, setStatus] = useState<OpticalPortStatus>(port.status);
   const [contractId, setContractId] = useState<string | null>(
     port.contractId,
@@ -886,10 +881,10 @@ function PortAssignDialog({
         contractId: status === 'USED' ? contractId : null,
         notes: notes || null,
       });
-      toast.success('Porta atualizada');
+      toast.success(t('toast.portUpdated'));
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      setError(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setSubmitting(false);
     }
@@ -899,43 +894,43 @@ function PortAssignDialog({
     <Modal
       open
       onClose={onClose}
-      title={`Porta ${port.number}`}
+      title={t('portTitle', { number: port.number })}
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button onClick={handleSubmit} loading={submitting}>
-            Salvar
+            {tc('save')}
           </Button>
         </>
       }
     >
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
-          <Label required>Status</Label>
+          <Label required>{tc('status')}</Label>
           <Select
             value={status}
             onChange={(e) => setStatus(e.target.value as OpticalPortStatus)}
           >
-            <option value="FREE">Livre</option>
-            <option value="RESERVED">Reservada</option>
-            <option value="USED">Em uso (atribuir contrato)</option>
-            <option value="DAMAGED">Danificada</option>
+            <option value="FREE">{statusLabel(t, 'FREE')}</option>
+            <option value="RESERVED">{statusLabel(t, 'RESERVED')}</option>
+            <option value="USED">{t('statusUsedAssign')}</option>
+            <option value="DAMAGED">{statusLabel(t, 'DAMAGED')}</option>
           </Select>
         </div>
 
         {status === 'USED' && (
           <div>
-            <Label required>Contrato</Label>
+            <Label required>{t('contract')}</Label>
             <Input
-              placeholder="Buscar por nome ou código…"
+              placeholder={t('contractSearchPlaceholder')}
               value={contractSearch}
               onChange={(e) => setContractSearch(e.target.value)}
             />
             {contractId && !contractSearch && (
               <div className="mt-1 text-xs text-text-muted">
-                Selecionado:{' '}
+                {t('selected')}:{' '}
                 <span className="font-mono">{contractId.slice(0, 8)}</span>
               </div>
             )}
@@ -964,20 +959,17 @@ function PortAssignDialog({
                 ))}
               </div>
             )}
-            <FieldHelp>
-              Cada contrato ocupa só uma porta — se já estiver em outra,
-              o backend recusa.
-            </FieldHelp>
+            <FieldHelp>{t('help.contractOnePort')}</FieldHelp>
           </div>
         )}
 
         <div>
-          <Label>Observação</Label>
+          <Label>{t('portNote')}</Label>
           <Textarea
             rows={2}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="Ex.: fibra 3 do cabo BB-001"
+            placeholder={t('notePlaceholder')}
           />
         </div>
 

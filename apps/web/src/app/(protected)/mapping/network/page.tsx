@@ -14,6 +14,7 @@
  *   - Hover destaca relações (TODO v2): passar mouse numa CTO ilumina
  *     cabos terminando nela.
  */
+import { useTranslations } from 'next-intl';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
@@ -80,6 +81,8 @@ const NetworkMap = dynamic(
 );
 
 export default function MappingNetworkPage() {
+  const t = useTranslations('mapping.network');
+  const tc = useTranslations('common');
   const canWrite = hasPermission('network.write');
 
   const [filters, setFilters] = useState<ListNetworkMapParams>({
@@ -173,7 +176,7 @@ export default function MappingNetworkPage() {
     }
   }
 
-  if (isLoading && !data) return <PageLoader label="Carregando rede…" />;
+  if (isLoading && !data) return <PageLoader label={t('loadingNetwork')} />;
 
   const points: NetworkMapPoint[] = data?.points ?? [];
   const segments = data?.segments ?? [];
@@ -189,11 +192,8 @@ export default function MappingNetworkPage() {
     <div className="space-y-4">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Mapa de Rede</h1>
-          <p className="text-sm text-text-muted">
-            Hub da planta óptica. Use a toolbar pra criar caixas e cabos
-            direto no mapa; click numa caixa abre a vista esquemática.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+          <p className="text-sm text-text-muted">{t('subtitle')}</p>
         </div>
         <div className="flex gap-2">
           <Link href="/network/import-export">
@@ -203,7 +203,7 @@ export default function MappingNetworkPage() {
             </Button>
           </Link>
           <Link href="/network/power-budget">
-            <Button variant="outline">Power budget</Button>
+            <Button variant="outline">{t('powerBudget')}</Button>
           </Link>
         </div>
       </header>
@@ -212,43 +212,43 @@ export default function MappingNetworkPage() {
       <section className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-surface p-3 text-sm">
         <Layers className="h-4 w-4 text-text-muted" />
         <FilterChip
-          label={`POPs (${stats?.pops ?? 0})`}
+          label={t('chipPops', { count: stats?.pops ?? 0 })}
           color="#1e40af"
           active={filters.includePops ?? true}
           onClick={() => toggle('includePops')}
         />
         <FilterChip
-          label={`Equipamentos (${stats?.equipment ?? 0})`}
+          label={t('chipEquipment', { count: stats?.equipment ?? 0 })}
           color="#ea580c"
           active={filters.includeEquipment ?? true}
           onClick={() => toggle('includeEquipment')}
         />
         <FilterChip
-          label={`OLTs (${stats?.olts ?? 0})`}
+          label={t('chipOlts', { count: stats?.olts ?? 0 })}
           color="#7c3aed"
           active={filters.includeOlts ?? true}
           onClick={() => toggle('includeOlts')}
         />
         <FilterChip
-          label={`Caixas (${stats?.enclosures ?? 0})`}
+          label={t('chipEnclosures', { count: stats?.enclosures ?? 0 })}
           color="#0d9488"
           active={filters.includeEnclosures ?? true}
           onClick={() => toggle('includeEnclosures')}
         />
         <FilterChip
-          label={`Cabos (${stats?.cables ?? 0})`}
+          label={t('chipCables', { count: stats?.cables ?? 0 })}
           color="#1d4ed8"
           active={filters.includeCables ?? true}
           onClick={() => toggle('includeCables')}
         />
         <FilterChip
-          label={`Fusões (${stats?.splices ?? 0})`}
+          label={t('chipSplices', { count: stats?.splices ?? 0 })}
           color="#f59e0b"
           active={filters.includeSplices ?? true}
           onClick={() => toggle('includeSplices')}
         />
         <FilterChip
-          label={`⚠ Eventos (${stats?.events ?? 0})`}
+          label={t('chipEvents', { count: stats?.events ?? 0 })}
           color="#dc2626"
           active={filters.includeEvents ?? true}
           onClick={() => toggle('includeEvents')}
@@ -256,7 +256,7 @@ export default function MappingNetworkPage() {
         <div className="ml-auto text-xs text-text-muted">
           {stats?.withoutGeo ? (
             <span className="text-amber-600">
-              ⚠ {stats.withoutGeo} sem coord
+              {t('withoutGeo', { count: stats.withoutGeo })}
             </span>
           ) : null}
         </div>
@@ -299,13 +299,13 @@ export default function MappingNetworkPage() {
           />
           {mode !== 'select' && (
             <div className="pointer-events-none absolute bottom-3 left-3 right-3 z-[400] rounded-md bg-amber-500/95 px-3 py-2 text-center text-xs font-medium text-white shadow-lg">
-              {mode === 'create-enclosure' && '📍 Clique no mapa pra marcar a caixa · ESC pra cancelar'}
+              {mode === 'create-enclosure' && t('hintCreateEnclosure')}
               {mode === 'draw-cable' &&
                 draftPath.length < 2 &&
-                '✏️ Clique pra adicionar pontos do cabo · ESC pra cancelar'}
+                t('hintDrawCableStart')}
               {mode === 'draw-cable' &&
                 draftPath.length >= 2 &&
-                `✏️ ${draftPath.length} pontos · ENTER pra finalizar · BACKSPACE remove último · ESC cancela`}
+                t('hintDrawCableProgress', { count: draftPath.length })}
             </div>
           )}
         </div>
@@ -332,19 +332,19 @@ export default function MappingNetworkPage() {
           onConfirm={async () => {
             try {
               await networkFoldersApi.remove(folderDeleting.id);
-              toast.success('Pasta excluída');
+              toast.success(t('folderDeleted'));
               await mutateFolders();
               await mutate();
               setFolderDeleting(null);
             } catch (err) {
               toast.error(
-                err instanceof _ApiError ? err.friendlyMessage : 'Erro',
+                err instanceof _ApiError ? err.friendlyMessage : tc('error'),
               );
             }
           }}
-          title={`Excluir "${folderDeleting.name}"?`}
-          message="Itens dentro voltam pra órfãos. Subpastas viram raízes."
-          confirmLabel="Excluir"
+          title={t('deleteFolderTitle', { name: folderDeleting.name })}
+          message={t('deleteFolderMessage')}
+          confirmLabel={tc('delete')}
           variant="danger"
         />
       )}
@@ -356,7 +356,7 @@ export default function MappingNetworkPage() {
           onCreated={async () => {
             await mutate();
             setEnclosureDraft(null);
-            toast.success('Caixa criada');
+            toast.success(t('enclosureCreated'));
           }}
         />
       )}
@@ -367,7 +367,7 @@ export default function MappingNetworkPage() {
           onCreated={async () => {
             await mutate();
             setCableDraft(null);
-            toast.success('Cabo criado');
+            toast.success(t('cableCreated'));
           }}
         />
       )}
@@ -385,24 +385,25 @@ function ModeToolbar({
   onChange: (m: NetworkMapMode) => void;
   pathLength: number;
 }) {
+  const t = useTranslations('mapping.network');
   return (
     <div className="absolute left-3 top-3 z-[400] flex flex-col gap-1 rounded-md border border-border bg-surface p-1 shadow-md">
       <ModeButton
         active={mode === 'select'}
         onClick={() => onChange('select')}
-        title="Selecionar (ESC)"
+        title={t('modeSelect')}
         icon={<MousePointer className="h-4 w-4" />}
       />
       <ModeButton
         active={mode === 'create-enclosure'}
         onClick={() => onChange('create-enclosure')}
-        title="Criar caixa óptica"
+        title={t('modeCreateEnclosure')}
         icon={<Box className="h-4 w-4" />}
       />
       <ModeButton
         active={mode === 'draw-cable'}
         onClick={() => onChange('draw-cable')}
-        title="Desenhar cabo de fibra"
+        title={t('modeDrawCable')}
         icon={<Cable className="h-4 w-4" />}
         badge={pathLength > 0 ? pathLength : undefined}
       />
@@ -485,6 +486,8 @@ function CreateEnclosureQuickDialog({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const t = useTranslations('mapping.network');
+  const tc = useTranslations('common');
   const [code, setCode] = useState('');
   const [type, setType] = useState<OpticalEnclosureType>('CTO');
   const [splitterRatio, setSplitterRatio] = useState<SplitterRatio | ''>('');
@@ -501,7 +504,7 @@ function CreateEnclosureQuickDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!code.trim()) return setError('Código obrigatório');
+    if (!code.trim()) return setError(t('codeRequired'));
     setSubmitting(true);
     try {
       const payload: CreateEnclosureInput = {
@@ -516,7 +519,7 @@ function CreateEnclosureQuickDialog({
       await opticalApi.create(payload);
       onCreated();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      setError(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setSubmitting(false);
     }
@@ -526,14 +529,14 @@ function CreateEnclosureQuickDialog({
     <Modal
       open
       onClose={onClose}
-      title="Nova caixa óptica"
+      title={t('newEnclosure')}
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button onClick={handleSubmit} loading={submitting}>
-            Criar
+            {tc('create')}
           </Button>
         </>
       }
@@ -547,7 +550,7 @@ function CreateEnclosureQuickDialog({
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label required>Código</Label>
+            <Label required>{tc('code')}</Label>
             <Input
               value={code}
               onChange={(e) => setCode(e.target.value)}
@@ -556,7 +559,7 @@ function CreateEnclosureQuickDialog({
             />
           </div>
           <div>
-            <Label required>Tipo</Label>
+            <Label required>{tc('type')}</Label>
             <Select
               value={type}
               onChange={(e) => setType(e.target.value as OpticalEnclosureType)}
@@ -564,7 +567,7 @@ function CreateEnclosureQuickDialog({
               <option value="CTO">CTO</option>
               <option value="NAP">NAP</option>
               <option value="SPLITTER">Splitter</option>
-              <option value="EMENDA">Emenda</option>
+              <option value="EMENDA">{t('enclosureTypeSplice')}</option>
             </Select>
           </div>
           <div>
@@ -573,7 +576,7 @@ function CreateEnclosureQuickDialog({
               value={splitterRatio}
               onChange={(e) => pickRatio(e.target.value as SplitterRatio | '')}
             >
-              <option value="">Sem</option>
+              <option value="">{t('splitterNone')}</option>
               <option value="ONE_TO_2">1:2</option>
               <option value="ONE_TO_4">1:4</option>
               <option value="ONE_TO_8">1:8</option>
@@ -583,7 +586,7 @@ function CreateEnclosureQuickDialog({
             </Select>
           </div>
           <div>
-            <Label required>Capacidade</Label>
+            <Label required>{t('capacity')}</Label>
             <Input
               type="number"
               min={1}
@@ -594,7 +597,7 @@ function CreateEnclosureQuickDialog({
           </div>
         </div>
         <div>
-          <Label>Observações</Label>
+          <Label>{t('observations')}</Label>
           <Textarea
             rows={2}
             value={notes}
@@ -602,8 +605,11 @@ function CreateEnclosureQuickDialog({
           />
         </div>
         <FieldHelp>
-          Você pode editar todos os detalhes depois em{' '}
-          <code className="text-2xs">/network/optical</code>.
+          {t.rich('enclosureHelp', {
+            code: (chunks) => (
+              <code className="text-2xs">{chunks}</code>
+            ),
+          })}
         </FieldHelp>
         {error && <p className="text-xs text-red-600">{error}</p>}
       </form>
@@ -621,6 +627,8 @@ function CreateCableQuickDialog({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const t = useTranslations('mapping.network');
+  const tc = useTranslations('common');
   const [code, setCode] = useState('');
   const [type, setType] = useState<FiberCableType>('DISTRIBUTION');
   const [fiberCount, setFiberCount] = useState(12);
@@ -630,7 +638,7 @@ function CreateCableQuickDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!code.trim()) return setError('Código obrigatório');
+    if (!code.trim()) return setError(t('codeRequired'));
     setSubmitting(true);
     try {
       await fiberCablesApi.create({
@@ -642,7 +650,7 @@ function CreateCableQuickDialog({
       });
       onCreated();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      setError(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setSubmitting(false);
     }
@@ -652,25 +660,25 @@ function CreateCableQuickDialog({
     <Modal
       open
       onClose={onClose}
-      title="Novo cabo de fibra"
+      title={t('newCable')}
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button onClick={handleSubmit} loading={submitting}>
-            Criar
+            {tc('create')}
           </Button>
         </>
       }
     >
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="text-xs text-text-muted">
-          <Badge tone="info">{path.length} pontos no path</Badge>
+          <Badge tone="info">{t('pathPoints', { count: path.length })}</Badge>
         </div>
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <Label required>Código</Label>
+            <Label required>{tc('code')}</Label>
             <Input
               value={code}
               onChange={(e) => setCode(e.target.value)}
@@ -679,18 +687,18 @@ function CreateCableQuickDialog({
             />
           </div>
           <div>
-            <Label required>Tipo</Label>
+            <Label required>{tc('type')}</Label>
             <Select
               value={type}
               onChange={(e) => setType(e.target.value as FiberCableType)}
             >
               <option value="BACKBONE">Backbone</option>
-              <option value="DISTRIBUTION">Distribuição</option>
+              <option value="DISTRIBUTION">{t('cableTypeDistribution')}</option>
               <option value="DROP">Drop</option>
             </Select>
           </div>
           <div>
-            <Label required>Fibras</Label>
+            <Label required>{t('fibers')}</Label>
             <Select
               value={String(fiberCount)}
               onChange={(e) => setFiberCount(Number(e.target.value))}
@@ -704,7 +712,7 @@ function CreateCableQuickDialog({
           </div>
         </div>
         <div>
-          <Label>Observações</Label>
+          <Label>{t('observations')}</Label>
           <Textarea
             rows={2}
             value={notes}
@@ -712,8 +720,11 @@ function CreateCableQuickDialog({
           />
         </div>
         <FieldHelp>
-          Endpoints A/B (caixas onde o cabo termina) podem ser definidos
-          depois em <code className="text-2xs">/network/fiber</code>.
+          {t.rich('cableHelp', {
+            code: (chunks) => (
+              <code className="text-2xs">{chunks}</code>
+            ),
+          })}
         </FieldHelp>
         {error && <p className="text-xs text-red-600">{error}</p>}
       </form>
@@ -731,6 +742,8 @@ function FolderEditDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('mapping.network');
+  const tc = useTranslations('common');
   const isNew = !('id' in initial);
   const [name, setName] = useState('id' in initial ? initial.name : '');
   const [color, setColor] = useState<string>(
@@ -744,7 +757,7 @@ function FolderEditDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return setError('Nome obrigatório');
+    if (!name.trim()) return setError(t('nameRequired'));
     setSubmitting(true);
     try {
       if (isNew) {
@@ -761,10 +774,10 @@ function FolderEditDialog({
           notes: notes || null,
         });
       }
-      toast.success(isNew ? 'Pasta criada' : 'Pasta atualizada');
+      toast.success(isNew ? t('folderCreated') : t('folderUpdated'));
       onSaved();
     } catch (err) {
-      setError(err instanceof _ApiError ? err.friendlyMessage : 'Erro');
+      setError(err instanceof _ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setSubmitting(false);
     }
@@ -774,30 +787,34 @@ function FolderEditDialog({
     <Modal
       open
       onClose={onClose}
-      title={isNew ? 'Nova pasta' : `Editar "${(initial as NetworkFolder).name}"`}
+      title={
+        isNew
+          ? t('newFolder')
+          : t('editFolderTitle', { name: (initial as NetworkFolder).name })
+      }
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button onClick={handleSubmit} loading={submitting}>
-            Salvar
+            {tc('save')}
           </Button>
         </>
       }
     >
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
-          <Label required>Nome</Label>
+          <Label required>{tc('name')}</Label>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="ex.: Centro, Cooperativa COTO, Equipe Sul…"
+            placeholder={t('folderNamePlaceholder')}
             autoFocus
           />
         </div>
         <div>
-          <Label>Cor (opcional)</Label>
+          <Label>{t('colorOptional')}</Label>
           <div className="flex items-center gap-2">
             <input
               type="color"
@@ -809,7 +826,7 @@ function FolderEditDialog({
           </div>
         </div>
         <div>
-          <Label>Notas</Label>
+          <Label>{tc('notes')}</Label>
           <Textarea
             rows={2}
             value={notes}

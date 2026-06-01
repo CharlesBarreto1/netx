@@ -39,6 +39,7 @@ export default function ServiceOrderDetailPage() {
   const tSO = useTranslations('serviceOrders');
   const tDetail = useTranslations('serviceOrders.detail');
   const tCommon = useTranslations('common');
+  const tx = useTranslations('soDetailExtra');
   const canWrite = hasPermission('service_orders.write');
   const canDelete = hasPermission('service_orders.delete');
 
@@ -83,7 +84,7 @@ export default function ServiceOrderDetailPage() {
       await mutate(updated, false);
       toast.success(tDetail('startedToast'));
     } catch (err) {
-      const msg = err instanceof ApiError ? err.friendlyMessage : 'Erro';
+      const msg = err instanceof ApiError ? err.friendlyMessage : tCommon('error');
       toast.error(msg);
     } finally {
       setBusy(false);
@@ -103,7 +104,7 @@ export default function ServiceOrderDetailPage() {
       setCompleteOpen(false);
       setCloseDescription('');
     } catch (err) {
-      const msg = err instanceof ApiError ? err.friendlyMessage : 'Erro';
+      const msg = err instanceof ApiError ? err.friendlyMessage : tCommon('error');
       toast.error(msg);
     } finally {
       setBusy(false);
@@ -122,7 +123,7 @@ export default function ServiceOrderDetailPage() {
       setCancelOpen(false);
       setCancelReason('');
     } catch (err) {
-      const msg = err instanceof ApiError ? err.friendlyMessage : 'Erro';
+      const msg = err instanceof ApiError ? err.friendlyMessage : tCommon('error');
       toast.error(msg);
     } finally {
       setBusy(false);
@@ -140,7 +141,7 @@ export default function ServiceOrderDetailPage() {
       toast.success(tDetail('reassignedToast'));
       setReassignOpen(false);
     } catch (err) {
-      const msg = err instanceof ApiError ? err.friendlyMessage : 'Erro';
+      const msg = err instanceof ApiError ? err.friendlyMessage : tCommon('error');
       toast.error(msg);
     } finally {
       setBusy(false);
@@ -155,7 +156,7 @@ export default function ServiceOrderDetailPage() {
       toast.success(tCommon('success'));
       router.replace('/service-orders');
     } catch (err) {
-      const msg = err instanceof ApiError ? err.friendlyMessage : 'Erro';
+      const msg = err instanceof ApiError ? err.friendlyMessage : tCommon('error');
       toast.error(msg);
     } finally {
       setBusy(false);
@@ -329,7 +330,7 @@ export default function ServiceOrderDetailPage() {
       {os.contractId && (
         <section className="rounded-md border border-border bg-surface p-4">
           <h2 className="text-sm font-semibold text-text mb-3">
-            Estoque & comodato
+            {tx('stockSectionTitle')}
           </h2>
           <OsStockSection
             serviceOrderId={os.id}

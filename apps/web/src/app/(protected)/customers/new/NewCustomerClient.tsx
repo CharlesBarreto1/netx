@@ -7,6 +7,7 @@
  *
  * Padrão server-wrapper: ver `page.tsx`.
  */
+import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -33,6 +34,7 @@ type Step = 'customer' | 'contract' | 'serviceOrder';
  * fechando o ciclo sem pontas soltas.
  */
 export default function NewCustomerClient() {
+  const t = useTranslations('customersNew');
   const router = useRouter();
   const [step, setStep] = useState<Step>('customer');
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -62,26 +64,26 @@ export default function NewCustomerClient() {
       <header>
         <nav className="text-xs text-slate-500 dark:text-slate-400">
           <Link href="/customers" className="hover:underline">
-            Clientes
+            {t('breadcrumbCustomers')}
           </Link>{' '}
-          › Novo
+          › {t('breadcrumbNew')}
         </nav>
         <div className="mt-1 flex flex-wrap items-center gap-2">
-          <h1 className="text-2xl font-bold tracking-tight">Novo cliente</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
           <Badge tone={step === 'customer' ? 'info' : 'success'}>
             {step === 'customer'
-              ? '1/3 — Cliente'
+              ? t('badgeCustomer')
               : step === 'contract'
-                ? '2/3 — Contrato'
-                : '3/3 — Instalação'}
+                ? t('badgeContract')
+                : t('badgeInstall')}
           </Badge>
         </div>
         <p className="text-sm text-slate-500 dark:text-slate-400">
           {step === 'customer'
-            ? 'Cadastre um cliente Pessoa Física ou Pessoa Jurídica. Endereços, contatos e tags podem ser gerenciados depois no detalhe do cliente.'
+            ? t('descCustomer')
             : step === 'contract'
-              ? 'Crie o contrato vinculado ao cliente. Ele nasce aguardando instalação — o técnico ativa em campo via Provisionamento.'
-              : 'Gere a ordem de serviço de instalação pra o técnico executar. Fecha o ciclo: cliente → contrato → instalação.'}
+              ? t('descContract')
+              : t('descInstall')}
         </p>
       </header>
 
@@ -97,15 +99,18 @@ export default function NewCustomerClient() {
         {step === 'contract' && customer && (
           <div className="flex flex-col gap-5">
             <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-200">
-              Cliente <strong>{customer.displayName}</strong> criado com sucesso.
+              {t.rich('customerCreated', {
+                name: customer.displayName,
+                strong: (chunks) => <strong>{chunks}</strong>,
+              })}
             </div>
 
             <NewContractInline
               lockedCustomerId={customer.id}
-              submitLabel="Criar contrato"
+              submitLabel={t('createContract')}
               onCreated={handleContractCreated}
               onSkip={handleSkipContract}
-              skipLabel="Pular — ir para o cliente"
+              skipLabel={t('skipToCustomer')}
             />
           </div>
         )}

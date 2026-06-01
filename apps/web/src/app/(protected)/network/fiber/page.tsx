@@ -11,6 +11,7 @@
  */
 import dynamic from 'next/dynamic';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -55,10 +56,10 @@ const PolylineEditor = dynamic(
   },
 );
 
-const TYPE_LABEL: Record<FiberCableType, string> = {
-  BACKBONE: 'Backbone',
-  DISTRIBUTION: 'Distribuição',
-  DROP: 'Drop',
+const TYPE_LABEL_KEY: Record<FiberCableType, string> = {
+  BACKBONE: 'typeBackbone',
+  DISTRIBUTION: 'typeDistribution',
+  DROP: 'typeDrop',
 };
 
 const TYPE_TONE: Record<
@@ -76,6 +77,8 @@ function formatLength(meters: number): string {
 }
 
 export default function FiberCablesPage() {
+  const t = useTranslations('network.fiber');
+  const tc = useTranslations('common');
   const canWrite = hasPermission('network.write');
   const canDelete = hasPermission('network.delete');
 
@@ -95,7 +98,7 @@ export default function FiberCablesPage() {
   const [editing, setEditing] = useState<FiberCable | 'new' | null>(null);
   const [deleting, setDeleting] = useState<FiberCable | null>(null);
 
-  if (isLoading && !data) return <PageLoader label="Carregando cabos…" />;
+  if (isLoading && !data) return <PageLoader label={t('loadingCables')} />;
 
   const rows = data?.data ?? [];
 
@@ -103,17 +106,13 @@ export default function FiberCablesPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Cabos de fibra</h1>
-          <p className="text-sm text-text-muted">
-            Trechos de fibra com geo. Backbone → distribuição → drop até o
-            cliente. Pré-requisito pra fusões (R4), power budget (R5) e
-            OTDR (R6).
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+          <p className="text-sm text-text-muted">{t('subtitle')}</p>
         </div>
         {canWrite && (
           <Button onClick={() => setEditing('new')}>
             <Plus className="h-3.5 w-3.5" />
-            Novo cabo
+            {t('newCable')}
           </Button>
         )}
       </header>
@@ -121,10 +120,10 @@ export default function FiberCablesPage() {
       {/* Filtros */}
       <section className="grid grid-cols-1 gap-3 rounded-md border border-border bg-surface p-4 md:grid-cols-4">
         <div className="md:col-span-2">
-          <Label htmlFor="cab-search">Buscar</Label>
+          <Label htmlFor="cab-search">{tc('search')}</Label>
           <Input
             id="cab-search"
-            placeholder="Código (CABO-BB-001)…"
+            placeholder={t('searchPlaceholder')}
             value={search}
             onChange={(e) => {
               setSearch(e.target.value);
@@ -133,7 +132,7 @@ export default function FiberCablesPage() {
           />
         </div>
         <div>
-          <Label htmlFor="cab-type">Tipo</Label>
+          <Label htmlFor="cab-type">{tc('type')}</Label>
           <Select
             id="cab-type"
             value={type}
@@ -142,10 +141,10 @@ export default function FiberCablesPage() {
               setPage(1);
             }}
           >
-            <option value="">Todos</option>
-            <option value="BACKBONE">Backbone</option>
-            <option value="DISTRIBUTION">Distribuição</option>
-            <option value="DROP">Drop</option>
+            <option value="">{tc('all')}</option>
+            <option value="BACKBONE">{t('typeBackbone')}</option>
+            <option value="DISTRIBUTION">{t('typeDistribution')}</option>
+            <option value="DROP">{t('typeDrop')}</option>
           </Select>
         </div>
         <div className="flex items-end justify-end">
@@ -158,7 +157,7 @@ export default function FiberCablesPage() {
               setPage(1);
             }}
           >
-            Limpar
+            {tc('clear')}
           </Button>
         </div>
       </section>
@@ -168,20 +167,20 @@ export default function FiberCablesPage() {
         <table className="min-w-full text-sm">
           <thead className="bg-surface-muted text-left text-[11px] font-semibold uppercase tracking-wider text-text-muted">
             <tr>
-              <th className="px-3 py-2">Código</th>
-              <th className="px-3 py-2">Tipo</th>
-              <th className="px-3 py-2">Fibras</th>
-              <th className="px-3 py-2">Comprimento</th>
-              <th className="px-3 py-2">Pontos</th>
-              <th className="px-3 py-2">Status</th>
-              <th className="px-3 py-2 text-right">Ações</th>
+              <th className="px-3 py-2">{tc('code')}</th>
+              <th className="px-3 py-2">{tc('type')}</th>
+              <th className="px-3 py-2">{t('fibers')}</th>
+              <th className="px-3 py-2">{t('length')}</th>
+              <th className="px-3 py-2">{t('points')}</th>
+              <th className="px-3 py-2">{tc('status')}</th>
+              <th className="px-3 py-2 text-right">{tc('actions')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-3 py-6 text-center text-text-muted">
-                  Nenhum cabo cadastrado ainda.
+                  {t('empty')}
                 </td>
               </tr>
             ) : (
@@ -189,14 +188,16 @@ export default function FiberCablesPage() {
                 <tr key={c.id} className="hover:bg-surface-hover">
                   <td className="px-3 py-2 font-medium text-text">{c.code}</td>
                   <td className="px-3 py-2">
-                    <Badge tone={TYPE_TONE[c.type]}>{TYPE_LABEL[c.type]}</Badge>
+                    <Badge tone={TYPE_TONE[c.type]}>
+                      {t(TYPE_LABEL_KEY[c.type])}
+                    </Badge>
                   </td>
                   <td className="px-3 py-2 text-text-muted">{c.fiberCount}</td>
                   <td className="px-3 py-2 text-text-muted">
                     {formatLength(c.lengthMeters)}
                     {c.lengthOverridden && (
                       <span
-                        title="Comprimento ajustado manualmente"
+                        title={t('lengthOverriddenTooltip')}
                         className="ml-1 text-xs text-amber-600"
                       >
                         ✎
@@ -204,16 +205,16 @@ export default function FiberCablesPage() {
                     )}
                   </td>
                   <td className="px-3 py-2 text-text-muted text-xs">
-                    <div>{c.path.length} vértices</div>
+                    <div>{t('vertices', { count: c.path.length })}</div>
                     <div className="text-text-subtle">
                       {c.endpointA?.code ?? '—'} → {c.endpointB?.code ?? '—'}
                     </div>
                   </td>
                   <td className="px-3 py-2">
                     {c.isActive ? (
-                      <Badge tone="success">Ativo</Badge>
+                      <Badge tone="success">{t('active')}</Badge>
                     ) : (
-                      <Badge tone="neutral">Inativo</Badge>
+                      <Badge tone="neutral">{t('inactive')}</Badge>
                     )}
                   </td>
                   <td className="px-3 py-2 text-right">
@@ -221,7 +222,7 @@ export default function FiberCablesPage() {
                       {canWrite && (
                         <button
                           onClick={() => setEditing(c)}
-                          title="Editar"
+                          title={tc('edit')}
                           className="p-1 text-text-muted hover:text-text"
                         >
                           <Pencil className="h-4 w-4" />
@@ -230,7 +231,7 @@ export default function FiberCablesPage() {
                       {canDelete && (
                         <button
                           onClick={() => setDeleting(c)}
-                          title="Excluir"
+                          title={tc('delete')}
                           className="p-1 text-text-muted hover:text-red-600"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -248,7 +249,8 @@ export default function FiberCablesPage() {
       {data && data.pagination.totalPages > 1 && (
         <div className="flex items-center justify-between text-xs text-text-muted">
           <span>
-            Página {data.pagination.page} de {data.pagination.totalPages}
+            {tc('page')} {data.pagination.page} {tc('of')}{' '}
+            {data.pagination.totalPages}
           </span>
           <div className="flex gap-2">
             <Button
@@ -257,7 +259,7 @@ export default function FiberCablesPage() {
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
             >
-              Anterior
+              {tc('previous')}
             </Button>
             <Button
               variant="outline"
@@ -265,7 +267,7 @@ export default function FiberCablesPage() {
               disabled={page >= data.pagination.totalPages}
               onClick={() => setPage((p) => p + 1)}
             >
-              Próxima
+              {tc('next')}
             </Button>
           </div>
         </div>
@@ -289,18 +291,18 @@ export default function FiberCablesPage() {
           onConfirm={async () => {
             try {
               await fiberCablesApi.remove(deleting.id);
-              toast.success('Cabo excluído');
+              toast.success(t('deleted'));
               await mutate();
               setDeleting(null);
             } catch (err) {
               toast.error(
-                err instanceof ApiError ? err.friendlyMessage : 'Erro',
+                err instanceof ApiError ? err.friendlyMessage : tc('error'),
               );
             }
           }}
-          title={`Excluir ${deleting.code}?`}
-          message="O histórico de fusões e eventos OTDR vinculados é arquivado."
-          confirmLabel="Excluir"
+          title={t('deleteConfirmTitle', { code: deleting.code })}
+          message={t('deleteConfirmMessage')}
+          confirmLabel={tc('delete')}
           variant="danger"
         />
       )}
@@ -320,6 +322,8 @@ function CableFormDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('network.fiber');
+  const tc = useTranslations('common');
   const isNew = !initial;
   const [code, setCode] = useState(initial?.code ?? '');
   const [type, setType] = useState<FiberCableType>(initial?.type ?? 'DROP');
@@ -352,9 +356,8 @@ function CableFormDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!code.trim()) return setError('Código obrigatório');
-    if (path.length < 2)
-      return setError('Marque pelo menos 2 pontos no mapa pra formar o cabo');
+    if (!code.trim()) return setError(t('errorCodeRequired'));
+    if (path.length < 2) return setError(t('errorMinPoints'));
     setSubmitting(true);
     try {
       const payload: CreateFiberCableInput = {
@@ -373,10 +376,10 @@ function CableFormDialog({
       } else {
         await fiberCablesApi.update(initial!.id, payload);
       }
-      toast.success(isNew ? 'Cabo criado' : 'Cabo atualizado');
+      toast.success(isNew ? t('created') : t('updated'));
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      setError(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setSubmitting(false);
     }
@@ -386,15 +389,17 @@ function CableFormDialog({
     <Modal
       open
       onClose={onClose}
-      title={isNew ? 'Novo cabo de fibra' : `Editar ${initial!.code}`}
+      title={
+        isNew ? t('newCableTitle') : t('editTitle', { code: initial!.code })
+      }
       size="xl"
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button onClick={handleSubmit} loading={submitting}>
-            Salvar
+            {tc('save')}
           </Button>
         </>
       }
@@ -402,7 +407,7 @@ function CableFormDialog({
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="grid gap-3 md:grid-cols-3">
           <div>
-            <Label required>Código</Label>
+            <Label required>{tc('code')}</Label>
             <Input
               value={code}
               onChange={(e) => setCode(e.target.value)}
@@ -411,18 +416,18 @@ function CableFormDialog({
             />
           </div>
           <div>
-            <Label required>Tipo</Label>
+            <Label required>{tc('type')}</Label>
             <Select
               value={type}
               onChange={(e) => setType(e.target.value as FiberCableType)}
             >
-              <option value="BACKBONE">Backbone</option>
-              <option value="DISTRIBUTION">Distribuição</option>
-              <option value="DROP">Drop</option>
+              <option value="BACKBONE">{t('typeBackbone')}</option>
+              <option value="DISTRIBUTION">{t('typeDistribution')}</option>
+              <option value="DROP">{t('typeDrop')}</option>
             </Select>
           </div>
           <div>
-            <Label required>Quantidade de fibras</Label>
+            <Label required>{t('fiberCount')}</Label>
             <Select
               value={String(fiberCount)}
               onChange={(e) => setFiberCount(Number(e.target.value))}
@@ -439,46 +444,42 @@ function CableFormDialog({
         {/* R4.5a — pontas físicas. Sem isso, cabo flutua sem topologia. */}
         <div className="grid gap-3 md:grid-cols-2">
           <div>
-            <Label htmlFor="cab-ep-a">Caixa de origem (A)</Label>
+            <Label htmlFor="cab-ep-a">{t('endpointA')}</Label>
             <Select
               id="cab-ep-a"
               value={endpointAId}
               onChange={(e) => setEndpointAId(e.target.value)}
             >
-              <option value="">— solto —</option>
+              <option value="">{t('endpointLoose')}</option>
               {enclosures.map((en) => (
                 <option key={en.id} value={en.id}>
                   {en.code} ({en.type})
                 </option>
               ))}
             </Select>
-            <FieldHelp>De onde o cabo sai (POP, CTO mãe…).</FieldHelp>
+            <FieldHelp>{t('endpointAHelp')}</FieldHelp>
           </div>
           <div>
-            <Label htmlFor="cab-ep-b">Caixa de destino (B)</Label>
+            <Label htmlFor="cab-ep-b">{t('endpointB')}</Label>
             <Select
               id="cab-ep-b"
               value={endpointBId}
               onChange={(e) => setEndpointBId(e.target.value)}
             >
-              <option value="">— solto —</option>
+              <option value="">{t('endpointLoose')}</option>
               {enclosures.map((en) => (
                 <option key={en.id} value={en.id}>
                   {en.code} ({en.type})
                 </option>
               ))}
             </Select>
-            <FieldHelp>Onde o cabo termina (CTO, NAP…).</FieldHelp>
+            <FieldHelp>{t('endpointBHelp')}</FieldHelp>
           </div>
         </div>
 
         <div>
-          <Label required>Caminho no mapa</Label>
-          <FieldHelp>
-            No modo &quot;Desenhar&quot;, clica nos pontos do trajeto.
-            Depois entra em &quot;Ajustar&quot; pra arrastar vértices ou
-            clicar pra remover. Backend calcula comprimento por Haversine.
-          </FieldHelp>
+          <Label required>{t('mapPath')}</Label>
+          <FieldHelp>{t('mapPathHelp')}</FieldHelp>
           <PolylineEditor value={path} onChange={setPath} />
         </div>
 
@@ -489,7 +490,7 @@ function CableFormDialog({
               checked={overrideLength}
               onChange={(e) => setOverrideLength(e.target.checked)}
             />
-            Sobrescrever comprimento (cabo &quot;frouxo&quot; no poste)
+            {t('overrideLength')}
           </label>
           {overrideLength && (
             <div className="mt-2 flex items-center gap-2">
@@ -501,18 +502,18 @@ function CableFormDialog({
                 onChange={(e) => setLengthMeters(Number(e.target.value))}
                 className="max-w-[160px]"
               />
-              <span className="text-xs text-text-muted">metros</span>
+              <span className="text-xs text-text-muted">{t('meters')}</span>
             </div>
           )}
           {!overrideLength && path.length >= 2 && (
             <p className="mt-1 text-xs text-text-muted">
-              Comprimento será calculado automaticamente do path.
+              {t('lengthAutoHint')}
             </p>
           )}
         </div>
 
         <div>
-          <Label>Observações</Label>
+          <Label>{tc('notes')}</Label>
           <Textarea
             rows={2}
             value={notes}
@@ -526,7 +527,7 @@ function CableFormDialog({
             checked={isActive}
             onChange={(e) => setIsActive(e.target.checked)}
           />
-          Ativo
+          {t('active')}
         </label>
 
         {error && <p className="text-xs text-red-600">{error}</p>}

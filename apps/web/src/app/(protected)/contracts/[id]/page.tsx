@@ -60,6 +60,7 @@ export default function ContractDetailPage() {
   const tContracts = useTranslations('contracts');
   const tDetail = useTranslations('contracts.detail');
   const tAudit = useTranslations('audit');
+  const tExtras = useTranslations('extras');
 
   const contractKey = id ? `/v1/contracts/${id}` : null;
   const invoicesKey = id ? contractInvoicesApi.byContractPath(id) : null;
@@ -310,13 +311,13 @@ export default function ContractDetailPage() {
             }
           />
           {contract.planName && (
-            <DataRow label="Plano" value={contract.planName} />
+            <DataRow label={tExtras('contractPlan')} value={contract.planName} />
           )}
           <DataRow
-            label="Modo de cobrança"
+            label={tExtras('paymentMode')}
             value={
               <Badge tone={contract.paymentMode === 'PREPAID' ? 'warning' : 'neutral'}>
-                {contract.paymentMode === 'PREPAID' ? 'Pré-pago' : 'Pós-pago'}
+                {contract.paymentMode === 'PREPAID' ? tExtras('prepaid') : tExtras('postpaid')}
               </Badge>
             }
           />
@@ -325,7 +326,7 @@ export default function ContractDetailPage() {
           )}
           {contract.paymentMode === 'PREPAID' && contract.prepaidUntil && (
             <DataRow
-              label="Pago até"
+              label={tExtras('paidUntil')}
               value={formatDate(contract.prepaidUntil)}
             />
           )}
@@ -459,7 +460,7 @@ export default function ContractDetailPage() {
       )}
 
       {/* Status técnico em tempo real (RADIUS accounting) */}
-      <InfoCard title="Estado técnico">
+      <InfoCard title={tExtras('technicalStatus')}>
         <ContractSessionCard contractId={contract.id} />
       </InfoCard>
 

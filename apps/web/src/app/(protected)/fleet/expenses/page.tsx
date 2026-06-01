@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -13,7 +14,6 @@ import { useFormatMoney } from '@/lib/use-money';
 import { cashRegistersApi, type CashRegister } from '@/lib/finance-api';
 import {
   fleetApi,
-  EXPENSE_TYPE_LABELS,
   type CreateFleetExpenseInput,
   type Driver,
   type FleetExpense,
@@ -40,7 +40,10 @@ export default function FleetExpensesPage() {
     fleetApi.expensesPath({ pageSize: 200 }),
     () => fleetApi.listExpenses({ pageSize: 200 }),
   );
+  const t = useTranslations('fleet.expenses');
+  const tc = useTranslations('common');
   const fmt = useFormatMoney();
+  const typeLabel = (type: FleetExpenseType) => t(`types.${type}`);
   const canWrite = hasPermission('fleet.expense.create');
 
   const [editing, setEditing] = useState<FleetExpense | null>(null);
@@ -66,25 +69,24 @@ export default function FleetExpensesPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Despesas da frota</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Combustível, pedágio, multas, reparos. Quando um caixa é informado, a despesa vira
-            uma saída no financeiro global.
+            {t('subtitle')}
           </p>
         </div>
-        {canWrite && <Button onClick={() => setCreating(true)}>Nova despesa</Button>}
+        {canWrite && <Button onClick={() => setCreating(true)}>{t('new')}</Button>}
       </header>
 
       {isLoading && <PageLoader />}
       {error && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-          Falha ao carregar despesas.
+          {t('loadError')}
         </div>
       )}
 
       {data && rows.length === 0 && (
         <p className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
-          Nenhuma despesa lançada ainda.
+          {t('empty')}
         </p>
       )}
 
@@ -94,13 +96,13 @@ export default function FleetExpensesPage() {
             <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
               <thead className="bg-slate-50 dark:bg-slate-900/40">
                 <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  <th className="px-4 py-3">Data</th>
-                  <th className="px-4 py-3">Veículo</th>
-                  <th className="px-4 py-3">Tipo</th>
-                  <th className="px-4 py-3 text-right">Valor</th>
-                  <th className="px-4 py-3">Caixa</th>
-                  <th className="px-4 py-3">Descrição</th>
-                  {canWrite && <th className="px-4 py-3 text-right">Ações</th>}
+                  <th className="px-4 py-3">{t('col.date')}</th>
+                  <th className="px-4 py-3">{t('col.vehicle')}</th>
+                  <th className="px-4 py-3">{tc('type')}</th>
+                  <th className="px-4 py-3 text-right">{t('col.amount')}</th>
+                  <th className="px-4 py-3">{t('col.cashRegister')}</th>
+                  <th className="px-4 py-3">{tc('description')}</th>
+                  {canWrite && <th className="px-4 py-3 text-right">{tc('actions')}</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -112,18 +114,18 @@ export default function FleetExpensesPage() {
                     <td className="px-4 py-3 font-mono text-slate-900 dark:text-slate-100">
                       {x.vehicle?.plate ?? '—'}
                     </td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{EXPENSE_TYPE_LABELS[x.type]}</td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{typeLabel(x.type)}</td>
                     <td className="px-4 py-3 text-right font-semibold text-slate-900 dark:text-slate-100">{fmt(x.amount)}</td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                      {x.cashRegister?.name ?? <span className="text-slate-400">não lançado</span>}
+                      {x.cashRegister?.name ?? <span className="text-slate-400">{t('notPosted')}</span>}
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
                       {x.description || <span className="text-slate-400">—</span>}
                     </td>
                     {canWrite && (
                       <td className="px-4 py-3 text-right">
-                        <Button variant="ghost" size="sm" onClick={() => setEditing(x)}>Editar</Button>
-                        <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(x)}>Excluir</Button>
+                        <Button variant="ghost" size="sm" onClick={() => setEditing(x)}>{tc('edit')}</Button>
+                        <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(x)}>{tc('delete')}</Button>
                       </td>
                     )}
                   </tr>
@@ -131,7 +133,7 @@ export default function FleetExpensesPage() {
               </tbody>
               <tfoot>
                 <tr className="border-t border-slate-200 bg-slate-50 text-sm font-semibold dark:border-slate-700 dark:bg-slate-900/40">
-                  <td className="px-4 py-3" colSpan={3}>Total</td>
+                  <td className="px-4 py-3" colSpan={3}>{t('total')}</td>
                   <td className="px-4 py-3 text-right">{fmt(total)}</td>
                   <td colSpan={canWrite ? 3 : 2}></td>
                 </tr>
@@ -159,9 +161,9 @@ export default function FleetExpensesPage() {
       {confirmDelete && (
         <ConfirmDialog
           open
-          title="Excluir despesa?"
-          message="Se a despesa gerou um lançamento no caixa, ele é revertido junto."
-          confirmLabel="Excluir"
+          title={t('deleteTitle')}
+          message={t('deleteMessage')}
+          confirmLabel={tc('delete')}
           loading={deleting}
           onConfirm={() => handleDelete(confirmDelete)}
           onClose={() => setConfirmDelete(null)}
@@ -180,6 +182,8 @@ function ExpenseFormModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('fleet.expenses');
+  const tc = useTranslations('common');
   const isNew = !initial;
   const { data: vehicles } = useSWR<Paginated<Vehicle>>(
     fleetApi.vehiclesPath({ pageSize: 200 }),
@@ -215,9 +219,9 @@ function ExpenseFormModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.vehicleId) return setError('Selecione o veículo');
+    if (!form.vehicleId) return setError(t('error.selectVehicle'));
     const amount = Number(form.amount);
-    if (!amount || amount <= 0) return setError('Valor inválido');
+    if (!amount || amount <= 0) return setError(t('error.invalidAmount'));
     setSubmitting(true);
     try {
       const payload: CreateFleetExpenseInput = {
@@ -234,18 +238,18 @@ function ExpenseFormModal({
       else await fleetApi.updateExpense(initial!.id, payload);
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro ao salvar');
+      setError(err instanceof ApiError ? err.friendlyMessage : t('error.save'));
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Modal open onClose={onClose} title={isNew ? 'Nova despesa' : 'Editar despesa'}>
+    <Modal open onClose={onClose} title={isNew ? t('new') : t('editTitle')}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <Label htmlFor="vehicle">Veículo *</Label>
+            <Label htmlFor="vehicle">{t('field.vehicle')}</Label>
             <select
               id="vehicle"
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
@@ -253,7 +257,7 @@ function ExpenseFormModal({
               onChange={(e) => setForm({ ...form, vehicleId: e.target.value })}
               required
             >
-              <option value="">Selecione…</option>
+              <option value="">{t('selectPlaceholder')}</option>
               {(vehicles?.data ?? []).map((v) => (
                 <option key={v.id} value={v.id}>
                   {v.plate} {[v.brand, v.model].filter(Boolean).join(' ')}
@@ -262,15 +266,15 @@ function ExpenseFormModal({
             </select>
           </div>
           <div>
-            <Label htmlFor="type">Tipo</Label>
+            <Label htmlFor="type">{tc('type')}</Label>
             <select
               id="type"
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
               value={form.type}
               onChange={(e) => setForm({ ...form, type: e.target.value as FleetExpenseType })}
             >
-              {TYPES.map((t) => (
-                <option key={t} value={t}>{EXPENSE_TYPE_LABELS[t]}</option>
+              {TYPES.map((ty) => (
+                <option key={ty} value={ty}>{t(`types.${ty}`)}</option>
               ))}
             </select>
           </div>
@@ -278,7 +282,7 @@ function ExpenseFormModal({
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <Label htmlFor="amount">Valor *</Label>
+            <Label htmlFor="amount">{t('field.amount')}</Label>
             <Input
               id="amount"
               type="number"
@@ -289,7 +293,7 @@ function ExpenseFormModal({
             />
           </div>
           <div>
-            <Label htmlFor="when">Data/hora</Label>
+            <Label htmlFor="when">{t('field.occurredAt')}</Label>
             <Input
               id="when"
               type="datetime-local"
@@ -298,7 +302,7 @@ function ExpenseFormModal({
             />
           </div>
           <div>
-            <Label htmlFor="odo">Odômetro (km)</Label>
+            <Label htmlFor="odo">{t('field.odometer')}</Label>
             <Input
               id="odo"
               type="number"
@@ -310,7 +314,7 @@ function ExpenseFormModal({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <Label htmlFor="driver">Motorista</Label>
+            <Label htmlFor="driver">{t('field.driver')}</Label>
             <select
               id="driver"
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
@@ -324,14 +328,14 @@ function ExpenseFormModal({
             </select>
           </div>
           <div>
-            <Label htmlFor="caixa">Caixa (lança no financeiro)</Label>
+            <Label htmlFor="caixa">{t('field.cashRegister')}</Label>
             <select
               id="caixa"
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
               value={form.cashRegisterId}
               onChange={(e) => setForm({ ...form, cashRegisterId: e.target.value })}
             >
-              <option value="">Não lançar no caixa</option>
+              <option value="">{t('noCashRegister')}</option>
               {(registers ?? []).map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -340,15 +344,15 @@ function ExpenseFormModal({
         </div>
 
         <div>
-          <Label htmlFor="desc">Descrição</Label>
+          <Label htmlFor="desc">{tc('description')}</Label>
           <Textarea id="desc" rows={2} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
         </div>
 
         {error && <FieldError>{error}</FieldError>}
 
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>Cancelar</Button>
-          <Button type="submit" loading={submitting}>{isNew ? 'Lançar' : 'Salvar'}</Button>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>{tc('cancel')}</Button>
+          <Button type="submit" loading={submitting}>{isNew ? t('submit') : tc('save')}</Button>
         </div>
       </form>
     </Modal>

@@ -7,6 +7,7 @@
  * Suporta dois modos: DIRECT (SSH em OLT real) e ORCHESTRATOR (API tipo
  * Ufinet). Form troca campos visíveis baseado no providerMode.
  */
+import { useTranslations } from 'next-intl';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useState } from 'react';
@@ -53,6 +54,8 @@ function statusColor(s: OltStatus): string {
 }
 
 export default function OltsPage() {
+  const t = useTranslations('olts.list');
+  const tc = useTranslations('common');
   const canAdmin = hasPermission('olts.admin');
   const { data, isLoading, mutate } = useSWR('olts', () => oltsApi.list({ pageSize: 100 }));
   const [editing, setEditing] = useState<Olt | null>(null);
@@ -71,7 +74,7 @@ export default function OltsPage() {
       setTestResult({ id, ok: r.success, msg: `${r.message} (${r.durationMs}ms)` });
       await mutate();
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : 'erro';
+      const msg = err instanceof ApiError ? err.message : tc('error');
       setTestResult({ id, ok: false, msg });
     } finally {
       setTesting(null);
@@ -82,32 +85,31 @@ export default function OltsPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">OLTs</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            OLTs diretas (SSH) e orquestradores externos (Ufinet API). Credenciais
-            são criptografadas at-rest com KMS.
+            {t('subtitle')}
           </p>
         </div>
         {canAdmin && (
-          <Button onClick={() => setCreating(true)}>Nova OLT</Button>
+          <Button onClick={() => setCreating(true)}>{t('newOlt')}</Button>
         )}
       </header>
 
       {olts.length === 0 ? (
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-          Nenhuma OLT cadastrada. Clique &quot;Nova OLT&quot; pra cadastrar.
+          {t('empty')}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 dark:bg-slate-900">
               <tr>
-                <th className="px-3 py-2 text-left font-medium">Nome</th>
-                <th className="px-3 py-2 text-left font-medium">Vendor/Modelo</th>
-                <th className="px-3 py-2 text-left font-medium">Modo</th>
-                <th className="px-3 py-2 text-left font-medium">Endpoint</th>
-                <th className="px-3 py-2 text-left font-medium">Status</th>
-                <th className="px-3 py-2 text-right font-medium">Ações</th>
+                <th className="px-3 py-2 text-left font-medium">{tc('name')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('vendorModel')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('mode')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('endpoint')}</th>
+                <th className="px-3 py-2 text-left font-medium">{tc('status')}</th>
+                <th className="px-3 py-2 text-right font-medium">{tc('actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -125,7 +127,7 @@ export default function OltsPage() {
                     {o.providerMode === 'DIRECT'
                       ? o.managementIp
                       : o.providerMode === 'EXTERNAL'
-                        ? <span className="italic text-slate-500">— (manual)</span>
+                        ? <span className="italic text-slate-500">{t('manual')}</span>
                         : o.apiEndpoint}
                   </td>
                   <td className="px-3 py-2">
@@ -147,17 +149,17 @@ export default function OltsPage() {
                           loading={testing === o.id}
                           onClick={() => handleTest(o.id)}
                         >
-                          Testar
+                          {t('test')}
                         </Button>
                       )}
                       <Link href={`/olts/${o.id}`}>
                         <Button size="sm" variant="outline">
-                          Portas PON
+                          {t('ponPorts')}
                         </Button>
                       </Link>
                       {canAdmin && (
                         <Button size="sm" variant="ghost" onClick={() => setEditing(o)}>
-                          Editar
+                          {tc('edit')}
                         </Button>
                       )}
                     </div>
@@ -194,6 +196,8 @@ interface OltFormModalProps {
 }
 
 function OltFormModal({ olt, onClose, onSaved }: OltFormModalProps) {
+  const t = useTranslations('olts.list');
+  const tc = useTranslations('common');
   const [form, setForm] = useState<CreateOltRequest>({
     name: olt?.name ?? '',
     vendor: olt?.vendor ?? 'HUAWEI',
@@ -278,7 +282,7 @@ function OltFormModal({ olt, onClose, onSaved }: OltFormModalProps) {
       }
       await onSaved();
     } catch (err) {
-      const msg = err instanceof ApiError ? err.message : 'erro';
+      const msg = err instanceof ApiError ? err.message : tc('error');
       setError(msg);
     } finally {
       setSaving(false);
@@ -289,11 +293,11 @@ function OltFormModal({ olt, onClose, onSaved }: OltFormModalProps) {
     setForm((f) => ({ ...f, [k]: v }));
 
   return (
-    <Modal open onClose={onClose} title={olt ? 'Editar OLT' : 'Nova OLT'}>
+    <Modal open onClose={onClose} title={olt ? t('editOlt') : t('newOlt')}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <Label htmlFor="name">Nome *</Label>
+            <Label htmlFor="name">{t('fieldName')}</Label>
             <Input id="name" required value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="OLT POP-Centro" />
           </div>
           <div>
@@ -303,55 +307,52 @@ function OltFormModal({ olt, onClose, onSaved }: OltFormModalProps) {
             </Select>
           </div>
           <div>
-            <Label htmlFor="model">Modelo *</Label>
+            <Label htmlFor="model">{t('fieldModel')}</Label>
             <Input id="model" required value={form.model} onChange={(e) => set('model', e.target.value)} placeholder="MA5800-X7" />
           </div>
           <div className="sm:col-span-2">
-            <Label htmlFor="providerMode">Modo *</Label>
+            <Label htmlFor="providerMode">{t('fieldMode')}</Label>
             <Select id="providerMode" value={form.providerMode} onChange={(e) => set('providerMode', e.target.value as OltProviderMode)}>
-              <option value="EXTERNAL">EXTERNAL (provisão manual fora do NetX — Ufinet manual, web OLT, etc)</option>
-              <option value="DIRECT">DIRECT (NetX fala SSH/NETCONF na OLT)</option>
-              <option value="ORCHESTRATOR">ORCHESTRATOR (Ufinet API ou outro provider)</option>
+              <option value="EXTERNAL">{t('modeExternal')}</option>
+              <option value="DIRECT">{t('modeDirect')}</option>
+              <option value="ORCHESTRATOR">{t('modeOrchestrator')}</option>
             </Select>
             {form.providerMode === 'EXTERNAL' && (
               <p className="mt-1 text-xs text-slate-500">
-                NetX só registra a ONT no banco e segue pra RADIUS + TR-069.
-                Você é responsável por provisionar SN na OLT real (Ufinet, NMS, etc).
+                {t('externalHint')}
               </p>
             )}
           </div>
 
           {form.providerMode === 'EXTERNAL' ? (
             <div className="sm:col-span-2 rounded-md border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-200">
-              ℹ️ Em modo <strong>EXTERNAL</strong> não há credenciais — NetX não
-              conecta diretamente na OLT. Cadastre apenas nome/vendor/modelo pra
-              inventário e use no fluxo de provisionamento normal.
+              {t.rich('externalNoCreds', { strong: (c) => <strong>{c}</strong> })}
             </div>
           ) : form.providerMode === 'DIRECT' ? (
             <>
               <div className="sm:col-span-2"><h3 className="text-xs font-semibold uppercase text-slate-500">SSH</h3></div>
               <div>
-                <Label htmlFor="managementIp">IP de gerência *</Label>
+                <Label htmlFor="managementIp">{t('mgmtIp')}</Label>
                 <Input id="managementIp" required value={form.managementIp ?? ''} onChange={(e) => set('managementIp', e.target.value)} placeholder="10.0.0.1" />
               </div>
               <div>
-                <Label htmlFor="sshPort">Porta SSH</Label>
+                <Label htmlFor="sshPort">{t('sshPort')}</Label>
                 <Input id="sshPort" type="number" value={form.sshPort ?? 22} onChange={(e) => set('sshPort', Number(e.target.value))} />
               </div>
               <div>
-                <Label htmlFor="sshUser">Usuário *</Label>
+                <Label htmlFor="sshUser">{t('sshUser')}</Label>
                 <Input id="sshUser" required value={form.sshUser ?? ''} onChange={(e) => set('sshUser', e.target.value)} />
               </div>
               <div>
-                <Label htmlFor="sshPassword">Senha {olt ? '(deixe vazio pra manter)' : '*'}</Label>
+                <Label htmlFor="sshPassword">{olt ? t('passwordKeep') : t('passwordRequired')}</Label>
                 <Input id="sshPassword" type="password" required={!olt} value={form.sshPassword ?? ''} onChange={(e) => set('sshPassword', e.target.value)} />
               </div>
             </>
           ) : (
             <>
-              <div className="sm:col-span-2"><h3 className="text-xs font-semibold uppercase text-slate-500">API orquestrador</h3></div>
+              <div className="sm:col-span-2"><h3 className="text-xs font-semibold uppercase text-slate-500">{t('orchestratorApi')}</h3></div>
               <div className="sm:col-span-2">
-                <Label htmlFor="apiEndpoint">Endpoint *</Label>
+                <Label htmlFor="apiEndpoint">{t('endpointRequired')}</Label>
                 <Input id="apiEndpoint" required value={form.apiEndpoint ?? ''} onChange={(e) => set('apiEndpoint', e.target.value)} placeholder="https://apim-ufinet-qa.azure-api.net/multiop/" />
               </div>
 
@@ -359,8 +360,7 @@ function OltFormModal({ olt, onClose, onSaved }: OltFormModalProps) {
                 <>
                   <div className="sm:col-span-2">
                     <FieldHelp>
-                      Rede neutra Ufinet (TMF). Cada <strong>polígono</strong> Ufinet é uma OLT.
-                      As credenciais são criptografadas; em edição, deixe-as vazias pra manter.
+                      {t.rich('ufinetHelp', { strong: (c) => <strong>{c}</strong> })}
                     </FieldHelp>
                   </div>
                   <div>
@@ -380,15 +380,15 @@ function OltFormModal({ olt, onClose, onSaved }: OltFormModalProps) {
                     <Input id="uf-polygon" value={ufinet.polygonAlias} onChange={(e) => setUf('polygonAlias', e.target.value)} placeholder="JLMPY-MALLORQUIN" />
                   </div>
                   <div className="sm:col-span-2">
-                    <Label htmlFor="uf-userName">Usuário API (username) *</Label>
+                    <Label htmlFor="uf-userName">{t('ufUserName')}</Label>
                     <Input id="uf-userName" required value={ufinet.userName} onChange={(e) => setUf('userName', e.target.value)} placeholder="ufinet.api@multiopufinet.onmicrosoft.com" />
                   </div>
                   <div>
-                    <Label htmlFor="uf-country">País</Label>
+                    <Label htmlFor="uf-country">{t('ufCountry')}</Label>
                     <Input id="uf-country" value={ufinet.country} onChange={(e) => setUf('country', e.target.value)} />
                   </div>
                   <div>
-                    <Label htmlFor="uf-city">Cidade</Label>
+                    <Label htmlFor="uf-city">{t('ufCity')}</Label>
                     <Input id="uf-city" value={ufinet.city} onChange={(e) => setUf('city', e.target.value)} placeholder="MALLORQUIN" />
                   </div>
                   <div>
@@ -416,24 +416,24 @@ function OltFormModal({ olt, onClose, onSaved }: OltFormModalProps) {
                     <Input id="uf-tokenUrl" value={ufinet.tokenUrl} onChange={(e) => setUf('tokenUrl', e.target.value)} />
                   </div>
 
-                  <div className="sm:col-span-2"><h3 className="text-xs font-semibold uppercase text-slate-500">Credenciais (cifradas)</h3></div>
+                  <div className="sm:col-span-2"><h3 className="text-xs font-semibold uppercase text-slate-500">{t('credsEncrypted')}</h3></div>
                   <div className="sm:col-span-2">
-                    <Label htmlFor="uf-clientId">client_id {olt ? '(vazio = manter)' : '*'}</Label>
+                    <Label htmlFor="uf-clientId">client_id {olt ? t('keepEmpty') : '*'}</Label>
                     <Input id="uf-clientId" value={ufinetCreds.clientId} onChange={(e) => setCred('clientId', e.target.value)} />
                   </div>
                   <div className="sm:col-span-2">
-                    <Label htmlFor="uf-clientSecret">client_secret {olt ? '(vazio = manter)' : '*'}</Label>
+                    <Label htmlFor="uf-clientSecret">client_secret {olt ? t('keepEmpty') : '*'}</Label>
                     <Input id="uf-clientSecret" type="password" value={ufinetCreds.clientSecret} onChange={(e) => setCred('clientSecret', e.target.value)} />
                   </div>
                   <div className="sm:col-span-2">
-                    <Label htmlFor="uf-accessKey">Access key {olt ? '(vazio = manter)' : '*'}</Label>
+                    <Label htmlFor="uf-accessKey">Access key {olt ? t('keepEmpty') : '*'}</Label>
                     <Input id="uf-accessKey" type="password" value={ufinetCreds.accessKey} onChange={(e) => setCred('accessKey', e.target.value)} />
                   </div>
                 </>
               ) : (
                 <>
                   <div>
-                    <Label htmlFor="apiAuthType">Auth *</Label>
+                    <Label htmlFor="apiAuthType">{t('authRequired')}</Label>
                     <Select id="apiAuthType" value={form.apiAuthType ?? 'API_KEY'} onChange={(e) => set('apiAuthType', e.target.value as 'OAUTH2' | 'API_KEY' | 'MTLS')}>
                       <option value="API_KEY">API_KEY</option>
                       <option value="OAUTH2">OAUTH2</option>
@@ -441,7 +441,7 @@ function OltFormModal({ olt, onClose, onSaved }: OltFormModalProps) {
                     </Select>
                   </div>
                   <div className="sm:col-span-2">
-                    <Label htmlFor="apiCredentialsJson">Credenciais (JSON)</Label>
+                    <Label htmlFor="apiCredentialsJson">{t('credsJson')}</Label>
                     <textarea
                       id="apiCredentialsJson"
                       rows={3}
@@ -452,7 +452,7 @@ function OltFormModal({ olt, onClose, onSaved }: OltFormModalProps) {
                           set('apiCredentials', e.target.value ? JSON.parse(e.target.value) : null);
                           setError(null);
                         } catch {
-                          setError('JSON inválido');
+                          setError(t('invalidJson'));
                         }
                       }}
                     />
@@ -462,26 +462,25 @@ function OltFormModal({ olt, onClose, onSaved }: OltFormModalProps) {
             </>
           )}
 
-          <div className="sm:col-span-2"><h3 className="text-xs font-semibold uppercase text-slate-500">Defaults</h3></div>
+          <div className="sm:col-span-2"><h3 className="text-xs font-semibold uppercase text-slate-500">{t('defaults')}</h3></div>
           <div>
-            <Label htmlFor="serviceVlanId">VLAN serviço</Label>
+            <Label htmlFor="serviceVlanId">{t('serviceVlan')}</Label>
             <Input id="serviceVlanId" type="number" value={form.serviceVlanId ?? ''} onChange={(e) => set('serviceVlanId', e.target.value ? Number(e.target.value) : null)} />
           </div>
           <div></div>
           <div>
-            <Label htmlFor="defaultUpProfile">Profile upload</Label>
+            <Label htmlFor="defaultUpProfile">{t('uploadProfile')}</Label>
             <Input id="defaultUpProfile" value={form.defaultUpProfile ?? ''} onChange={(e) => set('defaultUpProfile', e.target.value || null)} />
           </div>
           <div>
-            <Label htmlFor="defaultDownProfile">Profile download</Label>
+            <Label htmlFor="defaultDownProfile">{t('downloadProfile')}</Label>
             <Input id="defaultDownProfile" value={form.defaultDownProfile ?? ''} onChange={(e) => set('defaultDownProfile', e.target.value || null)} />
           </div>
 
-          <div className="sm:col-span-2"><h3 className="text-xs font-semibold uppercase text-slate-500">Ubicación</h3></div>
+          <div className="sm:col-span-2"><h3 className="text-xs font-semibold uppercase text-slate-500">{t('location')}</h3></div>
           <div className="sm:col-span-2">
             <FieldHelp>
-              Clic en el mapa para fijar la OLT, o &quot;Mi ubicación&quot;
-              si estás físicamente en el POP. Aparece en /mapping/network.
+              {t('locationHelp')}
             </FieldHelp>
             <LocationPicker value={location} onChange={setLocation} />
           </div>
@@ -490,8 +489,8 @@ function OltFormModal({ olt, onClose, onSaved }: OltFormModalProps) {
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
-          <Button type="submit" loading={saving}>{olt ? 'Salvar' : 'Criar'}</Button>
+          <Button type="button" variant="ghost" onClick={onClose}>{tc('cancel')}</Button>
+          <Button type="submit" loading={saving}>{olt ? tc('save') : tc('create')}</Button>
         </div>
       </form>
     </Modal>

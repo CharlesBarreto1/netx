@@ -165,6 +165,7 @@ function ChatInbox({
   setSoundEnabled: (v: boolean) => void;
 }) {
   const t = useTranslations('chat');
+  const tx = useTranslations('chatExtra');
   const filters: Array<{ key: InboxFilter; label: string }> = [
     { key: 'mine', label: t('inbox.filter.mine') },
     { key: 'unassigned', label: t('inbox.filter.unassigned') },
@@ -237,8 +238,8 @@ function ChatInbox({
                     <span className="line-clamp-1 flex-1 text-xs text-text-muted">
                       {last
                         ? last.direction === 'OUT'
-                          ? `→ ${last.body ?? '(mídia)'}`
-                          : last.body ?? '(mídia)'
+                          ? `→ ${last.body ?? tx('media')}`
+                          : last.body ?? tx('media')
                         : '—'}
                     </span>
                     {c.unreadCount > 0 && (
@@ -249,7 +250,7 @@ function ChatInbox({
                   </div>
                   {c.contact.customer && (
                     <span className="mt-1 inline-block rounded bg-emerald-100 px-1 py-0.5 text-[9px] uppercase tracking-wider text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                      cliente
+                      {tx('customerBadge')}
                     </span>
                   )}
                 </div>
@@ -433,6 +434,7 @@ function ChatThread({
 }
 
 function MessageBubble({ message }: { message: WaMessage }) {
+  const tx = useTranslations('chatExtra');
   const isOut = message.direction === 'OUT';
   const time = new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const mediaUrl = resolveMediaUrl(message.mediaUrl);
@@ -456,7 +458,7 @@ function MessageBubble({ message }: { message: WaMessage }) {
         )}
         {message.type === 'DOCUMENT' && mediaUrl && (
           <a href={mediaUrl} target="_blank" rel="noopener noreferrer" className="underline">
-            📎 {message.body ?? 'documento'}
+            📎 {message.body ?? tx('document')}
           </a>
         )}
         {message.body && <p className="whitespace-pre-wrap break-words">{message.body}</p>}

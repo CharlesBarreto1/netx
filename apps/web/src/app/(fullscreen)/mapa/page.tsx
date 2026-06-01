@@ -33,6 +33,7 @@ import {
   Scissors,
   Upload,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
@@ -80,13 +81,18 @@ const NetworkMap = dynamic(
   () => import('@/components/mapping/NetworkMap').then((m) => m.NetworkMap),
   {
     ssr: false,
-    loading: () => (
-      <div className="flex h-full items-center justify-center bg-slate-100 dark:bg-slate-900">
-        <span className="text-sm text-text-muted">Carregando mapa…</span>
-      </div>
-    ),
+    loading: () => <MapLoading />,
   },
 );
+
+function MapLoading() {
+  const t = useTranslations('mapa');
+  return (
+    <div className="flex h-full items-center justify-center bg-slate-100 dark:bg-slate-900">
+      <span className="text-sm text-text-muted">{t('loadingMap')}</span>
+    </div>
+  );
+}
 
 // ─── Modos do estúdio (super-set do NetworkMapMode) ─────────────────────────
 type StudioMode =
@@ -131,6 +137,8 @@ function fmtMeters(m: number): string {
 }
 
 export default function MapStudioPage() {
+  const t = useTranslations('mapa');
+  const tc = useTranslations('common');
   // ── Modo + drafts ─────────────────────────────────────────────────────────
   const [mode, setMode] = useState<StudioMode>('select');
   const [draftPath, setDraftPath] = useState<PathPoint[]>([]);
@@ -353,26 +361,26 @@ export default function MapStudioPage() {
             <div className="absolute right-3 top-3 z-[1500] w-64 rounded-md border border-border bg-surface p-3 shadow-xl">
               <div className="mb-2 flex items-center justify-between">
                 <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-                  Camadas
+                  {t('layers')}
                 </span>
                 <button
                   type="button"
                   onClick={() => setLayersOpen(false)}
                   className="text-text-muted hover:text-text"
-                  title="Fechar"
+                  title={tc('close')}
                 >
                   ✕
                 </button>
               </div>
               {(
                 [
-                  { k: 'includePops', label: `POPs (${stats?.pops ?? 0})`, color: '#1e40af' },
-                  { k: 'includeEquipment', label: `Equipamentos (${stats?.equipment ?? 0})`, color: '#ea580c' },
-                  { k: 'includeOlts', label: `OLTs (${stats?.olts ?? 0})`, color: '#7c3aed' },
-                  { k: 'includeEnclosures', label: `Caixas (${stats?.enclosures ?? 0})`, color: '#0d9488' },
-                  { k: 'includeCables', label: `Cabos (${stats?.cables ?? 0})`, color: '#1d4ed8' },
-                  { k: 'includeSplices', label: `Fusões (${stats?.splices ?? 0})`, color: '#f59e0b' },
-                  { k: 'includeEvents', label: `⚠ Eventos (${stats?.events ?? 0})`, color: '#dc2626' },
+                  { k: 'includePops', label: t('layerPops', { count: stats?.pops ?? 0 }), color: '#1e40af' },
+                  { k: 'includeEquipment', label: t('layerEquipment', { count: stats?.equipment ?? 0 }), color: '#ea580c' },
+                  { k: 'includeOlts', label: t('layerOlts', { count: stats?.olts ?? 0 }), color: '#7c3aed' },
+                  { k: 'includeEnclosures', label: t('layerEnclosures', { count: stats?.enclosures ?? 0 }), color: '#0d9488' },
+                  { k: 'includeCables', label: t('layerCables', { count: stats?.cables ?? 0 }), color: '#1d4ed8' },
+                  { k: 'includeSplices', label: t('layerSplices', { count: stats?.splices ?? 0 }), color: '#f59e0b' },
+                  { k: 'includeEvents', label: t('layerEvents', { count: stats?.events ?? 0 }), color: '#dc2626' },
                 ] as const
               ).map((opt) => (
                 <label
@@ -399,7 +407,7 @@ export default function MapStudioPage() {
           {/* HUD — instrução do modo + régua */}
           {mode !== 'select' && (
             <div className="pointer-events-none absolute bottom-3 left-1/2 z-[400] -translate-x-1/2 rounded-md bg-slate-900/95 px-4 py-2 text-xs font-medium text-white shadow-lg">
-              {modeHint(mode, draftPath.length, rulerPath.length)}
+              {modeHint(t, mode, draftPath.length, rulerPath.length)}
             </div>
           )}
 
@@ -408,18 +416,18 @@ export default function MapStudioPage() {
             <div className="absolute right-3 bottom-16 z-[1500] max-w-xs rounded-md border border-border bg-surface p-3 shadow-xl">
               <div className="mb-1 flex items-center gap-2 text-xs font-semibold">
                 <Ruler className="h-3.5 w-3.5" />
-                Régua
+                {t('ruler')}
               </div>
               <ul className="space-y-0.5 text-xs font-mono">
                 {rulerStats.segments.map((m, i) => (
                   <li key={i} className="flex justify-between text-text-muted">
-                    <span>Seg {i + 1}</span>
+                    <span>{t('rulerSegment', { n: i + 1 })}</span>
                     <span>{fmtMeters(m)}</span>
                   </li>
                 ))}
               </ul>
               <div className="mt-1 flex justify-between border-t border-border pt-1 text-xs font-bold">
-                <span>Total</span>
+                <span>{t('rulerTotal')}</span>
                 <span>{fmtMeters(rulerStats.total)}</span>
               </div>
             </div>
@@ -435,7 +443,7 @@ export default function MapStudioPage() {
           onCreated={async () => {
             await mutate();
             setEnclosureDraft(null);
-            toast.success('Caixa criada');
+            toast.success(t('toastEnclosureCreated'));
           }}
         />
       )}
@@ -446,7 +454,7 @@ export default function MapStudioPage() {
           onCreated={async () => {
             await mutate();
             setCableDraft(null);
-            toast.success('Cabo criado');
+            toast.success(t('toastCableCreated'));
           }}
         />
       )}
@@ -457,7 +465,7 @@ export default function MapStudioPage() {
           onCreated={async () => {
             await mutate();
             setPopDraft(null);
-            toast.success('POP marcado · vincule OLTs em Rede › POPs');
+            toast.success(t('toastPopCreated'));
           }}
         />
       )}
@@ -490,19 +498,19 @@ export default function MapStudioPage() {
           onConfirm={async () => {
             try {
               await networkFoldersApi.remove(folderDeleting.id);
-              toast.success('Pasta excluída');
+              toast.success(t('toastFolderDeleted'));
               await mutateFolders();
               await mutate();
               setFolderDeleting(null);
             } catch (err) {
               toast.error(
-                err instanceof ApiError ? err.friendlyMessage : 'Erro',
+                err instanceof ApiError ? err.friendlyMessage : tc('error'),
               );
             }
           }}
-          title={`Excluir "${folderDeleting.name}"?`}
-          message="Itens dentro voltam pra órfãos."
-          confirmLabel="Excluir"
+          title={t('folderDeleteTitle', { name: folderDeleting.name })}
+          message={t('folderDeleteMessage')}
+          confirmLabel={tc('delete')}
           variant="danger"
         />
       )}
@@ -510,28 +518,33 @@ export default function MapStudioPage() {
   );
 }
 
-function modeHint(mode: StudioMode, draftLen: number, rulerLen: number): string {
+function modeHint(
+  t: ReturnType<typeof useTranslations>,
+  mode: StudioMode,
+  draftLen: number,
+  rulerLen: number,
+): string {
   switch (mode) {
     case 'cable':
       return draftLen < 2
-        ? '✏️ Clique pra adicionar pontos do cabo · ESC cancela'
-        : `✏️ ${draftLen} pontos · ENTER finaliza · BACKSPACE remove · ESC cancela`;
+        ? t('hintCableStart')
+        : t('hintCableProgress', { count: draftLen });
     case 'ruler':
       return rulerLen < 2
-        ? '📏 Clique 2 pontos pra começar a medir · ESC encerra'
-        : `📏 ${rulerLen} pontos · BACKSPACE remove último · ESC encerra`;
+        ? t('hintRulerStart')
+        : t('hintRulerProgress', { count: rulerLen });
     case 'enclosure-CTO':
-      return '🟦 Clique no mapa pra marcar a CTO';
+      return t('hintCto');
     case 'enclosure-CEO':
-      return '🟫 Clique no mapa pra marcar a CEO (caixa de emenda)';
+      return t('hintCeo');
     case 'enclosure-SPLITTER':
-      return '🟨 Clique no mapa pra marcar o splitter';
+      return t('hintSplitter');
     case 'enclosure-EMENDA':
-      return '⬛ Clique no mapa pra marcar o ponto de emenda';
+      return t('hintEmenda');
     case 'pop':
-      return '🔷 Clique pra marcar o POP (depois vincule OLTs do cadastro)';
+      return t('hintPop');
     case 'reserva':
-      return '🟪 Clique pra marcar a Reserva técnica (sobra de cabo)';
+      return t('hintReserva');
     default:
       return '';
   }
@@ -553,11 +566,12 @@ function Topbar({
   layersOpen: boolean;
   setLayersOpen: (v: boolean) => void;
 }) {
+  const t = useTranslations('mapa');
   return (
     <header className="flex h-12 items-center gap-1 border-b border-border bg-surface px-2 shadow-sm">
       <Link
         href="/"
-        title="Voltar pro NetX"
+        title={t('backToNetx')}
         className="flex h-8 items-center gap-1 rounded-md px-2 text-sm font-medium text-text-muted hover:bg-surface-hover hover:text-text"
       >
         <ChevronLeft className="h-4 w-4" />
@@ -565,7 +579,7 @@ function Topbar({
       </Link>
       <div className="mx-2 h-6 w-px bg-border" />
       <span className="mr-2 text-sm font-semibold tracking-tight">
-        Estúdio de Mapeamento
+        {t('studioTitle')}
       </span>
 
       <div className="mx-2 h-6 w-px bg-border" />
@@ -574,14 +588,14 @@ function Topbar({
         active={mode === 'select'}
         onClick={() => setMode('select')}
         icon={<MousePointer className="h-4 w-4" />}
-        label="Selecionar"
+        label={t('toolSelect')}
         shortcut="V"
       />
       <ToolButton
         active={mode === 'cable'}
         onClick={() => setMode('cable')}
         icon={<Cable className="h-4 w-4" />}
-        label="Cabo"
+        label={t('toolCable')}
         shortcut="C"
         badge={draftCount > 0 ? draftCount : undefined}
       />
@@ -589,52 +603,52 @@ function Topbar({
         active={mode === 'enclosure-CTO'}
         onClick={() => setMode('enclosure-CTO')}
         icon={<Box className="h-4 w-4" />}
-        label="CTO"
+        label={t('toolCto')}
         shortcut="B"
       />
       <ToolButton
         active={mode === 'enclosure-CEO'}
         onClick={() => setMode('enclosure-CEO')}
         icon={<Box className="h-4 w-4" />}
-        label="CEO"
+        label={t('toolCeo')}
       />
       <ToolButton
         active={mode === 'enclosure-SPLITTER'}
         onClick={() => setMode('enclosure-SPLITTER')}
         icon={<Scissors className="h-4 w-4" />}
-        label="Splitter"
+        label={t('toolSplitter')}
       />
       <ToolButton
         active={mode === 'enclosure-EMENDA'}
         onClick={() => setMode('enclosure-EMENDA')}
         icon={<Box className="h-4 w-4" />}
-        label="Emenda"
+        label={t('toolEmenda')}
       />
       <div className="mx-2 h-6 w-px bg-border" />
       <ToolButton
         active={mode === 'pop'}
         onClick={() => setMode('pop')}
         icon={<Radio className="h-4 w-4" />}
-        label="POP"
+        label={t('toolPop')}
       />
       <ToolButton
         active={mode === 'reserva'}
         onClick={() => setMode('reserva')}
         icon={<Save className="h-4 w-4" />}
-        label="Reserva"
+        label={t('toolReserva')}
       />
       <div className="mx-2 h-6 w-px bg-border" />
       <ToolButton
         active={rulerActive}
         onClick={() => setMode('ruler')}
         icon={<Ruler className="h-4 w-4" />}
-        label="Régua"
+        label={t('toolRuler')}
         shortcut="R"
       />
 
       <div className="ml-auto flex items-center gap-1">
         <Link href="/network/import-export" className="text-xs">
-          <Button variant="ghost" size="sm" title="Importar KML">
+          <Button variant="ghost" size="sm" title={t('importKml')}>
             <Upload className="h-3.5 w-3.5" />
             KML
           </Button>
@@ -642,7 +656,7 @@ function Topbar({
         <Link href="/network/optical" className="text-xs">
           <Button variant="ghost" size="sm">
             <Plus className="h-3.5 w-3.5" />
-            Avançado
+            {t('advanced')}
           </Button>
         </Link>
         <button
@@ -653,10 +667,10 @@ function Topbar({
               ? 'bg-brand-500 text-white'
               : 'text-text-muted hover:bg-surface-hover hover:text-text'
           }`}
-          title="Camadas visíveis"
+          title={t('layersVisible')}
         >
           <Layers className="h-3.5 w-3.5" />
-          Camadas
+          {t('layers')}
         </button>
       </div>
     </header>
@@ -720,6 +734,8 @@ function CreateEnclosureModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const t = useTranslations('mapa');
+  const tc = useTranslations('common');
   const [code, setCode] = useState(draft.isReserva ? 'RES-' : '');
   const [splitterRatio, setSplitterRatio] = useState<SplitterRatio | ''>(
     draft.type === 'SPLITTER' ? 'ONE_TO_8' : '',
@@ -728,7 +744,7 @@ function CreateEnclosureModal({
     draft.type === 'SPLITTER' ? 8 : draft.type === 'CTO' ? 16 : 12,
   );
   const [notes, setNotes] = useState(
-    draft.isReserva ? 'Reserva técnica (sobra de cabo)' : '',
+    draft.isReserva ? t('reservaNotesDefault') : '',
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -740,7 +756,7 @@ function CreateEnclosureModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!code.trim()) return setError('Código obrigatório');
+    if (!code.trim()) return setError(t('errorCodeRequired'));
     setSubmitting(true);
     try {
       const payload: CreateEnclosureInput = {
@@ -755,21 +771,21 @@ function CreateEnclosureModal({
       await opticalApi.create(payload);
       onCreated();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      setError(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setSubmitting(false);
     }
   }
 
   const title = draft.isReserva
-    ? 'Reserva técnica'
+    ? t('enclosureTitleReserva')
     : draft.type === 'CTO'
-      ? 'Nova CTO'
+      ? t('enclosureTitleCto')
       : draft.type === 'NAP'
-        ? 'Novo NAP'
+        ? t('enclosureTitleNap')
         : draft.type === 'SPLITTER'
-          ? 'Novo Splitter'
-          : 'Novo ponto de emenda';
+          ? t('enclosureTitleSplitter')
+          : t('enclosureTitleEmenda');
 
   return (
     <StudioModal
@@ -778,10 +794,10 @@ function CreateEnclosureModal({
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button onClick={handleSubmit} loading={submitting}>
-            Criar
+            {tc('create')}
           </Button>
         </>
       }
@@ -795,7 +811,7 @@ function CreateEnclosureModal({
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label required>Código</Label>
+            <Label required>{tc('code')}</Label>
             <Input
               value={code}
               onChange={(e) => setCode(e.target.value)}
@@ -805,7 +821,7 @@ function CreateEnclosureModal({
           </div>
           {draft.type === 'SPLITTER' && (
             <div>
-              <Label>Splitter</Label>
+              <Label>{t('fieldSplitter')}</Label>
               <Select
                 value={splitterRatio}
                 onChange={(e) => pickRatio(e.target.value as SplitterRatio | '')}
@@ -823,8 +839,8 @@ function CreateEnclosureModal({
           <div>
             <Label required>
               {draft.type === 'SPLITTER' || draft.type === 'CTO'
-                ? 'Portas'
-                : 'Capacidade'}
+                ? t('fieldPorts')
+                : t('fieldCapacity')}
             </Label>
             <Input
               type="number"
@@ -836,7 +852,7 @@ function CreateEnclosureModal({
           </div>
         </div>
         <div>
-          <Label>Notas</Label>
+          <Label>{tc('notes')}</Label>
           <Textarea
             rows={2}
             value={notes}
@@ -858,6 +874,8 @@ function CreateCableModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const t = useTranslations('mapa');
+  const tc = useTranslations('common');
   const [code, setCode] = useState('');
   const [type, setType] = useState<FiberCableType>('DISTRIBUTION');
   const [fiberCount, setFiberCount] = useState(12);
@@ -867,7 +885,7 @@ function CreateCableModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!code.trim()) return setError('Código obrigatório');
+    if (!code.trim()) return setError(t('errorCodeRequired'));
     setSubmitting(true);
     try {
       const payload: CreateFiberCableInput = {
@@ -880,7 +898,7 @@ function CreateCableModal({
       await fiberCablesApi.create(payload);
       onCreated();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      setError(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setSubmitting(false);
     }
@@ -888,26 +906,26 @@ function CreateCableModal({
 
   return (
     <StudioModal
-      title="Novo cabo de fibra"
+      title={t('cableTitle')}
       onClose={onClose}
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button onClick={handleSubmit} loading={submitting}>
-            Criar
+            {tc('create')}
           </Button>
         </>
       }
     >
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="flex items-center gap-2">
-          <Badge tone="info">{path.length} pontos no path</Badge>
+          <Badge tone="info">{t('cablePathPoints', { count: path.length })}</Badge>
         </div>
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <Label required>Código</Label>
+            <Label required>{tc('code')}</Label>
             <Input
               value={code}
               onChange={(e) => setCode(e.target.value)}
@@ -916,18 +934,18 @@ function CreateCableModal({
             />
           </div>
           <div>
-            <Label required>Tipo</Label>
+            <Label required>{tc('type')}</Label>
             <Select
               value={type}
               onChange={(e) => setType(e.target.value as FiberCableType)}
             >
-              <option value="BACKBONE">Backbone</option>
-              <option value="DISTRIBUTION">Distribuição</option>
-              <option value="DROP">Drop</option>
+              <option value="BACKBONE">{t('cableTypeBackbone')}</option>
+              <option value="DISTRIBUTION">{t('cableTypeDistribution')}</option>
+              <option value="DROP">{t('cableTypeDrop')}</option>
             </Select>
           </div>
           <div>
-            <Label required>Fibras</Label>
+            <Label required>{t('fieldFibers')}</Label>
             <Select
               value={String(fiberCount)}
               onChange={(e) => setFiberCount(Number(e.target.value))}
@@ -941,7 +959,7 @@ function CreateCableModal({
           </div>
         </div>
         <div>
-          <Label>Notas</Label>
+          <Label>{tc('notes')}</Label>
           <Textarea
             rows={2}
             value={notes}
@@ -949,8 +967,9 @@ function CreateCableModal({
           />
         </div>
         <FieldHelp>
-          Endpoints A/B podem ser definidos depois em{' '}
-          <code className="text-2xs">/network/fiber</code>.
+          {t.rich('cableHelp', {
+            code: (chunks) => <code className="text-2xs">{chunks}</code>,
+          })}
         </FieldHelp>
         {error && <p className="text-xs text-red-600">{error}</p>}
       </form>
@@ -967,6 +986,8 @@ function CreatePopModal({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const t = useTranslations('mapa');
+  const tc = useTranslations('common');
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [city, setCity] = useState('');
@@ -976,7 +997,7 @@ function CreatePopModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return setError('Nome obrigatório');
+    if (!name.trim()) return setError(t('errorNameRequired'));
     setSubmitting(true);
     try {
       // Usa endpoint /v1/network/pops do módulo Network.
@@ -991,7 +1012,7 @@ function CreatePopModal({
       });
       onCreated();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      setError(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setSubmitting(false);
     }
@@ -999,15 +1020,15 @@ function CreatePopModal({
 
   return (
     <StudioModal
-      title="Novo POP"
+      title={t('popTitle')}
       onClose={onClose}
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button onClick={handleSubmit} loading={submitting}>
-            Criar
+            {tc('create')}
           </Button>
         </>
       }
@@ -1021,7 +1042,7 @@ function CreatePopModal({
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
-            <Label required>Nome</Label>
+            <Label required>{tc('name')}</Label>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -1030,7 +1051,7 @@ function CreatePopModal({
             />
           </div>
           <div>
-            <Label>Código</Label>
+            <Label>{tc('code')}</Label>
             <Input
               value={code}
               onChange={(e) => setCode(e.target.value)}
@@ -1038,7 +1059,7 @@ function CreatePopModal({
             />
           </div>
           <div>
-            <Label>Cidade</Label>
+            <Label>{t('fieldCity')}</Label>
             <Input
               value={city}
               onChange={(e) => setCity(e.target.value)}
@@ -1047,7 +1068,7 @@ function CreatePopModal({
           </div>
         </div>
         <div>
-          <Label>Notas</Label>
+          <Label>{tc('notes')}</Label>
           <Textarea
             rows={2}
             value={notes}
@@ -1055,9 +1076,9 @@ function CreatePopModal({
           />
         </div>
         <FieldHelp>
-          Vincular OLTs ao POP: vá em{' '}
-          <code className="text-2xs">/network/pops</code> depois (R8.2 vai
-          trazer pra cá).
+          {t.rich('popHelp', {
+            code: (chunks) => <code className="text-2xs">{chunks}</code>,
+          })}
         </FieldHelp>
         {error && <p className="text-xs text-red-600">{error}</p>}
       </form>
@@ -1074,6 +1095,8 @@ function FolderEditDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('mapa');
+  const tc = useTranslations('common');
   const isNew = !('id' in initial);
   const [name, setName] = useState('id' in initial ? initial.name : '');
   const [color, setColor] = useState<string>(
@@ -1087,7 +1110,7 @@ function FolderEditDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) return setError('Nome obrigatório');
+    if (!name.trim()) return setError(t('errorNameRequired'));
     setSubmitting(true);
     try {
       if (isNew) {
@@ -1104,10 +1127,10 @@ function FolderEditDialog({
           notes: notes || null,
         });
       }
-      toast.success(isNew ? 'Pasta criada' : 'Pasta atualizada');
+      toast.success(isNew ? t('toastFolderCreated') : t('toastFolderUpdated'));
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      setError(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setSubmitting(false);
     }
@@ -1115,31 +1138,35 @@ function FolderEditDialog({
 
   return (
     <StudioModal
-      title={isNew ? 'Nova pasta' : `Editar "${(initial as NetworkFolder).name}"`}
+      title={
+        isNew
+          ? t('folderNewTitle')
+          : t('folderEditTitle', { name: (initial as NetworkFolder).name })
+      }
       onClose={onClose}
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button onClick={handleSubmit} loading={submitting}>
-            Salvar
+            {tc('save')}
           </Button>
         </>
       }
     >
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
-          <Label required>Nome</Label>
+          <Label required>{tc('name')}</Label>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="ex.: Centro, Cooperativa, Sul…"
+            placeholder={t('folderNamePlaceholder')}
             autoFocus
           />
         </div>
         <div>
-          <Label>Cor</Label>
+          <Label>{t('fieldColor')}</Label>
           <div className="flex items-center gap-2">
             <input
               type="color"
@@ -1151,7 +1178,7 @@ function FolderEditDialog({
           </div>
         </div>
         <div>
-          <Label>Notas</Label>
+          <Label>{tc('notes')}</Label>
           <Textarea
             rows={2}
             value={notes}

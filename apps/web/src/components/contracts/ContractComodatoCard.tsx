@@ -9,6 +9,7 @@
  * Visibilidade: respeita `stock.read`. Botões de alocar/devolver respeitam
  * `stock.write` (e a ACL de local é checada no backend).
  */
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -26,6 +27,8 @@ import {
 } from '@/lib/stock-api';
 
 export function ContractComodatoCard({ contractId }: { contractId: string }) {
+  const t = useTranslations('contractCards');
+  const tc = useTranslations('common');
   const { data, isLoading, error, mutate } = useSWR<ComodatoSerial[]>(
     stockApi.comodatoByContractPath(contractId),
     () => stockApi.listComodatoByContract(contractId),
@@ -42,24 +45,23 @@ export function ContractComodatoCard({ contractId }: { contractId: string }) {
     <div>
       <div className="mb-3 flex items-center justify-between">
         <div className="text-sm text-text-muted">
-          Equipamentos patrimoniais vinculados a este contrato (status =
-          ALLOCATED).
+          {t('comodato.intro')}
         </div>
         {canWrite && (
           <Button size="sm" onClick={() => setAllocating(true)}>
-            Adicionar equipamento
+            {t('comodato.addEquipment')}
           </Button>
         )}
       </div>
 
       {isLoading && <Spinner />}
       {error && (
-        <div className="text-sm text-red-600">Falha ao carregar comodatos.</div>
+        <div className="text-sm text-red-600">{t('comodato.loadError')}</div>
       )}
 
       {data && data.length === 0 && (
         <p className="text-sm text-text-muted italic">
-          Nenhum equipamento em comodato.
+          {t('comodato.empty')}
         </p>
       )}
 
@@ -68,10 +70,10 @@ export function ContractComodatoCard({ contractId }: { contractId: string }) {
           <table className="min-w-full divide-y divide-border text-sm">
             <thead className="bg-bg-soft">
               <tr className="text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
-                <th className="px-3 py-2">Produto</th>
-                <th className="px-3 py-2">Serial</th>
-                <th className="px-3 py-2">Alocado em</th>
-                {canWrite && <th className="px-3 py-2 text-right">Ações</th>}
+                <th className="px-3 py-2">{t('comodato.product')}</th>
+                <th className="px-3 py-2">{t('comodato.serial')}</th>
+                <th className="px-3 py-2">{t('comodato.allocatedAt')}</th>
+                {canWrite && <th className="px-3 py-2 text-right">{tc('actions')}</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -103,7 +105,7 @@ export function ContractComodatoCard({ contractId }: { contractId: string }) {
                         size="sm"
                         onClick={() => setReturning(s)}
                       >
-                        Devolver
+                        {t('comodato.return')}
                       </Button>
                     </td>
                   )}
@@ -151,6 +153,8 @@ function AllocateModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('contractCards');
+  const tc = useTranslations('common');
   const { data: available, isLoading } = useSWR<ComodatoAvailableSerial[]>(
     '/v1/stock/comodato/available',
     () => stockApi.listComodatoAvailable(),
@@ -163,7 +167,7 @@ function AllocateModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!serialItemId) return setError('Selecione um equipamento');
+    if (!serialItemId) return setError(t('comodato.selectEquipmentError'));
     setSubmitting(true);
     try {
       await stockApi.allocateComodato({
@@ -173,28 +177,26 @@ function AllocateModal({
       });
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro ao alocar');
+      setError(err instanceof ApiError ? err.friendlyMessage : t('comodato.allocateError'));
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Modal open onClose={onClose} title="Alocar equipamento em comodato">
+    <Modal open onClose={onClose} title={t('comodato.allocateTitle')}>
       <form onSubmit={handleSubmit} className="space-y-3">
         {isLoading && <Spinner />}
 
         {available && available.length === 0 && (
           <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-            Nenhum equipamento patrimonial disponível em estoque. Cadastre uma
-            compra ou veja se há seriais em outros locais que você não tem
-            acesso.
+            {t('comodato.noneAvailable')}
           </div>
         )}
 
         {available && available.length > 0 && (
           <div>
-            <Label>Equipamento *</Label>
+            <Label>{t('comodato.equipmentRequired')}</Label>
             <select
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
               value={serialItemId}
@@ -212,12 +214,12 @@ function AllocateModal({
         )}
 
         <div>
-          <Label>Observações</Label>
+          <Label>{tc('notes')}</Label>
           <Textarea
             rows={2}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="Ex: entregue na instalação OS-1234"
+            placeholder={t('comodato.allocateNotesPlaceholder')}
           />
         </div>
 
@@ -230,14 +232,14 @@ function AllocateModal({
             onClick={onClose}
             disabled={submitting}
           >
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button
             type="submit"
             loading={submitting}
             disabled={!serialItemId}
           >
-            Alocar
+            {t('comodato.allocate')}
           </Button>
         </div>
       </form>
@@ -257,6 +259,8 @@ function ReturnModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('contractCards');
+  const tc = useTranslations('common');
   const { data: locations } = useSWR<StockLocation[]>(
     stockApi.locationsPath({ isActive: true }),
     () => stockApi.listLocations({ isActive: true }),
@@ -269,7 +273,7 @@ function ReturnModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!toLocationId) return setError('Escolha o local de destino');
+    if (!toLocationId) return setError(t('comodato.selectLocationError'));
     setSubmitting(true);
     try {
       await stockApi.returnComodato({
@@ -280,7 +284,7 @@ function ReturnModal({
       onSaved();
     } catch (err) {
       setError(
-        err instanceof ApiError ? err.friendlyMessage : 'Erro ao devolver',
+        err instanceof ApiError ? err.friendlyMessage : t('comodato.returnError'),
       );
     } finally {
       setSubmitting(false);
@@ -288,20 +292,20 @@ function ReturnModal({
   }
 
   return (
-    <Modal open onClose={onClose} title="Devolver equipamento ao estoque">
+    <Modal open onClose={onClose} title={t('comodato.returnTitle')}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="rounded-md bg-bg-soft p-3 text-sm">
           <div>
             <strong>{serial.product.name}</strong>
           </div>
           <div className="text-xs text-text-muted">
-            SKU: {serial.product.sku} · Serial:{' '}
+            SKU: {serial.product.sku} · {t('comodato.serial')}:{' '}
             <span className="font-mono">{serial.serial}</span>
           </div>
         </div>
 
         <div>
-          <Label>Local destino *</Label>
+          <Label>{t('comodato.destinationRequired')}</Label>
           <select
             className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
             value={toLocationId}
@@ -318,12 +322,12 @@ function ReturnModal({
         </div>
 
         <div>
-          <Label>Observações</Label>
+          <Label>{tc('notes')}</Label>
           <Textarea
             rows={2}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="Ex: cliente cancelou contrato; equipamento sem avarias"
+            placeholder={t('comodato.returnNotesPlaceholder')}
           />
         </div>
 
@@ -336,10 +340,10 @@ function ReturnModal({
             onClick={onClose}
             disabled={submitting}
           >
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button type="submit" loading={submitting} disabled={!toLocationId}>
-            Devolver
+            {t('comodato.return')}
           </Button>
         </div>
       </form>

@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -18,6 +19,8 @@ import type { UserResponse } from '@/lib/users-api';
 import type { Paginated } from '@/lib/crm-types';
 
 export default function StockLocationsPage() {
+  const t = useTranslations('stock.locations');
+  const tc = useTranslations('common');
   const { data, isLoading, error, mutate } = useSWR<StockLocation[]>(
     stockApi.locationsPath(),
     () => stockApi.listLocations(),
@@ -47,26 +50,28 @@ export default function StockLocationsPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Locais de estoque</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Cada local tem ACL própria — usuários só veem locais que tem acesso. Roles com
-            permissão <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">stock.admin</code>{' '}
-            bypassam (veem todos os locais do tenant).
+            {t.rich('subtitle', {
+              code: (chunks) => (
+                <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">{chunks}</code>
+              ),
+            })}
           </p>
         </div>
-        {canAdmin && <Button onClick={() => setCreating(true)}>Novo local</Button>}
+        {canAdmin && <Button onClick={() => setCreating(true)}>{t('newLocation')}</Button>}
       </header>
 
       {isLoading && <PageLoader />}
       {error && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-          Falha ao carregar locais.
+          {t('loadError')}
         </div>
       )}
 
       {data && data.length === 0 && (
         <p className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
-          Nenhum local de estoque cadastrado. {canAdmin && 'Crie o primeiro pra começar.'}
+          {t('empty')} {canAdmin && t('emptyAdmin')}
         </p>
       )}
 
@@ -76,12 +81,12 @@ export default function StockLocationsPage() {
             <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
               <thead className="bg-slate-50 dark:bg-slate-900/40">
                 <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  <th className="px-4 py-3">Code</th>
-                  <th className="px-4 py-3">Nome</th>
-                  <th className="px-4 py-3">Acessos</th>
-                  <th className="px-4 py-3">Saldo</th>
-                  <th className="px-4 py-3">Status</th>
-                  {(canWrite || canAdmin) && <th className="px-4 py-3 text-right">Ações</th>}
+                  <th className="px-4 py-3">{tc('code')}</th>
+                  <th className="px-4 py-3">{tc('name')}</th>
+                  <th className="px-4 py-3">{t('colAccess')}</th>
+                  <th className="px-4 py-3">{t('colBalance')}</th>
+                  <th className="px-4 py-3">{tc('status')}</th>
+                  {(canWrite || canAdmin) && <th className="px-4 py-3 text-right">{tc('actions')}</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -95,12 +100,12 @@ export default function StockLocationsPage() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                      <span className="text-xs">{l.userAccess?.length ?? 0} usuário(s)</span>
+                      <span className="text-xs">{t('userCount', { count: l.userAccess?.length ?? 0 })}</span>
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
                       <div className="flex flex-col text-xs">
-                        <span>{l.stats?.consumableProducts ?? 0} consumíveis</span>
-                        <span className="text-slate-500">{l.stats?.serialItemsInStock ?? 0} seriais</span>
+                        <span>{t('consumablesCount', { count: l.stats?.consumableProducts ?? 0 })}</span>
+                        <span className="text-slate-500">{t('serialsCount', { count: l.stats?.serialItemsInStock ?? 0 })}</span>
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -111,22 +116,22 @@ export default function StockLocationsPage() {
                             : 'inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300'
                         }
                       >
-                        {l.isActive ? 'Ativo' : 'Inativo'}
+                        {l.isActive ? t('active') : t('inactive')}
                       </span>
                     </td>
                     {(canWrite || canAdmin) && (
                       <td className="px-4 py-3 text-right">
                         {canAdmin && (
                           <Button variant="ghost" size="sm" onClick={() => setManagingAccess(l)}>
-                            Acessos
+                            {t('access')}
                           </Button>
                         )}
                         <Button variant="ghost" size="sm" onClick={() => setEditing(l)}>
-                          Editar
+                          {tc('edit')}
                         </Button>
                         {canAdmin && (
                           <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(l)}>
-                            Excluir
+                            {tc('delete')}
                           </Button>
                         )}
                       </td>
@@ -168,9 +173,9 @@ export default function StockLocationsPage() {
       {confirmDelete && (
         <ConfirmDialog
           open={true}
-          title={`Excluir "${confirmDelete.name}"?`}
-          message="Não é possível excluir locais com saldo ou seriais alocados. Movimentos históricos ficam preservados."
-          confirmLabel="Excluir"
+          title={t('deleteTitle', { name: confirmDelete.name })}
+          message={t('deleteMessage')}
+          confirmLabel={tc('delete')}
           loading={deleting}
           onConfirm={() => handleDelete(confirmDelete)}
           onClose={() => setConfirmDelete(null)}
@@ -192,6 +197,8 @@ function LocationFormModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('stock.locations');
+  const tc = useTranslations('common');
   const isNew = !initial;
   const [form, setForm] = useState<CreateStockLocationInput>({
     code: initial?.code ?? '',
@@ -205,8 +212,8 @@ function LocationFormModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.code.trim()) return setError('Code é obrigatório');
-    if (!form.name.trim()) return setError('Nome é obrigatório');
+    if (!form.code.trim()) return setError(t('codeRequired'));
+    if (!form.name.trim()) return setError(t('nameRequired'));
     setSubmitting(true);
     try {
       const payload: CreateStockLocationInput = {
@@ -219,18 +226,18 @@ function LocationFormModal({
       else await stockApi.updateLocation(initial!.id, { ...payload, userIds: undefined });
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro ao salvar');
+      setError(err instanceof ApiError ? err.friendlyMessage : t('saveError'));
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Modal open onClose={onClose} title={isNew ? 'Novo local de estoque' : 'Editar local'}>
+    <Modal open onClose={onClose} title={isNew ? t('newModalTitle') : t('editModalTitle')}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <div>
-            <Label htmlFor="code">Code *</Label>
+            <Label htmlFor="code">{tc('code')} *</Label>
             <Input
               id="code"
               placeholder="DEP-MATRIZ"
@@ -241,13 +248,13 @@ function LocationFormModal({
               required
               maxLength={40}
             />
-            <p className="text-xs text-slate-500 mt-1">Maiúsculas, números, "." "_" "-"</p>
+            <p className="text-xs text-slate-500 mt-1">{t('codeHelp')}</p>
           </div>
           <div className="col-span-2">
-            <Label htmlFor="name">Nome *</Label>
+            <Label htmlFor="name">{tc('name')} *</Label>
             <Input
               id="name"
-              placeholder="Depósito Matriz"
+              placeholder={t('namePlaceholder')}
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               required
@@ -256,7 +263,7 @@ function LocationFormModal({
         </div>
 
         <div>
-          <Label htmlFor="address">Endereço</Label>
+          <Label htmlFor="address">{t('address')}</Label>
           <Input
             id="address"
             value={form.address ?? ''}
@@ -270,22 +277,23 @@ function LocationFormModal({
             checked={form.isActive ?? true}
             onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
           />
-          Ativo
+          {t('active')}
         </label>
 
         {error && <FieldError>{error}</FieldError>}
 
         <div className="rounded-md bg-blue-50 p-3 text-xs text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
-          Após criar, use o botão <strong>"Acessos"</strong> na lista pra escolher quais usuários
-          podem ver/operar neste local.
+          {t.rich('accessHint', {
+            strong: (chunks) => <strong>{chunks}</strong>,
+          })}
         </div>
 
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button type="submit" loading={submitting}>
-            {isNew ? 'Criar' : 'Salvar'}
+            {isNew ? tc('create') : tc('save')}
           </Button>
         </div>
       </form>
@@ -305,6 +313,8 @@ function AccessManagerModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('stock.locations');
+  const tc = useTranslations('common');
   // /v1/users retorna `Paginated<UserResponse>` = { data, pagination }.
   // pageSize=200 cobre tenants pequenos sem paginação na UI (otimização futura
   // se algum operador tiver >200 users ativos).
@@ -342,18 +352,19 @@ function AccessManagerModal({
       await stockApi.setLocationAccess(location.id, { userIds });
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro ao salvar');
+      setError(err instanceof ApiError ? err.friendlyMessage : t('saveError'));
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Modal open onClose={onClose} title={`Acessos — ${location.name}`}>
+    <Modal open onClose={onClose} title={t('accessModalTitle', { name: location.name })}>
       <div className="space-y-3">
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Marque os usuários que podem operar neste local. Quem não estiver marcado não verá esse
-          local na listagem (exceto admins com permissão <code>stock.admin</code>).
+          {t.rich('accessIntro', {
+            code: (chunks) => <code>{chunks}</code>,
+          })}
         </p>
 
         {loadingUsers && <PageLoader />}
@@ -363,9 +374,9 @@ function AccessManagerModal({
             <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
               <thead className="bg-slate-50 dark:bg-slate-900/40 sticky top-0">
                 <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <th className="px-3 py-2 w-12">Acesso</th>
-                  <th className="px-3 py-2">Usuário</th>
-                  <th className="px-3 py-2 w-32">Pode editar?</th>
+                  <th className="px-3 py-2 w-12">{t('accessCol')}</th>
+                  <th className="px-3 py-2">{t('userCol')}</th>
+                  <th className="px-3 py-2 w-32">{t('canEditCol')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -393,7 +404,7 @@ function AccessManagerModal({
                           onChange={() => toggleCanWrite(u.id)}
                         />
                         <span className="ml-2 text-xs text-slate-500">
-                          {!has ? '—' : canWrite ? 'Sim' : 'Read-only'}
+                          {!has ? '—' : canWrite ? t('canEditYes') : t('readOnly')}
                         </span>
                       </td>
                     </tr>
@@ -408,10 +419,10 @@ function AccessManagerModal({
 
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button type="button" onClick={handleSave} loading={submitting}>
-            Salvar acessos
+            {t('saveAccess')}
           </Button>
         </div>
       </div>

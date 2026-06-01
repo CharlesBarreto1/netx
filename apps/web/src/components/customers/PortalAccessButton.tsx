@@ -1,6 +1,7 @@
 'use client';
 
 import { Copy, KeyRound } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
@@ -17,6 +18,8 @@ import { ApiError, api } from '@/lib/api';
  * novo (invalida o anterior).
  */
 export function PortalAccessButton({ customerId }: { customerId: string }) {
+  const t = useTranslations('miscComponents');
+  const tc = useTranslations('common');
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [code, setCode] = useState<string | null>(null);
@@ -32,7 +35,7 @@ export function PortalAccessButton({ customerId }: { customerId: string }) {
       setExpiresAt(res.expiresAt);
       setOpen(true);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.friendlyMessage : 'Error');
+      toast.error(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setLoading(false);
     }
@@ -41,7 +44,7 @@ export function PortalAccessButton({ customerId }: { customerId: string }) {
   function copyCode() {
     if (!code) return;
     void navigator.clipboard?.writeText(code);
-    toast.success('Código copiado');
+    toast.success(t('portalAccess.codeCopied'));
   }
 
   function close() {
@@ -54,16 +57,16 @@ export function PortalAccessButton({ customerId }: { customerId: string }) {
     <>
       <Button variant="outline" onClick={handleGenerate} loading={loading}>
         <KeyRound className="h-3.5 w-3.5" />
-        Acceso al portal
+        {t('portalAccess.button')}
       </Button>
 
       <Modal
         open={open}
         onClose={close}
-        title="Código de acceso al portal"
-        description="Pásale este código al cliente. Se mostrará una sola vez — si lo perdés, generá uno nuevo."
+        title={t('portalAccess.modalTitle')}
+        description={t('portalAccess.modalDescription')}
         footer={
-          <Button onClick={close}>Cerrar</Button>
+          <Button onClick={close}>{tc('close')}</Button>
         }
       >
         <div className="space-y-3">
@@ -77,16 +80,16 @@ export function PortalAccessButton({ customerId }: { customerId: string }) {
               className="mt-2 inline-flex items-center gap-1 text-xs text-amber-800 dark:text-amber-300 hover:underline"
             >
               <Copy className="h-3 w-3" />
-              Copiar
+              {t('portalAccess.copy')}
             </button>
           </div>
           {expiresAt && (
             <p className="text-xs text-text-muted">
-              Válido hasta {new Date(expiresAt).toLocaleString('es-PY')}.
+              {t('portalAccess.validUntil', { date: new Date(expiresAt).toLocaleString('es-PY') })}
             </p>
           )}
           <p className="text-xs text-text-muted">
-            URL del portal:{' '}
+            {t('portalAccess.portalUrl')}{' '}
             <code className="font-mono">{typeof window !== 'undefined' ? `${window.location.origin}/portal/login` : '/portal/login'}</code>
           </p>
         </div>

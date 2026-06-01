@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 
@@ -29,6 +30,8 @@ export function ContactsTab({ customerId }: { customerId: string }) {
   const key = `/v1/customers/${customerId}/contacts`;
   const { data, isLoading, error, mutate } = useSWR<CustomerContact[]>(key);
   const canWrite = hasPermission('customers.update');
+  const t = useTranslations('crmTabs');
+  const tc = useTranslations('common');
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CustomerContact | null>(null);
@@ -50,7 +53,7 @@ export function ContactsTab({ customerId }: { customerId: string }) {
   if (error) {
     return (
       <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-        Falha ao carregar contatos.
+        {t('contacts.loadError')}
       </div>
     );
   }
@@ -59,7 +62,7 @@ export function ContactsTab({ customerId }: { customerId: string }) {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-          {data?.length ?? 0} contato(s)
+          {t('contacts.count', { count: data?.length ?? 0 })}
         </h3>
         {canWrite && (
           <Button
@@ -69,14 +72,14 @@ export function ContactsTab({ customerId }: { customerId: string }) {
               setOpen(true);
             }}
           >
-            Adicionar contato
+            {t('contacts.add')}
           </Button>
         )}
       </div>
 
       {(!data || data.length === 0) && (
         <p className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
-          Nenhum contato cadastrado.
+          {t('contacts.empty')}
         </p>
       )}
 
@@ -89,9 +92,9 @@ export function ContactsTab({ customerId }: { customerId: string }) {
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge tone="info">{CONTACT_TYPE_LABEL[c.type]}</Badge>
-                {c.isPrimary && <Badge tone="success">Principal</Badge>}
-                {c.isVerified && <Badge tone="brand">Verificado</Badge>}
-                {c.optIn && <Badge tone="neutral">Opt-in</Badge>}
+                {c.isPrimary && <Badge tone="success">{t('contacts.primary')}</Badge>}
+                {c.isVerified && <Badge tone="brand">{t('contacts.verified')}</Badge>}
+                {c.optIn && <Badge tone="neutral">{t('contacts.optIn')}</Badge>}
                 {c.label && (
                   <span className="text-xs text-slate-500 dark:text-slate-400">· {c.label}</span>
                 )}
@@ -110,10 +113,10 @@ export function ContactsTab({ customerId }: { customerId: string }) {
                     setOpen(true);
                   }}
                 >
-                  Editar
+                  {tc('edit')}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(c)}>
-                  Excluir
+                  {tc('delete')}
                 </Button>
               </div>
             )}
@@ -138,9 +141,9 @@ export function ContactsTab({ customerId }: { customerId: string }) {
         onConfirm={() => {
           if (confirmDelete) return handleDelete(confirmDelete);
         }}
-        title="Excluir contato"
-        message={`Excluir o contato "${confirmDelete?.value ?? ''}"?`}
-        confirmLabel="Excluir"
+        title={t('contacts.deleteTitle')}
+        message={t('contacts.deleteMessage', { value: confirmDelete?.value ?? '' })}
+        confirmLabel={tc('delete')}
         variant="danger"
         loading={deleting}
       />
@@ -161,6 +164,8 @@ function ContactFormModal({
   contact: CustomerContact | null;
   onSaved: () => void;
 }) {
+  const t = useTranslations('crmTabs');
+  const tc = useTranslations('common');
   const [type, setType] = useState<ContactType>(contact?.type ?? 'EMAIL');
   const [value, setValue] = useState(contact?.value ?? '');
   const [label, setLabel] = useState(contact?.label ?? '');
@@ -220,14 +225,14 @@ function ContactFormModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={contact ? 'Editar contato' : 'Novo contato'}
+      title={contact ? t('contacts.editTitle') : t('contacts.newTitle')}
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={saving}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button form="contact-form" type="submit" loading={saving}>
-            Salvar
+            {tc('save')}
           </Button>
         </>
       }
@@ -239,28 +244,28 @@ function ContactFormModal({
           </div>
         )}
         <div>
-          <Label required>Tipo</Label>
+          <Label required>{tc('type')}</Label>
           <Select value={type} onChange={(e) => setType(e.target.value as ContactType)}>
-            {CONTACT_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {CONTACT_TYPE_LABEL[t]}
+            {CONTACT_TYPES.map((ct) => (
+              <option key={ct} value={ct}>
+                {CONTACT_TYPE_LABEL[ct]}
               </option>
             ))}
           </Select>
         </div>
         <div>
-          <Label required>Valor</Label>
+          <Label required>{t('contacts.value')}</Label>
           <Input
             value={value}
             onChange={(e) => setValue(e.target.value)}
             required
-            placeholder={type === 'EMAIL' ? 'nome@dominio.com' : '+55 11 99999-8888'}
+            placeholder={type === 'EMAIL' ? t('contacts.emailPlaceholder') : '+55 11 99999-8888'}
           />
           <FieldError>{fieldErr.value}</FieldError>
         </div>
         <div>
-          <Label>Rótulo</Label>
-          <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Opcional" />
+          <Label>{t('contacts.label')}</Label>
+          <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder={t('contacts.labelPlaceholder')} />
         </div>
         <label className="flex items-center gap-2 text-sm">
           <input
@@ -269,7 +274,7 @@ function ContactFormModal({
             onChange={(e) => setIsPrimary(e.target.checked)}
             className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
           />
-          Contato principal deste tipo
+          {t('contacts.primaryOfType')}
         </label>
         <label className="flex items-center gap-2 text-sm">
           <input
@@ -278,7 +283,7 @@ function ContactFormModal({
             onChange={(e) => setOptIn(e.target.checked)}
             className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
           />
-          Opt-in para comunicações (marketing)
+          {t('contacts.optInLabel')}
         </label>
       </form>
     </Modal>

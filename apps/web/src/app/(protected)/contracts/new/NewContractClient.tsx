@@ -13,11 +13,13 @@
  */
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 import { NewContractInline } from '@/components/contracts/NewContractInline';
 import type { Contract } from '@/lib/contracts-api';
 
 export default function NewContractClient() {
+  const t = useTranslations('contractNew');
   const router = useRouter();
   const params = useSearchParams();
   const prefilledCustomerId = params.get('customerId');
@@ -30,16 +32,12 @@ export default function NewContractClient() {
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3">
         <Link href="/contracts" className="text-xs text-text-muted hover:text-text">
-          ← Contratos
+          {t('backToContracts')}
         </Link>
       </div>
       <div>
-        <h1 className="text-xl font-semibold tracking-tight text-text">Novo contrato</h1>
-        <p className="text-xs text-text-muted">
-          Em IPoE, escolha &quot;Ativar agora&quot; (gera 1ª fatura + RADIUS) ou
-          &quot;Agendar instalação&quot; (técnico ativa em campo via
-          Provisionamento).
-        </p>
+        <h1 className="text-xl font-semibold tracking-tight text-text">{t('title')}</h1>
+        <p className="text-xs text-text-muted">{t('description')}</p>
       </div>
 
       <div className="rounded-md border border-border bg-surface p-4">

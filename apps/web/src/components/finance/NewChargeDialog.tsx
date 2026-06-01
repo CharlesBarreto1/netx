@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -44,6 +45,8 @@ export function NewChargeDialog({
   onClose,
   onCreated,
 }: NewChargeDialogProps) {
+  const t = useTranslations('financeDialogs');
+  const tc = useTranslations('common');
   const isLocked = !!customerId;
 
   const [customerSearch, setCustomerSearch] = useState('');
@@ -76,7 +79,7 @@ export function NewChargeDialog({
     e.preventDefault();
     setError(null);
     if (!pickedCustomerId || !description.trim() || !amount || !dueDate) {
-      setError('Preencha todos los campos obligatorios.');
+      setError(t('newCharge.requiredFieldsError'));
       return;
     }
     setSubmitting(true);
@@ -88,7 +91,7 @@ export function NewChargeDialog({
         amount: Number(amount.replace(',', '.')),
         dueDate,
       });
-      toast.success('Cobranza creada');
+      toast.success(t('newCharge.createdToast'));
       // Reset (mas mantém customerId travado)
       setDescription('');
       setAmount('');
@@ -101,7 +104,7 @@ export function NewChargeDialog({
       onCreated?.();
       onClose();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Error');
+      setError(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setSubmitting(false);
     }
@@ -112,25 +115,25 @@ export function NewChargeDialog({
       <DialogContent className="max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Nueva cobranza puntual</DialogTitle>
+            <DialogTitle>{t('newCharge.title')}</DialogTitle>
           </DialogHeader>
           <DialogBody className="flex flex-col gap-3">
             {!isLocked && (
               <div>
-                <Label required>Cliente</Label>
+                <Label required>{t('newCharge.customerLabel')}</Label>
                 <Input
                   value={customerSearch}
                   onChange={(e) => {
                     setCustomerSearch(e.target.value);
                     setPickedCustomerId(null);
                   }}
-                  placeholder="Buscar por nombre…"
+                  placeholder={t('newCharge.customerSearchPlaceholder')}
                 />
                 {customerSearch.trim().length >= 2 && (
                   <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-border bg-surface">
                     {options.length === 0 ? (
                       <div className="px-2 py-1.5 text-xs text-text-subtle">
-                        Sin resultados
+                        {tc('noResults')}
                       </div>
                     ) : (
                       options.map((c) => (
@@ -160,34 +163,34 @@ export function NewChargeDialog({
 
             {isLocked && contracts.length > 0 && (
               <div>
-                <Label>Contrato (opcional)</Label>
+                <Label>{t('newCharge.contractLabel')}</Label>
                 <Select
                   value={contractId}
                   onChange={(e) => setContractId(e.target.value)}
                 >
-                  <option value="">Sin contrato vinculado</option>
+                  <option value="">{t('newCharge.noContractOption')}</option>
                   {contracts.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.code ?? `#${c.id.slice(0, 8)}`} — {c.bandwidthMbps} Mbps
                     </option>
                   ))}
                 </Select>
-                <FieldHelp>Vinculá a un contrato para rastreo fiscal.</FieldHelp>
+                <FieldHelp>{t('newCharge.contractHelp')}</FieldHelp>
               </div>
             )}
 
             <div>
-              <Label required>Descripción</Label>
+              <Label required>{t('newCharge.descriptionLabel')}</Label>
               <Textarea
                 rows={2}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Ej.: Tasa de instalación, multa por daño…"
+                placeholder={t('newCharge.descriptionPlaceholder')}
               />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <Label required>Monto</Label>
+                <Label required>{t('newCharge.amountLabel')}</Label>
                 <Input
                   inputMode="decimal"
                   value={amount}
@@ -196,7 +199,7 @@ export function NewChargeDialog({
                 />
               </div>
               <div>
-                <Label required>Vencimiento</Label>
+                <Label required>{t('newCharge.dueDateLabel')}</Label>
                 <Input
                   type="date"
                   value={dueDate}
@@ -210,10 +213,10 @@ export function NewChargeDialog({
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>
-              Cancelar
+              {tc('cancel')}
             </Button>
             <Button type="submit" loading={submitting}>
-              Crear
+              {tc('create')}
             </Button>
           </DialogFooter>
         </form>

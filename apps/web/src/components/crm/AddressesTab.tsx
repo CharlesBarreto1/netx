@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 
@@ -22,6 +23,8 @@ export function AddressesTab({ customerId }: { customerId: string }) {
   const key = `/v1/customers/${customerId}/addresses`;
   const { data, isLoading, error, mutate } = useSWR<CustomerAddress[]>(key);
   const canWrite = hasPermission('customers.update');
+  const t = useTranslations('crmTabs');
+  const tc = useTranslations('common');
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CustomerAddress | null>(null);
@@ -52,7 +55,7 @@ export function AddressesTab({ customerId }: { customerId: string }) {
   if (error) {
     return (
       <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-        Falha ao carregar endereços.
+        {t('addresses.loadError')}
       </div>
     );
   }
@@ -61,18 +64,18 @@ export function AddressesTab({ customerId }: { customerId: string }) {
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-          {data?.length ?? 0} endereço(s)
+          {t('addresses.count', { count: data?.length ?? 0 })}
         </h3>
         {canWrite && (
           <Button size="sm" onClick={openCreate}>
-            Adicionar endereço
+            {t('addresses.add')}
           </Button>
         )}
       </div>
 
       {(!data || data.length === 0) && (
         <p className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
-          Nenhum endereço cadastrado.
+          {t('addresses.empty')}
         </p>
       )}
 
@@ -86,7 +89,7 @@ export function AddressesTab({ customerId }: { customerId: string }) {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone="info">{ADDRESS_TYPE_LABEL[a.type]}</Badge>
-                  {a.isPrimary && <Badge tone="success">Principal</Badge>}
+                  {a.isPrimary && <Badge tone="success">{t('addresses.primary')}</Badge>}
                   {a.label && (
                     <span className="text-xs text-slate-500 dark:text-slate-400">· {a.label}</span>
                   )}
@@ -98,7 +101,7 @@ export function AddressesTab({ customerId }: { customerId: string }) {
                 </p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   {[a.district, a.city, a.state].filter(Boolean).join(' · ')}
-                  {a.postalCode ? ` · CEP ${a.postalCode}` : ''} · {a.country}
+                  {a.postalCode ? ` · ${t('addresses.postalCode')} ${a.postalCode}` : ''} · {a.country}
                 </p>
                 {(a.latitude !== null || a.longitude !== null) && (
                   <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -109,14 +112,14 @@ export function AddressesTab({ customerId }: { customerId: string }) {
               {canWrite && (
                 <div className="flex shrink-0 items-center gap-2">
                   <Button size="sm" variant="outline" onClick={() => openEdit(a)}>
-                    Editar
+                    {tc('edit')}
                   </Button>
                   <Button
                     size="sm"
                     variant="ghost"
                     onClick={() => setConfirmDelete(a)}
                   >
-                    Excluir
+                    {tc('delete')}
                   </Button>
                 </div>
               )}
@@ -142,9 +145,9 @@ export function AddressesTab({ customerId }: { customerId: string }) {
         onConfirm={() => {
           if (confirmDelete) return handleDelete(confirmDelete);
         }}
-        title="Excluir endereço"
-        message={`Tem certeza que deseja excluir o endereço "${confirmDelete?.street ?? ''}"?`}
-        confirmLabel="Excluir"
+        title={t('addresses.deleteTitle')}
+        message={t('addresses.deleteMessage', { street: confirmDelete?.street ?? '' })}
+        confirmLabel={tc('delete')}
         variant="danger"
         loading={deleting}
       />
@@ -165,6 +168,8 @@ function AddressFormModal({
   address: CustomerAddress | null;
   onSaved: () => void;
 }) {
+  const t = useTranslations('crmTabs');
+  const tc = useTranslations('common');
   const [type, setType] = useState<AddressType>(address?.type ?? 'BILLING');
   const [country, setCountry] = useState(address?.country ?? 'BR');
   const [state, setState] = useState(address?.state ?? '');
@@ -244,15 +249,15 @@ function AddressFormModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={address ? 'Editar endereço' : 'Novo endereço'}
+      title={address ? t('addresses.editTitle') : t('addresses.newTitle')}
       size="lg"
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={saving}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button type="submit" form="address-form" loading={saving}>
-            {address ? 'Salvar' : 'Criar'}
+            {address ? tc('save') : tc('create')}
           </Button>
         </>
       }
@@ -265,22 +270,22 @@ function AddressFormModal({
         )}
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div>
-            <Label>Tipo</Label>
+            <Label>{tc('type')}</Label>
             <Select value={type} onChange={(e) => setType(e.target.value as AddressType)}>
-              {ADDRESS_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {ADDRESS_TYPE_LABEL[t]}
+              {ADDRESS_TYPES.map((at) => (
+                <option key={at} value={at}>
+                  {ADDRESS_TYPE_LABEL[at]}
                 </option>
               ))}
             </Select>
           </div>
           <div className="md:col-span-2">
-            <Label>Rótulo</Label>
-            <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Ex.: Casa, Matriz…" />
+            <Label>{t('addresses.label')}</Label>
+            <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder={t('addresses.labelPlaceholder')} />
           </div>
 
           <div>
-            <Label required>País</Label>
+            <Label required>{t('addresses.country')}</Label>
             <Select value={country} onChange={(e) => setCountry(e.target.value)}>
               {COUNTRY_OPTIONS.map((c) => (
                 <option key={c.code} value={c.code}>
@@ -290,33 +295,33 @@ function AddressFormModal({
             </Select>
           </div>
           <div>
-            <Label>Estado/Província</Label>
+            <Label>{t('addresses.state')}</Label>
             <Input value={state} onChange={(e) => setState(e.target.value)} />
           </div>
           <div>
-            <Label required>Cidade</Label>
+            <Label required>{t('addresses.city')}</Label>
             <Input value={city} onChange={(e) => setCity(e.target.value)} required />
             <FieldError>{fieldErr.city}</FieldError>
           </div>
           <div>
-            <Label>Bairro</Label>
+            <Label>{t('addresses.district')}</Label>
             <Input value={district} onChange={(e) => setDistrict(e.target.value)} />
           </div>
           <div className="md:col-span-2">
-            <Label required>Rua</Label>
+            <Label required>{t('addresses.street')}</Label>
             <Input value={street} onChange={(e) => setStreet(e.target.value)} required />
             <FieldError>{fieldErr.street}</FieldError>
           </div>
           <div>
-            <Label>Número</Label>
+            <Label>{t('addresses.number')}</Label>
             <Input value={number} onChange={(e) => setNumber(e.target.value)} />
           </div>
           <div>
-            <Label>Complemento</Label>
+            <Label>{t('addresses.complement')}</Label>
             <Input value={complement} onChange={(e) => setComplement(e.target.value)} />
           </div>
           <div>
-            <Label>CEP</Label>
+            <Label>{t('addresses.postalCode')}</Label>
             <Input value={postalCode} onChange={(e) => setPostalCode(e.target.value)} />
           </div>
         </div>
@@ -327,7 +332,7 @@ function AddressFormModal({
             onChange={(e) => setIsPrimary(e.target.checked)}
             className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
           />
-          Endereço principal (desmarca outros do mesmo tipo)
+          {t('addresses.primaryHint')}
         </label>
       </form>
     </Modal>

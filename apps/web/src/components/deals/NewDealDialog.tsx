@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 
@@ -40,6 +41,8 @@ export function NewDealDialog({
   defaultStageId?: string | null;
   onCreated: () => void;
 }) {
+  const t = useTranslations('dealsComponents');
+  const tc = useTranslations('common');
   const { currency: tenantCurrency } = useTenantConfig();
 
   const [title, setTitle] = useState('');
@@ -78,11 +81,11 @@ export function NewDealDialog({
     e.preventDefault();
     if (!pipeline) return;
     if (!title.trim()) {
-      setError('Informe um título');
+      setError(t('newDeal.errTitleRequired'));
       return;
     }
     if (!stageId) {
-      setError('Selecione um estágio');
+      setError(t('newDeal.errStageRequired'));
       return;
     }
 
@@ -100,12 +103,12 @@ export function NewDealDialog({
 
     try {
       await dealsApi.create(payload);
-      toast.success('Deal criado');
+      toast.success(t('newDeal.created'));
       onCreated();
       onOpenChange(false);
     } catch (err) {
       const msg =
-        err instanceof ApiError ? err.friendlyMessage : 'Falha ao criar deal';
+        err instanceof ApiError ? err.friendlyMessage : t('newDeal.createFailed');
       setError(msg);
     } finally {
       setSubmitting(false);
@@ -117,30 +120,31 @@ export function NewDealDialog({
       <DialogContent className="max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Novo deal</DialogTitle>
+            <DialogTitle>{t('newDeal.title')}</DialogTitle>
             <DialogDescription>
-              Pipeline: <span className="font-medium text-text">{pipeline?.name ?? '—'}</span>
+              {t('newDeal.pipelineLabel')}{' '}
+              <span className="font-medium text-text">{pipeline?.name ?? '—'}</span>
             </DialogDescription>
           </DialogHeader>
 
           <DialogBody className="flex flex-col gap-3">
             <div>
               <Label htmlFor="deal-title" required>
-                Título
+                {t('newDeal.fieldTitle')}
               </Label>
               <Input
                 id="deal-title"
                 autoFocus
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Ex.: Plano Fibra 600 Mbps — João Silva"
+                placeholder={t('newDeal.titlePlaceholder')}
                 maxLength={255}
               />
             </div>
 
             <div className="grid grid-cols-[1fr,80px] gap-2">
               <div>
-                <Label htmlFor="deal-value">Valor</Label>
+                <Label htmlFor="deal-value">{t('newDeal.fieldValue')}</Label>
                 <Input
                   id="deal-value"
                   inputMode="decimal"
@@ -150,7 +154,7 @@ export function NewDealDialog({
                 />
               </div>
               <div>
-                <Label htmlFor="deal-currency">Moeda</Label>
+                <Label htmlFor="deal-currency">{t('newDeal.fieldCurrency')}</Label>
                 <Select
                   id="deal-currency"
                   value={currency}
@@ -167,7 +171,7 @@ export function NewDealDialog({
 
             <div>
               <Label htmlFor="deal-stage" required>
-                Estágio inicial
+                {t('newDeal.fieldInitialStage')}
               </Label>
               <Select
                 id="deal-stage"
@@ -183,10 +187,10 @@ export function NewDealDialog({
             </div>
 
             <div>
-              <Label htmlFor="deal-customer">Cliente (opcional)</Label>
+              <Label htmlFor="deal-customer">{t('newDeal.fieldCustomerOptional')}</Label>
               <Input
                 id="deal-customer"
-                placeholder="Buscar por nome…"
+                placeholder={t('newDeal.searchByName')}
                 value={customerSearch}
                 onChange={(e) => {
                   setCustomerSearch(e.target.value);
@@ -197,7 +201,7 @@ export function NewDealDialog({
                 <div className="mt-1 max-h-40 overflow-y-auto rounded-md border border-border bg-surface">
                   {customerOptions.length === 0 ? (
                     <div className="px-2 py-1.5 text-xs text-text-subtle">
-                      Nenhum cliente encontrado
+                      {t('newDeal.noCustomerFound')}
                     </div>
                   ) : (
                     customerOptions.map((c) => (
@@ -222,7 +226,7 @@ export function NewDealDialog({
                   )}
                 </div>
               )}
-              <FieldHelp>Você pode associar/alterar o cliente depois.</FieldHelp>
+              <FieldHelp>{t('newDeal.customerHelp')}</FieldHelp>
             </div>
 
             {error && <FieldError>{error}</FieldError>}
@@ -235,10 +239,10 @@ export function NewDealDialog({
               onClick={() => onOpenChange(false)}
               disabled={submitting}
             >
-              Cancelar
+              {tc('cancel')}
             </Button>
             <Button type="submit" loading={submitting}>
-              Criar deal
+              {t('newDeal.submit')}
             </Button>
           </DialogFooter>
         </form>

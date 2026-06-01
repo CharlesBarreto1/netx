@@ -1,6 +1,7 @@
 'use client';
 
 import { Wifi, WifiOff, Power } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import useSWR, { mutate } from 'swr';
@@ -22,6 +23,7 @@ import { hasPermission } from '@/lib/session';
  * atender e ver o estado atual sem refresh manual.
  */
 export function ContractSessionCard({ contractId }: { contractId: string }) {
+  const t = useTranslations('contractCards');
   const { data, isLoading, error } = useSWR<ContractSession>(
     radacctApi.sessionPath(contractId),
     { refreshInterval: 30_000 },
@@ -36,13 +38,17 @@ export function ContractSessionCard({ contractId }: { contractId: string }) {
     try {
       const res = await contractsApi.kick(contractId);
       if (res.kicked > 0) {
-        toast.success(`Cliente desconectado em ${res.kicked} NAS(es).`);
+        toast.success(t('session.kickedToast', { count: res.kicked }));
       } else if (res.results.length === 0) {
-        toast.info('Cliente não tem sessão ativa para desconectar.');
+        toast.info(t('session.noActiveSession'));
       } else {
         // Tentou em algum NAS mas todos retornaram erro
         const firstErr = res.results.find((r) => !r.ok)?.error;
-        toast.error(`Falha ao desconectar${firstErr ? `: ${firstErr}` : ''}`);
+        toast.error(
+          firstErr
+            ? t('session.kickFailedReason', { reason: firstErr })
+            : t('session.kickFailed'),
+        );
       }
       // Recarrega o status técnico — em 3s o radacct deve refletir a queda
       await mutate(radacctApi.sessionPath(contractId));
@@ -54,11 +60,11 @@ export function ContractSessionCard({ contractId }: { contractId: string }) {
     }
   }
 
-  if (isLoading && !data) return <InlineLoader label="Cargando estado…" />;
+  if (isLoading && !data) return <InlineLoader label={t('session.loadingState')} />;
   if (error) {
     return (
       <p className="text-xs text-text-muted">
-        Sin datos de RADIUS para este contrato.
+        {t('session.noRadiusData')}
       </p>
     );
   }
@@ -69,7 +75,7 @@ export function ContractSessionCard({ contractId }: { contractId: string }) {
     return (
       <div className="rounded-md border border-dashed border-border bg-surface p-3 text-sm text-text-muted">
         <WifiOff className="mr-1 inline-block h-3.5 w-3.5" />
-        Sin actividad RADIUS registrada para este contrato.
+        {t('session.noRadiusActivity')}
       </div>
     );
   }
@@ -87,13 +93,13 @@ export function ContractSessionCard({ contractId }: { contractId: string }) {
             <>
               <Wifi className="h-4 w-4 text-emerald-600" />
               <span className="font-semibold text-emerald-700 dark:text-emerald-400">
-                ONLINE
+                {t('session.online')}
               </span>
             </>
           ) : (
             <>
               <WifiOff className="h-4 w-4 text-text-muted" />
-              <span className="font-semibold text-text-muted">OFFLINE</span>
+              <span className="font-semibold text-text-muted">{t('session.offline')}</span>
             </>
           )}
         </div>
@@ -105,10 +111,10 @@ export function ContractSessionCard({ contractId }: { contractId: string }) {
               variant="ghost"
               loading={kicking}
               onClick={() => setKickConfirmOpen(true)}
-              title="Forçar desconexão (CoA Disconnect-Request)"
+              title={t('session.kickTooltip')}
             >
               <Power className="mr-1 h-3.5 w-3.5" />
-              Desconectar
+              {t('session.disconnect')}
             </Button>
           )}
         </div>
@@ -118,9 +124,9 @@ export function ContractSessionCard({ contractId }: { contractId: string }) {
         open={kickConfirmOpen}
         onClose={() => setKickConfirmOpen(false)}
         onConfirm={doKick}
-        title="Desconectar cliente?"
-        message="Manda Disconnect-Request pro concentrador. O cliente reconecta automaticamente se RADIUS aceitar."
-        confirmLabel="Desconectar"
+        title={t('session.kickConfirmTitle')}
+        message={t('session.kickConfirmMessage')}
+        confirmLabel={t('session.disconnect')}
         variant="danger"
         loading={kicking}
       />
@@ -128,29 +134,29 @@ export function ContractSessionCard({ contractId }: { contractId: string }) {
 
       <div className="grid grid-cols-2 gap-2 text-xs">
         <Field
-          label={data.online ? 'Conectado hace' : 'Desconectado hace'}
+          label={data.online ? t('session.connectedFor') : t('session.disconnectedFor')}
           value={formatDuration(elapsedSec)}
         />
         {data.online ? (
           <Field
-            label="Sesión iniciada"
+            label={t('session.startedAt')}
             value={since.toLocaleString('es-PY')}
           />
         ) : (
           <Field
-            label="Última sesión"
+            label={t('session.lastSession')}
             value={since.toLocaleString('es-PY')}
           />
         )}
         {!data.online && data.terminateCause && (
-          <Field label="Causa" value={data.terminateCause} />
+          <Field label={t('session.cause')} value={data.terminateCause} />
         )}
         {data.nasIp && <Field label="NAS" value={data.nasIp} />}
       </div>
 
       {data.uptimeSeconds > 0 && (
         <div className="border-t border-border pt-2 text-xs text-text-muted">
-          Última sesión: {formatDuration(data.uptimeSeconds)} ·{' '}
+          {t('session.lastSession')}: {formatDuration(data.uptimeSeconds)} ·{' '}
           {formatBytes(data.inputBytes)} ↓ / {formatBytes(data.outputBytes)} ↑
         </div>
       )}

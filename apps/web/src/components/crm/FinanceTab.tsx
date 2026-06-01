@@ -53,6 +53,7 @@ export function FinanceTab({ customerId }: { customerId: string }) {
   const formatMoney = useFormatMoney();
   const tFinance = useTranslations('finance');
   const tCommon = useTranslations('common');
+  const t = useTranslations('crmTabs');
   // Status do invoice traduzido vem do dict via key.
   const statusLabel = (s: InvoiceStatus): string =>
     tFinance(`invoice.status.${s}` as 'invoice.status.OPEN');
@@ -91,11 +92,11 @@ export function FinanceTab({ customerId }: { customerId: string }) {
   const canEfiCharge = hasPermission('efi.charges.write');
 
   if (isLoading && !invoicesResp) {
-    return <InlineLoader label="Carregando faturas…" />;
+    return <InlineLoader label={t('finance.loading')} />;
   }
   if (error) {
     return (
-      <p className="text-sm text-red-600">Falha ao carregar faturas do cliente.</p>
+      <p className="text-sm text-red-600">{t('finance.loadError')}</p>
     );
   }
 
@@ -121,11 +122,11 @@ export function FinanceTab({ customerId }: { customerId: string }) {
           cobrança avulsa fica AQUI, sem precisar ir pra /finance/charges. */}
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-text">
-          {tFinance('summary.paidTotal') /* placeholder; melhor usar key dedicada se houver */}
+          {t('finance.title')}
         </h3>
         {canCreateCharge && (
           <Button size="sm" onClick={() => setNewChargeOpen(true)}>
-            + Nueva cobranza
+            {t('finance.newCharge')}
           </Button>
         )}
       </div>
@@ -151,19 +152,19 @@ export function FinanceTab({ customerId }: { customerId: string }) {
 
       {invoices.length === 0 ? (
         <div className="rounded-md border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-          Esse cliente ainda não possui faturas geradas.
+          {t('finance.empty')}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:bg-slate-900/40 dark:text-slate-400">
               <tr>
-                <th className="px-3 py-2">Vencimento</th>
-                <th className="px-3 py-2">Contrato</th>
-                <th className="px-3 py-2">Referência</th>
-                <th className="px-3 py-2 text-right">Valor</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2 text-right">Ações</th>
+                <th className="px-3 py-2">{t('finance.dueDate')}</th>
+                <th className="px-3 py-2">{t('finance.contract')}</th>
+                <th className="px-3 py-2">{t('finance.reference')}</th>
+                <th className="px-3 py-2 text-right">{t('finance.amount')}</th>
+                <th className="px-3 py-2">{tCommon('status')}</th>
+                <th className="px-3 py-2 text-right">{tCommon('actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -194,14 +195,14 @@ export function FinanceTab({ customerId }: { customerId: string }) {
                       {formatMoney(inv.amount)}
                       {inv.discountAmount != null && inv.discountAmount > 0 && inv.status !== 'PAID' && (
                         <div className="text-2xs text-amber-700 dark:text-amber-400">
-                          desc: -{formatMoney(inv.discountAmount)}
+                          {t('finance.discountShort')}: -{formatMoney(inv.discountAmount)}
                         </div>
                       )}
                       {inv.status === 'PAID' &&
                         inv.paidAmount != null &&
                         inv.paidAmount !== inv.amount && (
                           <div className="text-2xs text-emerald-700">
-                            pago: {formatMoney(inv.paidAmount)}
+                            {t('finance.paidShort')}: {formatMoney(inv.paidAmount)}
                           </div>
                         )}
                     </td>
@@ -215,9 +216,9 @@ export function FinanceTab({ customerId }: { customerId: string }) {
                             variant="ghost"
                             size="xs"
                             onClick={() => setPostponing(inv)}
-                            title="Prorrogar vencimiento"
+                            title={t('finance.postponeTitle')}
                           >
-                            Prorrogar
+                            {t('finance.postpone')}
                           </Button>
                         )}
                         {canPay && canDiscount && (
@@ -225,9 +226,9 @@ export function FinanceTab({ customerId }: { customerId: string }) {
                             variant="ghost"
                             size="xs"
                             onClick={() => setDiscounting(inv)}
-                            title="Aplicar descuento previo"
+                            title={t('finance.discountTitle')}
                           >
-                            % desc
+                            {t('finance.discount')}
                           </Button>
                         )}
                         {canPay && canEfiCharge && (
@@ -235,7 +236,7 @@ export function FinanceTab({ customerId }: { customerId: string }) {
                             variant="ghost"
                             size="xs"
                             onClick={() => setEfiCharging(inv)}
-                            title="Gerar Pix/Boleto (EFI)"
+                            title={t('finance.efiTitle')}
                           >
                             Pix/Boleto
                           </Button>

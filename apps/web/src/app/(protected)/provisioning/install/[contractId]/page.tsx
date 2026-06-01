@@ -11,6 +11,7 @@
  *   4. Clica "Ativar" → backend orquestra OLT+RADIUS+TR-069
  *   5. UI mostra timeline ao vivo dos passos
  */
+import { useTranslations } from 'next-intl';
 import { useParams, useRouter } from 'next/navigation';
 import { useState } from 'react';
 import useSWR from 'swr';
@@ -49,6 +50,8 @@ function statusBadgeColor(status: InstallTimelineEvent['status']): string {
 }
 
 export default function InstallPage() {
+  const t = useTranslations('provisioning.install');
+  const tc = useTranslations('common');
   const params = useParams();
   const router = useRouter();
   const contractId = params.contractId as string;
@@ -142,10 +145,10 @@ export default function InstallPage() {
       setResult(res);
     } catch (err) {
       const msg = err instanceof ApiError
-        ? err.message || `Erro ${err.status}`
+        ? err.message || t('errors.withStatus', { status: err.status })
         : err instanceof Error
           ? err.message
-          : 'Erro desconhecido';
+          : t('errors.unknown');
       setSubmitError(msg);
     } finally {
       setSubmitting(false);
@@ -164,9 +167,13 @@ export default function InstallPage() {
                 : 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
           }`}>
             {result.status === 'OK' ? '✅' : result.status === 'FAILED' ? '❌' : '⚠️'}{' '}
-            {result.status === 'OK' ? 'Cliente ativado' : result.status === 'FAILED' ? 'Falhou' : 'Parcial'}
+            {result.status === 'OK'
+              ? t('result.statusOk')
+              : result.status === 'FAILED'
+                ? t('result.statusFailed')
+                : t('result.statusPartial')}
           </div>
-          <h1 className="text-2xl font-bold">Resultado da instalação</h1>
+          <h1 className="text-2xl font-bold">{t('result.title')}</h1>
         </header>
 
         <ol className="space-y-3">
@@ -197,7 +204,7 @@ export default function InstallPage() {
         </ol>
 
         <div className="flex gap-2">
-          <Button onClick={() => router.push('/provisioning/pending')}>Voltar pra lista</Button>
+          <Button onClick={() => router.push('/provisioning/pending')}>{t('result.backToList')}</Button>
           <Button
             variant="secondary"
             onClick={() => {
@@ -207,7 +214,7 @@ export default function InstallPage() {
               setSerialPhysical('');
             }}
           >
-            Reativar com outros dados
+            {t('result.reactivate')}
           </Button>
         </div>
       </div>
@@ -217,9 +224,9 @@ export default function InstallPage() {
   return (
     <div className="mx-auto max-w-xl space-y-5">
       <header>
-        <h1 className="text-2xl font-bold tracking-tight">Ativar cliente</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Contrato <code className="text-xs">{contractId.slice(0, 8)}</code>
+          {t('contractLabel')} <code className="text-xs">{contractId.slice(0, 8)}</code>
         </p>
       </header>
 
@@ -238,7 +245,7 @@ export default function InstallPage() {
               required
               className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800"
             >
-              <option value="">Selecione…</option>
+              <option value="">{tc('select')}</option>
               {olts.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.name} ({o.vendor} {o.model}) — {o.status}
@@ -247,14 +254,14 @@ export default function InstallPage() {
             </select>
             {olts.length === 0 && (
               <p className="mt-1 text-xs text-orange-600 dark:text-orange-400">
-                Nenhuma OLT cadastrada. Admin precisa cadastrar em /olts.
+                {t('olt.empty')}
               </p>
             )}
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <Label htmlFor="ponFrame">Frame</Label>
+              <Label htmlFor="ponFrame">{t('olt.frame')}</Label>
               <Input
                 id="ponFrame"
                 type="number"
@@ -264,7 +271,7 @@ export default function InstallPage() {
               />
             </div>
             <div>
-              <Label htmlFor="ponSlot">Slot/Porta PON</Label>
+              <Label htmlFor="ponSlot">{t('olt.ponSlot')}</Label>
               <Input
                 id="ponSlot"
                 type="number"
@@ -278,19 +285,19 @@ export default function InstallPage() {
 
         <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-            ONT (estoque)
+            {t('ont.heading')}
           </h2>
 
           {!allowStockBypass ? (
             <div>
-              <Label htmlFor="serialItemId">Equipamento do estoque *</Label>
+              <Label htmlFor="serialItemId">{t('ont.stockItem')}</Label>
               <Select
                 id="serialItemId"
                 required
                 value={serialItemId}
                 onChange={(e) => setSerialItemId(e.target.value)}
               >
-                <option value="">Selecione…</option>
+                <option value="">{tc('select')}</option>
                 {(availableSerials ?? []).map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.serial} — {s.product.name}
@@ -300,18 +307,20 @@ export default function InstallPage() {
               </Select>
               {(availableSerials ?? []).length === 0 && (
                 <p className="mt-1 text-xs text-orange-600 dark:text-orange-400">
-                  ⚠️ Nenhum equipamento disponível em estoque. Registre uma compra
-                  em <code>/stock/purchases</code> ou ative o bypass abaixo (debug).
+                  ⚠️ {t.rich('ont.stockEmpty', {
+                    code: (chunks) => <code>{chunks}</code>,
+                  })}
                 </p>
               )}
               <p className="mt-1 text-xs text-slate-500">
-                Só aparecem produtos PATRIMONIAIS (ex.: ONT) com status{' '}
-                <code>IN_STOCK</code>. SN GPON será lido do serial selecionado.
+                {t.rich('ont.stockHelp', {
+                  code: (chunks) => <code>{chunks}</code>,
+                })}
               </p>
             </div>
           ) : (
             <div>
-              <Label htmlFor="snGpon">SN GPON *</Label>
+              <Label htmlFor="snGpon">{t('ont.snGpon')}</Label>
               <Input
                 id="snGpon"
                 required
@@ -324,7 +333,7 @@ export default function InstallPage() {
                 className="font-mono"
               />
               <p className="mt-1 text-xs text-slate-500">
-                Etiqueta no chassi da ONT (ou caixa). Huawei começa com HWTC.
+                {t('ont.snGponHelp')}
               </p>
             </div>
           )}
@@ -337,14 +346,14 @@ export default function InstallPage() {
               className="mt-0.5"
             />
             <span className="text-amber-900 dark:text-amber-200">
-              <strong>Ignorar validação de estoque</strong> (debug/migração).
-              Marque só se ainda não cadastrou ONTs como produto patrimonial.
-              Em produção normal, mantém desmarcado pra evitar &quot;ONT fantasma&quot;.
+              {t.rich('ont.bypass', {
+                strong: (chunks) => <strong>{chunks}</strong>,
+              })}
             </span>
           </label>
 
           <div>
-            <Label htmlFor="macAddress">MAC (opcional)</Label>
+            <Label htmlFor="macAddress">{t('ont.mac')}</Label>
             <Input
               id="macAddress"
               value={macAddress}
@@ -353,17 +362,17 @@ export default function InstallPage() {
               className="font-mono"
             />
             <p className="mt-1 text-xs text-slate-500">
-              Se a OLT já reportou, deixe vazio — vai vir do provider.
+              {t('ont.macHelp')}
             </p>
           </div>
 
           <div>
-            <Label htmlFor="serialPhysical">Serial físico (opcional)</Label>
+            <Label htmlFor="serialPhysical">{t('ont.serialPhysical')}</Label>
             <Input
               id="serialPhysical"
               value={serialPhysical}
               onChange={(e) => setSerialPhysical(e.target.value)}
-              placeholder="Inventário interno"
+              placeholder={t('ont.serialPhysicalPlaceholder')}
             />
           </div>
         </section>
@@ -374,7 +383,7 @@ export default function InstallPage() {
           </h2>
 
           <div>
-            <Label htmlFor="wifiBandMode">Modelo da ONT</Label>
+            <Label htmlFor="wifiBandMode">{t('wifi.ontModel')}</Label>
             <Select
               id="wifiBandMode"
               value={wifiBandMode}
@@ -383,20 +392,21 @@ export default function InstallPage() {
               }
             >
               <option value="BAND_STEERING">
-                EG8145X6 / EG8145-X10 — band steering (rede única)
+                {t('wifi.bandSteering')}
               </option>
               <option value="DUAL_BAND">
-                EG8145V5 — bandas separadas (2.4G + 5G-)
+                {t('wifi.dualBand')}
               </option>
             </Select>
             <p className="mt-1 text-xs text-slate-500">
-              Band steering: 2.4 e 5 GHz com o mesmo nome. Bandas separadas: a
-              rede 5 GHz recebe o prefixo <code>5G-</code>.
+              {t.rich('wifi.bandModeHelp', {
+                code: (chunks) => <code>{chunks}</code>,
+              })}
             </p>
           </div>
 
           <div>
-            <Label htmlFor="ssid">Nome da rede (SSID) *</Label>
+            <Label htmlFor="ssid">{t('wifi.ssid')}</Label>
             <Input
               id="ssid"
               required
@@ -414,7 +424,7 @@ export default function InstallPage() {
           </div>
 
           <div>
-            <Label htmlFor="wifiPassword">Senha Wi-Fi *</Label>
+            <Label htmlFor="wifiPassword">{t('wifi.password')}</Label>
             <div className="flex gap-2">
               <Input
                 id="wifiPassword"
@@ -423,7 +433,7 @@ export default function InstallPage() {
                 maxLength={63}
                 value={wifiPassword}
                 onChange={(e) => setWifiPassword(e.target.value)}
-                placeholder="Mínimo 8 caracteres"
+                placeholder={t('wifi.passwordPlaceholder')}
                 className="flex-1"
               />
               <Button
@@ -431,16 +441,16 @@ export default function InstallPage() {
                 variant="secondary"
                 onClick={() => setWifiPassword(generatePassword())}
               >
-                Gerar
+                {t('wifi.generate')}
               </Button>
             </div>
             <p className="mt-1 text-xs text-slate-500">
-              Aplicado em 2.4 GHz e 5 GHz via TR-069.
+              {t('wifi.passwordHelp')}
             </p>
           </div>
 
           <div>
-            <Label htmlFor="pppoeVlan">VLAN da WAN PPPoE</Label>
+            <Label htmlFor="pppoeVlan">{t('wifi.pppoeVlan')}</Label>
             <Input
               id="pppoeVlan"
               type="number"
@@ -451,8 +461,7 @@ export default function InstallPage() {
               className="font-mono sm:max-w-[160px]"
             />
             <p className="mt-1 text-xs text-slate-500">
-              Padrão 1010 — o preset da OLT já traz essa VLAN na WAN2; o NetX
-              reaplica via TR-069 por garantia. Só usada em contratos PPPoE.
+              {t('wifi.pppoeVlanHelp')}
             </p>
           </div>
         </section>
@@ -460,23 +469,21 @@ export default function InstallPage() {
         {isUfinet && (
           <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Ufinet — caixa &amp; porta (rede neutra)
+              {t('ufinet.heading')}
             </h2>
             <p className="text-xs text-slate-500">
-              Escolha a <strong>caixa (CTO) REAL</strong> onde você conectou o drop —
-              ela vai pra Ufinet na confirmação e sobrescreve a caixa que eles
-              sugerem. A <strong>porta</strong> é só controle interno do NetX (não
-              vai pra Ufinet). Sem caixa = usa a sugerida pela Ufinet.
+              {t.rich('ufinet.help', {
+                strong: (chunks) => <strong>{chunks}</strong>,
+              })}
             </p>
             {ctos.length === 0 ? (
               <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
-                Nenhuma CTO vinculada a esta OLT. Cadastre/atribua caixas a esta OLT
-                em Rede → Óptico pra elas aparecerem aqui.
+                {t('ufinet.empty')}
               </p>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="sm:col-span-2">
-                  <Label htmlFor="ctoSearch">Buscar caixa (código)</Label>
+                  <Label htmlFor="ctoSearch">{t('ufinet.searchBox')}</Label>
                   <Input
                     id="ctoSearch"
                     value={ctoSearch}
@@ -485,13 +492,13 @@ export default function InstallPage() {
                   />
                 </div>
                 <div>
-                  <Label htmlFor="ufinetEnclosure">Caixa (CTO) *</Label>
+                  <Label htmlFor="ufinetEnclosure">{t('ufinet.box')}</Label>
                   <Select
                     id="ufinetEnclosure"
                     value={ufinetEnclosureId}
                     onChange={(e) => setUfinetEnclosureId(e.target.value)}
                   >
-                    <option value="">— escolher —</option>
+                    <option value="">{tc('select')}</option>
                     {filteredCtos.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.code}
@@ -500,11 +507,14 @@ export default function InstallPage() {
                     ))}
                   </Select>
                   <p className="mt-1 text-xs text-slate-500">
-                    {filteredCtos.length} de {ctos.length} caixa(s)
+                    {t('ufinet.boxCount', {
+                      shown: filteredCtos.length,
+                      total: ctos.length,
+                    })}
                   </p>
                 </div>
                 <div>
-                  <Label htmlFor="ufinetPort">Porta (1–16, uso interno)</Label>
+                  <Label htmlFor="ufinetPort">{t('ufinet.port')}</Label>
                   <Input
                     id="ufinetPort"
                     value={ufinetPort}
@@ -520,12 +530,12 @@ export default function InstallPage() {
 
         <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-            Notas (opcional)
+            {t('notes.heading')}
           </h2>
           <Textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="Ex.: ONT colada atrás do quadro elétrico"
+            placeholder={t('notes.placeholder')}
             rows={2}
           />
         </section>
@@ -547,7 +557,7 @@ export default function InstallPage() {
             }
             className="w-full"
           >
-            {submitting ? 'Ativando…' : 'Ativar cliente'}
+            {submitting ? t('submitting') : t('submit')}
           </Button>
         </div>
       </form>

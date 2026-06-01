@@ -31,6 +31,8 @@ export function ContractsTab({ customerId }: { customerId: string }) {
   const canWrite = hasPermission('contracts.write');
   const formatMoney = useFormatMoney();
   const tContracts = useTranslations('contracts');
+  const t = useTranslations('crmTabs');
+  const tc = useTranslations('common');
   const statusLabel = (s: Contract['status']) => {
     // Chave i18n é camelCase (status.pendingInstall, status.active, ...) —
     // PENDING_INSTALL precisa de conversão snake → camel; demais funcionam
@@ -48,10 +50,10 @@ export function ContractsTab({ customerId }: { customerId: string }) {
   });
   const { data, isLoading, error } = useSWR<Paginated<Contract>>(key);
 
-  if (isLoading && !data) return <InlineLoader label="Carregando contratos…" />;
+  if (isLoading && !data) return <InlineLoader label={t('contracts.loading')} />;
   if (error) {
     return (
-      <p className="text-sm text-red-600">Falha ao carregar contratos do cliente.</p>
+      <p className="text-sm text-red-600">{t('contracts.loadError')}</p>
     );
   }
 
@@ -60,14 +62,13 @@ export function ContractsTab({ customerId }: { customerId: string }) {
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <p className="text-xs text-slate-500 dark:text-slate-400">
-          {contracts.length} contrato{contracts.length === 1 ? '' : 's'} vinculado
-          {contracts.length === 1 ? '' : 's'} a este cliente.
+          {t('contracts.count', { count: contracts.length })}
         </p>
         {canWrite && (
           <Link href={`/contracts/new?customerId=${customerId}`}>
             <Button variant="primary" size="sm">
               <Plus className="h-3.5 w-3.5" />
-              Novo contrato
+              {t('contracts.new')}
             </Button>
           </Link>
         )}
@@ -80,12 +81,12 @@ export function ContractsTab({ customerId }: { customerId: string }) {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:bg-slate-900/40 dark:text-slate-400">
               <tr>
-                <th className="px-3 py-2">Contrato</th>
-                <th className="px-3 py-2">Plano</th>
-                <th className="px-3 py-2">Mensalidade</th>
-                <th className="px-3 py-2">Vencimento</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Criado</th>
+                <th className="px-3 py-2">{t('contracts.contract')}</th>
+                <th className="px-3 py-2">{t('contracts.plan')}</th>
+                <th className="px-3 py-2">{t('contracts.monthly')}</th>
+                <th className="px-3 py-2">{t('contracts.dueDate')}</th>
+                <th className="px-3 py-2">{tc('status')}</th>
+                <th className="px-3 py-2">{t('contracts.created')}</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
@@ -107,7 +108,7 @@ export function ContractsTab({ customerId }: { customerId: string }) {
                     {formatMoney(c.monthlyValue)}
                   </td>
                   <td className="px-3 py-2 text-slate-700 dark:text-slate-200">
-                    dia {c.dueDay}
+                    {t('contracts.day', { day: c.dueDay })}
                   </td>
                   <td className="px-3 py-2">
                     <Badge tone={STATUS_TONE[c.status]}>{statusLabel(c.status)}</Badge>
@@ -118,7 +119,7 @@ export function ContractsTab({ customerId }: { customerId: string }) {
                       href={`/contracts/${c.id}`}
                       className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-300"
                     >
-                      Abrir →
+                      {tc('open')} →
                     </Link>
                   </td>
                 </tr>
@@ -138,20 +139,21 @@ function EmptyState({
   customerId: string;
   canWrite: boolean;
 }) {
+  const t = useTranslations('crmTabs');
   return (
     <div className="rounded-md border border-dashed border-slate-300 p-6 text-center dark:border-slate-700">
       <p className="text-sm font-medium text-slate-700 dark:text-slate-200">
-        Esse cliente ainda não tem contrato.
+        {t('contracts.emptyTitle')}
       </p>
       <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-        Crie o primeiro contrato pra começar a faturar e provisionar o RADIUS.
+        {t('contracts.emptyHint')}
       </p>
       {canWrite && (
         <Link
           href={`/contracts/new?customerId=${customerId}`}
           className="mt-3 inline-block text-sm font-medium text-brand-600 hover:underline dark:text-brand-300"
         >
-          + Novo contrato
+          {t('contracts.emptyNew')}
         </Link>
       )}
     </div>

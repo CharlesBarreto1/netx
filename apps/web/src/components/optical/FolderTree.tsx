@@ -25,6 +25,7 @@ import {
   MoreHorizontal,
   Trash2,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
 
 import type { NetworkFolder } from '@/lib/network-folders-api';
@@ -53,6 +54,7 @@ export function FolderTree({
   onDelete,
   canWrite,
 }: Props) {
+  const t = useTranslations('opticalComponents');
   const tree = useMemo(() => buildTree(folders), [folders]);
 
   function toggleVisible(id: string) {
@@ -76,31 +78,31 @@ export function FolderTree({
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-1 border-b border-border px-2 py-1.5">
         <span className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-          Pastas
+          {t('folderTree.title')}
         </span>
         <div className="ml-auto flex gap-1">
           <button
             type="button"
             onClick={selectAll}
             className="text-2xs text-text-muted hover:text-text"
-            title="Mostrar todas"
+            title={t('folderTree.showAllTitle')}
           >
-            todas
+            {t('folderTree.showAll')}
           </button>
           <span className="text-text-subtle">·</span>
           <button
             type="button"
             onClick={selectNone}
             className="text-2xs text-text-muted hover:text-text"
-            title="Esconder todas"
+            title={t('folderTree.hideAllTitle')}
           >
-            nenhuma
+            {t('folderTree.hideAll')}
           </button>
           {canWrite && onCreate && (
             <button
               type="button"
               onClick={() => onCreate(null)}
-              title="Nova pasta raiz"
+              title={t('folderTree.newRootFolder')}
               className="ml-1 rounded p-0.5 text-text-muted hover:bg-surface-hover hover:text-text"
             >
               <FolderPlus className="h-3.5 w-3.5" />
@@ -137,13 +139,13 @@ export function FolderTree({
               className="inline-block h-3 w-3 rounded-sm border"
               style={{ borderColor: '#94a3b8', backgroundColor: 'transparent' }}
             />
-            <span className="text-xs italic text-text-muted">Sem pasta</span>
+            <span className="text-xs italic text-text-muted">{t('folderTree.unassigned')}</span>
           </div>
         </div>
 
         {tree.length === 0 && (
           <p className="px-2 py-3 text-xs text-text-muted">
-            Nenhuma pasta ainda. Crie uma pra agrupar caixas e cabos.
+            {t('folderTree.empty')}
           </p>
         )}
       </div>
@@ -170,6 +172,7 @@ function FolderNodeView({
   onDelete?: (folder: NetworkFolder) => void;
   canWrite?: boolean;
 }) {
+  const t = useTranslations('opticalComponents');
   const [open, setOpen] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const totalItems = node.itemCounts.enclosures + node.itemCounts.cables;
@@ -239,7 +242,7 @@ function FolderNodeView({
                   }}
                   className="block w-full px-3 py-1.5 text-left text-xs hover:bg-surface-hover"
                 >
-                  + Subpasta
+                  {t('folderTree.addSubfolder')}
                 </button>
                 <button
                   type="button"
@@ -249,7 +252,7 @@ function FolderNodeView({
                   }}
                   className="block w-full px-3 py-1.5 text-left text-xs hover:bg-surface-hover"
                 >
-                  Renomear / cor
+                  {t('folderTree.renameColor')}
                 </button>
                 <button
                   type="button"
@@ -259,7 +262,7 @@ function FolderNodeView({
                   }}
                   className="block w-full px-3 py-1.5 text-left text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40"
                 >
-                  <Trash2 className="inline h-3 w-3" /> Excluir
+                  <Trash2 className="inline h-3 w-3" /> {t('folderTree.delete')}
                 </button>
               </div>
             )}

@@ -16,6 +16,7 @@
 import { ArrowLeft, ImageIcon, Pencil, Plus, Printer } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 import useSWR from 'swr';
 
@@ -42,6 +43,8 @@ interface CreateSpliceContext {
 }
 
 export default function OpticalEnclosureDetailPage() {
+  const t = useTranslations('network.opticalDetail');
+  const tc = useTranslations('common');
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const id = params?.id;
@@ -55,11 +58,14 @@ export default function OpticalEnclosureDetailPage() {
   const [createCtx, setCreateCtx] = useState<CreateSpliceContext | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  if (isLoading || !data) return <PageLoader label="Carregando topologia…" />;
+  if (isLoading || !data) return <PageLoader label={t('loadingTopology')} />;
   if (error) {
     return (
       <p className="text-sm text-red-600">
-        Erro carregando: {error instanceof ApiError ? error.friendlyMessage : 'desconhecido'}
+        {t('loadError', {
+          message:
+            error instanceof ApiError ? error.friendlyMessage : t('unknownError'),
+        })}
       </p>
     );
   }
@@ -109,7 +115,7 @@ export default function OpticalEnclosureDetailPage() {
         <div className="ml-auto flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={exportPng}>
             <ImageIcon className="h-3.5 w-3.5" />
-            Exportar SVG
+            {t('exportSvg')}
           </Button>
           <Button
             variant="outline"
@@ -117,44 +123,43 @@ export default function OpticalEnclosureDetailPage() {
             onClick={() => window.print()}
           >
             <Printer className="h-3.5 w-3.5" />
-            Imprimir
+            {tc('print')}
           </Button>
         </div>
       </header>
 
       {/* Sumário compacto */}
       <section className="grid grid-cols-2 gap-3 md:grid-cols-5">
-        <SummaryCard label="Cabos entrando" value={incoming} tone="info" />
-        <SummaryCard label="Cabos saindo" value={outgoing} tone="info" />
+        <SummaryCard label={t('cablesIn')} value={incoming} tone="info" />
+        <SummaryCard label={t('cablesOut')} value={outgoing} tone="info" />
         <SummaryCard
-          label="Splitters dentro"
+          label={t('splittersInside')}
           value={childSplitters.length}
           tone="brand"
         />
-        <SummaryCard label="Fusões" value={splices.length} tone="warning" />
+        <SummaryCard label={t('splices')} value={splices.length} tone="warning" />
         <SummaryCard
-          label="Portas usadas"
+          label={t('portsUsed')}
           value={`${portsUsed}/${enclosure.capacity}`}
           tone={occupancyPct >= 80 ? 'danger' : occupancyPct >= 50 ? 'warning' : 'success'}
-          subtitle={`${occupancyPct}% ocupação`}
+          subtitle={t('occupancy', { pct: occupancyPct })}
         />
       </section>
 
       {/* Toolbar */}
       <section className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface p-3">
         <span className="text-xs text-text-muted">
-          Click numa porta livre, depois noutra → cria fusão. Click numa fusão
-          existente edita. Tesoura ✂ apaga.
+          {t('toolbarHelp')}
         </span>
         {canWrite && (
           <div className="ml-auto flex gap-2">
             <Button size="sm" variant="outline" disabled>
               <Plus className="h-3.5 w-3.5" />
-              Cabo
+              {t('cable')}
             </Button>
             <Button size="sm" variant="outline" disabled>
               <Plus className="h-3.5 w-3.5" />
-              Splitter
+              {t('splitter')}
             </Button>
           </div>
         )}
@@ -167,9 +172,7 @@ export default function OpticalEnclosureDetailPage() {
           onCreateSplice={(a, b) => {
             // Só liga 2 fibras de cabo (splitter ainda não suportado em v1).
             if (a.kind !== 'cable' || b.kind !== 'cable') {
-              toast.error(
-                'V1 da fusão liga apenas fibra-de-cabo com fibra-de-cabo. Splitter chega no R4.5b v2.',
-              );
+              toast.error(t('cableOnlyError'));
               return;
             }
             setCreateCtx({
@@ -209,18 +212,18 @@ export default function OpticalEnclosureDetailPage() {
           onConfirm={async () => {
             try {
               await fiberSplicesApi.remove(deleteId);
-              toast.success('Fusão removida');
+              toast.success(t('spliceRemoved'));
               await mutate();
               setDeleteId(null);
             } catch (err) {
               toast.error(
-                err instanceof ApiError ? err.friendlyMessage : 'Erro',
+                err instanceof ApiError ? err.friendlyMessage : tc('error'),
               );
             }
           }}
-          title="Cortar fusão?"
-          message="A conexão entre as 2 fibras será desfeita. Não pode ser desfeito."
-          confirmLabel="Cortar"
+          title={t('cutSpliceTitle')}
+          message={t('cutSpliceMessage')}
+          confirmLabel={t('cut')}
           variant="danger"
         />
       )}
@@ -268,6 +271,8 @@ function CreateSpliceModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('network.opticalDetail');
+  const tc = useTranslations('common');
   const [lossDb, setLossDb] = useState<string>('0.10');
   const [measured, setMeasured] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -288,10 +293,10 @@ function CreateSpliceModal({
         lossDb: measured ? Number(lossDb) : null,
         measuredAt: measured ? new Date().toISOString() : null,
       });
-      toast.success('Fusão criada');
+      toast.success(t('spliceCreated'));
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      setError(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setSubmitting(false);
     }
@@ -301,27 +306,27 @@ function CreateSpliceModal({
     <Modal
       open
       onClose={onClose}
-      title="Nova fusão"
+      title={t('newSplice')}
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button onClick={handleSubmit} loading={submitting}>
-            Fundir
+            {t('fuse')}
           </Button>
         </>
       }
     >
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="text-sm text-text-muted">
-          Fibra <strong>{ctx.aFiberIndex}</strong> ↔ Fibra{' '}
+          {t('fiber')} <strong>{ctx.aFiberIndex}</strong> ↔ {t('fiber')}{' '}
           <strong>{ctx.bFiberIndex}</strong>
           <br />
-          Localização: <span className="font-mono text-xs">
+          {t('location')}: <span className="font-mono text-xs">
             {enclosureLat.toFixed(5)}, {enclosureLng.toFixed(5)}
           </span>{' '}
-          (centro da caixa)
+          {t('boxCenter')}
         </div>
         <label className="flex items-center gap-2 text-sm">
           <input
@@ -329,11 +334,11 @@ function CreateSpliceModal({
             checked={measured}
             onChange={(e) => setMeasured(e.target.checked)}
           />
-          Loss medido (OTDR / fusora)
+          {t('measuredLoss')}
         </label>
         {measured && (
           <div>
-            <Label>Loss (dB)</Label>
+            <Label>{t('lossDb')}</Label>
             <Input
               type="number"
               min={0}

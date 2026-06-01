@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -17,12 +18,9 @@ import {
   type ProductType,
 } from '@/lib/stock-api';
 
-const PRODUCT_TYPE_LABELS: Record<ProductType, string> = {
-  PATRIMONIAL: 'Patrimonial',
-  CONSUMIVEL: 'Consumível',
-};
-
 export default function ProductsPage() {
+  const t = useTranslations('stock.products');
+  const tc = useTranslations('common');
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<ProductType | ''>('');
 
@@ -57,19 +55,19 @@ export default function ProductsPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Produtos</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-sm text-text-muted">
-            Catálogo de produtos. <strong>Patrimonial</strong> rastreia unidade por serial
-            (router, ONU); <strong>Consumível</strong> rastreia saldo agregado (cabo,
-            conector).
+            {t.rich('subtitle', {
+              strong: (chunks) => <strong>{chunks}</strong>,
+            })}
           </p>
         </div>
-        {canWrite && <Button onClick={() => setCreating(true)}>Novo produto</Button>}
+        {canWrite && <Button onClick={() => setCreating(true)}>{t('new')}</Button>}
       </header>
 
       <div className="flex flex-wrap gap-2">
         <Input
-          placeholder="Buscar por SKU, nome, marca, modelo…"
+          placeholder={t('searchPlaceholder')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-md"
@@ -79,22 +77,22 @@ export default function ProductsPage() {
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value as ProductType | '')}
         >
-          <option value="">Todos os tipos</option>
-          <option value="PATRIMONIAL">Patrimonial</option>
-          <option value="CONSUMIVEL">Consumível</option>
+          <option value="">{t('allTypes')}</option>
+          <option value="PATRIMONIAL">{t('typePatrimonial')}</option>
+          <option value="CONSUMIVEL">{t('typeConsumable')}</option>
         </select>
       </div>
 
       {isLoading && <PageLoader />}
       {error && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-          Falha ao carregar produtos.
+          {t('loadError')}
         </div>
       )}
 
       {data && data.length === 0 && (
         <p className="rounded-md border border-dashed border-border bg-surface-muted p-6 text-center text-sm text-text-muted">
-          Nenhum produto encontrado.
+          {t('empty')}
         </p>
       )}
 
@@ -105,13 +103,13 @@ export default function ProductsPage() {
               <thead className="bg-surface-muted">
                 <tr className="text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
                   <th className="px-4 py-3">SKU</th>
-                  <th className="px-4 py-3">Produto</th>
-                  <th className="px-4 py-3">Tipo</th>
-                  <th className="px-4 py-3 text-right">Saldo</th>
-                  <th className="px-4 py-3 text-right">Custo médio</th>
-                  <th className="px-4 py-3 text-right">Preço</th>
-                  <th className="px-4 py-3">Status</th>
-                  {canWrite && <th className="px-4 py-3 text-right">Ações</th>}
+                  <th className="px-4 py-3">{t('colProduct')}</th>
+                  <th className="px-4 py-3">{tc('type')}</th>
+                  <th className="px-4 py-3 text-right">{t('colBalance')}</th>
+                  <th className="px-4 py-3 text-right">{t('colAvgCost')}</th>
+                  <th className="px-4 py-3 text-right">{t('colPrice')}</th>
+                  <th className="px-4 py-3">{tc('status')}</th>
+                  {canWrite && <th className="px-4 py-3 text-right">{tc('actions')}</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -134,7 +132,9 @@ export default function ProductsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <Badge tone={p.type === 'PATRIMONIAL' ? 'purple' : 'info'}>
-                          {PRODUCT_TYPE_LABELS[p.type]}
+                          {p.type === 'PATRIMONIAL'
+                            ? t('typePatrimonial')
+                            : t('typeConsumable')}
                         </Badge>
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -149,7 +149,7 @@ export default function ProductsPage() {
                         </span>
                         {p.type === 'PATRIMONIAL' && (p.totalAllocated ?? 0) > 0 && (
                           <p className="text-xs text-text-muted">
-                            {p.totalAllocated} em comodato
+                            {t('onLoan', { n: p.totalAllocated ?? 0 })}
                           </p>
                         )}
                       </td>
@@ -161,13 +161,13 @@ export default function ProductsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <Badge tone={p.isActive ? 'success' : 'neutral'}>
-                          {p.isActive ? 'Ativo' : 'Inativo'}
+                          {p.isActive ? t('active') : t('inactive')}
                         </Badge>
                       </td>
                       {canWrite && (
                         <td className="px-4 py-3 text-right">
                           <Button variant="ghost" size="sm" onClick={() => setEditing(p)}>
-                            Editar
+                            {tc('edit')}
                           </Button>
                           {canDelete && (
                             <Button
@@ -175,7 +175,7 @@ export default function ProductsPage() {
                               size="sm"
                               onClick={() => setConfirmDelete(p)}
                             >
-                              Excluir
+                              {tc('delete')}
                             </Button>
                           )}
                         </td>
@@ -207,9 +207,9 @@ export default function ProductsPage() {
       {confirmDelete && (
         <ConfirmDialog
           open={true}
-          title={`Excluir "${confirmDelete.name}"?`}
-          message="Produtos com saldo ou seriais cadastrados não podem ser excluídos — desative no formulário pra ocultar das listagens."
-          confirmLabel="Excluir"
+          title={t('deleteTitle', { name: confirmDelete.name })}
+          message={t('deleteMessage')}
+          confirmLabel={tc('delete')}
           loading={deleting}
           onConfirm={() => handleDelete(confirmDelete)}
           onClose={() => setConfirmDelete(null)}
@@ -238,6 +238,8 @@ function ProductFormModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('stock.products');
+  const tc = useTranslations('common');
   const isNew = !initial;
   const [form, setForm] = useState<CreateProductInput>({
     sku: initial?.sku ?? '',
@@ -256,8 +258,8 @@ function ProductFormModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.sku.trim()) return setError('SKU é obrigatório');
-    if (!form.name.trim()) return setError('Nome é obrigatório');
+    if (!form.sku.trim()) return setError(t('skuRequired'));
+    if (!form.name.trim()) return setError(t('nameRequired'));
     setSubmitting(true);
     try {
       const payload: CreateProductInput = {
@@ -276,14 +278,14 @@ function ProductFormModal({
       }
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro ao salvar');
+      setError(err instanceof ApiError ? err.friendlyMessage : t('saveError'));
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Modal open onClose={onClose} title={isNew ? 'Novo produto' : 'Editar produto'}>
+    <Modal open onClose={onClose} title={isNew ? t('new') : t('editTitle')}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <div>
@@ -298,7 +300,7 @@ function ProductFormModal({
             />
           </div>
           <div className="col-span-2">
-            <Label htmlFor="name">Nome *</Label>
+            <Label htmlFor="name">{tc('name')} *</Label>
             <Input
               id="name"
               placeholder="Router Mikrotik CCR-1009"
@@ -311,7 +313,7 @@ function ProductFormModal({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <div>
-            <Label htmlFor="type">Tipo *</Label>
+            <Label htmlFor="type">{tc('type')} *</Label>
             <select
               id="type"
               className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm"
@@ -319,25 +321,25 @@ function ProductFormModal({
               onChange={(e) => setForm({ ...form, type: e.target.value as ProductType })}
               disabled={!isNew}
             >
-              <option value="PATRIMONIAL">Patrimonial (com serial)</option>
-              <option value="CONSUMIVEL">Consumível (qty)</option>
+              <option value="PATRIMONIAL">{t('typePatrimonialOption')}</option>
+              <option value="CONSUMIVEL">{t('typeConsumableOption')}</option>
             </select>
             {!isNew && (
-              <p className="text-xs text-text-muted mt-1">Tipo não pode mudar após criação</p>
+              <p className="text-xs text-text-muted mt-1">{t('typeLocked')}</p>
             )}
           </div>
           <div>
-            <Label htmlFor="unit">Unidade</Label>
+            <Label htmlFor="unit">{t('unit')}</Label>
             <Input
               id="unit"
-              placeholder="un, m, kg, pç…"
+              placeholder={t('unitPlaceholder')}
               value={form.unit}
               onChange={(e) => setForm({ ...form, unit: e.target.value })}
               maxLength={16}
             />
           </div>
           <div>
-            <Label htmlFor="minStock">Estoque mínimo</Label>
+            <Label htmlFor="minStock">{t('minStock')}</Label>
             <Input
               id="minStock"
               type="number"
@@ -356,7 +358,7 @@ function ProductFormModal({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <Label htmlFor="brand">Marca</Label>
+            <Label htmlFor="brand">{t('brand')}</Label>
             <Input
               id="brand"
               value={form.brand ?? ''}
@@ -364,7 +366,7 @@ function ProductFormModal({
             />
           </div>
           <div>
-            <Label htmlFor="model">Modelo</Label>
+            <Label htmlFor="model">{t('model')}</Label>
             <Input
               id="model"
               value={form.model ?? ''}
@@ -374,7 +376,7 @@ function ProductFormModal({
         </div>
 
         <div>
-          <Label htmlFor="price">Preço sugerido (venda)</Label>
+          <Label htmlFor="price">{t('price')}</Label>
           <Input
             id="price"
             type="number"
@@ -388,13 +390,11 @@ function ProductFormModal({
               })
             }
           />
-          <p className="text-xs text-text-muted mt-1">
-            Consultivo — venda real pode override. Custo médio é recalculado automaticamente nas compras.
-          </p>
+          <p className="text-xs text-text-muted mt-1">{t('priceHelp')}</p>
         </div>
 
         <div>
-          <Label htmlFor="description">Descrição</Label>
+          <Label htmlFor="description">{tc('description')}</Label>
           <Textarea
             id="description"
             rows={2}
@@ -409,17 +409,17 @@ function ProductFormModal({
             checked={form.isActive ?? true}
             onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
           />
-          Ativo
+          {t('active')}
         </label>
 
         {error && <FieldError>{error}</FieldError>}
 
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button type="submit" loading={submitting}>
-            {isNew ? 'Criar' : 'Salvar'}
+            {isNew ? tc('create') : tc('save')}
           </Button>
         </div>
       </form>

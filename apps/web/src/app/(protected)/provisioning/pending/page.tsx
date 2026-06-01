@@ -6,6 +6,7 @@
  * vai ativar agora.
  */
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -25,18 +26,19 @@ function fmtCurrency(v: string): string {
   return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
-function fmtRelative(iso: string): string {
-  const d = new Date(iso).getTime();
-  const diff = Date.now() - d;
-  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  if (days <= 0) return 'hoje';
-  if (days === 1) return 'ontem';
-  return `${days}d atrás`;
-}
-
 export default function PendingInstallsPage() {
+  const t = useTranslations('provisioning.pending');
   const [search, setSearch] = useState('');
   const canInstall = hasPermission('provisioning.write');
+
+  function fmtRelative(iso: string): string {
+    const d = new Date(iso).getTime();
+    const diff = Date.now() - d;
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    if (days <= 0) return t('relativeToday');
+    if (days === 1) return t('relativeYesterday');
+    return t('relativeDaysAgo', { days });
+  }
 
   const { data, isLoading, error } = useSWR<Paginated<PendingInstallItem>>(
     ['provisioning/pending', search],
@@ -48,7 +50,7 @@ export default function PendingInstallsPage() {
   if (error) {
     return (
       <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
-        Erro ao carregar pendentes. Tente recarregar.
+        {t('loadError')}
       </div>
     );
   }
@@ -58,28 +60,27 @@ export default function PendingInstallsPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-2xl font-bold tracking-tight">Instalações pendentes</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Contratos aguardando provisionamento em campo. Selecione um cliente
-          pra ativar a ONT.
+          {t('subtitle')}
         </p>
       </header>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <Input
-          placeholder="Buscar por cliente, código, endereço..."
+          placeholder={t('searchPlaceholder')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="sm:max-w-md"
         />
         <span className="text-sm text-slate-500 dark:text-slate-400">
-          {items.length} pendente{items.length === 1 ? '' : 's'}
+          {t('pendingCount', { count: items.length })}
         </span>
       </div>
 
       {items.length === 0 ? (
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-          Nenhum contrato aguardando instalação. ✨
+          {t('empty')}
         </div>
       ) : (
         <ul className="space-y-3">
@@ -102,8 +103,8 @@ export default function PendingInstallsPage() {
                     {c.installationAddress}
                   </p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    {c.bandwidthMbps} Mbps • {fmtCurrency(c.monthlyValue)} •
-                    criado {fmtRelative(c.createdAt)}
+                    {c.bandwidthMbps} Mbps • {fmtCurrency(c.monthlyValue)} •{' '}
+                    {t('createdRelative', { when: fmtRelative(c.createdAt) })}
                   </p>
                 </div>
                 {canInstall && (
@@ -111,7 +112,7 @@ export default function PendingInstallsPage() {
                     href={`/provisioning/install/${c.contractId}`}
                     className="inline-flex"
                   >
-                    <Button>Ativar</Button>
+                    <Button>{t('activate')}</Button>
                   </Link>
                 )}
               </div>

@@ -557,6 +557,7 @@ function UserMenu({
   onLogout: () => void;
 }) {
   const tNav = useTranslations('nav');
+  const tExtras = useTranslations('extras');
   const [open, setOpen] = useState(false);
   const name = displayName(session.user) || session.user.email;
 
@@ -576,7 +577,7 @@ function UserMenu({
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-2 rounded-md px-1.5 py-1 text-sm transition-colors hover:bg-surface-hover"
-        aria-label="Menu do usuário"
+        aria-label={tExtras('userMenu')}
       >
         <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-accent-muted text-2xs font-semibold text-accent-strong">
           {(name[0] ?? '?').toUpperCase()}

@@ -77,6 +77,7 @@ export default function ChargesListPage() {
   const tStatus = useTranslations('charges.statusLabel');
   const tType = useTranslations('charges.typeBadge');
   const tCommon = useTranslations('common');
+  const tx = useTranslations('chargesExtra');
   const formatMoney = useFormatMoney();
   const canCreateCharge = hasPermission('finance.charges.write');
 
@@ -269,7 +270,7 @@ export default function ChargesListPage() {
                           href={`/contracts/${r.contractId}`}
                           className="text-brand-500 hover:underline"
                         >
-                          Ver contrato
+                          {tx('seeContract')}
                         </Link>
                       ) : (
                         '—'
@@ -370,11 +371,11 @@ export default function ChargesListPage() {
             setCancelling(null);
             await refresh();
           } catch (err) {
-            toast.error(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+            toast.error(err instanceof ApiError ? err.friendlyMessage : tCommon('error'));
           }
         }}
         title={t('actions.cancel')}
-        message="A cobrança ficará marcada como cancelada e não pode ser reaberta."
+        message={tx('cancelWarning')}
         confirmLabel={tCommon('confirm')}
         variant="danger"
       />

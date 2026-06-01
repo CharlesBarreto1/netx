@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { Plus, Server } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -33,6 +34,8 @@ const LocationPicker = dynamic(
 );
 
 export default function PopsPage() {
+  const t = useTranslations('network.pops');
+  const tc = useTranslations('common');
   const canWrite = hasPermission('network.write');
   const canDelete = hasPermission('network.delete');
 
@@ -49,15 +52,13 @@ export default function PopsPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">POPs</h1>
-          <p className="text-sm text-text-muted">
-            Sites donde queda el equipamiento de red (BNGs, OLTs, routers).
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+          <p className="text-sm text-text-muted">{t('subtitle')}</p>
         </div>
         {canWrite && (
           <Button onClick={() => setEditing('new')}>
             <Plus className="h-3.5 w-3.5" />
-            Nuevo POP
+            {t('new')}
           </Button>
         )}
       </header>
@@ -66,11 +67,11 @@ export default function PopsPage() {
         <table className="min-w-full text-sm">
           <thead className="bg-surface-muted text-left text-[11px] font-semibold uppercase tracking-wider text-text-muted">
             <tr>
-              <th className="px-3 py-2">Nombre</th>
-              <th className="px-3 py-2">Código</th>
-              <th className="px-3 py-2">Ciudad</th>
-              <th className="px-3 py-2 text-right">Equipos</th>
-              <th className="px-3 py-2">Estado</th>
+              <th className="px-3 py-2">{tc('name')}</th>
+              <th className="px-3 py-2">{tc('code')}</th>
+              <th className="px-3 py-2">{t('city')}</th>
+              <th className="px-3 py-2 text-right">{t('equipment')}</th>
+              <th className="px-3 py-2">{tc('status')}</th>
               <th className="px-3 py-2"></th>
             </tr>
           </thead>
@@ -78,7 +79,7 @@ export default function PopsPage() {
             {pops.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-3 py-6 text-center text-text-muted">
-                  Sin POPs registrados todavía.
+                  {t('empty')}
                 </td>
               </tr>
             ) : (
@@ -97,13 +98,13 @@ export default function PopsPage() {
                   </td>
                   <td className="px-3 py-2">
                     <Badge tone={p.isActive ? 'success' : 'neutral'}>
-                      {p.isActive ? 'Activo' : 'Inactivo'}
+                      {p.isActive ? t('active') : t('inactive')}
                     </Badge>
                   </td>
                   <td className="px-3 py-2 text-right">
                     {canWrite && (
                       <Button size="xs" variant="ghost" onClick={() => setEditing(p)}>
-                        Editar
+                        {tc('edit')}
                       </Button>
                     )}
                     {canDelete && (
@@ -112,7 +113,7 @@ export default function PopsPage() {
                         variant="ghost"
                         onClick={() => setDeleting(p)}
                       >
-                        Eliminar
+                        {tc('delete')}
                       </Button>
                     )}
                   </td>
@@ -141,16 +142,18 @@ export default function PopsPage() {
           if (!deleting) return;
           try {
             await networkApi.deletePop(deleting.id);
-            toast.success('POP eliminado');
+            toast.success(t('toast.deleted'));
             setDeleting(null);
             await mutate();
           } catch (err) {
-            toast.error(err instanceof ApiError ? err.friendlyMessage : 'Error');
+            toast.error(
+              err instanceof ApiError ? err.friendlyMessage : tc('error'),
+            );
           }
         }}
-        title="Eliminar POP"
-        message={`Eliminar "${deleting?.name}"? Los equipamientos vinculados perderán la referencia.`}
-        confirmLabel="Eliminar"
+        title={t('deleteTitle')}
+        message={t('deleteMessage', { name: deleting?.name ?? '' })}
+        confirmLabel={tc('delete')}
         variant="danger"
       />
     </div>
@@ -166,6 +169,8 @@ function PopFormDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('network.pops');
+  const tc = useTranslations('common');
   const isNew = !initial;
   const [form, setForm] = useState<CreatePopInput>({
     name: initial?.name ?? '',
@@ -187,7 +192,7 @@ function PopFormDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name.trim()) return setError('Nombre obligatorio');
+    if (!form.name.trim()) return setError(t('errors.nameRequired'));
     setSubmitting(true);
     try {
       const payload: CreatePopInput = {
@@ -200,10 +205,10 @@ function PopFormDialog({
       } else {
         await networkApi.updatePop(initial!.id, payload);
       }
-      toast.success(isNew ? 'POP creado' : 'POP actualizado');
+      toast.success(isNew ? t('toast.created') : t('toast.updated'));
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Error');
+      setError(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setSubmitting(false);
     }
@@ -213,14 +218,14 @@ function PopFormDialog({
     <Modal
       open
       onClose={onClose}
-      title={isNew ? 'Nuevo POP' : `Editar ${initial!.name}`}
+      title={isNew ? t('new') : t('editTitle', { name: initial!.name })}
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button onClick={handleSubmit} loading={submitting}>
-            Guardar
+            {tc('save')}
           </Button>
         </>
       }
@@ -228,16 +233,16 @@ function PopFormDialog({
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="grid gap-3 md:grid-cols-2">
           <div>
-            <Label required>Nombre</Label>
+            <Label required>{tc('name')}</Label>
             <Input
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="ej.: POP Centro Asunción"
+              placeholder={t('namePlaceholder')}
               autoFocus
             />
           </div>
           <div>
-            <Label>Código</Label>
+            <Label>{tc('code')}</Label>
             <Input
               value={form.code}
               onChange={(e) => setForm({ ...form, code: e.target.value })}
@@ -245,14 +250,14 @@ function PopFormDialog({
             />
           </div>
           <div>
-            <Label>Ciudad</Label>
+            <Label>{t('city')}</Label>
             <Input
               value={form.city}
               onChange={(e) => setForm({ ...form, city: e.target.value })}
             />
           </div>
           <div>
-            <Label>Estado / Departamento</Label>
+            <Label>{t('state')}</Label>
             <Input
               value={form.state}
               onChange={(e) => setForm({ ...form, state: e.target.value })}
@@ -260,22 +265,19 @@ function PopFormDialog({
           </div>
         </div>
         <div>
-          <Label>Dirección</Label>
+          <Label>{t('address')}</Label>
           <Input
             value={form.address}
             onChange={(e) => setForm({ ...form, address: e.target.value })}
           />
         </div>
         <div>
-          <Label>Ubicación en el mapa</Label>
-          <FieldHelp>
-            Clic en el mapa para fijar el POP, o usa &quot;Mi ubicación&quot;
-            si estás físicamente en el sitio.
-          </FieldHelp>
+          <Label>{t('mapLocation')}</Label>
+          <FieldHelp>{t('mapHelp')}</FieldHelp>
           <LocationPicker value={location} onChange={setLocation} />
         </div>
         <div>
-          <Label>Observaciones</Label>
+          <Label>{tc('notes')}</Label>
           <Textarea
             rows={2}
             value={form.notes}
@@ -289,7 +291,7 @@ function PopFormDialog({
               checked={form.isActive ?? true}
               onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
             />
-            Activo
+            {t('active')}
           </label>
         </div>
         {error && <p className="text-xs text-red-600">{error}</p>}

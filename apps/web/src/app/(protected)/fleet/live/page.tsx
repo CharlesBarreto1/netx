@@ -1,6 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -11,26 +12,32 @@ const FleetLiveMap = dynamic(
   () => import('@/components/fleet/FleetLiveMap').then((m) => m.FleetLiveMap),
   {
     ssr: false,
-    loading: () => (
-      <div className="flex h-full items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-400 dark:border-slate-700 dark:bg-slate-900/40">
-        Carregando mapa…
-      </div>
-    ),
+    loading: () => <MapLoading />,
   },
 );
+
+function MapLoading() {
+  const t = useTranslations('fleet.live');
+  return (
+    <div className="flex h-full items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-400 dark:border-slate-700 dark:bg-slate-900/40">
+      {t('loadingMap')}
+    </div>
+  );
+}
 
 const STATUS_DOT: Record<LiveVehicleStatus, string> = {
   MOVING: 'bg-green-500',
   STOPPED: 'bg-amber-500',
   OFFLINE: 'bg-slate-400',
 };
-const STATUS_LABEL: Record<LiveVehicleStatus, string> = {
-  MOVING: 'Em movimento',
-  STOPPED: 'Parado',
-  OFFLINE: 'Offline',
+const STATUS_KEY: Record<LiveVehicleStatus, string> = {
+  MOVING: 'statusMoving',
+  STOPPED: 'statusStopped',
+  OFFLINE: 'statusOffline',
 };
 
 export default function FleetLivePage() {
+  const t = useTranslations('fleet.live');
   const { data, isLoading, error } = useSWR<FleetLive>(
     fleetApi.livePath(),
     () => fleetApi.getLive(),
@@ -51,10 +58,9 @@ export default function FleetLivePage() {
     <div className="space-y-4">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Ao vivo</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Posição em tempo real dos veículos com rastreador (via Traccar). Atualiza sozinho a
-            cada poucos segundos.
+            {t('subtitle')}
           </p>
         </div>
         {data && (
@@ -62,21 +68,22 @@ export default function FleetLivePage() {
             <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-green-500" /> {counts.MOVING}</span>
             <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-amber-500" /> {counts.STOPPED}</span>
             <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-slate-400" /> {counts.OFFLINE}</span>
-            <span>· atualizado {new Date(data.generatedAt).toLocaleTimeString('pt-BR')}</span>
+            <span>· {t('updatedAt', { time: new Date(data.generatedAt).toLocaleTimeString('pt-BR') })}</span>
           </div>
         )}
       </header>
 
       {data && !data.traccarConfigured && (
         <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
-          Traccar não está configurado neste ambiente (env <code>TRACCAR_URL/USER/PASSWORD</code>).
-          Os veículos com rastreador aparecem com a última posição conhecida, se houver.
+          {t.rich('traccarNotConfigured', {
+            code: (chunks) => <code>{chunks}</code>,
+          })}
         </div>
       )}
 
       {error && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-          Falha ao carregar posições.
+          {t('loadError')}
         </div>
       )}
 
@@ -84,8 +91,7 @@ export default function FleetLivePage() {
 
       {data && data.trackedVehicles === 0 && (
         <p className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
-          Nenhum veículo tem rastreador cadastrado. Informe o IMEI do rastreador no cadastro do
-          veículo (aba Veículos) pra ele aparecer aqui.
+          {t('noTrackedVehicles')}
         </p>
       )}
 
@@ -94,8 +100,7 @@ export default function FleetLivePage() {
           <aside className="order-2 space-y-1 lg:order-1">
             {positions.length === 0 && (
               <p className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
-                {data.trackedVehicles} veículo(s) com rastreador, mas nenhuma posição recebida
-                ainda.
+                {t('noPositionsYet', { count: data.trackedVehicles })}
               </p>
             )}
             {positions.map((p) => (
@@ -126,6 +131,7 @@ function VehicleRow({
   selected: boolean;
   onClick: () => void;
 }) {
+  const t = useTranslations('fleet.live');
   return (
     <button
       type="button"
@@ -141,12 +147,12 @@ function VehicleRow({
         <span className="flex items-center justify-between gap-2">
           <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">{p.plate}</span>
           {p.speed != null && p.status === 'MOVING' && (
-            <span className="text-xs text-slate-500">{Math.round(p.speed)} km/h</span>
+            <span className="text-xs text-slate-500">{t('speedKmh', { speed: Math.round(p.speed) })}</span>
           )}
         </span>
         <span className="block truncate text-xs text-slate-500 dark:text-slate-400">{p.label}</span>
         <span className="block text-xs text-slate-400">
-          {STATUS_LABEL[p.status]} · {new Date(p.deviceTime).toLocaleTimeString('pt-BR')}
+          {t(STATUS_KEY[p.status])} · {new Date(p.deviceTime).toLocaleTimeString('pt-BR')}
         </span>
         {p.driverName && <span className="block truncate text-xs text-slate-400">{p.driverName}</span>}
       </span>

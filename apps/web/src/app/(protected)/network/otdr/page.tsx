@@ -21,6 +21,7 @@ import {
   RotateCcw,
   Trash2,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
 import useSWR from 'swr';
 
@@ -50,15 +51,6 @@ import {
 } from '@/lib/fiber-events-api';
 import { hasPermission } from '@/lib/session';
 
-const TYPE_LABEL: Record<FiberEventType, string> = {
-  BREAK: 'Rompimento',
-  BEND: 'Curva excessiva',
-  REFLECTION: 'Reflexão',
-  ATTENUATION: 'Atenuação anormal',
-  CONNECTOR: 'Conector ruim',
-  OTHER: 'Outro',
-};
-
 const TYPE_TONE: Record<
   FiberEventType,
   'danger' | 'warning' | 'info' | 'neutral'
@@ -72,6 +64,8 @@ const TYPE_TONE: Record<
 };
 
 export default function OtdrPage() {
+  const t = useTranslations('network.otdr');
+  const tc = useTranslations('common');
   const canWrite = hasPermission('network.write');
 
   const [creating, setCreating] = useState(false);
@@ -85,7 +79,7 @@ export default function OtdrPage() {
     Paginated<FiberEvent>
   >(fiberEventsApi.listPath({ status: 'resolved', pageSize: 50 }));
 
-  if (isLoading && !activeData) return <PageLoader label="Carregando eventos…" />;
+  if (isLoading && !activeData) return <PageLoader label={t('loadingEvents')} />;
 
   const active = activeData?.data ?? [];
   const resolved = resolvedData?.data ?? [];
@@ -100,17 +94,15 @@ export default function OtdrPage() {
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold tracking-tight">
             <AlertTriangle className="h-6 w-6" />
-            OTDR / Eventos
+            {t('title')}
           </h1>
           <p className="text-sm text-text-muted">
-            Operador lê do aparelho a distância do evento e o tipo; sistema
-            marca o ponto exato no mapa pra equipe de campo localizar e
-            consertar.
+            {t('subtitle')}
           </p>
         </div>
         {canWrite && (
           <Button onClick={() => setCreating(true)}>
-            Registrar evento
+            {t('registerEvent')}
           </Button>
         )}
       </header>
@@ -120,12 +112,12 @@ export default function OtdrPage() {
         <section className="space-y-3">
           <h2 className="flex items-center gap-2 text-sm font-semibold">
             <AlertTriangle className="h-4 w-4 text-red-600" />
-            Ativos ({active.length})
+            {t('activeCount', { count: active.length })}
           </h2>
 
           {active.length === 0 ? (
             <div className="rounded-md border border-border bg-surface p-6 text-center text-sm text-text-muted">
-              ✓ Nenhum evento ativo. Planta operando normal.
+              {t('emptyActive')}
             </div>
           ) : (
             <ul className="space-y-2">
@@ -137,13 +129,13 @@ export default function OtdrPage() {
                   onResolve={async (notes) => {
                     try {
                       await fiberEventsApi.resolve(ev.id, notes);
-                      toast.success('Evento resolvido');
+                      toast.success(t('toastResolved'));
                       await refresh();
                     } catch (err) {
                       toast.error(
                         err instanceof ApiError
                           ? err.friendlyMessage
-                          : 'Erro',
+                          : tc('error'),
                       );
                     }
                   }}
@@ -159,12 +151,12 @@ export default function OtdrPage() {
         <section className="space-y-3">
           <h2 className="flex items-center gap-2 text-sm font-semibold">
             <Clock className="h-4 w-4 text-text-muted" />
-            Histórico ({resolved.length})
+            {t('historyCount', { count: resolved.length })}
           </h2>
 
           {resolved.length === 0 ? (
             <div className="rounded-md border border-border bg-surface p-6 text-center text-sm text-text-muted">
-              Nenhum evento resolvido ainda.
+              {t('emptyResolved')}
             </div>
           ) : (
             <ul className="space-y-2">
@@ -177,13 +169,13 @@ export default function OtdrPage() {
                   onReopen={async () => {
                     try {
                       await fiberEventsApi.reopen(ev.id);
-                      toast.success('Evento reaberto');
+                      toast.success(t('toastReopened'));
                       await refresh();
                     } catch (err) {
                       toast.error(
                         err instanceof ApiError
                           ? err.friendlyMessage
-                          : 'Erro',
+                          : tc('error'),
                       );
                     }
                   }}
@@ -213,18 +205,18 @@ export default function OtdrPage() {
           onConfirm={async () => {
             try {
               await fiberEventsApi.remove(deleting.id);
-              toast.success('Evento excluído');
+              toast.success(t('toastDeleted'));
               await refresh();
               setDeleting(null);
             } catch (err) {
               toast.error(
-                err instanceof ApiError ? err.friendlyMessage : 'Erro',
+                err instanceof ApiError ? err.friendlyMessage : tc('error'),
               );
             }
           }}
-          title="Excluir evento?"
-          message="Audit log é preservado. Use 'Reabrir' se foi resolvido por engano."
-          confirmLabel="Excluir"
+          title={t('deleteTitle')}
+          message={t('deleteMessage')}
+          confirmLabel={tc('delete')}
           variant="danger"
         />
       )}
@@ -233,12 +225,12 @@ export default function OtdrPage() {
         <Modal
           open
           onClose={() => setPhotoViewing(null)}
-          title={`Foto — ${photoViewing.cable.code}`}
+          title={t('photoTitle', { code: photoViewing.cable.code })}
           size="lg"
         >
           <img
             src={photoViewing.photoUrl}
-            alt="Captura do OTDR ou foto"
+            alt={t('photoAlt')}
             className="w-full rounded-md"
           />
         </Modal>
@@ -265,6 +257,8 @@ function EventCard({
   onDelete: () => void;
   onViewPhoto: () => void;
 }) {
+  const t = useTranslations('network.otdr');
+  const tc = useTranslations('common');
   const [resolveOpen, setResolveOpen] = useState(false);
   const [resolveNotes, setResolveNotes] = useState('');
   const km = event.distanceMeters / 1000;
@@ -276,11 +270,11 @@ function EventCard({
       }`}
     >
       <div className="flex flex-wrap items-start gap-2">
-        <Badge tone={TYPE_TONE[event.type]}>{TYPE_LABEL[event.type]}</Badge>
+        <Badge tone={TYPE_TONE[event.type]}>{t(`type.${event.type}`)}</Badge>
         <span className="font-mono text-sm">{event.cable.code}</span>
         {event.fiberIndex != null && (
           <span className="text-xs text-text-muted">
-            · fibra {event.fiberIndex}
+            {t('fiberInline', { index: event.fiberIndex })}
           </span>
         )}
         <span className="ml-auto font-mono text-sm">
@@ -290,7 +284,7 @@ function EventCard({
 
       <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-text-muted">
         <div>
-          <strong>Lat/Lng:</strong>{' '}
+          <strong>{t('latLng')}:</strong>{' '}
           <span className="font-mono">
             {event.latitude.toFixed(5)}, {event.longitude.toFixed(5)}
           </span>
@@ -301,12 +295,12 @@ function EventCard({
           </div>
         )}
         <div>
-          <strong>Reportado:</strong>{' '}
+          <strong>{t('reportedAt')}:</strong>{' '}
           {new Date(event.reportedAt).toLocaleString('pt-BR')}
         </div>
         {resolved && event.resolvedAt && (
           <div>
-            <strong>Resolvido:</strong>{' '}
+            <strong>{t('resolvedAt')}:</strong>{' '}
             {new Date(event.resolvedAt).toLocaleString('pt-BR')}
             {event.resolvedBy && (
               <> · {event.resolvedBy.firstName} {event.resolvedBy.lastName}</>
@@ -324,7 +318,7 @@ function EventCard({
       <div className="mt-2 flex flex-wrap gap-1">
         {event.photoUrl && (
           <Button size="sm" variant="outline" onClick={onViewPhoto}>
-            <ImageIcon className="h-3 w-3" /> Foto
+            <ImageIcon className="h-3 w-3" /> {t('photo')}
           </Button>
         )}
         {canWrite && !resolved && (
@@ -333,19 +327,19 @@ function EventCard({
             variant="outline"
             onClick={() => setResolveOpen(true)}
           >
-            <Check className="h-3 w-3" /> Resolver
+            <Check className="h-3 w-3" /> {t('resolve')}
           </Button>
         )}
         {canWrite && resolved && (
           <Button size="sm" variant="outline" onClick={onReopen}>
-            <RotateCcw className="h-3 w-3" /> Reabrir
+            <RotateCcw className="h-3 w-3" /> {t('reopen')}
           </Button>
         )}
         {canWrite && (
           <button
             onClick={onDelete}
             className="ml-auto p-1 text-text-muted hover:text-red-600"
-            title="Excluir"
+            title={tc('delete')}
           >
             <Trash2 className="h-4 w-4" />
           </button>
@@ -356,11 +350,11 @@ function EventCard({
         <Modal
           open
           onClose={() => setResolveOpen(false)}
-          title="Resolver evento"
+          title={t('resolveTitle')}
           footer={
             <>
               <Button variant="ghost" onClick={() => setResolveOpen(false)}>
-                Cancelar
+                {tc('cancel')}
               </Button>
               <Button
                 onClick={() => {
@@ -368,21 +362,21 @@ function EventCard({
                   setResolveOpen(false);
                 }}
               >
-                Marcar como resolvido
+                {t('markResolved')}
               </Button>
             </>
           }
         >
           <div className="space-y-2">
-            <Label>Notas do reparo (opcional)</Label>
+            <Label>{t('repairNotes')}</Label>
             <Textarea
               rows={3}
               value={resolveNotes}
               onChange={(e) => setResolveNotes(e.target.value)}
-              placeholder="Ex.: fibra refundida no poste 027, loss 0.08 dB"
+              placeholder={t('repairNotesPlaceholder')}
             />
             <FieldHelp>
-              Vai pro histórico do evento e fica visível mesmo após resolvido.
+              {t('repairNotesHelp')}
             </FieldHelp>
           </div>
         </Modal>
@@ -399,6 +393,8 @@ function CreateEventDialog({
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const t = useTranslations('network.otdr');
+  const tc = useTranslations('common');
   // Cabos disponíveis pra Select.
   const { data: cablesResp } = useSWR<Paginated<FiberCable>>(
     fiberCablesApi.listPath({ pageSize: 500 }),
@@ -419,10 +415,10 @@ function CreateEventDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!cableId) return setError('Escolha o cabo');
+    if (!cableId) return setError(t('errChooseCable'));
     const distM = Number(distanceKm) * 1000;
     if (!Number.isFinite(distM) || distM < 0)
-      return setError('Distância inválida');
+      return setError(t('errInvalidDistance'));
     setSubmitting(true);
     setError(null);
     try {
@@ -436,10 +432,10 @@ function CreateEventDialog({
         notes: notes || null,
       };
       await fiberEventsApi.create(payload);
-      toast.success('Evento registrado · pino vermelho no mapa');
+      toast.success(t('toastCreated'));
       onCreated();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      setError(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setSubmitting(false);
     }
@@ -449,26 +445,26 @@ function CreateEventDialog({
     <Modal
       open
       onClose={onClose}
-      title="Registrar evento OTDR"
+      title={t('createTitle')}
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button onClick={handleSubmit} loading={submitting}>
-            Registrar
+            {t('register')}
           </Button>
         </>
       }
     >
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
-          <Label required>Cabo</Label>
+          <Label required>{t('cable')}</Label>
           <Select
             value={cableId}
             onChange={(e) => setCableId(e.target.value)}
           >
-            <option value="">— selecionar —</option>
+            <option value="">{t('selectOption')}</option>
             {cables.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.code} ({(c.lengthMeters / 1000).toFixed(2)} km · {c.fiberCount}f)
@@ -479,7 +475,7 @@ function CreateEventDialog({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label required>Distância (km)</Label>
+            <Label required>{t('distanceKm')}</Label>
             <Input
               type="number"
               step={0.001}
@@ -487,31 +483,32 @@ function CreateEventDialog({
               max={cable ? cable.lengthMeters / 1000 : 1000}
               value={distanceKm}
               onChange={(e) => setDistanceKm(e.target.value)}
-              placeholder="ex.: 1.520"
+              placeholder={t('distancePlaceholder')}
             />
             {cable && (
               <FieldHelp>
-                Cabo tem {(cable.lengthMeters / 1000).toFixed(3)} km. Máximo
-                possível.
+                {t('distanceHelp', {
+                  km: (cable.lengthMeters / 1000).toFixed(3),
+                })}
               </FieldHelp>
             )}
           </div>
           <div>
-            <Label required>Tipo</Label>
+            <Label required>{tc('type')}</Label>
             <Select
               value={type}
               onChange={(e) => setType(e.target.value as FiberEventType)}
             >
-              <option value="BREAK">Rompimento</option>
-              <option value="BEND">Curva excessiva</option>
-              <option value="REFLECTION">Reflexão</option>
-              <option value="ATTENUATION">Atenuação anormal</option>
-              <option value="CONNECTOR">Conector ruim</option>
-              <option value="OTHER">Outro</option>
+              <option value="BREAK">{t('type.BREAK')}</option>
+              <option value="BEND">{t('type.BEND')}</option>
+              <option value="REFLECTION">{t('type.REFLECTION')}</option>
+              <option value="ATTENUATION">{t('type.ATTENUATION')}</option>
+              <option value="CONNECTOR">{t('type.CONNECTOR')}</option>
+              <option value="OTHER">{t('type.OTHER')}</option>
             </Select>
           </div>
           <div>
-            <Label>Fibra (índice)</Label>
+            <Label>{t('fiberIndex')}</Label>
             <Input
               type="number"
               min={1}
@@ -520,10 +517,10 @@ function CreateEventDialog({
               onChange={(e) => setFiberIndex(e.target.value)}
               placeholder={cable ? `1..${cable.fiberCount}` : ''}
             />
-            <FieldHelp>Opcional — algumas OTDR não isolam fibra.</FieldHelp>
+            <FieldHelp>{t('fiberIndexHelp')}</FieldHelp>
           </div>
           <div>
-            <Label>Loss medido (dB)</Label>
+            <Label>{t('lossDb')}</Label>
             <Input
               type="number"
               step={0.01}
@@ -531,27 +528,27 @@ function CreateEventDialog({
               max={99.99}
               value={lossDb}
               onChange={(e) => setLossDb(e.target.value)}
-              placeholder="opcional"
+              placeholder={tc('optional')}
             />
           </div>
         </div>
 
         <div>
-          <Label>Foto (URL)</Label>
+          <Label>{t('photoUrl')}</Label>
           <Input
             type="url"
             value={photoUrl}
             onChange={(e) => setPhotoUrl(e.target.value)}
-            placeholder="https://… (gráfico do OTDR, foto do local)"
+            placeholder={t('photoUrlPlaceholder')}
           />
         </div>
         <div>
-          <Label>Notas</Label>
+          <Label>{tc('notes')}</Label>
           <Textarea
             rows={2}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
-            placeholder="Ex.: cliente relatou queda às 14h, suspeita de fiação cortada"
+            placeholder={t('notesPlaceholder')}
           />
         </div>
 

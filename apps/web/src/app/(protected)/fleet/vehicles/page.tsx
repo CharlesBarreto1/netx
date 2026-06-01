@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -11,8 +12,6 @@ import { ApiError, swrFetcher } from '@/lib/api';
 import { hasPermission } from '@/lib/session';
 import {
   fleetApi,
-  VEHICLE_STATUS_LABELS,
-  VEHICLE_TYPE_LABELS,
   type CreateVehicleInput,
   type Driver,
   type Paginated,
@@ -35,8 +34,24 @@ export default function FleetVehiclesPage() {
     fleetApi.vehiclesPath({ pageSize: 200 }),
     () => fleetApi.listVehicles({ pageSize: 200 }),
   );
+  const t = useTranslations('fleet.vehicles');
+  const tc = useTranslations('common');
   const canWrite = hasPermission('fleet.write');
   const canDelete = hasPermission('fleet.delete');
+
+  const VEHICLE_TYPE_LABELS: Record<VehicleType, string> = {
+    CAR: t('typeCar'),
+    MOTORCYCLE: t('typeMotorcycle'),
+    TRUCK: t('typeTruck'),
+    VAN: t('typeVan'),
+    PICKUP: t('typePickup'),
+    OTHER: t('typeOther'),
+  };
+  const VEHICLE_STATUS_LABELS: Record<VehicleStatus, string> = {
+    ACTIVE: t('statusActive'),
+    MAINTENANCE: t('statusMaintenance'),
+    INACTIVE: t('statusInactive'),
+  };
 
   const [editing, setEditing] = useState<Vehicle | null>(null);
   const [creating, setCreating] = useState(false);
@@ -60,25 +75,24 @@ export default function FleetVehiclesPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Veículos</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Frota da operação. O IMEI do rastreador liga o veículo ao Traccar pra aparecer no
-            mapa &ldquo;Ao vivo&rdquo;.
+            {t('subtitle')}
           </p>
         </div>
-        {canWrite && <Button onClick={() => setCreating(true)}>Novo veículo</Button>}
+        {canWrite && <Button onClick={() => setCreating(true)}>{t('newVehicle')}</Button>}
       </header>
 
       {isLoading && <PageLoader />}
       {error && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-          Falha ao carregar veículos.
+          {t('loadFailed')}
         </div>
       )}
 
       {data && rows.length === 0 && (
         <p className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
-          Nenhum veículo cadastrado ainda.
+          {t('empty')}
         </p>
       )}
 
@@ -88,14 +102,14 @@ export default function FleetVehiclesPage() {
             <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
               <thead className="bg-slate-50 dark:bg-slate-900/40">
                 <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  <th className="px-4 py-3">Placa</th>
-                  <th className="px-4 py-3">Veículo</th>
-                  <th className="px-4 py-3">Tipo</th>
-                  <th className="px-4 py-3">Rastreador</th>
-                  <th className="px-4 py-3">Odômetro</th>
-                  <th className="px-4 py-3">Motorista</th>
-                  <th className="px-4 py-3">Status</th>
-                  {canWrite && <th className="px-4 py-3 text-right">Ações</th>}
+                  <th className="px-4 py-3">{t('colPlate')}</th>
+                  <th className="px-4 py-3">{t('colVehicle')}</th>
+                  <th className="px-4 py-3">{tc('type')}</th>
+                  <th className="px-4 py-3">{t('colTracker')}</th>
+                  <th className="px-4 py-3">{t('colOdometer')}</th>
+                  <th className="px-4 py-3">{t('colDriver')}</th>
+                  <th className="px-4 py-3">{tc('status')}</th>
+                  {canWrite && <th className="px-4 py-3 text-right">{tc('actions')}</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -117,7 +131,7 @@ export default function FleetVehiclesPage() {
                           {v.trackerUniqueId}
                         </span>
                       ) : (
-                        <span className="text-xs text-slate-400">sem rastreador</span>
+                        <span className="text-xs text-slate-400">{t('noTracker')}</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
@@ -134,11 +148,11 @@ export default function FleetVehiclesPage() {
                     {canWrite && (
                       <td className="px-4 py-3 text-right">
                         <Button variant="ghost" size="sm" onClick={() => setEditing(v)}>
-                          Editar
+                          {tc('edit')}
                         </Button>
                         {canDelete && (
                           <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(v)}>
-                            Excluir
+                            {tc('delete')}
                           </Button>
                         )}
                       </td>
@@ -169,9 +183,9 @@ export default function FleetVehiclesPage() {
       {confirmDelete && (
         <ConfirmDialog
           open
-          title={`Excluir veículo ${confirmDelete.plate}?`}
-          message="O veículo é desativado (soft-delete). Despesas e manutenções no histórico ficam preservadas."
-          confirmLabel="Excluir"
+          title={t('deleteTitle', { plate: confirmDelete.plate })}
+          message={t('deleteMessage')}
+          confirmLabel={tc('delete')}
           loading={deleting}
           onConfirm={() => handleDelete(confirmDelete)}
           onClose={() => setConfirmDelete(null)}
@@ -190,7 +204,24 @@ function VehicleFormModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('fleet.vehicles');
+  const tc = useTranslations('common');
   const isNew = !initial;
+
+  const VEHICLE_TYPE_LABELS: Record<VehicleType, string> = {
+    CAR: t('typeCar'),
+    MOTORCYCLE: t('typeMotorcycle'),
+    TRUCK: t('typeTruck'),
+    VAN: t('typeVan'),
+    PICKUP: t('typePickup'),
+    OTHER: t('typeOther'),
+  };
+  const VEHICLE_STATUS_LABELS: Record<VehicleStatus, string> = {
+    ACTIVE: t('statusActive'),
+    MAINTENANCE: t('statusMaintenance'),
+    INACTIVE: t('statusInactive'),
+  };
+
   const { data: drivers } = useSWR<Paginated<Driver>>(
     fleetApi.driversPath({ status: 'ACTIVE', pageSize: 200 }),
     swrFetcher,
@@ -215,7 +246,7 @@ function VehicleFormModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.plate.trim()) return setError('Placa é obrigatória');
+    if (!form.plate.trim()) return setError(t('plateRequired'));
     setSubmitting(true);
     try {
       const payload: CreateVehicleInput = {
@@ -233,18 +264,18 @@ function VehicleFormModal({
       else await fleetApi.updateVehicle(initial!.id, payload);
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro ao salvar');
+      setError(err instanceof ApiError ? err.friendlyMessage : t('saveError'));
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Modal open onClose={onClose} title={isNew ? 'Novo veículo' : `Editar ${initial!.plate}`}>
+    <Modal open onClose={onClose} title={isNew ? t('newVehicle') : t('editTitle', { plate: initial!.plate })}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <Label htmlFor="plate">Placa *</Label>
+            <Label htmlFor="plate">{t('fieldPlate')} *</Label>
             <Input
               id="plate"
               value={form.plate}
@@ -253,7 +284,7 @@ function VehicleFormModal({
             />
           </div>
           <div>
-            <Label htmlFor="type">Tipo</Label>
+            <Label htmlFor="type">{tc('type')}</Label>
             <select
               id="type"
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
@@ -266,7 +297,7 @@ function VehicleFormModal({
             </select>
           </div>
           <div>
-            <Label htmlFor="status">Status</Label>
+            <Label htmlFor="status">{tc('status')}</Label>
             <select
               id="status"
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
@@ -282,15 +313,15 @@ function VehicleFormModal({
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <Label htmlFor="brand">Marca</Label>
+            <Label htmlFor="brand">{t('fieldBrand')}</Label>
             <Input id="brand" value={form.brand ?? ''} onChange={(e) => setForm({ ...form, brand: e.target.value })} />
           </div>
           <div>
-            <Label htmlFor="model">Modelo</Label>
+            <Label htmlFor="model">{t('fieldModel')}</Label>
             <Input id="model" value={form.model ?? ''} onChange={(e) => setForm({ ...form, model: e.target.value })} />
           </div>
           <div>
-            <Label htmlFor="year">Ano</Label>
+            <Label htmlFor="year">{t('fieldYear')}</Label>
             <Input
               id="year"
               type="number"
@@ -302,7 +333,7 @@ function VehicleFormModal({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <Label htmlFor="tracker">IMEI do rastreador (Traccar)</Label>
+            <Label htmlFor="tracker">{t('fieldTracker')}</Label>
             <Input
               id="tracker"
               value={form.trackerUniqueId ?? ''}
@@ -311,7 +342,7 @@ function VehicleFormModal({
             />
           </div>
           <div>
-            <Label htmlFor="odometer">Odômetro (km)</Label>
+            <Label htmlFor="odometer">{t('fieldOdometer')}</Label>
             <Input
               id="odometer"
               type="number"
@@ -323,15 +354,15 @@ function VehicleFormModal({
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <Label htmlFor="color">Cor</Label>
+            <Label htmlFor="color">{t('fieldColor')}</Label>
             <Input id="color" value={form.color ?? ''} onChange={(e) => setForm({ ...form, color: e.target.value })} />
           </div>
           <div>
-            <Label htmlFor="renavam">Renavam</Label>
+            <Label htmlFor="renavam">{t('fieldRenavam')}</Label>
             <Input id="renavam" value={form.renavam ?? ''} onChange={(e) => setForm({ ...form, renavam: e.target.value })} />
           </div>
           <div>
-            <Label htmlFor="driver">Motorista atual</Label>
+            <Label htmlFor="driver">{t('fieldCurrentDriver')}</Label>
             <select
               id="driver"
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
@@ -347,7 +378,7 @@ function VehicleFormModal({
         </div>
 
         <div>
-          <Label htmlFor="notes">Observações</Label>
+          <Label htmlFor="notes">{tc('notes')}</Label>
           <Textarea id="notes" rows={2} value={form.notes ?? ''} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
         </div>
 
@@ -355,10 +386,10 @@ function VehicleFormModal({
 
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button type="submit" loading={submitting}>
-            {isNew ? 'Criar' : 'Salvar'}
+            {isNew ? tc('create') : tc('save')}
           </Button>
         </div>
       </form>

@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 
 import { PageLoader } from '@/components/ui/Spinner';
@@ -32,6 +33,8 @@ import { formatDate, formatDateTime, formatMoney, formatTaxId } from '@/lib/form
  * checklist) — pensado pra atendimento de FTTH.
  */
 export default function ServiceOrderPrintPage() {
+  const t = useTranslations('soPrint');
+  const tc = useTranslations('common');
   const params = useParams<{ id: string }>();
   const id = params?.id;
 
@@ -52,19 +55,19 @@ export default function ServiceOrderPrintPage() {
   // Auto-print quando todos os 4 SWRs resolvem.
   useEffect(() => {
     if (os && contract && customer && addresses !== undefined) {
-      const t = window.setTimeout(() => window.print(), 350);
-      return () => window.clearTimeout(t);
+      const timer = window.setTimeout(() => window.print(), 350);
+      return () => window.clearTimeout(timer);
     }
     return undefined;
   }, [os, contract, customer, addresses]);
 
   if (osErr) {
     const msg =
-      osErr instanceof ApiError ? osErr.friendlyMessage : 'Falha ao carregar O.S';
+      osErr instanceof ApiError ? osErr.friendlyMessage : t('failureLoading');
     return <p className="p-6 text-sm text-red-600">{msg}</p>;
   }
   if (!os || !contract || !customer || addresses === undefined) {
-    return <PageLoader label="Carregando…" />;
+    return <PageLoader label={tc('loading')} />;
   }
 
   const primary = addresses.find((a) => a.isPrimary) ?? addresses[0];
@@ -82,15 +85,13 @@ export default function ServiceOrderPrintPage() {
         .join(', ')
     : contract.installationAddress;
 
-  // Status em PT pra impressão (label fixo, não i18n — printout é
-  // documento físico pro técnico/cliente, mantém consistência).
   const statusLabel: Record<typeof os.status, string> = {
-    OPEN: 'Aberta',
-    SCHEDULED: 'Agendada',
-    EN_ROUTE: 'A caminho',
-    IN_PROGRESS: 'Em Execução',
-    COMPLETED: 'Finalizada',
-    CANCELLED: 'Cancelada',
+    OPEN: t('status.OPEN'),
+    SCHEDULED: t('status.SCHEDULED'),
+    EN_ROUTE: t('status.EN_ROUTE'),
+    IN_PROGRESS: t('status.IN_PROGRESS'),
+    COMPLETED: t('status.COMPLETED'),
+    CANCELLED: t('status.CANCELLED'),
   };
 
   return (
@@ -102,14 +103,14 @@ export default function ServiceOrderPrintPage() {
           onClick={() => window.print()}
           className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
         >
-          Imprimir / salvar PDF
+          {t('printSavePdf')}
         </button>
         <button
           type="button"
           onClick={() => window.history.back()}
           className="text-sm text-slate-600 hover:underline"
         >
-          ← Voltar
+          ← {tc('back')}
         </button>
       </div>
 
@@ -118,23 +119,24 @@ export default function ServiceOrderPrintPage() {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">
-              Ordem de Serviço
+              {t('title')}
             </h1>
             <p className="mt-0.5 text-sm font-semibold text-slate-700">
               {os.code ?? `#${os.id.slice(0, 8)}`}
             </p>
             <p className="text-xs text-slate-500">
-              Aberta em {formatDateTime(os.openedAt)}
-              {os.scheduledAt && ` · Agendada para ${formatDateTime(os.scheduledAt)}`}
+              {t('openedAt', { date: formatDateTime(os.openedAt) })}
+              {os.scheduledAt &&
+                ` · ${t('scheduledFor', { date: formatDateTime(os.scheduledAt) })}`}
             </p>
           </div>
           <div className="text-right">
             <p className="text-[11px] uppercase tracking-wider text-slate-500">
-              Status
+              {tc('status')}
             </p>
             <p className="text-base font-semibold">{statusLabel[os.status]}</p>
             <p className="mt-1 text-[11px] uppercase tracking-wider text-slate-500">
-              Motivo
+              {t('reason')}
             </p>
             <p className="text-sm font-medium">{os.reason?.name ?? '—'}</p>
           </div>
@@ -142,11 +144,11 @@ export default function ServiceOrderPrintPage() {
       </header>
 
       {/* Cliente */}
-      <Section title="Dados do Cliente">
+      <Section title={t('customerData')}>
         <Grid>
-          <Field label="Nome / Razão social" value={customer.displayName} colSpan={2} />
+          <Field label={t('nameOrCompany')} value={customer.displayName} colSpan={2} />
           <Field
-            label="Documento"
+            label={t('document')}
             value={
               customer.taxId
                 ? `${customer.taxIdType ?? ''} ${formatTaxId(
@@ -157,59 +159,63 @@ export default function ServiceOrderPrintPage() {
             }
           />
           <Field
-            label="Tipo"
-            value={customer.type === 'INDIVIDUAL' ? 'Pessoa Física' : 'Pessoa Jurídica'}
+            label={tc('type')}
+            value={
+              customer.type === 'INDIVIDUAL'
+                ? t('individual')
+                : t('company')
+            }
           />
-          <Field label="Email" value={customer.primaryEmail ?? '—'} />
-          <Field label="Telefone" value={customer.primaryPhone ?? '—'} />
+          <Field label={tc('email')} value={customer.primaryEmail ?? '—'} />
+          <Field label={tc('phone')} value={customer.primaryPhone ?? '—'} />
         </Grid>
       </Section>
 
       {/* Endereço */}
-      <Section title="Endereço de instalação">
+      <Section title={t('installationAddress')}>
         <p className="text-sm">{addressLine}</p>
         {contract.installationMapsUrl && (
           <p className="mt-1 text-xs text-slate-600">
-            Localização: {contract.installationMapsUrl}
+            {t('location')}: {contract.installationMapsUrl}
           </p>
         )}
         {primary?.latitude != null && primary?.longitude != null && (
           <p className="mt-1 text-xs text-slate-600">
-            Coordenadas: {primary.latitude}, {primary.longitude}
+            {t('coordinates')}: {primary.latitude}, {primary.longitude}
           </p>
         )}
       </Section>
 
       {/* Contrato */}
-      <Section title="Contrato e Plano">
+      <Section title={t('contractAndPlan')}>
         <Grid>
           <Field
-            label="Contrato"
+            label={t('contract')}
             value={contract.code ?? `#${contract.id.slice(0, 8)}`}
           />
-          <Field label="Status do contrato" value={contract.status} />
+          <Field label={t('contractStatus')} value={contract.status} />
           <Field
-            label="PPPoE — usuário"
+            label={t('pppoeUser')}
             value={contract.pppoeUsername ?? '—'}
             mono
           />
           <Field
-            label="PPPoE — senha"
+            label={t('pppoePassword')}
             value={contract.pppoePassword ?? '—'}
             mono
           />
-          <Field label="Plano (banda)" value={`${contract.bandwidthMbps} Mbps`} />
-          <Field label="Mensalidade" value={formatMoney(contract.monthlyValue)} />
-          <Field label="Dia de vencimento" value={`${contract.dueDay}`} />
+          <Field label={t('planBandwidth')} value={`${contract.bandwidthMbps} Mbps`} />
+          <Field label={t('monthlyValue')} value={formatMoney(contract.monthlyValue)} />
+          <Field label={t('dueDay')} value={`${contract.dueDay}`} />
         </Grid>
       </Section>
 
       {/* Demanda */}
-      <Section title="Descrição da abertura">
+      <Section title={t('openDescription')}>
         <p className="whitespace-pre-wrap text-sm">{os.openDescription}</p>
         {os.assignedTo && (
           <p className="mt-2 text-xs text-slate-600">
-            Técnico atribuído:{' '}
+            {t('assignedTechnician')}:{' '}
             <strong>
               {os.assignedTo.firstName} {os.assignedTo.lastName}
             </strong>
@@ -218,38 +224,38 @@ export default function ServiceOrderPrintPage() {
       </Section>
 
       {/* CHECKLIST FTTH — campos pra preencher à mão */}
-      <Section title="Checklist técnico (preencher em campo)">
+      <Section title={t('technicalChecklist')}>
         <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
-          <BlankField label="Sinal óptico no ONU (dBm)" />
-          <BlankField label="Sinal óptico no OLT (dBm)" />
-          <BlankField label="Velocidade — Download (Mbps)" />
-          <BlankField label="Velocidade — Upload (Mbps)" />
-          <BlankField label="Latência (ms)" />
-          <BlankField label="Atenuação do cabo (dB)" />
-          <BlankField label="Modelo do ONU/Roteador" />
-          <BlankField label="Serial do ONU/Roteador" />
+          <BlankField label={t('opticalSignalOnu')} />
+          <BlankField label={t('opticalSignalOlt')} />
+          <BlankField label={t('speedDownload')} />
+          <BlankField label={t('speedUpload')} />
+          <BlankField label={t('latency')} />
+          <BlankField label={t('cableAttenuation')} />
+          <BlankField label={t('onuModel')} />
+          <BlankField label={t('onuSerial')} />
         </div>
 
         <div className="mt-4 grid grid-cols-2 gap-y-2 text-sm">
-          <YesNo label="Conectores ópticos limpos / trocados" />
-          <YesNo label="Cabo de fibra reaproveitado / íntegro" />
-          <YesNo label="WiFi 2.4 GHz funcionando" />
-          <YesNo label="WiFi 5 GHz funcionando" />
-          <YesNo label="ONU substituída" />
-          <YesNo label="Roteador substituído" />
-          <YesNo label="Cliente assistiu ao teste de velocidade" />
-          <YesNo label="Cliente satisfeito com o atendimento" />
+          <YesNo label={t('opticalConnectorsClean')} yes={tc('yes')} no={tc('no')} />
+          <YesNo label={t('fiberCableIntact')} yes={tc('yes')} no={tc('no')} />
+          <YesNo label={t('wifi24Working')} yes={tc('yes')} no={tc('no')} />
+          <YesNo label={t('wifi5Working')} yes={tc('yes')} no={tc('no')} />
+          <YesNo label={t('onuReplaced')} yes={tc('yes')} no={tc('no')} />
+          <YesNo label={t('routerReplaced')} yes={tc('yes')} no={tc('no')} />
+          <YesNo label={t('customerWatchedSpeedTest')} yes={tc('yes')} no={tc('no')} />
+          <YesNo label={t('customerSatisfied')} yes={tc('yes')} no={tc('no')} />
         </div>
       </Section>
 
       {/* Observações do técnico (linhas pra escrever) */}
-      <Section title="Observações do técnico">
+      <Section title={t('technicianNotes')}>
         <BlankLines lines={4} />
       </Section>
 
       {/* Solução / fechamento — se já preenchido na O.S, mostra. Caso contrário,
           deixa linhas em branco. */}
-      <Section title="Descrição do fechamento / Solução aplicada">
+      <Section title={t('closeDescription')}>
         {os.closeDescription ? (
           <p className="whitespace-pre-wrap text-sm">{os.closeDescription}</p>
         ) : (
@@ -258,19 +264,19 @@ export default function ServiceOrderPrintPage() {
       </Section>
 
       {/* Assinaturas */}
-      <Section title="Atendimento e assinaturas">
+      <Section title={t('serviceAndSignatures')}>
         <div className="grid grid-cols-2 gap-x-8 gap-y-4 text-sm">
-          <BlankField label="Data e hora do atendimento" />
-          <BlankField label="Duração do atendimento" />
+          <BlankField label={t('serviceDateTime')} />
+          <BlankField label={t('serviceDuration')} />
         </div>
         <div className="mt-8 grid grid-cols-2 gap-x-8">
-          <SignatureLine label="Assinatura do técnico" />
-          <SignatureLine label="Assinatura do cliente" />
+          <SignatureLine label={t('technicianSignature')} />
+          <SignatureLine label={t('customerSignature')} />
         </div>
       </Section>
 
       <footer className="mt-10 border-t border-slate-300 pt-3 text-[10px] text-slate-500">
-        Documento de campo — uso interno do provedor. ID da O.S:{' '}
+        {t('footerNote')}{' '}
         <span className="font-mono">{os.id}</span>
       </footer>
 
@@ -352,12 +358,12 @@ function BlankField({ label }: { label: string }) {
 }
 
 /** ( ) Sim    ( ) Não pra checklist. */
-function YesNo({ label }: { label: string }) {
+function YesNo({ label, yes, no }: { label: string; yes: string; no: string }) {
   return (
     <div className="flex items-center gap-3">
       <span className="text-sm">{label}:</span>
       <span className="ml-auto whitespace-nowrap text-sm">
-        ( ) Sim &nbsp; ( ) Não
+        ( ) {yes} &nbsp; ( ) {no}
       </span>
     </div>
   );

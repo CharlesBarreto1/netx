@@ -1,13 +1,17 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
 import { Button } from '@/components/ui/Button';
 import { PageLoader } from '@/components/ui/Spinner';
-import { hrApi, PAYSLIP_STATUS_LABELS, type Payslip } from '@/lib/hr-api';
+import { hrApi, type Payslip } from '@/lib/hr-api';
 
 export default function MeRendimentosPage() {
+  const t = useTranslations('me.earnings');
+  const tc = useTranslations('common');
+  const te = useTranslations('hr.enums');
   const { data, isLoading } = useSWR<{ payslips: Payslip[] }>('/v1/hr/me/earnings', () => hrApi.meEarnings());
   const [open, setOpen] = useState<string | null>(null);
 
@@ -22,13 +26,13 @@ export default function MeRendimentosPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-2xl font-bold tracking-tight">Meus rendimentos</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Holerites e comprovantes de pagamento.</p>
+        <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400">{t('subtitle')}</p>
       </header>
 
       {payslips.length === 0 && (
         <p className="rounded-md border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700">
-          Nenhum holerite disponível ainda.
+          {t('empty')}
         </p>
       )}
 
@@ -38,12 +42,12 @@ export default function MeRendimentosPage() {
             <div className="flex items-center justify-between">
               <div>
                 <strong>{p.referenceMonth.slice(0, 7)}</strong>
-                <span className="ml-2 text-xs text-slate-500">{PAYSLIP_STATUS_LABELS[p.status]}</span>
+                <span className="ml-2 text-xs text-slate-500">{te(`payslipStatus.${p.status}`)}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-mono font-semibold">R$ {p.netAmount.toFixed(2)}</span>
                 <Button size="sm" variant="ghost" onClick={() => setOpen(open === p.id ? null : p.id)}>
-                  {open === p.id ? 'Fechar' : 'Detalhes'}
+                  {open === p.id ? tc('close') : tc('seeDetails')}
                 </Button>
               </div>
             </div>
@@ -59,9 +63,9 @@ export default function MeRendimentosPage() {
                 ))}
                 {p.payment && (
                   <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
-                    <span>Pago em {new Date(p.payment.paidAt).toLocaleDateString('pt-BR')}</span>
+                    <span>{t('paidOn', { date: new Date(p.payment.paidAt).toLocaleDateString('pt-BR') })}</span>
                     {p.payment.receiptStorageKey && (
-                      <Button size="sm" variant="ghost" onClick={() => receipt(p)}>Comprovante</Button>
+                      <Button size="sm" variant="ghost" onClick={() => receipt(p)}>{t('receipt')}</Button>
                     )}
                   </div>
                 )}

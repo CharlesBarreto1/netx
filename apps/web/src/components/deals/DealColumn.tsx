@@ -3,6 +3,7 @@
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Plus } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { Button } from '@/components/ui/Button';
 import { SimpleTooltip } from '@/components/ui/tooltip';
@@ -31,6 +32,7 @@ export function DealColumn({
   onOpenDeal: (dealId: string) => void;
   activeDealId?: string | null;
 }) {
+  const t = useTranslations('dealsComponents');
   const formatMoney = useFormatMoney();
   const { setNodeRef, isOver } = useDroppable({
     id: `stage:${column.stage.id}`,
@@ -61,12 +63,12 @@ export function DealColumn({
           {column.totalCount}
         </span>
 
-        <SimpleTooltip label="Novo deal neste estágio" shortcut="N">
+        <SimpleTooltip label={t('column.newDealInStage')} shortcut="N">
           <Button
             size="icon-sm"
             variant="ghost"
             onClick={() => onAddDeal(column.stage.id)}
-            aria-label="Novo deal"
+            aria-label={t('column.newDeal')}
             className="ml-auto"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -79,7 +81,7 @@ export function DealColumn({
         <span className="tabular">
           {formatMoney(column.totalValue, undefined, { short: true })}
         </span>
-        <span className="tabular">{column.stage.probability}% prob.</span>
+        <span className="tabular">{t('column.probabilityShort', { value: column.stage.probability })}</span>
       </div>
 
       {/* Cards */}
@@ -109,13 +111,13 @@ export function DealColumn({
               'focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring',
             )}
           >
-            Arraste um deal aqui ou clique para criar
+            {t('column.emptyDropHint')}
           </button>
         )}
 
         {column.hasMore && (
           <div className="py-2 text-center text-2xs text-text-subtle">
-            + mais deals (aumente o limite)
+            {t('column.moreDeals')}
           </div>
         )}
       </div>

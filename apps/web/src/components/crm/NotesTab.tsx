@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 
@@ -18,6 +19,8 @@ export function NotesTab({ customerId }: { customerId: string }) {
   const { data, isLoading, error, mutate } = useSWR<CustomerNote[]>(key);
   const canManage = hasPermission('customers.notes.manage');
   const sessionUserId = getSession()?.user.id;
+  const t = useTranslations('crmTabs');
+  const tc = useTranslations('common');
 
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<CustomerNote | null>(null);
@@ -39,7 +42,7 @@ export function NotesTab({ customerId }: { customerId: string }) {
   if (error) {
     return (
       <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-        Falha ao carregar anotações.
+        {t('notes.loadError')}
       </div>
     );
   }
@@ -51,7 +54,7 @@ export function NotesTab({ customerId }: { customerId: string }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-          {data?.length ?? 0} anotação(ões)
+          {t('notes.count', { count: data?.length ?? 0 })}
         </h3>
         {canManage && (
           <Button
@@ -61,21 +64,21 @@ export function NotesTab({ customerId }: { customerId: string }) {
               setOpen(true);
             }}
           >
-            Nova anotação
+            {t('notes.new')}
           </Button>
         )}
       </div>
 
       {(!data || data.length === 0) && (
         <p className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
-          Nenhuma anotação registrada.
+          {t('notes.empty')}
         </p>
       )}
 
       {pinned.length > 0 && (
         <section>
           <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Fixadas
+            {t('notes.pinnedSection')}
           </h4>
           <ul className="space-y-2">
             {pinned.map((n) => (
@@ -99,7 +102,7 @@ export function NotesTab({ customerId }: { customerId: string }) {
         <section>
           {pinned.length > 0 && (
             <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              Demais
+              {t('notes.othersSection')}
             </h4>
           )}
           <ul className="space-y-2">
@@ -137,9 +140,9 @@ export function NotesTab({ customerId }: { customerId: string }) {
         onConfirm={() => {
           if (confirmDelete) return handleDelete(confirmDelete);
         }}
-        title="Excluir anotação"
-        message="Essa ação não pode ser desfeita."
-        confirmLabel="Excluir"
+        title={t('notes.deleteTitle')}
+        message={t('notes.deleteMessage')}
+        confirmLabel={tc('delete')}
         variant="danger"
         loading={deleting}
       />
@@ -160,10 +163,12 @@ function NoteCard({
   onDelete: () => void;
   canManage: boolean;
 }) {
+  const t = useTranslations('crmTabs');
+  const tc = useTranslations('common');
   return (
     <li className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
       <div className="flex items-center gap-2">
-        {note.pinned && <Badge tone="warning">Fixada</Badge>}
+        {note.pinned && <Badge tone="warning">{t('notes.pinned')}</Badge>}
         {note.title && <strong className="text-sm">{note.title}</strong>}
       </div>
       <p className="mt-1 whitespace-pre-wrap text-sm text-slate-800 dark:text-slate-100">
@@ -171,7 +176,7 @@ function NoteCard({
       </p>
       <div className="mt-2 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
         <span title={formatDateTime(note.createdAt)}>
-          {note.authorName ?? 'Autor desconhecido'} · {relativeTime(note.createdAt)}
+          {note.authorName ?? t('notes.unknownAuthor')} · {relativeTime(note.createdAt)}
         </span>
         {canManage && ownedByMe && (
           <div className="flex items-center gap-2">
@@ -180,14 +185,14 @@ function NoteCard({
               className="text-brand-700 hover:underline dark:text-brand-300"
               onClick={onEdit}
             >
-              Editar
+              {tc('edit')}
             </button>
             <button
               type="button"
               className="text-red-600 hover:underline dark:text-red-400"
               onClick={onDelete}
             >
-              Excluir
+              {tc('delete')}
             </button>
           </div>
         )}
@@ -209,6 +214,8 @@ function NoteFormModal({
   note: CustomerNote | null;
   onSaved: () => void;
 }) {
+  const t = useTranslations('crmTabs');
+  const tc = useTranslations('common');
   const [title, setTitle] = useState(note?.title ?? '');
   const [body, setBody] = useState(note?.body ?? '');
   const [pinned, setPinned] = useState(note?.pinned ?? false);
@@ -251,15 +258,15 @@ function NoteFormModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={note ? 'Editar anotação' : 'Nova anotação'}
+      title={note ? t('notes.editTitle') : t('notes.newTitle')}
       size="lg"
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={saving}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button form="note-form" type="submit" loading={saving}>
-            Salvar
+            {tc('save')}
           </Button>
         </>
       }
@@ -271,11 +278,11 @@ function NoteFormModal({
           </div>
         )}
         <div>
-          <Label>Título</Label>
+          <Label>{t('notes.title')}</Label>
           <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={255} />
         </div>
         <div>
-          <Label required>Corpo</Label>
+          <Label required>{t('notes.body')}</Label>
           <Textarea
             rows={6}
             maxLength={10_000}
@@ -291,7 +298,7 @@ function NoteFormModal({
             onChange={(e) => setPinned(e.target.checked)}
             className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
           />
-          Fixar esta anotação no topo
+          {t('notes.pinHint')}
         </label>
       </form>
     </Modal>

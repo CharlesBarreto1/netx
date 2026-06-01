@@ -26,6 +26,7 @@
  * Layout responsivo: SVG cresce com o container; portas ficam empilhadas
  * verticalmente com PORT_HEIGHT fixo. Cilindro mais longo determina altura.
  */
+import { useTranslations } from 'next-intl';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
 
@@ -89,6 +90,7 @@ export function EnclosureSchematic({
   onEditSplice,
   onDeleteSplice,
 }: Props) {
+  const t = useTranslations('opticalComponents');
   const svgRef = useRef<SVGSVGElement>(null);
 
   // ─── Particiona cabos por convenção endpointA/endpointB ───────────────────
@@ -122,7 +124,7 @@ export function EnclosureSchematic({
       setBudgetKey(null);
       return;
     }
-    const t = setTimeout(() => {
+    const timer = setTimeout(() => {
       setBudgetKey(
         powerBudgetTraversalApi.atPath({
           cableId: hoverPort.source.id,
@@ -130,7 +132,7 @@ export function EnclosureSchematic({
         }),
       );
     }, 400);
-    return () => clearTimeout(t);
+    return () => clearTimeout(timer);
   }, [hoverPort]);
   const { data: powerBudget } = useSWR<PowerBudgetAtResult>(budgetKey);
 
@@ -201,7 +203,7 @@ export function EnclosureSchematic({
             ports={ports}
             onEdit={() => onEditSplice(s.id)}
             onDelete={() => {
-              if (confirm('Cortar esta fusão?')) onDeleteSplice(s.id);
+              if (confirm(t('enclosureSchematic.cutSpliceConfirm'))) onDeleteSplice(s.id);
             }}
           />
         ))}
@@ -667,6 +669,7 @@ function PortHotzone({
 
 function SelectedHint({ port }: { port: PortPosition }) {
   // Pequena label flutuante avisando o operador o que fazer agora.
+  const t = useTranslations('opticalComponents');
   const x = port.x + (port.side === 'left' ? 50 : -50);
   return (
     <g transform={`translate(${x}, ${port.y - 28})`}>
@@ -681,7 +684,7 @@ function SelectedHint({ port }: { port: PortPosition }) {
         strokeWidth={1}
       />
       <text textAnchor="middle" y={4} fontSize={11} fontWeight={600} fill="#0f172a">
-        Clique outra porta livre →
+        {t('enclosureSchematic.selectAnotherPort')}
       </text>
     </g>
   );
@@ -695,38 +698,42 @@ function PowerTooltip({
   port: PortPosition;
   budget: PowerBudgetAtResult | null;
 }) {
+  const t = useTranslations('opticalComponents');
   // Posiciona ao lado da porta (oposto da direção do cilindro).
   const x = port.x + (port.side === 'left' ? 90 : -90);
   const y = port.y + 36;
   const W = 220;
   const H = budget?.resolved ? 84 : budget ? 62 : 46;
 
-  let title = 'Calculando…';
+  let title = t('enclosureSchematic.calculating');
   let bodyLines: { text: string; bold?: boolean; color?: string }[] = [];
 
   if (budget) {
     if (budget.resolved && budget.predictedDbm != null && budget.origin) {
-      title = `OLT ${budget.origin.oltName} · PON ${budget.origin.ponIndex}`;
+      title = t('enclosureSchematic.tooltipOrigin', {
+        oltName: budget.origin.oltName,
+        ponIndex: budget.origin.ponIndex,
+      });
       const dbm = budget.predictedDbm;
       const status =
         dbm < -28
-          ? { color: '#dc2626', label: 'CRÍTICO — sem link' }
+          ? { color: '#dc2626', label: t('enclosureSchematic.statusCritical') }
           : dbm < -25
-            ? { color: '#f59e0b', label: 'ATENÇÃO — margem baixa' }
-            : { color: '#059669', label: 'OK' };
+            ? { color: '#f59e0b', label: t('enclosureSchematic.statusWarning') }
+            : { color: '#059669', label: t('enclosureSchematic.statusOk') };
       bodyLines = [
-        { text: `Loss total: ${budget.totalLossDb.toFixed(2)} dB` },
+        { text: t('enclosureSchematic.totalLoss', { value: budget.totalLossDb.toFixed(2) }) },
         {
-          text: `Pot. prevista: ${dbm.toFixed(2)} dBm`,
+          text: t('enclosureSchematic.predictedPower', { value: dbm.toFixed(2) }),
           bold: true,
           color: status.color,
         },
         { text: status.label, color: status.color },
       ];
     } else {
-      title = '⚠ Topologia incompleta';
+      title = t('enclosureSchematic.incompleteTopology');
       bodyLines = [
-        { text: budget.unresolvedReason ?? 'Caminho não resolvido' },
+        { text: budget.unresolvedReason ?? t('enclosureSchematic.unresolvedPath') },
       ];
     }
   }
@@ -776,7 +783,7 @@ function PowerTooltip({
           fontSize={10}
           fill="#94a3b8"
         >
-          Calculando potência…
+          {t('enclosureSchematic.calculatingPower')}
         </text>
       )}
     </g>

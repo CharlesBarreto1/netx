@@ -1,3 +1,5 @@
+import { useTranslations } from 'next-intl';
+
 import { cn } from '@/lib/cn';
 
 type Tone =
@@ -69,11 +71,22 @@ export function statusTone(status: string): Tone {
   }
 }
 
-export const STATUS_LABEL: Record<string, string> = {
-  LEAD: 'Lead',
-  PROSPECT: 'Prospect',
-  ACTIVE: 'Ativo',
-  SUSPENDED: 'Suspenso',
-  INACTIVE: 'Inativo',
-  CHURNED: 'Churn',
-};
+const STATUS_KEYS = [
+  'LEAD',
+  'PROSPECT',
+  'ACTIVE',
+  'SUSPENDED',
+  'INACTIVE',
+  'CHURNED',
+] as const;
+
+/**
+ * Mapa de status de cliente -> label traduzido.
+ * Hook (client-only): resolve via i18n no namespace `components.badge`.
+ */
+export function useStatusLabel(): Record<string, string> {
+  const t = useTranslations('components.badge');
+  return Object.fromEntries(
+    STATUS_KEYS.map((key) => [key, t(`status.${key}`)]),
+  );
+}

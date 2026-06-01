@@ -6,7 +6,7 @@ import { useMemo } from 'react';
 import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 
-import { Badge, STATUS_LABEL, statusTone } from '@/components/ui/Badge';
+import { Badge, statusTone, useStatusLabel } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Input, Label, Select } from '@/components/ui/Input';
 import { PageLoader } from '@/components/ui/Spinner';
@@ -64,6 +64,7 @@ export default function CustomersListPage() {
   const tList = useTranslations('customers.list');
   const tType = useTranslations('customers.type');
   const tCommon = useTranslations('common');
+  const STATUS_LABEL = useStatusLabel();
 
   const apiQs = toQuery(filters);
   const { data, isLoading, error } = useSWR<Paginated<Customer>>(

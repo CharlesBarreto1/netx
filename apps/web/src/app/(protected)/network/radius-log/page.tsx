@@ -1,6 +1,7 @@
 'use client';
 
 import { CheckCircle2, RefreshCw, XCircle } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useState } from 'react';
 import useSWR from 'swr';
@@ -28,6 +29,8 @@ const PAGE_SIZE = 50;
  * Auto-refresh a cada 30s (operador-NOC pode deixar aberto).
  */
 export default function RadiusLogPage() {
+  const t = useTranslations('network.radiusLog');
+  const tc = useTranslations('common');
   const [page, setPage] = useState(1);
   const [username, setUsername] = useState('');
   const [status, setStatus] = useState<'' | 'accepted' | 'rejected'>('');
@@ -64,17 +67,14 @@ export default function RadiusLogPage() {
     <div className="space-y-5">
       <header className="flex items-end justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Log RADIUS</h1>
-          <p className="text-sm text-text-muted">
-            Tentativas de autenticación recibidas por el RADIUS — aceptadas y
-            rechazadas, con cliente identificado.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+          <p className="text-sm text-text-muted">{t('subtitle')}</p>
         </div>
         <Button
           size="sm"
           variant="ghost"
           onClick={() => void mutate()}
-          title="Recargar"
+          title={t('reload')}
         >
           <RefreshCw className="h-3.5 w-3.5" />
         </Button>
@@ -82,7 +82,7 @@ export default function RadiusLogPage() {
 
       <div className="grid gap-3 rounded-md border border-border bg-surface p-3 md:grid-cols-5">
         <div className="md:col-span-2">
-          <Label htmlFor="rl-username">Username</Label>
+          <Label htmlFor="rl-username">{t('username')}</Label>
           <Input
             id="rl-username"
             value={username}
@@ -94,7 +94,7 @@ export default function RadiusLogPage() {
           />
         </div>
         <div>
-          <Label htmlFor="rl-status">Status</Label>
+          <Label htmlFor="rl-status">{tc('status')}</Label>
           <Select
             id="rl-status"
             value={status}
@@ -103,13 +103,13 @@ export default function RadiusLogPage() {
               setPage(1);
             }}
           >
-            <option value="">Todos</option>
-            <option value="accepted">Aceptados</option>
-            <option value="rejected">Rechazados</option>
+            <option value="">{tc('all')}</option>
+            <option value="accepted">{t('statusAccepted')}</option>
+            <option value="rejected">{t('statusRejected')}</option>
           </Select>
         </div>
         <div>
-          <Label htmlFor="rl-from">Desde</Label>
+          <Label htmlFor="rl-from">{t('from')}</Label>
           <Input
             id="rl-from"
             type="datetime-local"
@@ -121,7 +121,7 @@ export default function RadiusLogPage() {
           />
         </div>
         <div>
-          <Label htmlFor="rl-to">Hasta</Label>
+          <Label htmlFor="rl-to">{t('to')}</Label>
           <Input
             id="rl-to"
             type="datetime-local"
@@ -134,10 +134,10 @@ export default function RadiusLogPage() {
         </div>
         <div className="flex items-end md:col-span-5">
           <Button variant="ghost" size="sm" onClick={clearFilters}>
-            Limpiar
+            {tc('clear')}
           </Button>
           <span className="ml-3 text-xs text-text-muted">
-            {total} {total === 1 ? 'registro' : 'registros'}
+            {t('recordCount', { count: total })}
           </span>
         </div>
       </div>
@@ -146,13 +146,13 @@ export default function RadiusLogPage() {
         <table className="min-w-full text-sm">
           <thead className="bg-surface-muted text-left text-[11px] font-semibold uppercase tracking-wider text-text-muted">
             <tr>
-              <th className="px-3 py-2">Cuándo</th>
-              <th className="px-3 py-2">Resultado</th>
-              <th className="px-3 py-2">Username</th>
-              <th className="px-3 py-2">Cliente</th>
-              <th className="px-3 py-2">Contrato</th>
+              <th className="px-3 py-2">{t('colWhen')}</th>
+              <th className="px-3 py-2">{t('colResult')}</th>
+              <th className="px-3 py-2">{t('username')}</th>
+              <th className="px-3 py-2">{t('colCustomer')}</th>
+              <th className="px-3 py-2">{t('colContract')}</th>
               <th className="px-3 py-2">Calling Station</th>
-              <th className="px-3 py-2">Motivo</th>
+              <th className="px-3 py-2">{t('colReason')}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -162,7 +162,7 @@ export default function RadiusLogPage() {
                   colSpan={7}
                   className="px-3 py-6 text-center text-text-muted"
                 >
-                  Sin registros para el filtro actual.
+                  {t('empty')}
                 </td>
               </tr>
             ) : (
@@ -175,12 +175,12 @@ export default function RadiusLogPage() {
                     {e.accepted ? (
                       <Badge tone="success">
                         <CheckCircle2 className="mr-1 inline h-3 w-3" />
-                        Aceptado
+                        {t('accepted')}
                       </Badge>
                     ) : (
                       <Badge tone="danger">
                         <XCircle className="mr-1 inline h-3 w-3" />
-                        Rechazado
+                        {t('rejected')}
                       </Badge>
                     )}
                   </td>
@@ -195,7 +195,7 @@ export default function RadiusLogPage() {
                       </Link>
                     ) : (
                       <span className="text-xs text-text-subtle">
-                        — sin contrato vinculado —
+                        {t('noContractLinked')}
                       </span>
                     )}
                   </td>
@@ -215,7 +215,7 @@ export default function RadiusLogPage() {
                     {e.callingStationId ?? '—'}
                   </td>
                   <td className="px-3 py-2 text-2xs text-text-muted">
-                    {e.reason ?? (e.accepted ? '—' : 'Sin detalle')}
+                    {e.reason ?? (e.accepted ? '—' : t('noDetail'))}
                   </td>
                 </tr>
               ))
@@ -232,7 +232,7 @@ export default function RadiusLogPage() {
             disabled={page <= 1}
             onClick={() => setPage((p) => Math.max(1, p - 1))}
           >
-            Anterior
+            {tc('previous')}
           </Button>
           <span>
             {page} / {totalPages}
@@ -243,17 +243,15 @@ export default function RadiusLogPage() {
             disabled={page >= totalPages}
             onClick={() => setPage((p) => p + 1)}
           >
-            Siguiente
+            {tc('next')}
           </Button>
         </div>
       )}
 
       <p className="text-2xs text-text-muted">
-        Para que aparezcan motivos de rechazo (usuario inexistente, contraseña
-        incorrecta, etc.) hay que configurar la policy{' '}
-        <code className="font-mono">post-auth-fail</code> del FreeRADIUS para
-        escribir <code className="font-mono">Module-Failure-Message</code> en{' '}
-        <code className="font-mono">radpostauth.class</code>.
+        {t.rich('help', {
+          code: (chunks) => <code className="font-mono">{chunks}</code>,
+        })}
       </p>
     </div>
   );

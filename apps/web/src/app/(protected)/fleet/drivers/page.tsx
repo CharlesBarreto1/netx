@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -24,6 +25,8 @@ function expiryWarn(date: string | null): boolean {
 }
 
 export default function FleetDriversPage() {
+  const t = useTranslations('fleet.drivers');
+  const tc = useTranslations('common');
   const { data, isLoading, error, mutate } = useSWR<Paginated<Driver>>(
     fleetApi.driversPath({ pageSize: 200 }),
     () => fleetApi.listDrivers({ pageSize: 200 }),
@@ -53,24 +56,24 @@ export default function FleetDriversPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Motoristas</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Condutores da frota. O vencimento da CNH é destacado quando está próximo.
+            {t('subtitle')}
           </p>
         </div>
-        {canWrite && <Button onClick={() => setCreating(true)}>Novo motorista</Button>}
+        {canWrite && <Button onClick={() => setCreating(true)}>{t('new')}</Button>}
       </header>
 
       {isLoading && <PageLoader />}
       {error && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-          Falha ao carregar motoristas.
+          {t('loadError')}
         </div>
       )}
 
       {data && rows.length === 0 && (
         <p className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
-          Nenhum motorista cadastrado ainda.
+          {t('empty')}
         </p>
       )}
 
@@ -80,13 +83,13 @@ export default function FleetDriversPage() {
             <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
               <thead className="bg-slate-50 dark:bg-slate-900/40">
                 <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  <th className="px-4 py-3">Nome</th>
-                  <th className="px-4 py-3">Documento</th>
-                  <th className="px-4 py-3">CNH</th>
-                  <th className="px-4 py-3">Vencimento CNH</th>
-                  <th className="px-4 py-3">Telefone</th>
-                  <th className="px-4 py-3">Status</th>
-                  {canWrite && <th className="px-4 py-3 text-right">Ações</th>}
+                  <th className="px-4 py-3">{tc('name')}</th>
+                  <th className="px-4 py-3">{t('document')}</th>
+                  <th className="px-4 py-3">{t('license')}</th>
+                  <th className="px-4 py-3">{t('licenseExpiry')}</th>
+                  <th className="px-4 py-3">{tc('phone')}</th>
+                  <th className="px-4 py-3">{tc('status')}</th>
+                  {canWrite && <th className="px-4 py-3 text-right">{tc('actions')}</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -126,14 +129,14 @@ export default function FleetDriversPage() {
                             : 'inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300'
                         }
                       >
-                        {d.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
+                        {d.status === 'ACTIVE' ? t('statusACTIVE') : t('statusINACTIVE')}
                       </span>
                     </td>
                     {canWrite && (
                       <td className="px-4 py-3 text-right">
-                        <Button variant="ghost" size="sm" onClick={() => setEditing(d)}>Editar</Button>
+                        <Button variant="ghost" size="sm" onClick={() => setEditing(d)}>{tc('edit')}</Button>
                         {canDelete && (
-                          <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(d)}>Excluir</Button>
+                          <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(d)}>{tc('delete')}</Button>
                         )}
                       </td>
                     )}
@@ -163,9 +166,9 @@ export default function FleetDriversPage() {
       {confirmDelete && (
         <ConfirmDialog
           open
-          title={`Excluir motorista "${confirmDelete.name}"?`}
-          message="O motorista é desativado e desvinculado dos veículos. O histórico de despesas fica preservado."
-          confirmLabel="Excluir"
+          title={t('deleteTitle', { name: confirmDelete.name })}
+          message={t('deleteMessage')}
+          confirmLabel={tc('delete')}
           loading={deleting}
           onConfirm={() => handleDelete(confirmDelete)}
           onClose={() => setConfirmDelete(null)}
@@ -184,6 +187,8 @@ function DriverFormModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('fleet.drivers');
+  const tc = useTranslations('common');
   const isNew = !initial;
   const [form, setForm] = useState<CreateDriverInput>({
     name: initial?.name ?? '',
@@ -200,7 +205,7 @@ function DriverFormModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name.trim()) return setError('Nome é obrigatório');
+    if (!form.name.trim()) return setError(t('nameRequired'));
     setSubmitting(true);
     try {
       const payload: CreateDriverInput = {
@@ -216,69 +221,69 @@ function DriverFormModal({
       else await fleetApi.updateDriver(initial!.id, payload);
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro ao salvar');
+      setError(err instanceof ApiError ? err.friendlyMessage : t('saveError'));
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Modal open onClose={onClose} title={isNew ? 'Novo motorista' : `Editar ${initial!.name}`}>
+    <Modal open onClose={onClose} title={isNew ? t('new') : t('editTitle', { name: initial!.name })}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
-          <Label htmlFor="name">Nome *</Label>
+          <Label htmlFor="name">{t('nameLabel')}</Label>
           <Input id="name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <Label htmlFor="document">Documento (CPF/CI)</Label>
+            <Label htmlFor="document">{t('documentLabel')}</Label>
             <Input id="document" value={form.document ?? ''} onChange={(e) => setForm({ ...form, document: e.target.value })} />
           </div>
           <div>
-            <Label htmlFor="phone">Telefone</Label>
+            <Label htmlFor="phone">{tc('phone')}</Label>
             <Input id="phone" value={form.phone ?? ''} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
           </div>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <Label htmlFor="cnh">CNH</Label>
+            <Label htmlFor="cnh">{t('license')}</Label>
             <Input id="cnh" value={form.licenseNumber ?? ''} onChange={(e) => setForm({ ...form, licenseNumber: e.target.value })} />
           </div>
           <div>
-            <Label htmlFor="cat">Categoria</Label>
+            <Label htmlFor="cat">{t('category')}</Label>
             <Input id="cat" value={form.licenseCategory ?? ''} onChange={(e) => setForm({ ...form, licenseCategory: e.target.value })} placeholder="A, B, AB..." />
           </div>
           <div>
-            <Label htmlFor="expiry">Vencimento CNH</Label>
+            <Label htmlFor="expiry">{t('licenseExpiry')}</Label>
             <Input id="expiry" type="date" value={form.licenseExpiry ?? ''} onChange={(e) => setForm({ ...form, licenseExpiry: e.target.value })} />
           </div>
         </div>
 
         <div>
-          <Label htmlFor="status">Status</Label>
+          <Label htmlFor="status">{tc('status')}</Label>
           <select
             id="status"
             className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
             value={form.status}
             onChange={(e) => setForm({ ...form, status: e.target.value as DriverStatus })}
           >
-            <option value="ACTIVE">Ativo</option>
-            <option value="INACTIVE">Inativo</option>
+            <option value="ACTIVE">{t('statusACTIVE')}</option>
+            <option value="INACTIVE">{t('statusINACTIVE')}</option>
           </select>
         </div>
 
         <div>
-          <Label htmlFor="notes">Observações</Label>
+          <Label htmlFor="notes">{tc('notes')}</Label>
           <Textarea id="notes" rows={2} value={form.notes ?? ''} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
         </div>
 
         {error && <FieldError>{error}</FieldError>}
 
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>Cancelar</Button>
-          <Button type="submit" loading={submitting}>{isNew ? 'Criar' : 'Salvar'}</Button>
+          <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>{tc('cancel')}</Button>
+          <Button type="submit" loading={submitting}>{isNew ? tc('create') : tc('save')}</Button>
         </div>
       </form>
     </Modal>

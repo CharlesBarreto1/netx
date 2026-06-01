@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -12,8 +13,6 @@ import { ApiError } from '@/lib/api';
 import { hasPermission } from '@/lib/session';
 import {
   hrApi,
-  EMPLOYEE_STATUS_LABELS,
-  EMPLOYMENT_TYPE_LABELS,
   type CreateEmployeeInput,
   type Employee,
   type EmployeeStatus,
@@ -32,6 +31,8 @@ const STATUS_BADGE: Record<EmployeeStatus, string> = {
 };
 
 export default function EmployeesPage() {
+  const t = useTranslations('hr.employees');
+  const tc = useTranslations('common');
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<EmployeeStatus | ''>('');
   const query = { pageSize: 200, ...(search ? { search } : {}), ...(status ? { status } : {}) };
@@ -47,17 +48,17 @@ export default function EmployeesPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Colaboradores</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Cadastro de empleados — dados, salário, jornada, documentos e ponto.
+            {t('subtitle')}
           </p>
         </div>
-        {canWrite && <Button onClick={() => setCreating(true)}>Novo colaborador</Button>}
+        {canWrite && <Button onClick={() => setCreating(true)}>{t('new')}</Button>}
       </header>
 
       <div className="flex flex-wrap gap-2">
         <Input
-          placeholder="Buscar por nome, documento, cargo…"
+          placeholder={t('searchPlaceholder')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="max-w-xs"
@@ -67,9 +68,9 @@ export default function EmployeesPage() {
           value={status}
           onChange={(e) => setStatus(e.target.value as EmployeeStatus | '')}
         >
-          <option value="">Todos os status</option>
+          <option value="">{t('allStatuses')}</option>
           {STATUSES.map((s) => (
-            <option key={s} value={s}>{EMPLOYEE_STATUS_LABELS[s]}</option>
+            <option key={s} value={s}>{t(`status.${s}`)}</option>
           ))}
         </select>
       </div>
@@ -77,13 +78,13 @@ export default function EmployeesPage() {
       {isLoading && <PageLoader />}
       {error && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-          Falha ao carregar colaboradores.
+          {t('loadError')}
         </div>
       )}
 
       {data && rows.length === 0 && (
         <p className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
-          Nenhum colaborador cadastrado.
+          {t('empty')}
         </p>
       )}
 
@@ -93,13 +94,13 @@ export default function EmployeesPage() {
             <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
               <thead className="bg-slate-50 dark:bg-slate-900/40">
                 <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  <th className="px-4 py-3">Matrícula</th>
-                  <th className="px-4 py-3">Nome</th>
-                  <th className="px-4 py-3">Cargo</th>
-                  <th className="px-4 py-3">Departamento</th>
-                  <th className="px-4 py-3">Vínculo</th>
-                  <th className="px-4 py-3">Login</th>
-                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">{t('col.registration')}</th>
+                  <th className="px-4 py-3">{tc('name')}</th>
+                  <th className="px-4 py-3">{t('col.position')}</th>
+                  <th className="px-4 py-3">{t('col.department')}</th>
+                  <th className="px-4 py-3">{t('col.employmentType')}</th>
+                  <th className="px-4 py-3">{t('col.login')}</th>
+                  <th className="px-4 py-3">{tc('status')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -113,17 +114,17 @@ export default function EmployeesPage() {
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{e.position ?? '—'}</td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{e.department ?? '—'}</td>
-                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{EMPLOYMENT_TYPE_LABELS[e.employmentType]}</td>
+                    <td className="px-4 py-3 text-slate-600 dark:text-slate-300">{t(`employmentType.${e.employmentType}`)}</td>
                     <td className="px-4 py-3 text-xs">
                       {e.user ? (
                         <span className="text-green-700 dark:text-green-400">{e.user.email}</span>
                       ) : (
-                        <span className="text-slate-400">sem login</span>
+                        <span className="text-slate-400">{t('noLogin')}</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-xs ${STATUS_BADGE[e.status]}`}>
-                        {EMPLOYEE_STATUS_LABELS[e.status]}
+                        {t(`status.${e.status}`)}
                       </span>
                     </td>
                   </tr>
@@ -148,6 +149,8 @@ export default function EmployeesPage() {
 }
 
 function EmployeeCreateModal({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+  const t = useTranslations('hr.employees');
+  const tc = useTranslations('common');
   const [form, setForm] = useState<CreateEmployeeInput>({
     fullName: '',
     document: '',
@@ -168,9 +171,9 @@ function EmployeeCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.fullName.trim()) return setError('Nome é obrigatório');
+    if (!form.fullName.trim()) return setError(t('error.nameRequired'));
     if (form.provisionUser && !form.email?.trim())
-      return setError('Para criar login, informe o email.');
+      return setError(t('error.emailRequiredForLogin'));
     setSubmitting(true);
     setError(null);
     try {
@@ -194,7 +197,7 @@ function EmployeeCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
         onSaved();
       }
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro ao salvar');
+      setError(err instanceof ApiError ? err.friendlyMessage : t('error.save'));
     } finally {
       setSubmitting(false);
     }
@@ -202,18 +205,17 @@ function EmployeeCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
 
   if (credentials) {
     return (
-      <Modal open onClose={onSaved} title="Colaborador criado — login gerado">
+      <Modal open onClose={onSaved} title={t('credentials.title')}>
         <div className="space-y-3 text-sm">
           <p className="text-slate-600 dark:text-slate-300">
-            Anote a senha inicial e repasse ao colaborador. Ela não será exibida de novo —
-            no primeiro acesso ele troca a senha.
+            {t('credentials.help')}
           </p>
           <div className="rounded-md border border-slate-200 bg-slate-50 p-3 font-mono dark:border-slate-700 dark:bg-slate-900/40">
-            <div>Email: <strong>{credentials.email}</strong></div>
-            <div>Senha: <strong>{credentials.initialPassword}</strong></div>
+            <div>{tc('email')}: <strong>{credentials.email}</strong></div>
+            <div>{t('credentials.password')}: <strong>{credentials.initialPassword}</strong></div>
           </div>
           <div className="flex justify-end">
-            <Button onClick={onSaved}>Entendi</Button>
+            <Button onClick={onSaved}>{t('credentials.gotIt')}</Button>
           </div>
         </div>
       </Modal>
@@ -221,7 +223,7 @@ function EmployeeCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
   }
 
   return (
-    <Modal open onClose={onClose} title="Novo colaborador" size="lg">
+    <Modal open onClose={onClose} title={t('new')} size="lg">
       <form onSubmit={handleSubmit} className="space-y-3">
         {error && (
           <div className="rounded-md bg-red-50 p-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
@@ -230,42 +232,42 @@ function EmployeeCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
         )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="sm:col-span-2">
-            <Label htmlFor="fullName">Nome completo *</Label>
+            <Label htmlFor="fullName">{t('field.fullName')} *</Label>
             <Input id="fullName" value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} required />
           </div>
           <div>
-            <Label htmlFor="document">Documento (CPF/CI)</Label>
+            <Label htmlFor="document">{t('field.document')}</Label>
             <Input id="document" value={form.document ?? ''} onChange={(e) => setForm({ ...form, document: e.target.value })} />
           </div>
           <div>
-            <Label htmlFor="phone">Telefone</Label>
+            <Label htmlFor="phone">{tc('phone')}</Label>
             <Input id="phone" value={form.phone ?? ''} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
           </div>
           <div>
-            <Label htmlFor="position">Cargo</Label>
+            <Label htmlFor="position">{t('field.position')}</Label>
             <Input id="position" value={form.position ?? ''} onChange={(e) => setForm({ ...form, position: e.target.value })} />
           </div>
           <div>
-            <Label htmlFor="department">Departamento</Label>
+            <Label htmlFor="department">{t('field.department')}</Label>
             <Input id="department" value={form.department ?? ''} onChange={(e) => setForm({ ...form, department: e.target.value })} />
           </div>
           <div>
-            <Label htmlFor="employmentType">Vínculo</Label>
+            <Label htmlFor="employmentType">{t('field.employmentType')}</Label>
             <select
               id="employmentType"
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
               value={form.employmentType}
               onChange={(e) => setForm({ ...form, employmentType: e.target.value as EmploymentType })}
             >
-              {TYPES.map((t) => <option key={t} value={t}>{EMPLOYMENT_TYPE_LABELS[t]}</option>)}
+              {TYPES.map((type) => <option key={type} value={type}>{t(`employmentType.${type}`)}</option>)}
             </select>
           </div>
           <div>
-            <Label htmlFor="hiredAt">Admissão</Label>
+            <Label htmlFor="hiredAt">{t('field.hiredAt')}</Label>
             <Input id="hiredAt" type="date" value={form.hiredAt ?? ''} onChange={(e) => setForm({ ...form, hiredAt: e.target.value })} />
           </div>
           <div>
-            <Label htmlFor="baseSalary">Salário base</Label>
+            <Label htmlFor="baseSalary">{t('field.baseSalary')}</Label>
             <Input
               id="baseSalary"
               type="number"
@@ -275,11 +277,11 @@ function EmployeeCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
             />
           </div>
           <div>
-            <Label htmlFor="workSchedule">Jornada</Label>
-            <Input id="workSchedule" placeholder="Seg-Sex 08:00-17:00" value={form.workSchedule ?? ''} onChange={(e) => setForm({ ...form, workSchedule: e.target.value })} />
+            <Label htmlFor="workSchedule">{t('field.workSchedule')}</Label>
+            <Input id="workSchedule" placeholder={t('field.workSchedulePlaceholder')} value={form.workSchedule ?? ''} onChange={(e) => setForm({ ...form, workSchedule: e.target.value })} />
           </div>
           <div className="sm:col-span-2">
-            <Label htmlFor="email">Email (login)</Label>
+            <Label htmlFor="email">{t('field.email')}</Label>
             <Input id="email" type="email" value={form.email ?? ''} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           </div>
         </div>
@@ -290,12 +292,12 @@ function EmployeeCreateModal({ onClose, onSaved }: { onClose: () => void; onSave
             checked={form.provisionUser ?? false}
             onChange={(e) => setForm({ ...form, provisionUser: e.target.checked })}
           />
-          Criar acesso ao portal do colaborador (gera login + senha inicial)
+          {t('provisionUser')}
         </label>
 
         <div className="flex justify-end gap-2 pt-2">
-          <Button type="button" variant="ghost" onClick={onClose}>Cancelar</Button>
-          <Button type="submit" loading={submitting}>Salvar</Button>
+          <Button type="button" variant="ghost" onClick={onClose}>{tc('cancel')}</Button>
+          <Button type="submit" loading={submitting}>{tc('save')}</Button>
         </div>
       </form>
     </Modal>

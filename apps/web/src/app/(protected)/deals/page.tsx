@@ -26,6 +26,8 @@ import { hasPermission } from '@/lib/session';
 export default function DealsPage() {
   const canCreate = hasPermission('deals.write');
   const tDeals = useTranslations('deals');
+  const tx = useTranslations('dealsExtra');
+  const tc = useTranslations('common');
 
   // Pipelines ativos do tenant
   const { data: pipelines } = useSWR<Pipeline[]>(pipelinesApi.path());
@@ -89,21 +91,21 @@ export default function DealsPage() {
                 {pipelines.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name}
-                    {p.isDefault ? ' · padrão' : ''}
+                    {p.isDefault ? tx('defaultSuffix') : ''}
                   </option>
                 ))}
               </Select>
             )}
 
-            <Button variant="outline" size="md" disabled aria-label="Configurar pipeline">
+            <Button variant="outline" size="md" disabled aria-label={tx('configurePipeline')}>
               <Settings2 className="h-3.5 w-3.5" />
-              <span className="hidden md:inline">Configurar</span>
+              <span className="hidden md:inline">{tx('configure')}</span>
             </Button>
 
             {canCreate && (
               <Button onClick={() => openNewDealAt()} disabled={!currentPipeline}>
                 <Plus className="h-3.5 w-3.5" />
-                Novo deal
+                {tc('new')} deal
               </Button>
             )}
           </div>
@@ -112,11 +114,11 @@ export default function DealsPage() {
         {/* Board */}
         <div className="min-h-0 flex-1">
           {!pipelines ? (
-            <PageLoader label="Carregando pipeline…" />
+            <PageLoader label={tx('loadingPipeline')} />
           ) : pipelines.length === 0 ? (
             <EmptyState />
           ) : boardLoading || !board ? (
-            <PageLoader label="Carregando pipeline…" />
+            <PageLoader label={tx('loadingPipeline')} />
           ) : (
             <DealBoard
               board={board}
@@ -152,13 +154,17 @@ export default function DealsPage() {
 }
 
 function EmptyState() {
+  const tx = useTranslations('dealsExtra');
   return (
     <div className="flex h-full items-center justify-center rounded-lg border border-dashed border-border surface-aurora">
       <div className="max-w-md text-center">
-        <h3 className="text-base font-semibold text-text">Nenhum pipeline configurado</h3>
+        <h3 className="text-base font-semibold text-text">{tx('noPipeline')}</h3>
         <p className="mt-1 text-sm text-text-muted">
-          Rode o seed (<code className="rounded bg-surface-muted px-1">npm run db:seed</code>)
-          ou crie o pipeline padrão pela API <code className="rounded bg-surface-muted px-1">POST /v1/crm/pipelines</code>.
+          {tx.rich('noPipelineHelp', {
+            code: (chunks) => (
+              <code className="rounded bg-surface-muted px-1">{chunks}</code>
+            ),
+          })}
         </p>
       </div>
     </div>

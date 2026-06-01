@@ -8,6 +8,7 @@
  */
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import useSWR, { mutate } from 'swr';
@@ -25,6 +26,8 @@ import { useFormatMoney } from '@/lib/use-money';
 import { sifenApi, type SifenDocument } from '@/lib/sifen-api';
 
 export default function FiscalDocumentDetailPage() {
+  const t = useTranslations('fiscal.documentDetail');
+  const tc = useTranslations('common');
   const params = useParams<{ id: string }>();
   const id = params?.id;
   const canCancel = hasPermission('sifen.cancel');
@@ -65,7 +68,7 @@ export default function FiscalDocumentDetailPage() {
       const x = await sifenApi.getXml(id);
       setXml(x);
     } catch (err) {
-      toast.error(`Falha ao baixar XML: ${(err as Error).message}`);
+      toast.error(t('toast.downloadXmlFailed', { message: (err as Error).message }));
     } finally {
       setXmlLoading(false);
     }
@@ -91,7 +94,7 @@ export default function FiscalDocumentDetailPage() {
 
   function copyCdc() {
     navigator.clipboard.writeText(safeDoc.cdc);
-    toast.success('CDC copiado');
+    toast.success(t('toast.cdcCopied'));
   }
 
   return (
@@ -99,27 +102,27 @@ export default function FiscalDocumentDetailPage() {
       <header className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <Link href="/fiscal/documents" className="text-xs text-brand-500 hover:underline">
-            ← Documentos fiscais
+            {t('backToList')}
           </Link>
           <h1 className="mt-1 text-2xl font-bold tracking-tight">
-            {TYPE_LABELS[doc.type]} {doc.numeroDocumento}
+            {t(`docType.${doc.type}`)} {doc.numeroDocumento}
           </h1>
           <p className="text-xs text-text-muted">
-            Emitido em {formatDateTime(doc.issuedAt)}
+            {t('issuedAt', { date: formatDateTime(doc.issuedAt) })}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={() => { void loadXml().then(downloadXml); }}>
-            {xmlLoading ? 'Baixando…' : 'Baixar XML'}
+            {xmlLoading ? t('downloadingXml') : t('downloadXml')}
           </Button>
           {doc.qrUrl && (
             <a href={doc.qrUrl} target="_blank" rel="noopener noreferrer">
-              <Button variant="outline" size="sm">Abrir no eKuatia ↗</Button>
+              <Button variant="outline" size="sm">{t('openInEkuatia')}</Button>
             </a>
           )}
           {canCancel && cancellable && (
             <Button variant="danger" size="sm" onClick={() => setCancelOpen(true)}>
-              Cancelar DTE
+              {t('cancelDte')}
             </Button>
           )}
         </div>
@@ -127,63 +130,63 @@ export default function FiscalDocumentDetailPage() {
 
       <div className="grid gap-4 md:grid-cols-2">
         {/* Identificação */}
-        <Card title="Identificação">
-          <Row label="Status">
+        <Card title={t('card.identification')}>
+          <Row label={tc('status')}>
             <StatusBadge status={doc.status} />
           </Row>
-          <Row label="Tipo">{TYPE_LABELS[doc.type] ?? doc.type}</Row>
-          <Row label="CDC">
+          <Row label={tc('type')}>{t(`docType.${doc.type}`)}</Row>
+          <Row label={t('field.cdc')}>
             <span className="font-mono text-xs break-all">{doc.cdc}</span>
             <button
               type="button"
               onClick={copyCdc}
               className="ml-2 text-xs text-brand-500 hover:underline"
             >
-              copiar
+              {t('copy')}
             </button>
           </Row>
-          <Row label="Estab/Ponto/Número">
+          <Row label={t('field.estabPointNumber')}>
             {doc.establecimiento}-{doc.puntoExpedicion}-{String(doc.numero).padStart(7, '0')}
           </Row>
-          <Row label="Emissor RUC">{doc.emisorRuc}</Row>
-          <Row label="Timbrado">{doc.emisorTimbrado}</Row>
-          {doc.signedAt && <Row label="Assinado">{formatDateTime(doc.signedAt)}</Row>}
-          {doc.sentAt && <Row label="Enviado">{formatDateTime(doc.sentAt)}</Row>}
-          {doc.approvedAt && <Row label="Aprovado">{formatDateTime(doc.approvedAt)}</Row>}
-          {doc.rejectedAt && <Row label="Rejeitado">{formatDateTime(doc.rejectedAt)}</Row>}
-          {doc.cancelledAt && <Row label="Cancelado">{formatDateTime(doc.cancelledAt)}</Row>}
+          <Row label={t('field.emisorRuc')}>{doc.emisorRuc}</Row>
+          <Row label={t('field.timbrado')}>{doc.emisorTimbrado}</Row>
+          {doc.signedAt && <Row label={t('field.signed')}>{formatDateTime(doc.signedAt)}</Row>}
+          {doc.sentAt && <Row label={t('field.sent')}>{formatDateTime(doc.sentAt)}</Row>}
+          {doc.approvedAt && <Row label={t('field.approved')}>{formatDateTime(doc.approvedAt)}</Row>}
+          {doc.rejectedAt && <Row label={t('field.rejected')}>{formatDateTime(doc.rejectedAt)}</Row>}
+          {doc.cancelledAt && <Row label={t('field.cancelled')}>{formatDateTime(doc.cancelledAt)}</Row>}
           {doc.status === 'APPROVED' && cancellable && (
-            <Row label="Janela de cancelamento">
-              <Badge tone="warning">expira em {hoursLeft.toFixed(1)}h</Badge>
+            <Row label={t('field.cancellationWindow')}>
+              <Badge tone="warning">{t('expiresIn', { hours: hoursLeft.toFixed(1) })}</Badge>
             </Row>
           )}
         </Card>
 
         {/* Receptor + total */}
-        <Card title="Receptor">
-          <Row label="Nome">{doc.receptorName ?? <em className="text-text-muted">Sem nome</em>}</Row>
-          <Row label="RUC/CI">{doc.receptorTaxId ?? <em className="text-text-muted">—</em>}</Row>
-          <Row label="Total">
+        <Card title={t('card.receiver')}>
+          <Row label={t('field.name')}>{doc.receptorName ?? <em className="text-text-muted">{t('noName')}</em>}</Row>
+          <Row label={t('field.rucCi')}>{doc.receptorTaxId ?? <em className="text-text-muted">—</em>}</Row>
+          <Row label={t('field.total')}>
             <strong>{formatMoney(doc.totalAmount)}</strong> {doc.currency}
           </Row>
           {doc.contractInvoiceId && (
-            <Row label="Origem">
+            <Row label={t('field.origin')}>
               <Link
                 href={`/contracts?invoiceId=${doc.contractInvoiceId}`}
                 className="text-brand-500 hover:underline"
               >
-                Fatura de contrato
+                {t('origin.contractInvoice')}
               </Link>
             </Row>
           )}
           {doc.oneTimeChargeId && (
-            <Row label="Origem">Cobrança avulsa</Row>
+            <Row label={t('field.origin')}>{t('origin.oneTimeCharge')}</Row>
           )}
         </Card>
 
         {/* QR */}
         {doc.qrUrl && (
-          <Card title="QR Code / KuDE">
+          <Card title={t('card.qrCode')}>
             <div className="flex flex-col items-center gap-3 py-2">
               {qrDataUrl ? (
                 <img src={qrDataUrl} alt="QR SIFEN" className="rounded border border-border" width={220} height={220} />
@@ -196,34 +199,34 @@ export default function FiscalDocumentDetailPage() {
         )}
 
         {/* Resposta SET */}
-        <Card title="Resposta SET">
+        <Card title={t('card.setResponse')}>
           {doc.status === 'APPROVED' && (
             <p className="text-sm text-emerald-600 dark:text-emerald-400">
-              ✓ Autorizado pela SET.
+              {t('setAuthorized')}
             </p>
           )}
           {doc.status === 'REJECTED' && (
             <div className="space-y-2">
               <p className="text-sm text-rose-600 dark:text-rose-400">
-                ✗ Documento rejeitado pela SET.
+                {t('setRejected')}
               </p>
-              {doc.rejectionCode && <Row label="Código">{doc.rejectionCode}</Row>}
-              {doc.rejectionReason && <Row label="Mensagem">{doc.rejectionReason}</Row>}
+              {doc.rejectionCode && <Row label={t('field.code')}>{doc.rejectionCode}</Row>}
+              {doc.rejectionReason && <Row label={t('field.message')}>{doc.rejectionReason}</Row>}
             </div>
           )}
           {doc.lastError && doc.status !== 'APPROVED' && (
-            <Row label="Último erro">
+            <Row label={t('field.lastError')}>
               <span className="text-xs text-rose-600 dark:text-rose-400">{doc.lastError}</span>
             </Row>
           )}
           <details className="mt-3">
             <summary className="cursor-pointer text-xs text-brand-500 hover:underline">
-              Ver XML assinado
+              {t('viewSignedXml')}
             </summary>
             <div className="mt-2">
               {!xml ? (
                 <Button size="sm" variant="ghost" onClick={loadXml} loading={xmlLoading}>
-                  Carregar XML
+                  {t('loadXml')}
                 </Button>
               ) : (
                 <Textarea
@@ -251,14 +254,6 @@ export default function FiscalDocumentDetailPage() {
     </div>
   );
 }
-
-const TYPE_LABELS: Record<string, string> = {
-  FACTURA: 'Factura',
-  NOTA_CREDITO: 'Nota de Crédito',
-  NOTA_DEBITO: 'Nota de Débito',
-  AUTOFACTURA: 'Autofactura',
-  NOTA_REMISION: 'Nota de Remisión',
-};
 
 function isCancellable(doc: SifenDocument, windowHours: number): boolean {
   if (doc.status !== 'APPROVED' || !doc.approvedAt) return false;
@@ -310,22 +305,24 @@ function CancelDialog({
   onClose: () => void;
   onCancelled: () => void;
 }) {
+  const t = useTranslations('fiscal.documentDetail');
+  const tc = useTranslations('common');
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   async function submit() {
     if (reason.trim().length < 5) {
-      toast.error('Motivo deve ter pelo menos 5 caracteres');
+      toast.error(t('toast.reasonTooShort'));
       return;
     }
     setSubmitting(true);
     try {
       await sifenApi.cancel(docId, reason.trim());
-      toast.success('DTE cancelado');
+      toast.success(t('toast.dteCancelled'));
       onCancelled();
     } catch (err) {
       const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
-      toast.error(`Falha: ${msg}`);
+      toast.error(t('toast.cancelFailed', { message: msg }));
     } finally {
       setSubmitting(false);
     }
@@ -335,31 +332,30 @@ function CancelDialog({
     <Modal
       open
       onClose={submitting ? () => {} : onClose}
-      title="Cancelar DTE"
-      description="Esta operação envia um evento de cancelamento à SET. Não pode ser desfeita."
+      title={t('cancelDte')}
+      description={t('cancelDialog.description')}
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            Voltar
+            {tc('back')}
           </Button>
           <Button variant="danger" onClick={submit} loading={submitting}>
-            Cancelar DTE
+            {t('cancelDte')}
           </Button>
         </>
       }
     >
       <div>
-        <Label required>Motivo (5–500 caracteres)</Label>
+        <Label required>{t('cancelDialog.reasonLabel')}</Label>
         <Textarea
           rows={4}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
-          placeholder="Ex.: Erro no valor cobrado; emitida nova fatura."
+          placeholder={t('cancelDialog.reasonPlaceholder')}
           maxLength={500}
         />
         <FieldHelp>
-          O SET exige motivo entre 5 e 500 caracteres. Será gravado no histórico
-          e fica visível no portal eKuatia.
+          {t('cancelDialog.reasonHelp')}
         </FieldHelp>
       </div>
     </Modal>

@@ -1,6 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
@@ -60,6 +61,8 @@ export function EditContractDialog({
   onClose,
   onUpdated,
 }: EditContractDialogProps) {
+  const t = useTranslations('contractCards');
+  const tc = useTranslations('common');
   const { currency, currencySymbol } = useTenantConfig();
   const moneyLabel = currencySymbol ?? currency;
   const formatMoney = useFormatMoney();
@@ -199,7 +202,7 @@ export function EditContractDialog({
         planId: selectedPlanId,
         applyProration,
       });
-      toast.success('Plano alterado');
+      toast.success(t('editContract.planChanged'));
       onUpdated(updated);
       // Atualiza form com os novos valores denormalizados pelo backend.
       setForm((s) => ({
@@ -211,7 +214,7 @@ export function EditContractDialog({
       setPlanPreview(null);
     } catch (err) {
       const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
-      toast.error(`Falha na troca de plano: ${msg}`);
+      toast.error(t('editContract.planChangeFailed', { error: msg }));
     } finally {
       setChangingPlan(false);
     }
@@ -225,56 +228,56 @@ export function EditContractDialog({
     const e: Record<string, string> = {};
     if (authMethod === 'PPPOE') {
       if (!form.pppoeUsername || form.pppoeUsername.length < 3)
-        e.pppoeUsername = 'Mínimo 3 caracteres';
+        e.pppoeUsername = t('editContract.errors.min3');
       else if (!/^[A-Za-z0-9._-]+$/.test(form.pppoeUsername))
-        e.pppoeUsername = 'Use apenas letras, números, . _ -';
+        e.pppoeUsername = t('editContract.errors.usernameChars');
       if (!form.pppoePassword || form.pppoePassword.length < 4)
-        e.pppoePassword = 'Mínimo 4 caracteres';
+        e.pppoePassword = t('editContract.errors.min4');
     } else {
       if (!form.circuitId.trim() && !form.macAddress.trim()) {
-        e.circuitId = 'Informe circuit-id ou MAC';
+        e.circuitId = t('editContract.errors.circuitOrMac');
       }
       if (form.macAddress.trim()) {
         const cleaned = form.macAddress.replace(/[^0-9A-Fa-f]/gu, '');
-        if (cleaned.length !== 12) e.macAddress = 'MAC inválido';
+        if (cleaned.length !== 12) e.macAddress = t('editContract.errors.macInvalid');
       }
       if (form.framedIpAddress.trim()) {
         const v = form.framedIpAddress.trim();
         if (!/^(\d{1,3}\.){3}\d{1,3}$/u.test(v) && !/^[0-9a-fA-F:]+$/u.test(v))
-          e.framedIpAddress = 'IP inválido';
+          e.framedIpAddress = t('editContract.errors.ipInvalid');
       }
       if (form.vlanId.trim()) {
         const v = Number(form.vlanId);
         if (!Number.isInteger(v) || v < 1 || v > 4094)
-          e.vlanId = 'VLAN entre 1 e 4094';
+          e.vlanId = t('editContract.errors.vlanRange');
       }
     }
 
     if (!form.installationAddress || form.installationAddress.length < 5)
-      e.installationAddress = 'Informe o endereço';
+      e.installationAddress = t('editContract.errors.installationAddress');
     if (form.installationMapsUrl) {
       const norm = normalizeMapsUrl(form.installationMapsUrl);
       try {
         const u = new URL(norm);
-        if (!/^https?:$/.test(u.protocol)) e.installationMapsUrl = 'Use http(s)://';
+        if (!/^https?:$/.test(u.protocol)) e.installationMapsUrl = t('editContract.errors.useHttp');
       } catch {
-        e.installationMapsUrl = 'URL inválida';
+        e.installationMapsUrl = t('editContract.errors.urlInvalid');
       }
     }
     const mv = Number(String(form.monthlyValue).replace(',', '.'));
-    if (!Number.isFinite(mv) || mv <= 0) e.monthlyValue = 'Valor inválido';
+    if (!Number.isFinite(mv) || mv <= 0) e.monthlyValue = t('editContract.errors.valueInvalid');
     const bw = Number(form.bandwidthMbps);
-    if (!Number.isInteger(bw) || bw < 1) e.bandwidthMbps = 'Velocidade em Mbps';
+    if (!Number.isInteger(bw) || bw < 1) e.bandwidthMbps = t('editContract.errors.speedMbps');
     if (form.uploadMbps.trim()) {
       const up = Number(form.uploadMbps);
-      if (!Number.isInteger(up) || up < 1) e.uploadMbps = 'Upload em Mbps';
+      if (!Number.isInteger(up) || up < 1) e.uploadMbps = t('editContract.errors.uploadMbps');
     }
     const dd = Number(form.dueDay);
-    if (!Number.isInteger(dd) || dd < 1 || dd > 28) e.dueDay = 'Entre 1 e 28';
+    if (!Number.isInteger(dd) || dd < 1 || dd > 28) e.dueDay = t('editContract.errors.between1and28');
     if (form.blockAfterDays.trim()) {
       const bad = Number(form.blockAfterDays);
       if (!Number.isInteger(bad) || bad < 0 || bad > 60)
-        e.blockAfterDays = 'Entre 0 e 60';
+        e.blockAfterDays = t('editContract.errors.between0and60');
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -337,12 +340,12 @@ export function EditContractDialog({
 
     try {
       const updated = await contractsApi.update(contract.id, patch);
-      toast.success('Contrato atualizado');
+      toast.success(t('editContract.updatedToast'));
       onUpdated(updated);
       onClose();
     } catch (err) {
       const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
-      toast.error(`Falha ao atualizar: ${msg}`);
+      toast.error(t('editContract.updateFailed', { error: msg }));
     } finally {
       setSubmitting(false);
     }
@@ -354,7 +357,7 @@ export function EditContractDialog({
     <Modal
       open={open}
       onClose={submitting ? () => {} : onClose}
-      title="Editar contrato"
+      title={t('editContract.title')}
       description={
         contract.code
           ? `${contract.code} — ${contract.customer?.displayName ?? ''}`
@@ -364,10 +367,10 @@ export function EditContractDialog({
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button onClick={onSubmit} loading={submitting}>
-            Salvar
+            {tc('save')}
           </Button>
         </>
       }
@@ -375,26 +378,24 @@ export function EditContractDialog({
       <div className="flex flex-col gap-5">
         {/* Auth method toggle */}
         <div>
-          <Label>Tipo de autenticação</Label>
+          <Label>{t('editContract.authType')}</Label>
           <div className="flex gap-2">
             <AuthTab
               label="IPoE"
-              description="Circuit-ID / MAC"
+              description={t('editContract.ipoeDesc')}
               active={authMethod === 'IPOE'}
               onClick={() => setAuthMethod('IPOE')}
             />
             <AuthTab
               label="PPPoE"
-              description="Usuário/senha"
+              description={t('editContract.pppoeDesc')}
               active={authMethod === 'PPPOE'}
               onClick={() => setAuthMethod('PPPOE')}
             />
           </div>
           {willChangeMethod && (
             <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-              ⚠ Trocar o método dispara resync no RADIUS. A sessão atual do
-              cliente vai cair (CoA disconnect) e ele autentica de novo com a
-              nova credencial.
+              ⚠ {t('editContract.methodChangeWarning')}
             </p>
           )}
         </div>
@@ -403,7 +404,7 @@ export function EditContractDialog({
           <div className="grid gap-4 md:grid-cols-2">
             <div>
               <Label htmlFor="edit-pppoeUsername" required>
-                Usuário PPPoE
+                {t('editContract.pppoeUsername')}
               </Label>
               <Input
                 id="edit-pppoeUsername"
@@ -414,7 +415,7 @@ export function EditContractDialog({
             </div>
             <div>
               <Label htmlFor="edit-pppoePassword" required>
-                Senha PPPoE
+                {t('editContract.pppoePassword')}
               </Label>
               <Input
                 id="edit-pppoePassword"
@@ -423,7 +424,7 @@ export function EditContractDialog({
               />
               <FieldError>{errors.pppoePassword}</FieldError>
               <FieldHelp>
-                Trocar a senha invalida sessões antigas no próximo CoA.
+                {t('editContract.pppoePasswordHelp')}
               </FieldHelp>
             </div>
           </div>
@@ -461,7 +462,7 @@ export function EditContractDialog({
                 <FieldError>{errors.macAddress}</FieldError>
               </div>
               <div>
-                <Label htmlFor="edit-framedIp">IP fixo</Label>
+                <Label htmlFor="edit-framedIp">{t('editContract.framedIp')}</Label>
                 <Input
                   id="edit-framedIp"
                   value={form.framedIpAddress}
@@ -488,7 +489,7 @@ export function EditContractDialog({
         {/* Plano e cobrança — troca de plano é endpoint separado (prorate) */}
         <div className="space-y-3 rounded-md border border-border p-3">
           <div className="flex items-center justify-between">
-            <div className="text-sm font-semibold text-text">Plano e cobrança</div>
+            <div className="text-sm font-semibold text-text">{t('editContract.planAndBilling')}</div>
             <span
               className={
                 'rounded-full px-2 py-0.5 text-xs font-medium ' +
@@ -497,12 +498,12 @@ export function EditContractDialog({
                   : 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300')
               }
             >
-              {contract.paymentMode === 'PREPAID' ? 'Pré-pago' : 'Pós-pago'}
+              {contract.paymentMode === 'PREPAID' ? t('editContract.prepaid') : t('editContract.postpaid')}
             </span>
           </div>
 
           <div>
-            <Label htmlFor="edit-plan">Plano</Label>
+            <Label htmlFor="edit-plan">{t('editContract.plan')}</Label>
             <select
               id="edit-plan"
               value={selectedPlanId}
@@ -510,7 +511,7 @@ export function EditContractDialog({
               className="block w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text focus:outline-none focus:ring-2 focus:ring-accent"
               disabled={changingPlan}
             >
-              <option value="">— sem plano (valores manuais) —</option>
+              <option value="">{t('editContract.noPlanOption')}</option>
               {plans.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name} · {p.downloadMbps}/{p.uploadMbps} Mbps ·{' '}
@@ -520,7 +521,7 @@ export function EditContractDialog({
             </select>
             {contract.paymentMode === 'PREPAID' && selectedPlanId !== contract.planId && (
               <FieldHelp>
-                Troca de plano em pré-pago não é suportada — cancele e recrie o contrato.
+                {t('editContract.prepaidPlanChangeHelp')}
               </FieldHelp>
             )}
           </div>
@@ -539,42 +540,48 @@ export function EditContractDialog({
                     className="h-4 w-4"
                   />
                   <label htmlFor="edit-apply-proration" className="text-text">
-                    Gerar cobrança/crédito proporcional dos dias restantes do ciclo
+                    {t('editContract.applyProrationLabel')}
                   </label>
                 </div>
 
                 {previewLoading && (
-                  <div className="text-text-muted">Calculando…</div>
+                  <div className="text-text-muted">{t('editContract.calculating')}</div>
                 )}
 
                 {!previewLoading && planPreview && (
                   <div className="space-y-1 rounded bg-surface p-2">
                     <div className="text-text">
-                      Ciclo: <strong>{planPreview.cycleStart}</strong> →{' '}
-                      <strong>{planPreview.cycleEnd}</strong> ({planPreview.totalDays}{' '}
-                      dias) · restam <strong>{planPreview.remainDays}</strong>.
+                      {t.rich('editContract.cycleSummary', {
+                        start: planPreview.cycleStart,
+                        end: planPreview.cycleEnd,
+                        totalDays: planPreview.totalDays,
+                        remainDays: planPreview.remainDays,
+                        strong: (chunks) => <strong>{chunks}</strong>,
+                      })}
                     </div>
                     <div className="text-text-muted">
-                      Crédito plano antigo: −{formatMoney(planPreview.creditOld)} ·
-                      cobrança plano novo: +{formatMoney(planPreview.chargeNew)}
+                      {t('editContract.creditChargeLine', {
+                        credit: formatMoney(planPreview.creditOld),
+                        charge: formatMoney(planPreview.chargeNew),
+                      })}
                     </div>
                     <div className="text-text">
                       {planPreview.delta > 0 && (
-                        <>
-                          <strong>Fatura PRORATION</strong> de{' '}
-                          {formatMoney(planPreview.delta)} vencendo {planPreview.cycleEnd}.
-                        </>
+                        t.rich('editContract.prorationInvoice', {
+                          amount: formatMoney(planPreview.delta),
+                          due: planPreview.cycleEnd,
+                          strong: (chunks) => <strong>{chunks}</strong>,
+                        })
                       )}
                       {planPreview.delta < 0 && (
-                        <>
-                          <strong>Nota de CRÉDITO</strong> de{' '}
-                          {formatMoney(Math.abs(planPreview.delta))}.
-                        </>
+                        t.rich('editContract.creditNote', {
+                          amount: formatMoney(Math.abs(planPreview.delta)),
+                          strong: (chunks) => <strong>{chunks}</strong>,
+                        })
                       )}
                       {planPreview.delta === 0 && (
                         <em className="text-text-muted">
-                          Sem cobrança extra — planos têm valor proporcional igual no
-                          restante do ciclo.
+                          {t('editContract.noExtraCharge')}
                         </em>
                       )}
                     </div>
@@ -587,7 +594,7 @@ export function EditContractDialog({
                     loading={changingPlan}
                     disabled={changingPlan || !selectedPlanId}
                   >
-                    Aplicar troca de plano
+                    {t('editContract.applyPlanChange')}
                   </Button>
                 </div>
               </div>
@@ -596,16 +603,16 @@ export function EditContractDialog({
           {selectedPlanId !== contract.planId &&
             contract.status === 'PENDING_INSTALL' && (
               <div className="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-                Contrato em PENDING_INSTALL — a troca de plano é direta, sem
-                fatura de ajuste. Clique em <strong>Aplicar troca</strong> pra
-                atualizar.
+                {t.rich('editContract.pendingInstallPlanChange', {
+                  strong: (chunks) => <strong>{chunks}</strong>,
+                })}
                 <div className="mt-2 flex justify-end">
                   <Button
                     onClick={onApplyChangePlan}
                     loading={changingPlan}
                     disabled={changingPlan || !selectedPlanId}
                   >
-                    Aplicar troca de plano
+                    {t('editContract.applyPlanChange')}
                   </Button>
                 </div>
               </div>
@@ -616,7 +623,7 @@ export function EditContractDialog({
         <div className="grid gap-4 md:grid-cols-3">
           <div>
             <Label htmlFor="edit-monthlyValue" required>
-              Mensalidade ({moneyLabel})
+              {t('editContract.monthlyValue', { currency: moneyLabel })}
             </Label>
             <Input
               id="edit-monthlyValue"
@@ -628,12 +635,12 @@ export function EditContractDialog({
             />
             <FieldError>{errors.monthlyValue}</FieldError>
             <FieldHelp>
-              Faturas já emitidas mantêm o valor antigo.
+              {t('editContract.monthlyValueHelp')}
             </FieldHelp>
           </div>
           <div>
             <Label htmlFor="edit-bandwidthMbps" required>
-              Download (Mbps)
+              {t('editContract.downloadMbps')}
             </Label>
             <Input
               id="edit-bandwidthMbps"
@@ -645,14 +652,14 @@ export function EditContractDialog({
             <FieldError>{errors.bandwidthMbps}</FieldError>
           </div>
           <div>
-            <Label htmlFor="edit-uploadMbps">Upload (Mbps)</Label>
+            <Label htmlFor="edit-uploadMbps">{t('editContract.uploadMbps')}</Label>
             <Input
               id="edit-uploadMbps"
               type="number"
               min="1"
               value={form.uploadMbps}
               onChange={(e) => update('uploadMbps', e.target.value)}
-              placeholder="opcional"
+              placeholder={tc('optional')}
             />
             <FieldError>{errors.uploadMbps}</FieldError>
           </div>
@@ -661,7 +668,7 @@ export function EditContractDialog({
         <div className="grid gap-4 md:grid-cols-2">
           <div>
             <Label htmlFor="edit-dueDay" required>
-              Dia de vencimento
+              {t('editContract.dueDay')}
             </Label>
             <Input
               id="edit-dueDay"
@@ -674,11 +681,11 @@ export function EditContractDialog({
             />
             <FieldError>{errors.dueDay}</FieldError>
             {contract.paymentMode === 'PREPAID' && (
-              <FieldHelp>Pré-pago não usa dia de vencimento (ciclo ancorado em activatedAt).</FieldHelp>
+              <FieldHelp>{t('editContract.dueDayPrepaidHelp')}</FieldHelp>
             )}
           </div>
           <div>
-            <Label htmlFor="edit-blockAfterDays">Dias para bloqueio</Label>
+            <Label htmlFor="edit-blockAfterDays">{t('editContract.blockAfterDays')}</Label>
             <Input
               id="edit-blockAfterDays"
               type="number"
@@ -686,12 +693,11 @@ export function EditContractDialog({
               max="60"
               value={form.blockAfterDays}
               onChange={(e) => update('blockAfterDays', e.target.value)}
-              placeholder={`padrão do plano: ${contract.effectiveBlockAfterDays}`}
+              placeholder={t('editContract.blockAfterDaysPlaceholder', { days: contract.effectiveBlockAfterDays })}
             />
             <FieldError>{errors.blockAfterDays}</FieldError>
             <FieldHelp>
-              Em branco = usa o do plano ({contract.effectiveBlockAfterDays} dias).
-              Preencher sobrescreve só pra este contrato.
+              {t('editContract.blockAfterDaysHelp', { days: contract.effectiveBlockAfterDays })}
             </FieldHelp>
           </div>
         </div>
@@ -699,7 +705,7 @@ export function EditContractDialog({
         {/* Endereço */}
         <div>
           <Label htmlFor="edit-installationAddress" required>
-            Endereço de instalação
+            {t('editContract.installationAddress')}
           </Label>
           <Textarea
             id="edit-installationAddress"
@@ -711,7 +717,7 @@ export function EditContractDialog({
         </div>
         <div>
           <Label htmlFor="edit-installationMapsUrl">
-            Link de localização
+            {t('editContract.mapsUrlLabel')}
           </Label>
           <Input
             id="edit-installationMapsUrl"
@@ -725,17 +731,15 @@ export function EditContractDialog({
 
         {/* Geolocalização — pino no módulo Mapeamento */}
         <div>
-          <Label>Localização (pino no mapa)</Label>
+          <Label>{t('editContract.locationLabel')}</Label>
           <LocationPicker value={location} onChange={setLocation} height="280px" />
           <FieldHelp>
-            Marcar a localização faz o cliente aparecer em /mapping/customers
-            com pino colorido por status. Opcional — sem coordenadas, contrato
-            funciona normalmente, só não aparece no mapa.
+            {t('editContract.locationHelp')}
           </FieldHelp>
         </div>
 
         <div>
-          <Label htmlFor="edit-notes">Observações</Label>
+          <Label htmlFor="edit-notes">{tc('notes')}</Label>
           <Textarea
             id="edit-notes"
             rows={3}

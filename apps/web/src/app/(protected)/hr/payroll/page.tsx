@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -11,8 +12,6 @@ import { ApiError, swrFetcher } from '@/lib/api';
 import { cashRegistersApi, type CashRegister } from '@/lib/finance-api';
 import {
   hrApi,
-  PAYSLIP_STATUS_LABELS,
-  PAYMENT_METHOD_LABELS,
   type Employee,
   type Paginated,
   type PaymentMethod,
@@ -34,6 +33,8 @@ function thisMonth() {
 }
 
 export default function PayrollPage() {
+  const t = useTranslations('hr.payroll');
+  const tc = useTranslations('common');
   const [month, setMonth] = useState(thisMonth());
   const query = { month, pageSize: 200 };
   const { data, isLoading, mutate } = useSWR<Paginated<Payslip>>(
@@ -52,24 +53,24 @@ export default function PayrollPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Folha de pagamento</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Holerites por competência (lançamento manual). Pagar integra no caixa.
+            {t('subtitle')}
           </p>
         </div>
         <div className="flex items-end gap-2">
           <div>
-            <Label>Competência</Label>
+            <Label>{t('referenceMonth')}</Label>
             <Input type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
           </div>
-          <Button onClick={() => setCreating(true)}>Novo holerite</Button>
+          <Button onClick={() => setCreating(true)}>{t('newPayslip')}</Button>
         </div>
       </header>
 
       {isLoading && <PageLoader />}
       {rows.length === 0 && !isLoading && (
         <p className="rounded-md border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700">
-          Nenhum holerite nesta competência.
+          {t('empty')}
         </p>
       )}
 
@@ -78,12 +79,12 @@ export default function PayrollPage() {
           <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
             <thead className="bg-slate-50 dark:bg-slate-900/40">
               <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                <th className="px-4 py-3">Colaborador</th>
-                <th className="px-4 py-3 text-right">Bruto</th>
-                <th className="px-4 py-3 text-right">Descontos</th>
-                <th className="px-4 py-3 text-right">Líquido</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Ações</th>
+                <th className="px-4 py-3">{t('employee')}</th>
+                <th className="px-4 py-3 text-right">{t('gross')}</th>
+                <th className="px-4 py-3 text-right">{t('deductions')}</th>
+                <th className="px-4 py-3 text-right">{t('net')}</th>
+                <th className="px-4 py-3">{tc('status')}</th>
+                <th className="px-4 py-3 text-right">{tc('actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -95,14 +96,14 @@ export default function PayrollPage() {
                   <td className="px-4 py-3 text-right font-mono font-semibold">{p.netAmount.toFixed(2)}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs ${STATUS_BADGE[p.status]}`}>
-                      {PAYSLIP_STATUS_LABELS[p.status]}
+                      {t(`status.${p.status}`)}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {p.status === 'DRAFT' && <Button size="sm" variant="ghost" onClick={() => approve(p)}>Aprovar</Button>}
-                    {p.status === 'APPROVED' && <Button size="sm" onClick={() => setPaying(p)}>Pagar</Button>}
-                    {p.status === 'PAID' && <Button size="sm" variant="ghost" onClick={() => reverse(p)}>Estornar</Button>}
-                    {(p.status === 'DRAFT') && <Button size="sm" variant="ghost" onClick={() => del(p)}>Excluir</Button>}
+                    {p.status === 'DRAFT' && <Button size="sm" variant="ghost" onClick={() => approve(p)}>{t('approve')}</Button>}
+                    {p.status === 'APPROVED' && <Button size="sm" onClick={() => setPaying(p)}>{t('pay')}</Button>}
+                    {p.status === 'PAID' && <Button size="sm" variant="ghost" onClick={() => reverse(p)}>{t('reverse')}</Button>}
+                    {(p.status === 'DRAFT') && <Button size="sm" variant="ghost" onClick={() => del(p)}>{tc('delete')}</Button>}
                   </td>
                 </tr>
               ))}
@@ -122,12 +123,14 @@ export default function PayrollPage() {
 }
 
 function CreatePayslipModal({ month, onClose, onSaved }: { month: string; onClose: () => void; onSaved: () => void }) {
+  const t = useTranslations('hr.payroll');
+  const tc = useTranslations('common');
   const { data: employees } = useSWR<Paginated<Employee>>(
     hrApi.employeesPath({ status: 'ACTIVE', pageSize: 200 }),
     swrFetcher,
   );
   const [employeeId, setEmployeeId] = useState('');
-  const [items, setItems] = useState<PayslipItem[]>([{ kind: 'EARNING', label: 'Salário base', amount: 0 }]);
+  const [items, setItems] = useState<PayslipItem[]>(() => [{ kind: 'EARNING', label: t('baseSalary'), amount: 0 }]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -139,14 +142,14 @@ function CreatePayslipModal({ month, onClose, onSaved }: { month: string; onClos
   }
 
   async function submit() {
-    if (!employeeId) return setError('Selecione o colaborador');
+    if (!employeeId) return setError(t('selectEmployeeError'));
     setBusy(true);
     setError(null);
     try {
       await hrApi.createPayslip({ employeeId, referenceMonth: month, items, notes: null });
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      setError(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setBusy(false);
     }
@@ -156,25 +159,25 @@ function CreatePayslipModal({ month, onClose, onSaved }: { month: string; onClos
     <Modal
       open
       onClose={onClose}
-      title={`Novo holerite — ${month}`}
+      title={t('createTitle', { month })}
       size="lg"
       footer={
         <>
-          <Button variant="ghost" onClick={onClose} disabled={busy}>Cancelar</Button>
-          <Button onClick={submit} loading={busy}>Salvar rascunho</Button>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>{tc('cancel')}</Button>
+          <Button onClick={submit} loading={busy}>{t('saveDraft')}</Button>
         </>
       }
     >
       <div className="space-y-3">
         {error && <div className="rounded-md bg-red-50 p-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</div>}
         <div>
-          <Label>Colaborador</Label>
+          <Label>{t('employee')}</Label>
           <select
             className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
             value={employeeId}
             onChange={(e) => setEmployeeId(e.target.value)}
           >
-            <option value="">Selecione…</option>
+            <option value="">{t('selectPlaceholder')}</option>
             {(employees?.data ?? []).map((e) => (
               <option key={e.id} value={e.id}>{e.fullName}</option>
             ))}
@@ -182,7 +185,7 @@ function CreatePayslipModal({ month, onClose, onSaved }: { month: string; onClos
         </div>
 
         <div className="space-y-2">
-          <Label>Proventos e descontos</Label>
+          <Label>{t('earningsDeductions')}</Label>
           {items.map((it, idx) => (
             <div key={idx} className="flex gap-2">
               <select
@@ -190,23 +193,23 @@ function CreatePayslipModal({ month, onClose, onSaved }: { month: string; onClos
                 value={it.kind}
                 onChange={(e) => setItem(idx, { kind: e.target.value as PayslipItem['kind'] })}
               >
-                <option value="EARNING">Provento</option>
-                <option value="DEDUCTION">Desconto</option>
+                <option value="EARNING">{t('earning')}</option>
+                <option value="DEDUCTION">{t('deduction')}</option>
               </select>
-              <Input className="flex-1" placeholder="Descrição" value={it.label} onChange={(e) => setItem(idx, { label: e.target.value })} />
+              <Input className="flex-1" placeholder={tc('description')} value={it.label} onChange={(e) => setItem(idx, { label: e.target.value })} />
               <Input className="w-32" type="number" step="0.01" value={it.amount} onChange={(e) => setItem(idx, { amount: Number(e.target.value) || 0 })} />
               <Button type="button" variant="ghost" size="sm" onClick={() => setItems(items.filter((_, i) => i !== idx))}>×</Button>
             </div>
           ))}
           <Button type="button" variant="ghost" size="sm" onClick={() => setItems([...items, { kind: 'EARNING', label: '', amount: 0 }])}>
-            + Adicionar linha
+            {t('addLine')}
           </Button>
         </div>
 
         <div className="flex justify-end gap-4 border-t border-slate-200 pt-2 text-sm dark:border-slate-700">
-          <span>Bruto: <strong className="font-mono">{gross.toFixed(2)}</strong></span>
-          <span>Descontos: <strong className="font-mono text-red-600">{ded.toFixed(2)}</strong></span>
-          <span>Líquido: <strong className="font-mono">{(gross - ded).toFixed(2)}</strong></span>
+          <span>{t('gross')}: <strong className="font-mono">{gross.toFixed(2)}</strong></span>
+          <span>{t('deductions')}: <strong className="font-mono text-red-600">{ded.toFixed(2)}</strong></span>
+          <span>{t('net')}: <strong className="font-mono">{(gross - ded).toFixed(2)}</strong></span>
         </div>
       </div>
     </Modal>
@@ -214,6 +217,8 @@ function CreatePayslipModal({ month, onClose, onSaved }: { month: string; onClos
 }
 
 function PayModal({ payslip, onClose, onDone }: { payslip: Payslip; onClose: () => void; onDone: () => void }) {
+  const t = useTranslations('hr.payroll');
+  const tc = useTranslations('common');
   const { data: registers } = useSWR<CashRegister[]>(cashRegistersApi.listPath(), () => cashRegistersApi.list());
   const [method, setMethod] = useState<PaymentMethod>('BANK_TRANSFER');
   const [cashRegisterId, setCashRegisterId] = useState('');
@@ -230,7 +235,7 @@ function PayModal({ payslip, onClose, onDone }: { payslip: Payslip; onClose: () 
       });
       onDone();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      setError(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setBusy(false);
     }
@@ -240,29 +245,29 @@ function PayModal({ payslip, onClose, onDone }: { payslip: Payslip; onClose: () 
     <Modal
       open
       onClose={onClose}
-      title={`Pagar holerite — ${payslip.employee?.fullName}`}
+      title={t('payTitle', { name: payslip.employee?.fullName ?? '' })}
       footer={
         <>
-          <Button variant="ghost" onClick={onClose} disabled={busy}>Cancelar</Button>
-          <Button onClick={pay} loading={busy}>Confirmar pagamento</Button>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>{tc('cancel')}</Button>
+          <Button onClick={pay} loading={busy}>{t('confirmPayment')}</Button>
         </>
       }
     >
       <div className="space-y-3 text-sm">
         {error && <div className="rounded-md bg-red-50 p-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">{error}</div>}
-        <p>Valor líquido: <strong className="font-mono">R$ {payslip.netAmount.toFixed(2)}</strong></p>
+        <p>{t('netValue')}: <strong className="font-mono">R$ {payslip.netAmount.toFixed(2)}</strong></p>
         <div>
-          <Label>Forma de pagamento</Label>
+          <Label>{t('paymentMethod')}</Label>
           <select className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod)}>
-            {(Object.keys(PAYMENT_METHOD_LABELS) as PaymentMethod[]).map((m) => (
-              <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</option>
+            {(['CASH', 'PIX', 'CARD', 'BANK_TRANSFER', 'OTHER'] as PaymentMethod[]).map((m) => (
+              <option key={m} value={m}>{t(`method.${m}`)}</option>
             ))}
           </select>
         </div>
         <div>
-          <Label>Caixa (opcional — lança saída no financeiro)</Label>
+          <Label>{t('cashRegisterLabel')}</Label>
           <select className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900" value={cashRegisterId} onChange={(e) => setCashRegisterId(e.target.value)}>
-            <option value="">Sem lançamento no caixa</option>
+            <option value="">{t('noCashEntry')}</option>
             {(registers ?? []).map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
           </select>
         </div>

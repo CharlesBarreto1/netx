@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 
@@ -13,6 +14,8 @@ import { hasPermission } from '@/lib/session';
 import type { CustomerTag } from '@/lib/crm-types';
 
 export default function TagsCatalogPage() {
+  const t = useTranslations('crmTags');
+  const tc = useTranslations('common');
   const { data, isLoading, error, mutate } = useSWR<CustomerTag[]>('/v1/crm/tags');
   const canManage = hasPermission('customers.tags.manage');
 
@@ -21,10 +24,10 @@ export default function TagsCatalogPage() {
   const [confirmDelete, setConfirmDelete] = useState<CustomerTag | null>(null);
   const [deleting, setDeleting] = useState(false);
 
-  async function handleDelete(t: CustomerTag) {
+  async function handleDelete(row: CustomerTag) {
     setDeleting(true);
     try {
-      await api.delete(`/v1/crm/tags/${t.id}`);
+      await api.delete(`/v1/crm/tags/${row.id}`);
       await mutate();
     } finally {
       setDeleting(false);
@@ -36,11 +39,8 @@ export default function TagsCatalogPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Tags</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Catálogo compartilhado entre todos os clientes deste tenant. Use tags para segmentar
-            por VIP, inadimplente, plano, setor, etc.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">{t('description')}</p>
         </div>
         {canManage && (
           <Button
@@ -49,7 +49,7 @@ export default function TagsCatalogPage() {
               setOpen(true);
             }}
           >
-            Nova tag
+            {t('newTag')}
           </Button>
         )}
       </header>
@@ -57,13 +57,13 @@ export default function TagsCatalogPage() {
       {isLoading && <PageLoader />}
       {error && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-          Falha ao carregar tags.
+          {t('loadError')}
         </div>
       )}
 
       {data && data.length === 0 && (
         <p className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
-          Nenhuma tag cadastrada ainda.
+          {t('empty')}
         </p>
       )}
 
@@ -73,33 +73,33 @@ export default function TagsCatalogPage() {
             <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
               <thead className="bg-slate-50 dark:bg-slate-900/40">
                 <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  <th className="px-4 py-3">Tag</th>
-                  <th className="px-4 py-3">Descrição</th>
-                  <th className="px-4 py-3">Clientes</th>
-                  <th className="px-4 py-3">Criada</th>
-                  {canManage && <th className="px-4 py-3 text-right">Ações</th>}
+                  <th className="px-4 py-3">{t('columnTag')}</th>
+                  <th className="px-4 py-3">{tc('description')}</th>
+                  <th className="px-4 py-3">{t('columnCustomers')}</th>
+                  <th className="px-4 py-3">{tc('createdAt')}</th>
+                  {canManage && <th className="px-4 py-3 text-right">{tc('actions')}</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-                {data.map((t) => (
-                  <tr key={t.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
+                {data.map((row) => (
+                  <tr key={row.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-2">
                         <span
                           className="h-3 w-3 rounded-full border border-slate-300 dark:border-slate-600"
-                          style={{ backgroundColor: t.color ?? 'transparent' }}
+                          style={{ backgroundColor: row.color ?? 'transparent' }}
                         />
-                        <strong className="text-slate-900 dark:text-slate-100">{t.name}</strong>
+                        <strong className="text-slate-900 dark:text-slate-100">{row.name}</strong>
                       </span>
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                      {t.description || <span className="text-slate-400">—</span>}
+                      {row.description || <span className="text-slate-400">—</span>}
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                      {t.customerCount ?? 0}
+                      {row.customerCount ?? 0}
                     </td>
                     <td className="px-4 py-3 text-slate-600 dark:text-slate-300">
-                      {formatDate(t.createdAt)}
+                      {formatDate(row.createdAt)}
                     </td>
                     {canManage && (
                       <td className="px-4 py-3 text-right">
@@ -107,14 +107,14 @@ export default function TagsCatalogPage() {
                           size="sm"
                           variant="outline"
                           onClick={() => {
-                            setEditing(t);
+                            setEditing(row);
                             setOpen(true);
                           }}
                         >
-                          Editar
+                          {tc('edit')}
                         </Button>{' '}
-                        <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(t)}>
-                          Excluir
+                        <Button size="sm" variant="ghost" onClick={() => setConfirmDelete(row)}>
+                          {tc('delete')}
                         </Button>
                       </td>
                     )}
@@ -142,9 +142,9 @@ export default function TagsCatalogPage() {
         onConfirm={() => {
           if (confirmDelete) return handleDelete(confirmDelete);
         }}
-        title="Excluir tag"
-        message={`Remover a tag "${confirmDelete?.name ?? ''}"? Ela será desassociada de todos os clientes.`}
-        confirmLabel="Excluir"
+        title={t('deleteTitle')}
+        message={t('deleteMessage', { name: confirmDelete?.name ?? '' })}
+        confirmLabel={tc('delete')}
         variant="danger"
         loading={deleting}
       />
@@ -163,6 +163,8 @@ function TagFormModal({
   tag: CustomerTag | null;
   onSaved: () => void;
 }) {
+  const t = useTranslations('crmTags');
+  const tc = useTranslations('common');
   const [name, setName] = useState(tag?.name ?? '');
   const [color, setColor] = useState(tag?.color ?? '#3b82f6');
   const [description, setDescription] = useState(tag?.description ?? '');
@@ -216,14 +218,14 @@ function TagFormModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={tag ? 'Editar tag' : 'Nova tag'}
+      title={tag ? t('editTag') : t('newTag')}
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={saving}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button form="tag-form" type="submit" loading={saving}>
-            Salvar
+            {tc('save')}
           </Button>
         </>
       }
@@ -235,18 +237,18 @@ function TagFormModal({
           </div>
         )}
         <div>
-          <Label required>Nome</Label>
+          <Label required>{tc('name')}</Label>
           <Input
             value={name}
             onChange={(e) => setName(e.target.value)}
             maxLength={64}
             required
-            placeholder="Ex.: VIP, Inadimplente, Enterprise…"
+            placeholder={t('namePlaceholder')}
           />
           <FieldError>{fieldErr.name}</FieldError>
         </div>
         <div>
-          <Label>Cor</Label>
+          <Label>{t('color')}</Label>
           <div className="flex items-center gap-2">
             <input
               type="color"
@@ -265,7 +267,7 @@ function TagFormModal({
           <FieldError>{fieldErr.color}</FieldError>
         </div>
         <div>
-          <Label>Descrição</Label>
+          <Label>{tc('description')}</Label>
           <Textarea
             rows={3}
             maxLength={255}

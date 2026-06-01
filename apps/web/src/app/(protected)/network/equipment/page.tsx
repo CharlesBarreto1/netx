@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { CheckCircle2, Plus, Plug, RefreshCw, XCircle } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -36,28 +37,20 @@ const LocationPicker = dynamic(
   },
 );
 
-const DISCONNECT_STRATEGIES: { value: DisconnectStrategy; label: string; help: string }[] = [
-  {
-    value: 'AUTO',
-    label: 'Automática',
-    help: 'NetX elige por vendor + tipo de auth del contrato',
-  },
-  { value: 'COA', label: 'CoA (RADIUS 3799)', help: 'Disconnect-Request RADIUS' },
-  {
-    value: 'MIKROTIK_API',
-    label: 'RouterOS API',
-    help: 'API Mikrotik (necesario para IPoE/DHCP)',
-  },
-  { value: 'SSH', label: 'SSH', help: 'Ejecuta sshDisconnectCmd via SSH' },
+const DISCONNECT_STRATEGIES: { value: DisconnectStrategy; labelKey: string; helpKey: string }[] = [
+  { value: 'AUTO', labelKey: 'strategyAuto', helpKey: 'strategyAutoHelp' },
+  { value: 'COA', labelKey: 'strategyCoa', helpKey: 'strategyCoaHelp' },
+  { value: 'MIKROTIK_API', labelKey: 'strategyRouterOs', helpKey: 'strategyRouterOsHelp' },
+  { value: 'SSH', labelKey: 'strategySsh', helpKey: 'strategySshHelp' },
 ];
 
 const TYPES: EquipmentType[] = ['BNG', 'OLT', 'ROUTER', 'SWITCH', 'OTHER'];
-const TYPE_LABEL: Record<EquipmentType, string> = {
-  BNG: 'BNG',
-  OLT: 'OLT',
-  ROUTER: 'Router',
-  SWITCH: 'Switch',
-  OTHER: 'Otro',
+const TYPE_LABEL_KEY: Record<EquipmentType, string> = {
+  BNG: 'typeBng',
+  OLT: 'typeOlt',
+  ROUTER: 'typeRouter',
+  SWITCH: 'typeSwitch',
+  OTHER: 'typeOther',
 };
 const TYPE_TONE: Record<EquipmentType, 'success' | 'info' | 'warning' | 'neutral'> = {
   BNG: 'success',
@@ -77,6 +70,8 @@ const VENDORS: EquipmentVendor[] = [
 ];
 
 export default function EquipmentPage() {
+  const t = useTranslations('network.equipment');
+  const tc = useTranslations('common');
   const canWrite = hasPermission('network.write');
   const canDelete = hasPermission('network.delete');
 
@@ -94,9 +89,9 @@ export default function EquipmentPage() {
   async function resync() {
     try {
       const res = await networkApi.resyncBngs();
-      toast.success(`Resync completo: ${res.synced}/${res.totalBngs} BNGs`);
+      toast.success(t('resyncDone', { synced: res.synced, total: res.totalBngs }));
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.friendlyMessage : 'Error');
+      toast.error(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     }
   }
 
@@ -104,23 +99,20 @@ export default function EquipmentPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Equipamientos</h1>
-          <p className="text-sm text-text-muted">
-            BNGs, OLTs, routers y switches del datacenter. BNGs se registran
-            automáticamente en RADIUS.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+          <p className="text-sm text-text-muted">{t('subtitle')}</p>
         </div>
         <div className="flex gap-2">
           {canWrite && (
-            <Button variant="outline" size="sm" onClick={resync} title="Forçar resync de BNGs com radius.nas">
+            <Button variant="outline" size="sm" onClick={resync} title={t('resyncTooltip')}>
               <RefreshCw className="h-3.5 w-3.5" />
-              Resync RADIUS
+              {t('resyncRadius')}
             </Button>
           )}
           {canWrite && (
             <Button onClick={() => setEditing('new')}>
               <Plus className="h-3.5 w-3.5" />
-              Nuevo equipo
+              {t('newEquipment')}
             </Button>
           )}
         </div>
@@ -132,10 +124,10 @@ export default function EquipmentPage() {
           onChange={(e) => setTypeFilter(e.target.value as EquipmentType | '')}
           className="w-44"
         >
-          <option value="">Todos los tipos</option>
-          {TYPES.map((t) => (
-            <option key={t} value={t}>
-              {TYPE_LABEL[t]}
+          <option value="">{t('allTypes')}</option>
+          {TYPES.map((ty) => (
+            <option key={ty} value={ty}>
+              {t(TYPE_LABEL_KEY[ty])}
             </option>
           ))}
         </Select>
@@ -145,12 +137,12 @@ export default function EquipmentPage() {
         <table className="min-w-full text-sm">
           <thead className="bg-surface-muted text-left text-[11px] font-semibold uppercase tracking-wider text-text-muted">
             <tr>
-              <th className="px-3 py-2">Tipo</th>
-              <th className="px-3 py-2">Nombre</th>
-              <th className="px-3 py-2">Vendor</th>
-              <th className="px-3 py-2">IP</th>
-              <th className="px-3 py-2">POP</th>
-              <th className="px-3 py-2">Estado</th>
+              <th className="px-3 py-2">{tc('type')}</th>
+              <th className="px-3 py-2">{tc('name')}</th>
+              <th className="px-3 py-2">{t('vendor')}</th>
+              <th className="px-3 py-2">{t('ip')}</th>
+              <th className="px-3 py-2">{t('pop')}</th>
+              <th className="px-3 py-2">{tc('status')}</th>
               <th className="px-3 py-2"></th>
             </tr>
           </thead>
@@ -158,14 +150,14 @@ export default function EquipmentPage() {
             {items.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-3 py-6 text-center text-text-muted">
-                  Sin equipamientos.
+                  {t('empty')}
                 </td>
               </tr>
             ) : (
               items.map((e) => (
                 <tr key={e.id} className="hover:bg-surface-hover">
                   <td className="px-3 py-2">
-                    <Badge tone={TYPE_TONE[e.type]}>{TYPE_LABEL[e.type]}</Badge>
+                    <Badge tone={TYPE_TONE[e.type]}>{t(TYPE_LABEL_KEY[e.type])}</Badge>
                   </td>
                   <td className="px-3 py-2 font-medium">{e.name}</td>
                   <td className="px-3 py-2 text-xs text-text-muted">{e.vendor}</td>
@@ -175,18 +167,18 @@ export default function EquipmentPage() {
                   </td>
                   <td className="px-3 py-2">
                     <Badge tone={e.isActive ? 'success' : 'neutral'}>
-                      {e.isActive ? 'Activo' : 'Inactivo'}
+                      {e.isActive ? t('active') : t('inactive')}
                     </Badge>
                   </td>
                   <td className="px-3 py-2 text-right">
                     {canWrite && (
                       <Button size="xs" variant="ghost" onClick={() => setEditing(e)}>
-                        Editar
+                        {tc('edit')}
                       </Button>
                     )}
                     {canDelete && (
                       <Button size="xs" variant="ghost" onClick={() => setDeleting(e)}>
-                        Eliminar
+                        {tc('delete')}
                       </Button>
                     )}
                   </td>
@@ -216,20 +208,20 @@ export default function EquipmentPage() {
           if (!deleting) return;
           try {
             await networkApi.deleteEquipment(deleting.id);
-            toast.success('Equipo eliminado');
+            toast.success(t('deleted'));
             setDeleting(null);
             await mutate();
           } catch (err) {
-            toast.error(err instanceof ApiError ? err.friendlyMessage : 'Error');
+            toast.error(err instanceof ApiError ? err.friendlyMessage : tc('error'));
           }
         }}
-        title="Eliminar equipamiento"
+        title={t('deleteTitle')}
         message={
           deleting?.type === 'BNG'
-            ? `Eliminar BNG "${deleting?.name}"? La entrada en radius.nas también será removida.`
-            : `Eliminar "${deleting?.name}"?`
+            ? t('deleteBngConfirm', { name: deleting?.name ?? '' })
+            : t('deleteConfirm', { name: deleting?.name ?? '' })
         }
-        confirmLabel="Eliminar"
+        confirmLabel={tc('delete')}
         variant="danger"
       />
     </div>
@@ -247,6 +239,8 @@ function EquipmentFormDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('network.equipment');
+  const tc = useTranslations('common');
   const isNew = !initial;
   const [form, setForm] = useState<CreateEquipmentInput>({
     type: initial?.type ?? 'BNG',
@@ -289,7 +283,7 @@ function EquipmentFormDialog({
 
   async function handleTestConnection() {
     if (!initial) {
-      toast.error('Guardá el equipamiento primero para probar conectividad');
+      toast.error(t('saveFirstToTest'));
       return;
     }
     setTesting(true);
@@ -298,10 +292,10 @@ function EquipmentFormDialog({
       const res = await networkApi.testConnection(initial.id);
       setTestResults(res.results);
       const allOk = res.results.every((r) => r.ok);
-      if (allOk) toast.success('Todas las strategies OK');
-      else toast.error('Una o más strategies fallaron — ver detalles abajo');
+      if (allOk) toast.success(t('allStrategiesOk'));
+      else toast.error(t('someStrategiesFailed'));
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.friendlyMessage : 'Error');
+      toast.error(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setTesting(false);
     }
@@ -309,10 +303,10 @@ function EquipmentFormDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.name.trim()) return setError('Nombre obligatorio');
-    if (!form.ipAddress.trim()) return setError('IP obligatorio');
+    if (!form.name.trim()) return setError(t('errNameRequired'));
+    if (!form.ipAddress.trim()) return setError(t('errIpRequired'));
     if (form.type === 'BNG' && (!form.radiusSecret || form.radiusSecret.length < 4)) {
-      return setError('BNG exige radiusSecret (mín. 4 chars)');
+      return setError(t('errRadiusSecret'));
     }
     setSubmitting(true);
     try {
@@ -331,10 +325,10 @@ function EquipmentFormDialog({
       } else {
         await networkApi.updateEquipment(initial!.id, payload);
       }
-      toast.success(isNew ? 'Equipo creado' : 'Equipo actualizado');
+      toast.success(isNew ? t('created') : t('updated'));
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Error');
+      setError(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setSubmitting(false);
     }
@@ -344,15 +338,15 @@ function EquipmentFormDialog({
     <Modal
       open
       onClose={onClose}
-      title={isNew ? 'Nuevo equipamiento' : `Editar ${initial!.name}`}
+      title={isNew ? t('newTitle') : t('editTitle', { name: initial!.name })}
       size="lg"
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button onClick={handleSubmit} loading={submitting}>
-            Guardar
+            {tc('save')}
           </Button>
         </>
       }
@@ -360,22 +354,22 @@ function EquipmentFormDialog({
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="grid gap-3 md:grid-cols-2">
           <div>
-            <Label required>Tipo</Label>
+            <Label required>{tc('type')}</Label>
             <Select
               value={form.type}
               onChange={(e) =>
                 setForm({ ...form, type: e.target.value as EquipmentType })
               }
             >
-              {TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {TYPE_LABEL[t]}
+              {TYPES.map((ty) => (
+                <option key={ty} value={ty}>
+                  {t(TYPE_LABEL_KEY[ty])}
                 </option>
               ))}
             </Select>
           </div>
           <div>
-            <Label>Vendor</Label>
+            <Label>{t('vendor')}</Label>
             <Select
               value={form.vendor}
               onChange={(e) =>
@@ -393,7 +387,7 @@ function EquipmentFormDialog({
 
         <div className="grid gap-3 md:grid-cols-2">
           <div>
-            <Label required>Nombre</Label>
+            <Label required>{tc('name')}</Label>
             <Input
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -402,7 +396,7 @@ function EquipmentFormDialog({
             />
           </div>
           <div>
-            <Label>Hostname</Label>
+            <Label>{t('hostname')}</Label>
             <Input
               value={form.hostname}
               onChange={(e) => setForm({ ...form, hostname: e.target.value })}
@@ -413,25 +407,23 @@ function EquipmentFormDialog({
 
         <div className="grid gap-3 md:grid-cols-2">
           <div>
-            <Label required>IP de management</Label>
+            <Label required>{t('mgmtIp')}</Label>
             <Input
               value={form.ipAddress}
               onChange={(e) => setForm({ ...form, ipAddress: e.target.value })}
               placeholder="10.33.33.102"
             />
-            <FieldHelp>
-              Mismo IP que el equipo usa para mandar Access-Request al RADIUS.
-            </FieldHelp>
+            <FieldHelp>{t('mgmtIpHelp')}</FieldHelp>
           </div>
           <div>
-            <Label>POP</Label>
+            <Label>{t('pop')}</Label>
             <Select
               value={form.popId ?? ''}
               onChange={(e) =>
                 setForm({ ...form, popId: e.target.value || null })
               }
             >
-              <option value="">— Sin POP —</option>
+              <option value="">{t('noPop')}</option>
               {pops.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
@@ -449,20 +441,18 @@ function EquipmentFormDialog({
             </p>
             <div className="grid gap-3 md:grid-cols-2">
               <div>
-                <Label required>Shared secret</Label>
+                <Label required>{t('sharedSecret')}</Label>
                 <Input
                   value={form.radiusSecret}
                   onChange={(e) =>
                     setForm({ ...form, radiusSecret: e.target.value })
                   }
-                  placeholder="el mismo configurado en el BNG"
+                  placeholder={t('sharedSecretPlaceholder')}
                 />
-                <FieldHelp>
-                  Idéntico al secret del NAS. Cambio invalida sesiones existentes.
-                </FieldHelp>
+                <FieldHelp>{t('sharedSecretHelp')}</FieldHelp>
               </div>
               <div>
-                <Label>Tipo NAS</Label>
+                <Label>{t('nasType')}</Label>
                 <Select
                   value={form.radiusNasType ?? 'mikrotik'}
                   onChange={(e) =>
@@ -478,9 +468,9 @@ function EquipmentFormDialog({
               </div>
             </div>
             <p className="rounded bg-surface px-2 py-1.5 text-xs text-text-muted">
-              Al guardar, NetX inserta/actualiza esto en{' '}
-              <code className="font-mono">radius.nas</code>. Tu BNG es reconocido
-              por FreeRADIUS al instante.
+              {t.rich('radiusNasNote', {
+                code: (chunks) => <code className="font-mono">{chunks}</code>,
+              })}
             </p>
           </div>
         )}
@@ -489,11 +479,11 @@ function EquipmentFormDialog({
         {(form.type === 'OLT' || form.type === 'ROUTER' || form.type === 'SWITCH') && (
           <div className="rounded-md border border-dashed border-border bg-surface-muted p-3 space-y-3">
             <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-              SNMP (opcional)
+              {t('snmpOptional')}
             </p>
             <div className="grid gap-3 md:grid-cols-2">
               <div>
-                <Label>Community</Label>
+                <Label>{t('community')}</Label>
                 <Input
                   value={form.snmpCommunity}
                   onChange={(e) =>
@@ -503,7 +493,7 @@ function EquipmentFormDialog({
                 />
               </div>
               <div>
-                <Label>Versión</Label>
+                <Label>{t('version')}</Label>
                 <Select
                   value={form.snmpVersion ?? 'v2c'}
                   onChange={(e) =>
@@ -523,7 +513,7 @@ function EquipmentFormDialog({
           <div className="rounded-md border border-dashed border-border bg-surface-muted p-3 space-y-3">
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-wider text-text-muted">
-                Acceso (Disconnect)
+                {t('accessDisconnect')}
               </p>
               {!isNew && (
                 <Button
@@ -534,13 +524,13 @@ function EquipmentFormDialog({
                   onClick={handleTestConnection}
                 >
                   <Plug className="h-3 w-3" />
-                  Testar conectividad
+                  {t('testConnectivity')}
                 </Button>
               )}
             </div>
 
             <div>
-              <Label>Estrategia de disconnect</Label>
+              <Label>{t('disconnectStrategy')}</Label>
               <Select
                 value={form.disconnectStrategy ?? 'AUTO'}
                 onChange={(e) =>
@@ -552,16 +542,17 @@ function EquipmentFormDialog({
               >
                 {DISCONNECT_STRATEGIES.map((s) => (
                   <option key={s.value} value={s.value}>
-                    {s.label}
+                    {t(s.labelKey)}
                   </option>
                 ))}
               </Select>
               <FieldHelp>
-                {
-                  DISCONNECT_STRATEGIES.find(
+                {(() => {
+                  const s = DISCONNECT_STRATEGIES.find(
                     (s) => s.value === (form.disconnectStrategy ?? 'AUTO'),
-                  )?.help
-                }
+                  );
+                  return s ? t(s.helpKey) : '';
+                })()}
               </FieldHelp>
             </div>
 
@@ -569,21 +560,23 @@ function EquipmentFormDialog({
             {form.vendor === 'MIKROTIK' && (
               <div className="rounded bg-surface p-3 space-y-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-                  RouterOS API (necesario para IPoE)
+                  {t('routerOsApi')}
                 </p>
                 <div className="grid gap-3 md:grid-cols-3">
                   <div className="md:col-span-2">
-                    <Label>API host</Label>
+                    <Label>{t('apiHost')}</Label>
                     <Input
                       value={form.apiHost ?? ''}
                       onChange={(e) =>
                         setForm({ ...form, apiHost: e.target.value || null })
                       }
-                      placeholder={`(default: ${form.ipAddress || 'IP de management'})`}
+                      placeholder={t('defaultPlaceholder', {
+                        value: form.ipAddress || t('mgmtIp'),
+                      })}
                     />
                   </div>
                   <div>
-                    <Label>Puerto</Label>
+                    <Label>{t('port')}</Label>
                     <Input
                       type="number"
                       value={form.apiPort ?? ''}
@@ -601,7 +594,7 @@ function EquipmentFormDialog({
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
                   <div>
-                    <Label>Usuario API</Label>
+                    <Label>{t('apiUser')}</Label>
                     <Input
                       value={form.apiUser ?? ''}
                       onChange={(e) =>
@@ -611,7 +604,7 @@ function EquipmentFormDialog({
                     />
                   </div>
                   <div>
-                    <Label>Contraseña API</Label>
+                    <Label>{t('apiPassword')}</Label>
                     <Input
                       type="password"
                       value={form.apiPassword ?? ''}
@@ -620,8 +613,8 @@ function EquipmentFormDialog({
                       }
                       placeholder={
                         initial?.hasApiPassword
-                          ? '•••••••• (deja vacío para mantener)'
-                          : 'contraseña'
+                          ? t('passwordKeep')
+                          : t('passwordPlaceholder')
                       }
                       autoComplete="new-password"
                     />
@@ -635,7 +628,7 @@ function EquipmentFormDialog({
                       setForm({ ...form, apiTlsEnabled: e.target.checked })
                     }
                   />
-                  TLS habilitado (puerto 8729)
+                  {t('tlsEnabled')}
                 </label>
               </div>
             )}
@@ -643,22 +636,24 @@ function EquipmentFormDialog({
             {/* SSH — fallback genérico */}
             <details className="rounded bg-surface p-3">
               <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-                SSH (override / fallback)
+                {t('sshOverride')}
               </summary>
               <div className="mt-3 space-y-3">
                 <div className="grid gap-3 md:grid-cols-3">
                   <div className="md:col-span-2">
-                    <Label>SSH host</Label>
+                    <Label>{t('sshHost')}</Label>
                     <Input
                       value={form.sshHost ?? ''}
                       onChange={(e) =>
                         setForm({ ...form, sshHost: e.target.value || null })
                       }
-                      placeholder={`(default: ${form.ipAddress || 'IP de management'})`}
+                      placeholder={t('defaultPlaceholder', {
+                        value: form.ipAddress || t('mgmtIp'),
+                      })}
                     />
                   </div>
                   <div>
-                    <Label>Puerto SSH</Label>
+                    <Label>{t('sshPort')}</Label>
                     <Input
                       type="number"
                       value={form.sshPort ?? 22}
@@ -676,7 +671,7 @@ function EquipmentFormDialog({
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
                   <div>
-                    <Label>Usuario SSH</Label>
+                    <Label>{t('sshUser')}</Label>
                     <Input
                       value={form.sshUser ?? ''}
                       onChange={(e) =>
@@ -685,7 +680,7 @@ function EquipmentFormDialog({
                     />
                   </div>
                   <div>
-                    <Label>Contraseña SSH</Label>
+                    <Label>{t('sshPassword')}</Label>
                     <Input
                       type="password"
                       value={form.sshPassword ?? ''}
@@ -694,15 +689,15 @@ function EquipmentFormDialog({
                       }
                       placeholder={
                         initial?.hasSshPassword
-                          ? '•••••••• (deja vacío para mantener)'
-                          : 'contraseña'
+                          ? t('passwordKeep')
+                          : t('passwordPlaceholder')
                       }
                       autoComplete="new-password"
                     />
                   </div>
                 </div>
                 <div>
-                  <Label>Comando de disconnect</Label>
+                  <Label>{t('disconnectCmd')}</Label>
                   <Textarea
                     rows={2}
                     value={form.sshDisconnectCmd ?? ''}
@@ -715,7 +710,7 @@ function EquipmentFormDialog({
                     placeholder="/ip dhcp-server lease remove [find mac-address={{macAddress}}]"
                   />
                   <FieldHelp>
-                    Placeholders:{' '}
+                    {t('placeholdersLabel')}{' '}
                     <code className="font-mono">{`{{macAddress}}`}</code>,{' '}
                     <code className="font-mono">{`{{framedIp}}`}</code>,{' '}
                     <code className="font-mono">{`{{username}}`}</code>,{' '}
@@ -729,11 +724,11 @@ function EquipmentFormDialog({
             {/* CoA port custom (raro mexer) */}
             <details className="rounded bg-surface p-3">
               <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-                CoA — Avanzado
+                {t('coaAdvanced')}
               </summary>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 <div>
-                  <Label>Puerto CoA</Label>
+                  <Label>{t('coaPort')}</Label>
                   <Input
                     type="number"
                     value={form.coaPort ?? ''}
@@ -753,11 +748,11 @@ function EquipmentFormDialog({
             {testResults && (
               <div className="space-y-1 rounded border border-border bg-surface p-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-                  Resultado del test
+                  {t('testResult')}
                 </p>
                 {testResults.length === 0 ? (
                   <p className="text-xs text-text-muted">
-                    Ninguna strategy configurada — define credenciales API/SSH primero.
+                    {t('noStrategyConfigured')}
                   </p>
                 ) : (
                   testResults.map((r) => (
@@ -774,7 +769,7 @@ function EquipmentFormDialog({
                         <span className="font-mono font-semibold">
                           {r.strategy}
                         </span>{' '}
-                        — {r.message ?? (r.ok ? 'OK' : 'falló')}
+                        — {r.message ?? (r.ok ? t('ok') : t('failed'))}
                       </div>
                     </div>
                   ))
@@ -785,24 +780,22 @@ function EquipmentFormDialog({
             {/* Última conectividad confirmada */}
             {!isNew && initial?.lastReachableAt && (
               <p className="text-[11px] text-text-muted">
-                Última conexión OK:{' '}
-                {new Date(initial.lastReachableAt).toLocaleString()}
+                {t('lastReachable', {
+                  when: new Date(initial.lastReachableAt).toLocaleString(),
+                })}
               </p>
             )}
           </div>
         )}
 
         <div>
-          <Label>Ubicación en el mapa</Label>
-          <FieldHelp>
-            Clic en el mapa para fijar el equipo, o &quot;Mi ubicación&quot;
-            si estás físicamente en el sitio. Puede diferir de la del POP-padre.
-          </FieldHelp>
+          <Label>{t('mapLocation')}</Label>
+          <FieldHelp>{t('mapLocationHelp')}</FieldHelp>
           <LocationPicker value={location} onChange={setLocation} />
         </div>
 
         <div>
-          <Label>Observaciones</Label>
+          <Label>{tc('notes')}</Label>
           <Textarea
             rows={2}
             value={form.notes}
@@ -816,7 +809,7 @@ function EquipmentFormDialog({
               checked={form.isActive ?? true}
               onChange={(e) => setForm({ ...form, isActive: e.target.checked })}
             />
-            Activo
+            {t('active')}
           </label>
         </div>
         {error && <p className="text-xs text-red-600">{error}</p>}

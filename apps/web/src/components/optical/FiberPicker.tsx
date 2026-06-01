@@ -10,6 +10,8 @@
  * loose-tube com >12 fibras, o ciclo se repete em "tubos" diferentes.
  * Mostrar a cor + número + tubo elimina erros de digitação na fusão.
  */
+import { useTranslations } from 'next-intl';
+
 import { fiberColorClient } from '@/lib/fiber-api';
 
 interface Props {
@@ -27,6 +29,7 @@ export function FiberPicker({
   id,
   disabled,
 }: Props) {
+  const t = useTranslations('opticalComponents');
   const color = fiberColorClient(value);
   // Determina se a cor é clara o suficiente pra precisar de borda extra
   // (branco/amarelo/cinza ficam invisíveis num fundo escuro sem borda).
@@ -53,8 +56,11 @@ export function FiberPicker({
           const c = fiberColorClient(n);
           return (
             <option key={n} value={n}>
-              Fibra {n} ({c.name}
-              {c.tube ? ` · tubo ${c.tube}` : ''})
+              {t('fiberPicker.optionLabel', {
+                n,
+                name: c.name,
+                tube: c.tube ? t('fiberPicker.tubeSuffix', { tube: c.tube }) : '',
+              })}
             </option>
           );
         })}
@@ -71,6 +77,7 @@ export function FiberChip({
   index: number;
   showName?: boolean;
 }) {
+  const t = useTranslations('opticalComponents');
   const c = fiberColorClient(index);
   const isLight = ['#f3f4f6', '#facc15', '#06b6d4'].includes(c.hex);
   return (
@@ -86,7 +93,7 @@ export function FiberChip({
       {showName && (
         <span className="text-text-muted">
           {c.name}
-          {c.tube ? ` t${c.tube}` : ''}
+          {c.tube ? t('fiberPicker.tubeSuffixShort', { tube: c.tube }) : ''}
         </span>
       )}
     </span>

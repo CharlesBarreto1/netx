@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -14,17 +15,17 @@ import { radacctApi, type UsageResponse } from '@/lib/radacct-api';
  * Período: 7 / 30 / 90 dias. Default 30.
  */
 export function ContractUsageChart({ contractId }: { contractId: string }) {
+  const t = useTranslations('contractCards');
   const [days, setDays] = useState(30);
   const { data, isLoading } = useSWR<UsageResponse>(
     radacctApi.usagePath(contractId, days),
   );
 
-  if (isLoading && !data) return <InlineLoader label="Cargando consumo…" />;
+  if (isLoading && !data) return <InlineLoader label={t('usage.loading')} />;
   if (!data || data.data.length === 0) {
     return (
       <div className="rounded-md border border-dashed border-border bg-surface p-4 text-sm text-text-muted">
-        Sin datos de consumo en el período. Verificá que el BNG esté
-        enviando accounting al RADIUS.
+        {t('usage.noData')}
       </div>
     );
   }
@@ -41,11 +42,11 @@ export function ContractUsageChart({ contractId }: { contractId: string }) {
         <div className="flex items-center gap-3 text-xs text-text-muted">
           <span>
             <span className="inline-block h-2 w-2 rounded-sm bg-sky-500" />{' '}
-            Download {formatBytes(data.totals.input)}
+            {t('usage.download')} {formatBytes(data.totals.input)}
           </span>
           <span>
             <span className="inline-block h-2 w-2 rounded-sm bg-emerald-500" />{' '}
-            Upload {formatBytes(data.totals.output)}
+            {t('usage.upload')} {formatBytes(data.totals.output)}
           </span>
         </div>
         <Select
@@ -53,9 +54,9 @@ export function ContractUsageChart({ contractId }: { contractId: string }) {
           onChange={(e) => setDays(Number(e.target.value))}
           className="w-32"
         >
-          <option value="7">7 días</option>
-          <option value="30">30 días</option>
-          <option value="90">90 días</option>
+          <option value="7">{t('usage.daysOption', { count: 7 })}</option>
+          <option value="30">{t('usage.daysOption', { count: 30 })}</option>
+          <option value="90">{t('usage.daysOption', { count: 90 })}</option>
         </Select>
       </div>
 
@@ -93,8 +94,7 @@ export function ContractUsageChart({ contractId }: { contractId: string }) {
       </div>
 
       <p className="text-2xs text-text-muted">
-        Datos agregados por día a partir de las sesiones encerradas. Sesiones
-        en curso no aparecen acá hasta el próximo Acct-Stop / Interim-Update.
+        {t('usage.footnote')}
       </p>
     </div>
   );

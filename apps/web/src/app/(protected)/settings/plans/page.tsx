@@ -6,6 +6,7 @@
  * O contrato seleciona um plano, que preenche valor e velocidade. A
  * velocidade vira a queue RADIUS (Mikrotik-Rate-Limit) por cliente.
  */
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -20,6 +21,8 @@ import { useFormatMoney } from '@/lib/use-money';
 import { plansApi, type CreatePlanInput, type Plan } from '@/lib/plans-api';
 
 export default function PlansPage() {
+  const t = useTranslations('settings.plans');
+  const tc = useTranslations('common');
   const { data, isLoading, mutate } = useSWR<Plan[]>(
     plansApi.listPath(true),
     () => plansApi.list(true),
@@ -43,7 +46,7 @@ export default function PlansPage() {
       setConfirmDelete(null);
     } catch (err) {
       // Plano em uso → backend retorna 409. Mostra a mensagem.
-      const msg = err instanceof ApiError ? err.friendlyMessage : 'Erro ao excluir';
+      const msg = err instanceof ApiError ? err.friendlyMessage : t('deleteError');
       alert(msg);
     } finally {
       setDeleting(false);
@@ -54,32 +57,31 @@ export default function PlansPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Planos</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Catálogo de velocidades + preços. O contrato seleciona um plano —
-            a velocidade vira a queue RADIUS (rate-limit) do cliente.
+            {t('subtitle')}
           </p>
         </div>
-        {canManage && <Button onClick={() => setCreating(true)}>Novo plano</Button>}
+        {canManage && <Button onClick={() => setCreating(true)}>{t('newPlan')}</Button>}
       </header>
 
       {plans.length === 0 ? (
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-          Nenhum plano cadastrado.
+          {t('empty')}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 dark:bg-slate-900">
               <tr>
-                <th className="px-3 py-2 text-left font-medium">Plano</th>
-                <th className="px-3 py-2 text-left font-medium">Download</th>
-                <th className="px-3 py-2 text-left font-medium">Upload</th>
-                <th className="px-3 py-2 text-left font-medium">Preço/mês</th>
-                <th className="px-3 py-2 text-left font-medium">Bloqueio</th>
-                <th className="px-3 py-2 text-left font-medium">Contratos</th>
-                <th className="px-3 py-2 text-left font-medium">Status</th>
-                <th className="px-3 py-2 text-right font-medium">Ações</th>
+                <th className="px-3 py-2 text-left font-medium">{t('colPlan')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('colDownload')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('colUpload')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('colMonthlyPrice')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('colBlock')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('colContracts')}</th>
+                <th className="px-3 py-2 text-left font-medium">{tc('status')}</th>
+                <th className="px-3 py-2 text-right font-medium">{tc('actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -89,25 +91,25 @@ export default function PlansPage() {
                   <td className="px-3 py-2">{p.downloadMbps} Mbps</td>
                   <td className="px-3 py-2">{p.uploadMbps} Mbps</td>
                   <td className="px-3 py-2">{formatMoney(Number(p.monthlyPrice))}</td>
-                  <td className="px-3 py-2 text-slate-500">{p.blockAfterDays} dia(s)</td>
+                  <td className="px-3 py-2 text-slate-500">{t('days', { count: p.blockAfterDays })}</td>
                   <td className="px-3 py-2 text-slate-500">{p.contractCount ?? 0}</td>
                   <td className="px-3 py-2">
                     <Badge tone={p.isActive ? 'success' : 'neutral'}>
-                      {p.isActive ? 'Ativo' : 'Inativo'}
+                      {p.isActive ? t('active') : t('inactive')}
                     </Badge>
                   </td>
                   <td className="px-3 py-2 text-right">
                     {canManage && (
                       <div className="flex justify-end gap-1">
                         <Button size="sm" variant="ghost" onClick={() => setEditing(p)}>
-                          Editar
+                          {tc('edit')}
                         </Button>
                         <Button
                           size="sm"
                           variant="ghost"
                           onClick={() => setConfirmDelete(p)}
                         >
-                          Excluir
+                          {tc('delete')}
                         </Button>
                       </div>
                     )}
@@ -139,9 +141,9 @@ export default function PlansPage() {
           open
           onClose={() => setConfirmDelete(null)}
           onConfirm={() => handleDelete(confirmDelete)}
-          title="Excluir plano"
-          message={`Excluir "${confirmDelete.name}"? Planos em uso por contratos não podem ser excluídos — desative em vez disso.`}
-          confirmLabel="Excluir"
+          title={t('deleteTitle')}
+          message={t('deleteMessage', { name: confirmDelete.name })}
+          confirmLabel={tc('delete')}
           variant="danger"
           loading={deleting}
         />
@@ -157,6 +159,8 @@ interface PlanFormModalProps {
 }
 
 function PlanFormModal({ plan, onClose, onSaved }: PlanFormModalProps) {
+  const t = useTranslations('settings.plans');
+  const tc = useTranslations('common');
   const [form, setForm] = useState<CreatePlanInput>({
     name: plan?.name ?? '',
     description: plan?.description ?? '',
@@ -182,32 +186,32 @@ function PlanFormModal({ plan, onClose, onSaved }: PlanFormModalProps) {
       else await plansApi.create(form);
       await onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro ao salvar');
+      setError(err instanceof ApiError ? err.friendlyMessage : t('saveError'));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Modal open onClose={onClose} title={plan ? 'Editar plano' : 'Novo plano'}>
+    <Modal open onClose={onClose} title={plan ? t('editTitle') : t('newPlan')}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
           <Label htmlFor="plan-name" required>
-            Nome
+            {tc('name')}
           </Label>
           <Input
             id="plan-name"
             required
             value={form.name}
             onChange={(e) => set('name', e.target.value)}
-            placeholder="Plano 500 Mega"
+            placeholder={t('namePlaceholder')}
           />
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <Label htmlFor="plan-download" required>
-              Download (Mbps)
+              {t('downloadMbps')}
             </Label>
             <Input
               id="plan-download"
@@ -220,7 +224,7 @@ function PlanFormModal({ plan, onClose, onSaved }: PlanFormModalProps) {
           </div>
           <div>
             <Label htmlFor="plan-upload" required>
-              Upload (Mbps)
+              {t('uploadMbps')}
             </Label>
             <Input
               id="plan-upload"
@@ -230,14 +234,14 @@ function PlanFormModal({ plan, onClose, onSaved }: PlanFormModalProps) {
               value={form.uploadMbps}
               onChange={(e) => set('uploadMbps', Number(e.target.value))}
             />
-            <FieldHelp>Para plano simétrico, use o mesmo valor do download.</FieldHelp>
+            <FieldHelp>{t('symmetricHelp')}</FieldHelp>
           </div>
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <Label htmlFor="plan-price" required>
-              Preço mensal
+              {t('monthlyPrice')}
             </Label>
             <Input
               id="plan-price"
@@ -250,7 +254,7 @@ function PlanFormModal({ plan, onClose, onSaved }: PlanFormModalProps) {
             />
           </div>
           <div>
-            <Label htmlFor="plan-order">Ordem de exibição</Label>
+            <Label htmlFor="plan-order">{t('displayOrder')}</Label>
             <Input
               id="plan-order"
               type="number"
@@ -262,7 +266,7 @@ function PlanFormModal({ plan, onClose, onSaved }: PlanFormModalProps) {
         </div>
 
         <div>
-          <Label htmlFor="plan-block-after-days">Dias para bloqueio</Label>
+          <Label htmlFor="plan-block-after-days">{t('blockAfterDays')}</Label>
           <Input
             id="plan-block-after-days"
             type="number"
@@ -271,14 +275,11 @@ function PlanFormModal({ plan, onClose, onSaved }: PlanFormModalProps) {
             value={form.blockAfterDays ?? 5}
             onChange={(e) => set('blockAfterDays', Number(e.target.value))}
           />
-          <FieldHelp>
-            Dias após o vencimento até o contrato ser suspenso por
-            inadimplência. Padrão 5. Cada contrato pode sobrescrever esse valor.
-          </FieldHelp>
+          <FieldHelp>{t('blockAfterDaysHelp')}</FieldHelp>
         </div>
 
         <div>
-          <Label htmlFor="plan-description">Descrição (opcional)</Label>
+          <Label htmlFor="plan-description">{t('descriptionLabel')}</Label>
           <Textarea
             id="plan-description"
             rows={2}
@@ -293,17 +294,17 @@ function PlanFormModal({ plan, onClose, onSaved }: PlanFormModalProps) {
             checked={form.isActive ?? true}
             onChange={(e) => set('isActive', e.target.checked)}
           />
-          Plano ativo (aparece na seleção de contrato)
+          {t('isActiveLabel')}
         </label>
 
         {error && <FieldError>{error}</FieldError>}
 
         <div className="flex justify-end gap-2 border-t border-border pt-3">
           <Button type="button" variant="ghost" onClick={onClose}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button type="submit" loading={saving}>
-            {plan ? 'Salvar' : 'Criar'}
+            {plan ? tc('save') : tc('create')}
           </Button>
         </div>
       </form>

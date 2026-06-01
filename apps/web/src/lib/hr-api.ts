@@ -427,52 +427,8 @@ export const hrApi = {
   meFeed: () => api.get<CompanyPost[]>(`${B}/me/feed`),
 };
 
-// ── Labels (pt-BR) ────────────────────────────────────────────────────────────
-export const EMPLOYEE_STATUS_LABELS: Record<EmployeeStatus, string> = {
-  ACTIVE: 'Ativo',
-  ON_LEAVE: 'Afastado',
-  SUSPENDED: 'Suspenso',
-  TERMINATED: 'Desligado',
-};
-export const EMPLOYMENT_TYPE_LABELS: Record<EmploymentType, string> = {
-  CLT: 'CLT',
-  PJ: 'PJ',
-  INTERN: 'Estágio',
-  TEMPORARY: 'Temporário',
-  RELACION_DEPENDENCIA: 'Rel. dependência (PY)',
-  OTHER: 'Outro',
-};
-export const DOC_TYPE_LABELS: Record<EmployeeDocumentType, string> = {
-  CONTRACT: 'Contrato',
-  AMENDMENT: 'Aditivo',
-  MEDICAL_CERTIFICATE: 'Atestado',
-  WARNING: 'Advertência',
-  SUSPENSION: 'Suspensão',
-  ID_DOCUMENT: 'Documento',
-  CERTIFICATE: 'Certificado',
-  PAYSLIP: 'Holerite',
-  PAYMENT_RECEIPT: 'Comprovante',
-  OTHER: 'Outro',
-};
-export const PAYSLIP_STATUS_LABELS: Record<PayslipStatus, string> = {
-  DRAFT: 'Rascunho',
-  APPROVED: 'Aprovado',
-  PAID: 'Pago',
-  CANCELLED: 'Cancelado',
-};
-export const ENTRY_TYPE_LABELS: Record<TimeEntryType, string> = {
-  CLOCK_IN: 'Entrada',
-  CLOCK_OUT: 'Saída',
-  BREAK_START: 'Início intervalo',
-  BREAK_END: 'Fim intervalo',
-};
-export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
-  CASH: 'Dinheiro',
-  PIX: 'PIX',
-  CARD: 'Cartão',
-  BANK_TRANSFER: 'Transferência',
-  OTHER: 'Outro',
-};
+// Labels de enum agora vivem no dicionário i18n em `hr.enums.*` (ver
+// src/i18n/messages). Resolva nos componentes via `useTranslations('hr.enums')`.
 
 export function fmtMinutes(min: number): string {
   const h = Math.floor(min / 60);

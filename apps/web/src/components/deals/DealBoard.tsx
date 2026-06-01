@@ -10,6 +10,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from '@dnd-kit/core';
+import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 
 import { ApiError } from '@/lib/api';
@@ -46,6 +47,7 @@ export function DealBoard({
   /** Chamado após um move/reorder bem-sucedido para o caller revalidar o SWR. */
   onMutated: () => void;
 }) {
+  const t = useTranslations('dealsComponents');
   const [columns, setColumns] = useState(board.columns);
   const [activeDeal, setActiveDeal] = useState<Deal | null>(null);
 
@@ -160,7 +162,7 @@ export function DealBoard({
       const msg =
         err instanceof ApiError
           ? err.friendlyMessage
-          : 'Não foi possível mover o deal';
+          : t('board.moveFailed');
       toast.error(msg);
     }
   }

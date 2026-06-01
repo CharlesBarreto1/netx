@@ -1,3 +1,7 @@
+'use client';
+
+import { useTranslations } from 'next-intl';
+
 import { Badge } from '@/components/ui/Badge';
 import type { ContractStatus } from '@/lib/contracts-api';
 
@@ -7,15 +11,17 @@ import type { ContractStatus } from '@/lib/contracts-api';
  * reservadas (default, metadata, generateMetadata, etc.).
  */
 export function StatusBadge({ status }: { status: ContractStatus }) {
+  const t = useTranslations('components.contractStatus');
+
   switch (status) {
     case 'PENDING_INSTALL':
-      return <Badge tone="info">Aguardando instalação</Badge>;
+      return <Badge tone="info">{t('PENDING_INSTALL')}</Badge>;
     case 'ACTIVE':
-      return <Badge tone="success">Ativo</Badge>;
+      return <Badge tone="success">{t('ACTIVE')}</Badge>;
     case 'SUSPENDED':
-      return <Badge tone="warning">Suspenso</Badge>;
+      return <Badge tone="warning">{t('SUSPENDED')}</Badge>;
     case 'CANCELLED':
-      return <Badge tone="danger">Cancelado</Badge>;
+      return <Badge tone="danger">{t('CANCELLED')}</Badge>;
     default:
       return <Badge>{status}</Badge>;
   }

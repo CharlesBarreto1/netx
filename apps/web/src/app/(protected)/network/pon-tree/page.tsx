@@ -12,6 +12,7 @@
  * /network/optical/[id] (vista esquemática). v2 pode mostrar painel
  * lateral com os detalhes da caixa selecionada.
  */
+import { useTranslations } from 'next-intl';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useMemo } from 'react';
 import useSWR from 'swr';
@@ -29,6 +30,8 @@ import {
 } from '@/lib/pon-tree-api';
 
 export default function PonTreePage() {
+  const t = useTranslations('network.ponTree');
+  const tc = useTranslations('common');
   const router = useRouter();
   const params = useSearchParams();
   const rootId = params?.get('root') ?? '';
@@ -61,60 +64,55 @@ export default function PonTreePage() {
   return (
     <div className="space-y-4">
       <header>
-        <h1 className="text-2xl font-bold tracking-tight">Árvore PON</h1>
-        <p className="text-sm text-text-muted">
-          Vista lógica (não-geográfica) descendo da caixa raiz até as folhas.
-          Útil pra diagnóstico de caminho lógico OLT → cliente.
-        </p>
+        <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+        <p className="text-sm text-text-muted">{t('subtitle')}</p>
       </header>
 
       <section className="flex flex-wrap items-end gap-3 rounded-md border border-border bg-surface p-3">
         <div className="flex-1 min-w-[240px]">
-          <Label htmlFor="pt-root">Caixa raiz</Label>
+          <Label htmlFor="pt-root">{t('rootBox')}</Label>
           <Select
             id="pt-root"
             value={rootId}
             onChange={(e) => setRoot(e.target.value)}
           >
-            <option value="">— selecionar —</option>
+            <option value="">{t('selectPlaceholder')}</option>
             {orderedRoots.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.isRootCandidate ? '★ ' : ''}
                 {r.code} ({r.type})
                 {r.outgoingCableCount > 0
-                  ? ` · ${r.outgoingCableCount} saída(s)`
+                  ? ` · ${t('outgoingCount', { count: r.outgoingCableCount })}`
                   : ''}
               </option>
             ))}
           </Select>
-          <p className="mt-1 text-xs text-text-muted">
-            ★ = candidato natural (não recebe cabo de outra caixa).
-          </p>
+          <p className="mt-1 text-xs text-text-muted">{t('rootHint')}</p>
         </div>
 
         {tree && (
           <div className="flex gap-2 text-xs">
-            <Badge tone="info">{tree.stats.totalNodes} nós</Badge>
-            <Badge tone="brand">{tree.stats.totalCables} cabos</Badge>
-            <Badge tone="success">{tree.stats.leafClients} drops</Badge>
-            <Badge tone="neutral">Prof. {tree.stats.maxDepth}</Badge>
+            <Badge tone="info">{t('statNodes', { count: tree.stats.totalNodes })}</Badge>
+            <Badge tone="brand">{t('statCables', { count: tree.stats.totalCables })}</Badge>
+            <Badge tone="success">{t('statDrops', { count: tree.stats.leafClients })}</Badge>
+            <Badge tone="neutral">{t('statDepth', { depth: tree.stats.maxDepth })}</Badge>
           </div>
         )}
       </section>
 
       {!rootId && (
         <div className="rounded-md border border-border bg-surface p-8 text-center text-sm text-text-muted">
-          Escolha uma caixa raiz pra montar a árvore.
+          {t('emptyState')}
         </div>
       )}
 
       {rootId && isLoading && (
-        <PageLoader label="Montando árvore…" />
+        <PageLoader label={t('building')} />
       )}
 
       {rootId && error && (
         <div className="rounded-md border border-red-300 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-          {error instanceof ApiError ? error.friendlyMessage : 'Erro'}
+          {error instanceof ApiError ? error.friendlyMessage : tc('error')}
         </div>
       )}
 
@@ -127,17 +125,17 @@ export default function PonTreePage() {
           <div className="flex items-center gap-3 text-xs text-text-muted">
             <span className="flex items-center gap-1">
               <span className="inline-block h-3 w-6 rounded-sm" style={{ backgroundColor: '#1d4ed8' }} />
-              Backbone
+              {t('legendBackbone')}
             </span>
             <span className="flex items-center gap-1">
               <span className="inline-block h-3 w-6 rounded-sm" style={{ backgroundColor: '#9333ea' }} />
-              Distribuição
+              {t('legendDistribution')}
             </span>
             <span className="flex items-center gap-1">
               <span className="inline-block h-3 w-6 rounded-sm border border-dashed" style={{ backgroundColor: '#0d9488' }} />
-              Drop (tracejado)
+              {t('legendDrop')}
             </span>
-            <span className="ml-auto">Click num nó pra abrir a vista esquemática</span>
+            <span className="ml-auto">{t('clickHint')}</span>
           </div>
         </>
       )}

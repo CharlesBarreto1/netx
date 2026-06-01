@@ -3,6 +3,7 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Calendar, GripVertical, MessageSquare } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import type { CSSProperties, MouseEventHandler } from 'react';
 
 import { Avatar, AvatarFallback, initialsFromName } from '@/components/ui/avatar';
@@ -30,6 +31,7 @@ export function DealCard({
   isOverlay?: boolean;
   isDragging?: boolean;
 }) {
+  const t = useTranslations('dealsComponents');
   const sortable = useSortable({
     id: deal.id,
     data: { type: 'deal', deal },
@@ -123,7 +125,7 @@ export function DealCard({
           </SimpleTooltip>
         )}
         {!!deal.activityCount && (
-          <SimpleTooltip label={`${deal.activityCount} atividade(s)`}>
+          <SimpleTooltip label={t('card.activities', { count: deal.activityCount })}>
             <span className="inline-flex items-center gap-1 tabular">
               <MessageSquare className="h-3 w-3" />
               {deal.activityCount}

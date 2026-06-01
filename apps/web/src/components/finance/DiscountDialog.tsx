@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
@@ -40,6 +41,8 @@ export function DiscountDialog({
   description,
   onConfirm,
 }: DiscountDialogProps) {
+  const t = useTranslations('financeDialogs');
+  const tc = useTranslations('common');
   const [discount, setDiscount] = useState('');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -60,7 +63,7 @@ export function DiscountDialog({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!isValid) {
-      setError('Descuento inválido');
+      setError(t('discount.invalid'));
       return;
     }
     setSubmitting(true);
@@ -68,7 +71,7 @@ export function DiscountDialog({
       await onConfirm(value, note.trim() || undefined);
       onOpenChange(false);
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Error');
+      setError(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setSubmitting(false);
     }
@@ -79,7 +82,7 @@ export function DiscountDialog({
       <DialogContent className="max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Aplicar descuento</DialogTitle>
+            <DialogTitle>{t('discount.title')}</DialogTitle>
             {description && (
               <p className="mt-1 text-xs text-text-muted">{description}</p>
             )}
@@ -87,17 +90,17 @@ export function DiscountDialog({
           <DialogBody className="space-y-3">
             <div className="rounded-md bg-surface-muted p-3 text-sm">
               <div className="flex justify-between">
-                <span className="text-text-muted">Valor original</span>
+                <span className="text-text-muted">{t('discount.originalAmount')}</span>
                 <span className="font-semibold tabular-nums">{amount.toFixed(2)}</span>
               </div>
               <div className="mt-1 flex justify-between border-t border-border pt-1">
-                <span className="text-text-muted">Total a recibir</span>
+                <span className="text-text-muted">{t('discount.totalToReceive')}</span>
                 <span className="font-semibold tabular-nums">{net.toFixed(2)}</span>
               </div>
             </div>
             <div>
               <Label htmlFor="discount-value" required>
-                Valor del descuento
+                {t('discount.valueLabel')}
               </Label>
               <Input
                 id="discount-value"
@@ -107,19 +110,16 @@ export function DiscountDialog({
                 placeholder="0,00"
                 autoFocus
               />
-              <FieldHelp>
-                Pasá 0 para quitar el descuento. No puede superar el valor de la
-                factura.
-              </FieldHelp>
+              <FieldHelp>{t('discount.valueHelp')}</FieldHelp>
             </div>
             <div>
-              <Label htmlFor="discount-note">Motivo (opcional)</Label>
+              <Label htmlFor="discount-note">{t('discount.noteLabel')}</Label>
               <Textarea
                 id="discount-note"
                 rows={2}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="Ej.: cliente pagó adelantado, política de fidelidad…"
+                placeholder={t('discount.notePlaceholder')}
               />
             </div>
             {error && <p className="text-xs text-red-600">{error}</p>}
@@ -131,10 +131,10 @@ export function DiscountDialog({
               onClick={() => onOpenChange(false)}
               disabled={submitting}
             >
-              Cancelar
+              {tc('cancel')}
             </Button>
             <Button type="submit" loading={submitting} disabled={!isValid}>
-              Guardar
+              {tc('save')}
             </Button>
           </DialogFooter>
         </form>

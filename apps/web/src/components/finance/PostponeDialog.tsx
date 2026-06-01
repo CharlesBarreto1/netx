@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
@@ -40,6 +41,8 @@ export function PostponeDialog({
   description,
   onConfirm,
 }: PostponeDialogProps) {
+  const t = useTranslations('financeDialogs');
+  const tc = useTranslations('common');
   const [newDate, setNewDate] = useState('');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -61,7 +64,7 @@ export function PostponeDialog({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!isValid) {
-      setError('La nueva fecha debe ser posterior al vencimiento actual.');
+      setError(t('postpone.dateError'));
       return;
     }
     setSubmitting(true);
@@ -69,7 +72,7 @@ export function PostponeDialog({
       await onConfirm(newDate, note.trim() || undefined);
       onOpenChange(false);
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Error');
+      setError(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setSubmitting(false);
     }
@@ -80,19 +83,19 @@ export function PostponeDialog({
       <DialogContent className="max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Prorrogar factura</DialogTitle>
+            <DialogTitle>{t('postpone.title')}</DialogTitle>
             {description && (
               <p className="mt-1 text-xs text-text-muted">{description}</p>
             )}
           </DialogHeader>
           <DialogBody className="space-y-3">
             <div className="text-sm">
-              <span className="text-text-muted">Vencimiento actual:</span>{' '}
+              <span className="text-text-muted">{t('postpone.currentDueDate')}</span>{' '}
               <span className="font-medium">{currentDueDate.slice(0, 10)}</span>
             </div>
             <div>
               <Label htmlFor="postpone-date" required>
-                Nuevo vencimiento
+                {t('postpone.newDueDateLabel')}
               </Label>
               <Input
                 id="postpone-date"
@@ -102,19 +105,16 @@ export function PostponeDialog({
                 onChange={(e) => setNewDate(e.target.value)}
                 autoFocus
               />
-              <FieldHelp>
-                Si el contrato estaba suspendido por mora y esta era la única
-                factura vencida, se reactiva automáticamente.
-              </FieldHelp>
+              <FieldHelp>{t('postpone.newDueDateHelp')}</FieldHelp>
             </div>
             <div>
-              <Label htmlFor="postpone-note">Motivo (opcional)</Label>
+              <Label htmlFor="postpone-note">{t('postpone.noteLabel')}</Label>
               <Textarea
                 id="postpone-note"
                 rows={2}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                placeholder="Ej.: cliente pidió 7 días más."
+                placeholder={t('postpone.notePlaceholder')}
               />
             </div>
             {error && <p className="text-xs text-red-600">{error}</p>}
@@ -126,10 +126,10 @@ export function PostponeDialog({
               onClick={() => onOpenChange(false)}
               disabled={submitting}
             >
-              Cancelar
+              {tc('cancel')}
             </Button>
             <Button type="submit" loading={submitting} disabled={!isValid}>
-              Prorrogar
+              {t('postpone.submit')}
             </Button>
           </DialogFooter>
         </form>

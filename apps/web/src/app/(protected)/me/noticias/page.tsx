@@ -1,11 +1,13 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 
 import { PageLoader } from '@/components/ui/Spinner';
 import { hrApi, type CompanyPost } from '@/lib/hr-api';
 
 export default function MeNoticiasPage() {
+  const t = useTranslations('me.news');
   const { data, isLoading } = useSWR<CompanyPost[]>('/v1/hr/me/feed', () => hrApi.meFeed());
   if (isLoading) return <PageLoader />;
   const posts = data ?? [];
@@ -13,13 +15,13 @@ export default function MeNoticiasPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-2xl font-bold tracking-tight">Notícias</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Comunicados e novidades da empresa.</p>
+        <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+        <p className="text-sm text-slate-500 dark:text-slate-400">{t('subtitle')}</p>
       </header>
 
       {posts.length === 0 && (
         <p className="rounded-md border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500 dark:border-slate-700">
-          Nenhuma notícia publicada.
+          {t('empty')}
         </p>
       )}
 

@@ -14,6 +14,7 @@
  * enquanto gerencia. z-index alto pra ficar acima do Leaflet.
  */
 import { Link2, Unlink, X } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -33,6 +34,8 @@ interface Props {
 }
 
 export function PopDetailDrawer({ popId, onClose }: Props) {
+  const t = useTranslations('opticalComponents');
+  const tc = useTranslations('common');
   const { data: pop } = useSWR<NetworkPop>(`/v1/network/pops/${popId}`);
   // OLTs vinculadas a este POP.
   const linkedKey = oltsApi.listPath({ popId, pageSize: 100 });
@@ -57,11 +60,11 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
     setLinking(true);
     try {
       await oltsApi.setPop(picking, popId);
-      toast.success('OLT vinculada ao POP');
+      toast.success(t('popDetailDrawer.linkSuccess'));
       setPicking('');
       await Promise.all([mutateLinked(), mutateFree()]);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      toast.error(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setLinking(false);
     }
@@ -70,11 +73,11 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
   async function handleUnlink(olt: Olt) {
     try {
       await oltsApi.setPop(olt.id, null);
-      toast.success(`${olt.name} desvinculada`);
+      toast.success(t('popDetailDrawer.unlinkSuccess', { name: olt.name }));
       await Promise.all([mutateLinked(), mutateFree()]);
       setUnlinking(null);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      toast.error(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     }
   }
 
@@ -87,14 +90,14 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
         <div className="flex items-center gap-2">
           <Badge tone="info">POP</Badge>
           <span className="text-sm font-semibold">
-            {pop?.name ?? 'Carregando…'}
+            {pop?.name ?? tc('loading')}
           </span>
         </div>
         <button
           type="button"
           onClick={onClose}
           className="rounded p-1 text-text-muted hover:bg-surface-hover hover:text-text"
-          title="Fechar"
+          title={tc('close')}
         >
           <X className="h-4 w-4" />
         </button>
@@ -106,12 +109,12 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
           <section className="rounded-md border border-border bg-surface-muted p-3 text-xs">
             <dl className="space-y-1">
               {pop.code && (
-                <Row label="Código" value={<span className="font-mono">{pop.code}</span>} />
+                <Row label={tc('code')} value={<span className="font-mono">{pop.code}</span>} />
               )}
-              {pop.city && <Row label="Cidade" value={pop.city} />}
+              {pop.city && <Row label={t('popDetailDrawer.city')} value={pop.city} />}
               {(pop.latitude != null && pop.longitude != null) && (
                 <Row
-                  label="Coord"
+                  label={t('popDetailDrawer.coord')}
                   value={
                     <span className="font-mono">
                       {pop.latitude.toFixed(5)}, {pop.longitude.toFixed(5)}
@@ -119,7 +122,7 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
                   }
                 />
               )}
-              {pop.notes && <Row label="Notas" value={pop.notes} />}
+              {pop.notes && <Row label={tc('notes')} value={pop.notes} />}
             </dl>
           </section>
         )}
@@ -128,11 +131,11 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
         <section>
           <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-text-muted">
             <Link2 className="h-3.5 w-3.5" />
-            OLTs neste POP ({linked.length})
+            {t('popDetailDrawer.oltsInPop', { count: linked.length })}
           </h3>
           {linked.length === 0 ? (
             <p className="rounded-md border border-dashed border-border p-3 text-xs italic text-text-muted">
-              Nenhuma OLT vinculada. Use o seletor abaixo pra associar.
+              {t('popDetailDrawer.noLinkedOlts')}
             </p>
           ) : (
             <ul className="space-y-1.5">
@@ -162,13 +165,13 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
                           : 'neutral'
                     }
                   >
-                    {olt.status}
+                    {t(`popDetailDrawer.oltStatus.${olt.status}`)}
                   </Badge>
                   <button
                     type="button"
                     onClick={() => setUnlinking(olt)}
                     className="rounded p-1 text-text-muted hover:bg-surface-hover hover:text-red-600"
-                    title="Desvincular do POP"
+                    title={t('popDetailDrawer.unlinkFromPop')}
                   >
                     <Unlink className="h-3.5 w-3.5" />
                   </button>
@@ -180,7 +183,7 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
 
         {/* Vincular nova OLT */}
         <section className="rounded-md border border-border bg-surface-muted p-3">
-          <Label htmlFor="link-olt">Vincular OLT existente</Label>
+          <Label htmlFor="link-olt">{t('popDetailDrawer.linkExistingOlt')}</Label>
           <div className="flex gap-2">
             <Select
               id="link-olt"
@@ -190,8 +193,8 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
             >
               <option value="">
                 {free.length === 0
-                  ? '— nenhuma OLT sem POP —'
-                  : '— selecionar —'}
+                  ? t('popDetailDrawer.noFreeOlts')
+                  : t('popDetailDrawer.selectPlaceholder')}
               </option>
               {free.map((o) => (
                 <option key={o.id} value={o.id}>
@@ -205,11 +208,13 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
               loading={linking}
               size="sm"
             >
-              Vincular
+              {t('popDetailDrawer.link')}
             </Button>
           </div>
           <FieldHelp>
-            Pra criar OLTs novas: <code className="text-2xs">/olts</code> (cadastro provisioning).
+            {t.rich('popDetailDrawer.createOltHelp', {
+              code: (chunks) => <code className="text-2xs">{chunks}</code>,
+            })}
           </FieldHelp>
         </section>
       </div>
@@ -219,9 +224,9 @@ export function PopDetailDrawer({ popId, onClose }: Props) {
           open
           onClose={() => setUnlinking(null)}
           onConfirm={() => handleUnlink(unlinking)}
-          title={`Desvincular ${unlinking.name}?`}
-          message="A OLT continua no cadastro, mas perde a associação com este POP."
-          confirmLabel="Desvincular"
+          title={t('popDetailDrawer.unlinkConfirmTitle', { name: unlinking.name })}
+          message={t('popDetailDrawer.unlinkConfirmMessage')}
+          confirmLabel={t('popDetailDrawer.unlink')}
           variant="danger"
         />
       )}

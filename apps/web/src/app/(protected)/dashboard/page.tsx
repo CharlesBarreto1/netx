@@ -13,6 +13,7 @@ import {
   WifiOff,
   Wrench,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useMemo } from 'react';
 import type { ComponentType, ReactNode } from 'react';
@@ -55,6 +56,7 @@ interface OnlineSnapshotResponse {
 }
 
 export default function DashboardPage() {
+  const t = useTranslations('dashboard');
   const session = getSession();
   const canReadCustomers = session?.user.permissions.includes('customers.read') ?? false;
   const canReadContracts = session?.user.permissions.includes('contracts.read') ?? false;
@@ -79,8 +81,8 @@ export default function DashboardPage() {
     { refreshInterval: 30 * 60 * 1000, dedupingInterval: 5 * 60 * 1000 },
   );
 
-  const greeting = greetingFromHour();
-  const motivationalQuote = useMemo(() => pickQuoteOfDay(), []);
+  const greeting = t(greetingKeyFromHour());
+  const quoteOfDay = useMemo(() => pickQuoteOfDay(), []);
 
   return (
     <div className="animate-fade-in-up space-y-6">
@@ -92,7 +94,7 @@ export default function DashboardPage() {
               {greeting}
             </p>
             <h1 className="mt-1 text-2xl font-bold tracking-tight text-text">
-              Olá, {session?.user.firstName || 'operador'}
+              {t('hello', { name: session?.user.firstName || t('defaultOperator') })}
             </h1>
             <p className="mt-1 text-sm text-text-muted">
               {session?.tenant.name} — {session?.tenant.locale} ·{' '}
@@ -104,13 +106,13 @@ export default function DashboardPage() {
               <Link href="/customers/new">
                 <Button>
                   <UserPlus className="mr-1.5 h-4 w-4" />
-                  Novo cliente
+                  {t('newCustomer')}
                 </Button>
               </Link>
             )}
             <Link href="/customers">
               <Button variant="secondary">
-                Ver clientes
+                {t('viewCustomers')}
                 <ArrowRight className="ml-1.5 h-4 w-4" />
               </Button>
             </Link>
@@ -122,7 +124,7 @@ export default function DashboardPage() {
       <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <MetricCard
           icon={Users}
-          label="Clientes ativos"
+          label={t('activeCustomers')}
           value={cust?.pagination.total}
           loading={lCust && canReadCustomers}
           disabled={!canReadCustomers}
@@ -132,7 +134,7 @@ export default function DashboardPage() {
         />
         <MetricCard
           icon={FileText}
-          label="Contratos vigentes"
+          label={t('activeContracts')}
           value={contracts?.pagination.total}
           loading={lContracts && canReadContracts}
           disabled={!canReadContracts}
@@ -142,7 +144,7 @@ export default function DashboardPage() {
         />
         <MetricCard
           icon={Wallet}
-          label="Faturas em atraso"
+          label={t('overdueInvoices')}
           value={overdue?.pagination.total}
           loading={lOverdue && canReadContracts}
           disabled={!canReadContracts}
@@ -156,7 +158,7 @@ export default function DashboardPage() {
       <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <MetricCard
           icon={Wifi}
-          label="Clientes online"
+          label={t('customersOnline')}
           value={snapshot?.online}
           loading={lSnapshot && canReadContracts}
           disabled={!canReadContracts}
@@ -165,13 +167,16 @@ export default function DashboardPage() {
           delay={180}
           footer={
             snapshot
-              ? `${pct(snapshot.online, snapshot.totalActive)}% dos ativos · snapshot ${formatSnapshotAge(snapshot.snapshotAt)}`
+              ? t('footerOnline', {
+                  pct: pct(snapshot.online, snapshot.totalActive),
+                  age: formatSnapshotAge(snapshot.snapshotAt, t),
+                })
               : undefined
           }
         />
         <MetricCard
           icon={WifiOff}
-          label="Clientes offline"
+          label={t('customersOffline')}
           value={snapshot?.offline}
           loading={lSnapshot && canReadContracts}
           disabled={!canReadContracts}
@@ -180,7 +185,7 @@ export default function DashboardPage() {
           delay={240}
           footer={
             snapshot
-              ? `${pct(snapshot.offline, snapshot.totalActive)}% dos ativos`
+              ? t('footerOffline', { pct: pct(snapshot.offline, snapshot.totalActive) })
               : undefined
           }
         />
@@ -190,22 +195,22 @@ export default function DashboardPage() {
       <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <ShortcutCard
           icon={UserPlus}
-          title="Cadastrar cliente"
-          description="Pessoa física ou jurídica, com endereço, contatos e tags."
+          title={t('shortcutCustomerTitle')}
+          description={t('shortcutCustomerDesc')}
           href="/customers/new"
           show={canCreateCustomer}
         />
         <ShortcutCard
           icon={Plus}
-          title="Novo contrato"
-          description="Plano, IPoE/PPPoE e ciclo de faturamento — em <30s."
+          title={t('shortcutContractTitle')}
+          description={t('shortcutContractDesc')}
           href="/contracts/new"
           show={session?.user.permissions.includes('contracts.create') ?? false}
         />
         <ShortcutCard
           icon={Wrench}
-          title="Abrir O.S"
-          description="Visita técnica, mudança de endereço ou instalação."
+          title={t('shortcutServiceOrderTitle')}
+          description={t('shortcutServiceOrderDesc')}
           href="/service-orders"
           show={session?.user.permissions.includes('service_orders.read') ?? false}
         />
@@ -218,12 +223,12 @@ export default function DashboardPage() {
             <Sparkles className="h-5 w-5" />
           </div>
           <div>
-            <h2 className="text-md font-semibold text-text">Dica do dia</h2>
+            <h2 className="text-md font-semibold text-text">{t('tipOfTheDay')}</h2>
             <p className="mt-1 text-sm text-text-muted">
-              Pressione{' '}
-              <kbd className="kbd">⌘</kbd> <kbd className="kbd">K</kbd> em qualquer
-              lugar pra abrir a busca global e navegar por clientes, contratos,
-              faturas ou pular pra qualquer página da operação.
+              {t.rich('tipShortcut', {
+                cmd: () => <kbd className="kbd">⌘</kbd>,
+                k: () => <kbd className="kbd">K</kbd>,
+              })}
             </p>
           </div>
         </div>
@@ -233,12 +238,12 @@ export default function DashboardPage() {
             <Heart className="h-5 w-5" />
           </div>
           <div>
-            <h2 className="text-md font-semibold text-text">Pensamento do dia</h2>
+            <h2 className="text-md font-semibold text-text">{t('thoughtOfTheDay')}</h2>
             <p className="mt-1 text-sm italic text-text-muted">
-              &ldquo;{motivationalQuote.text}&rdquo;
+              &ldquo;{t(`quote${quoteOfDay.n}`)}&rdquo;
             </p>
-            {motivationalQuote.author && (
-              <p className="mt-1 text-xs text-text-subtle">— {motivationalQuote.author}</p>
+            {quoteOfDay.author && (
+              <p className="mt-1 text-xs text-text-subtle">— {quoteOfDay.author}</p>
             )}
           </div>
         </div>
@@ -279,6 +284,7 @@ function MetricCard({
   /** Linha extra abaixo do valor (ex: "37% dos ativos · snapshot há 4 min"). */
   footer?: string;
 }) {
+  const t = useTranslations('dashboard');
   const Body = (
     <div
       className={cn(
@@ -309,10 +315,10 @@ function MetricCard({
         </div>
       )}
       <div className="flex items-center justify-between text-xs text-text-subtle">
-        <span>{disabled ? 'Sem permissão' : (footer ?? 'Atualizado agora')}</span>
+        <span>{disabled ? t('noPermission') : (footer ?? t('updatedNow'))}</span>
         {!disabled && (
           <span className="inline-flex items-center gap-0.5 text-text-muted">
-            Ver
+            {t('view')}
             <ArrowRight className="h-3 w-3" />
           </span>
         )}
@@ -337,6 +343,7 @@ function ShortcutCard({
   href: string;
   show?: boolean;
 }) {
+  const t = useTranslations('dashboard');
   if (!show) return null;
   return (
     <Link href={href}>
@@ -347,7 +354,7 @@ function ShortcutCard({
         </div>
         <p className="text-xs text-text-muted">{description}</p>
         <span className="mt-1 inline-flex items-center gap-1 text-2xs font-medium text-text-subtle transition-colors group-hover:text-accent">
-          Abrir
+          {t('open')}
           <ArrowRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5" />
         </span>
       </div>
@@ -355,12 +362,12 @@ function ShortcutCard({
   );
 }
 
-function greetingFromHour(): string {
+function greetingKeyFromHour(): 'greetingDawn' | 'greetingMorning' | 'greetingAfternoon' | 'greetingEvening' {
   const h = new Date().getHours();
-  if (h < 5) return 'Madrugada produtiva';
-  if (h < 12) return 'Bom dia';
-  if (h < 18) return 'Boa tarde';
-  return 'Boa noite';
+  if (h < 5) return 'greetingDawn';
+  if (h < 12) return 'greetingMorning';
+  if (h < 18) return 'greetingAfternoon';
+  return 'greetingEvening';
 }
 
 function pct(part: number | undefined, total: number | undefined): string {
@@ -368,13 +375,16 @@ function pct(part: number | undefined, total: number | undefined): string {
   return Math.round(((part ?? 0) / total) * 100).toString();
 }
 
-function formatSnapshotAge(isoDate: string): string {
+function formatSnapshotAge(
+  isoDate: string,
+  t: (key: 'ageNow' | 'ageMinutes' | 'ageHours', values?: Record<string, number>) => string,
+): string {
   const ms = Date.now() - new Date(isoDate).getTime();
-  if (ms < 60_000) return 'agora';
+  if (ms < 60_000) return t('ageNow');
   const min = Math.floor(ms / 60_000);
-  if (min < 60) return `há ${min} min`;
+  if (min < 60) return t('ageMinutes', { min });
   const h = Math.floor(min / 60);
-  return `há ${h}h`;
+  return t('ageHours', { h });
 }
 
 // ---------------------------------------------------------------------------
@@ -383,42 +393,43 @@ function formatSnapshotAge(isoDate: string): string {
 // (Drucker, Bezos, etc) e frases anônimas focadas em operação de ISP.
 // ---------------------------------------------------------------------------
 interface Quote {
-  text: string;
+  /** Índice da chave de tradução: t(`quote${n}`). */
+  n: number;
   author?: string;
 }
 const QUOTES: Quote[] = [
-  { text: 'O melhor jeito de prever o futuro é criá-lo.', author: 'Peter Drucker' },
-  { text: 'Sua marca é o que as pessoas dizem de você quando você não está na sala.', author: 'Jeff Bezos' },
-  { text: 'Resolva o problema do cliente antes do problema do produto.', author: 'Steve Jobs' },
-  { text: 'Disciplina é a ponte entre metas e realizações.', author: 'Jim Rohn' },
-  { text: 'Não é sobre ter tempo; é sobre criar tempo.' },
-  { text: 'Cliente bem atendido vira propaganda gratuita.' },
-  { text: 'A internet que você entrega define a paciência do seu cliente.' },
-  { text: 'Cada chamada técnica resolvida na primeira visita vale 10 visitas mal feitas.' },
-  { text: 'Pequenas melhorias diárias compõem em resultados extraordinários.' },
-  { text: 'Se você não pode medir, não pode melhorar.', author: 'Peter Drucker' },
-  { text: 'Qualidade nunca é um acidente; sempre é o resultado de esforço inteligente.', author: 'John Ruskin' },
-  { text: 'A inadimplência é um termômetro: ou da economia, ou do seu relacionamento.' },
-  { text: 'Sucesso é a soma de pequenos esforços repetidos dia após dia.', author: 'Robert Collier' },
-  { text: 'Operação que documenta hoje, escala amanhã.' },
-  { text: 'Não tenha medo de desistir do bom para perseguir o ótimo.', author: 'John Rockefeller' },
-  { text: 'Quem domina o último quilômetro domina a região.' },
-  { text: 'Foco é dizer não a 100 coisas boas.', author: 'Steve Jobs' },
-  { text: 'A diferença entre um ISP e um grande ISP está nos 5% que ninguém vê.' },
-  { text: 'O segredo é começar antes de estar pronto.', author: 'Marie Forleo' },
-  { text: 'Tecnologia move bits; pessoas movem clientes.' },
-  { text: 'Cada cliente fidelizado vale mais que dez novos perseguidos.' },
-  { text: 'A complacência custa mais que a competição.' },
-  { text: 'Não conte os dias, faça os dias contarem.', author: 'Muhammad Ali' },
-  { text: 'A melhor publicidade é um cliente satisfeito.', author: 'Bill Gates' },
-  { text: 'Velocidade de resposta é a primeira métrica de qualidade.' },
-  { text: 'Se algo trava duas vezes, vire código.' },
-  { text: 'O importante não é onde você está, é pra onde você vai.' },
-  { text: 'Backup só é útil quando você consegue restaurá-lo.' },
-  { text: 'Um bom mapa de rede vale por mil descobertas em produção.' },
-  { text: 'Confiança se constrói com previsibilidade.' },
-  { text: 'Sucesso é cair sete vezes e levantar oito.' },
-  { text: 'Cada cliente offline é uma história que você ainda não ouviu.' },
+  { n: 1, author: 'Peter Drucker' },
+  { n: 2, author: 'Jeff Bezos' },
+  { n: 3, author: 'Steve Jobs' },
+  { n: 4, author: 'Jim Rohn' },
+  { n: 5 },
+  { n: 6 },
+  { n: 7 },
+  { n: 8 },
+  { n: 9 },
+  { n: 10, author: 'Peter Drucker' },
+  { n: 11, author: 'John Ruskin' },
+  { n: 12 },
+  { n: 13, author: 'Robert Collier' },
+  { n: 14 },
+  { n: 15, author: 'John Rockefeller' },
+  { n: 16 },
+  { n: 17, author: 'Steve Jobs' },
+  { n: 18 },
+  { n: 19, author: 'Marie Forleo' },
+  { n: 20 },
+  { n: 21 },
+  { n: 22 },
+  { n: 23, author: 'Muhammad Ali' },
+  { n: 24, author: 'Bill Gates' },
+  { n: 25 },
+  { n: 26 },
+  { n: 27 },
+  { n: 28 },
+  { n: 29 },
+  { n: 30 },
+  { n: 31 },
+  { n: 32 },
 ];
 
 function pickQuoteOfDay(): Quote {

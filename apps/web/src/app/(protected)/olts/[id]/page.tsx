@@ -17,6 +17,7 @@
  *     · Salvar / Limpar.
  */
 import { ArrowLeft, MapPin, Save, X } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
@@ -44,6 +45,8 @@ import { hasPermission } from '@/lib/session';
 const DEFAULT_PORT_COUNT = 16;
 
 export default function OltDetailPage() {
+  const t = useTranslations('olts.detail');
+  const tc = useTranslations('common');
   const params = useParams<{ id: string }>();
   const oltId = params?.id;
   const canWrite = hasPermission('network.write');
@@ -68,7 +71,7 @@ export default function OltDetailPage() {
     }
   }, [ponPorts, portCount]);
 
-  if (isLoading || !olt) return <PageLoader label="Carregando OLT…" />;
+  if (isLoading || !olt) return <PageLoader label={t('loadingOlt')} />;
 
   const portsByIndex = new Map<number, PonPort>();
   for (const p of ponPorts ?? []) portsByIndex.set(p.ponIndex, p);
@@ -89,7 +92,7 @@ export default function OltDetailPage() {
         <Link
           href="/olts"
           className="text-text-muted hover:text-text"
-          title="Voltar"
+          title={tc('back')}
         >
           <ArrowLeft className="h-4 w-4" />
         </Link>
@@ -124,7 +127,7 @@ export default function OltDetailPage() {
       <section className="rounded-md border border-border bg-surface p-4 text-sm">
         <div className="flex items-center gap-2">
           <MapPin className="h-4 w-4 text-text-muted" />
-          <span className="font-semibold">POP vinculado:</span>
+          <span className="font-semibold">{t('linkedPop')}</span>
           {olt.pop ? (
             <span className="font-mono">
               {olt.pop.name}
@@ -132,11 +135,11 @@ export default function OltDetailPage() {
             </span>
           ) : (
             <span className="italic text-text-muted">
-              não vinculado — defina no estúdio de mapeamento
+              {t('popNotLinked')}
             </span>
           )}
           <Link href="/mapa" className="ml-auto text-xs text-brand-500 hover:underline">
-            Abrir estúdio →
+            {t('openStudio')}
           </Link>
         </div>
       </section>
@@ -144,13 +147,16 @@ export default function OltDetailPage() {
       {/* Card Portas PON */}
       <section className="rounded-md border border-border bg-surface p-4">
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <h2 className="text-base font-semibold">Portas PON</h2>
+          <h2 className="text-base font-semibold">{t('ponPorts')}</h2>
           <span className="text-xs text-text-muted">
-            ({ponPorts?.filter((p) => p.cableId).length ?? 0} de {portCount} vinculadas)
+            {t('linkedCount', {
+              linked: ponPorts?.filter((p) => p.cableId).length ?? 0,
+              total: portCount,
+            })}
           </span>
           <div className="ml-auto flex items-center gap-2">
             <Label htmlFor="port-count" className="text-xs">
-              Total
+              {t('total')}
             </Label>
             <Select
               id="port-count"
@@ -168,10 +174,7 @@ export default function OltDetailPage() {
         </div>
 
         <p className="mb-3 text-xs text-text-muted">
-          Cada porta PON da OLT sai por uma fibra específica de um cabo
-          backbone. O power budget automático segue esse vínculo até o
-          cliente. Sem vínculo, hover na vista esquemática mostra
-          &quot;topologia incompleta&quot;.
+          {t('ponPortsHint')}
         </p>
 
         <div className="overflow-x-auto">
@@ -179,11 +182,11 @@ export default function OltDetailPage() {
             <thead className="bg-surface-muted text-left text-[11px] font-semibold uppercase tracking-wider text-text-muted">
               <tr>
                 <th className="px-2 py-1.5 w-12">PON</th>
-                <th className="px-2 py-1.5">Cabo backbone</th>
-                <th className="px-2 py-1.5 w-40">Fibra</th>
+                <th className="px-2 py-1.5">{t('backboneCable')}</th>
+                <th className="px-2 py-1.5 w-40">{t('fiber')}</th>
                 <th className="px-2 py-1.5 w-28">TX (dBm)</th>
-                <th className="px-2 py-1.5">Notas</th>
-                <th className="px-2 py-1.5 w-32 text-right">Ações</th>
+                <th className="px-2 py-1.5">{tc('notes')}</th>
+                <th className="px-2 py-1.5 w-32 text-right">{tc('actions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -230,6 +233,8 @@ function PonPortRow({
   canWrite: boolean;
   onSaved: () => void;
 }) {
+  const t = useTranslations('olts.detail');
+  const tc = useTranslations('common');
   const [cableId, setCableId] = useState<string>(existing?.cableId ?? '');
   const [fiberIndex, setFiberIndex] = useState<string>(
     existing?.fiberIndex != null ? String(existing.fiberIndex) : '',
@@ -296,10 +301,10 @@ function PonPortRow({
       } else {
         await ponPortsApi.create(payload);
       }
-      toast.success(`PON ${ponIndex} salva`);
+      toast.success(t('ponSaved', { index: ponIndex }));
       await onSaved();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      toast.error(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setBusy(false);
     }
@@ -317,10 +322,10 @@ function PonPortRow({
     setBusy(true);
     try {
       await ponPortsApi.remove(existing.id);
-      toast.success(`PON ${ponIndex} liberada`);
+      toast.success(t('ponReleased', { index: ponIndex }));
       await onSaved();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      toast.error(err instanceof ApiError ? err.friendlyMessage : tc('error'));
     } finally {
       setBusy(false);
     }
@@ -345,7 +350,7 @@ function PonPortRow({
           disabled={!canWrite || busy}
           className="min-w-[200px]"
         >
-          <option value="">— sem vínculo —</option>
+          <option value="">{t('noLink')}</option>
           {cables.map((c) => (
             <option key={c.id} value={c.id}>
               {c.code} ({c.type} · {c.fiberCount}f)
@@ -374,7 +379,7 @@ function PonPortRow({
             {fiberIndex && <FiberChip index={Number(fiberIndex)} showName={false} />}
           </div>
         ) : (
-          <span className="text-xs italic text-text-subtle">selecione cabo</span>
+          <span className="text-xs italic text-text-subtle">{t('selectCable')}</span>
         )}
       </td>
       <td className="px-2 py-1.5">
@@ -394,7 +399,7 @@ function PonPortRow({
         <Input
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="opcional"
+          placeholder={tc('optional')}
           disabled={!canWrite || busy}
           className="min-w-[140px]"
         />
@@ -403,7 +408,7 @@ function PonPortRow({
         <div className="flex justify-end gap-1">
           {conflict && (
             <span
-              title="Essa fibra já está em outra porta — backend vai rejeitar"
+              title={t('fiberConflict')}
               className="text-xs text-red-600"
             >
               ⚠
@@ -415,7 +420,7 @@ function PonPortRow({
               onClick={handleSave}
               loading={busy}
               disabled={!!conflict}
-              title="Salvar"
+              title={tc('save')}
             >
               <Save className="h-3 w-3" />
             </Button>
@@ -426,7 +431,7 @@ function PonPortRow({
               variant="outline"
               onClick={handleClear}
               disabled={busy}
-              title="Liberar porta"
+              title={t('releasePort')}
             >
               <X className="h-3 w-3" />
             </Button>

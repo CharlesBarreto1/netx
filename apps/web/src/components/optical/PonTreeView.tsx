@@ -15,6 +15,8 @@
  *   - Badge vermelho ⚠ quando há evento OTDR ativo
  *   - "(loop → X)" quando o destino já foi visitado (ciclo)
  */
+import { useTranslations } from 'next-intl';
+
 import type { PonTreeNode } from '@/lib/pon-tree-api';
 
 // ─── Constantes de layout ───────────────────────────────────────────────────
@@ -185,6 +187,7 @@ interface Props {
 }
 
 export function PonTreeView({ root, onNodeClick }: Props) {
+  const t = useTranslations('opticalComponents');
   const { nodes, width, height } = layout(root);
 
   return (
@@ -302,7 +305,7 @@ export function PonTreeView({ root, onNodeClick }: Props) {
                 fontFamily="ui-monospace, monospace"
                 fill="#0f172a"
               >
-                {e.code}
+                {isCycle ? t('ponTreeView.loopMarker') : e.code}
               </text>
               <text
                 x={n.width / 2}
@@ -312,7 +315,7 @@ export function PonTreeView({ root, onNodeClick }: Props) {
                 fill="#475569"
               >
                 {isCycle
-                  ? 'ciclo detectado'
+                  ? t('ponTreeView.cycleDetected')
                   : `${e.type}${e.splitterRatio ? ` · 1:${splitterCount(e.splitterRatio)}` : ''}`}
               </text>
               {!isCycle && e.portsTotal > 0 && (

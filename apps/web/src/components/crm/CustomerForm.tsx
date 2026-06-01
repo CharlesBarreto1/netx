@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import {
@@ -22,7 +23,7 @@ import {
   type TaxIdType,
 } from '@/lib/crm-types';
 import { useTenantConfig } from '@/lib/tenant-config';
-import { STATUS_LABEL } from '@/components/ui/Badge';
+import { useStatusLabel } from '@/components/ui/Badge';
 
 export interface CustomerFormValues {
   type: CustomerType;
@@ -111,6 +112,9 @@ function autoFormatTaxId(type: TaxIdType | null | undefined, v: string) {
 }
 
 export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerFormProps) {
+  const t = useTranslations('components.customerForm');
+  const tc = useTranslations('common');
+  const STATUS_LABEL = useStatusLabel();
   const { preset } = useTenantConfig();
   // Default do PF do país (CPF para BR, CI para PY, etc). PJ default vem na
   // troca de tipo no Select abaixo.
@@ -142,17 +146,17 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
     if (!isEdit) {
       const reqErrs: Record<string, string> = {};
       if (!v.taxIdType || !v.taxIdCountry || !v.taxIdValue?.trim()) {
-        reqErrs['taxId.value'] = 'Documento obrigatório — informe tipo, país e número';
+        reqErrs['taxId.value'] = t('errors.taxIdRequired');
       }
       if (!v.primaryPhone?.trim()) {
-        reqErrs.primaryPhone = 'Telefone obrigatório';
+        reqErrs.primaryPhone = t('errors.phoneRequired');
       }
       if (isPF && !v.birthDate) {
-        reqErrs.birthDate = 'Data de nascimento obrigatória';
+        reqErrs.birthDate = t('errors.birthDateRequired');
       }
       if (Object.keys(reqErrs).length > 0) {
         setFieldErrors(reqErrs);
-        setFormError('Preencha os campos obrigatórios destacados.');
+        setFormError(t('errors.fillRequired'));
         return;
       }
     }
@@ -173,7 +177,7 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
           setFieldErrors(map);
         }
       } else {
-        setFormError((err as Error).message ?? 'Erro inesperado');
+        setFormError((err as Error).message ?? t('errors.unexpected'));
       }
     } finally {
       setSubmitting(false);
@@ -192,7 +196,7 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
       <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div>
           <Label htmlFor="type" required>
-            Tipo de cliente
+            {t('customerType')}
           </Label>
           <Select
             id="type"
@@ -210,13 +214,13 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
             }}
             disabled={isEdit}
           >
-            <option value="INDIVIDUAL">Pessoa Física</option>
-            <option value="COMPANY">Pessoa Jurídica</option>
+            <option value="INDIVIDUAL">{t('typeIndividual')}</option>
+            <option value="COMPANY">{t('typeCompany')}</option>
           </Select>
-          {isEdit && <FieldHelp>O tipo não pode ser alterado após a criação.</FieldHelp>}
+          {isEdit && <FieldHelp>{t('typeLockedHelp')}</FieldHelp>}
         </div>
         <div>
-          <Label htmlFor="status">Status</Label>
+          <Label htmlFor="status">{tc('status')}</Label>
           <Select
             id="status"
             value={v.status ?? ''}
@@ -230,13 +234,13 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
           </Select>
         </div>
         <div>
-          <Label htmlFor="code">Código interno</Label>
+          <Label htmlFor="code">{t('internalCode')}</Label>
           <Input
             id="code"
             maxLength={32}
             value={v.code ?? ''}
             onChange={(e) => upd('code', e.target.value || undefined)}
-            placeholder="Opcional"
+            placeholder={tc('optional')}
           />
           <FieldError>{fieldErrors.code}</FieldError>
         </div>
@@ -247,7 +251,7 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
         <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div>
             <Label htmlFor="firstName" required={!isEdit}>
-              Nome
+              {t('firstName')}
             </Label>
             <Input
               id="firstName"
@@ -259,7 +263,7 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
           </div>
           <div>
             <Label htmlFor="lastName" required={!isEdit}>
-              Sobrenome
+              {t('lastName')}
             </Label>
             <Input
               id="lastName"
@@ -271,7 +275,7 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
           </div>
           <div>
             <Label htmlFor="birthDate" required={!isEdit}>
-              Data de nascimento
+              {t('birthDate')}
             </Label>
             <Input
               id="birthDate"
@@ -283,16 +287,16 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
             <FieldError>{fieldErrors.birthDate}</FieldError>
           </div>
           <div>
-            <Label htmlFor="gender">Gênero</Label>
+            <Label htmlFor="gender">{t('gender')}</Label>
             <Input
               id="gender"
               value={v.gender ?? ''}
               onChange={(e) => upd('gender', e.target.value || null)}
-              placeholder="Ex.: F, M, Não-binário…"
+              placeholder={t('genderPlaceholder')}
             />
           </div>
           <div className="md:col-span-2">
-            <Label htmlFor="motherName">Nome da mãe</Label>
+            <Label htmlFor="motherName">{t('motherName')}</Label>
             <Input
               id="motherName"
               value={v.motherName ?? ''}
@@ -304,7 +308,7 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
         <section className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div className="md:col-span-2">
             <Label htmlFor="companyName" required={!isEdit}>
-              Razão social
+              {t('companyName')}
             </Label>
             <Input
               id="companyName"
@@ -315,7 +319,7 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
             <FieldError>{fieldErrors.companyName}</FieldError>
           </div>
           <div>
-            <Label htmlFor="tradeName">Nome fantasia</Label>
+            <Label htmlFor="tradeName">{t('tradeName')}</Label>
             <Input
               id="tradeName"
               value={v.tradeName ?? ''}
@@ -323,7 +327,7 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
             />
           </div>
           <div>
-            <Label htmlFor="foundedAt">Fundação</Label>
+            <Label htmlFor="foundedAt">{t('foundedAt')}</Label>
             <Input
               id="foundedAt"
               type="date"
@@ -332,7 +336,7 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
             />
           </div>
           <div>
-            <Label htmlFor="stateRegistration">Inscrição estadual</Label>
+            <Label htmlFor="stateRegistration">{t('stateRegistration')}</Label>
             <Input
               id="stateRegistration"
               value={v.stateRegistration ?? ''}
@@ -340,7 +344,7 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
             />
           </div>
           <div>
-            <Label htmlFor="municipalRegistration">Inscrição municipal</Label>
+            <Label htmlFor="municipalRegistration">{t('municipalRegistration')}</Label>
             <Input
               id="municipalRegistration"
               value={v.municipalRegistration ?? ''}
@@ -353,26 +357,26 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
       {/* Documento fiscal */}
       <section>
         <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
-          Documento fiscal
+          {t('taxDocument')}
         </h3>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div>
-            <Label htmlFor="taxIdType">Tipo</Label>
+            <Label htmlFor="taxIdType">{tc('type')}</Label>
             <Select
               id="taxIdType"
               value={v.taxIdType ?? ''}
               onChange={(e) => upd('taxIdType', (e.target.value || null) as TaxIdType | null)}
             >
               <option value="">—</option>
-              {TAX_ID_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
+              {TAX_ID_TYPES.map((taxType) => (
+                <option key={taxType} value={taxType}>
+                  {taxType}
                 </option>
               ))}
             </Select>
           </div>
           <div>
-            <Label htmlFor="taxIdCountry">País</Label>
+            <Label htmlFor="taxIdCountry">{t('country')}</Label>
             <Select
               id="taxIdCountry"
               value={v.taxIdCountry ?? ''}
@@ -388,18 +392,16 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
           </div>
           <div>
             <Label htmlFor="taxIdValue" required={!isEdit}>
-              Número
+              {t('taxIdNumber')}
             </Label>
             <Input
               id="taxIdValue"
               value={v.taxIdValue ?? ''}
               onChange={(e) => upd('taxIdValue', autoFormatTaxId(v.taxIdType, e.target.value))}
-              placeholder="Será validado pelo backend"
+              placeholder={t('taxIdNumberPlaceholder')}
               required={!isEdit}
             />
-            <FieldHelp>
-              O backend valida CPF/CNPJ (BR) e RUC (PY). Outros países aceitam valor livre.
-            </FieldHelp>
+            <FieldHelp>{t('taxIdNumberHelp')}</FieldHelp>
             <FieldError>{fieldErrors['taxId.value']}</FieldError>
           </div>
         </div>
@@ -408,11 +410,11 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
       {/* Contato principal */}
       <section>
         <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
-          Contato principal
+          {t('primaryContact')}
         </h3>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <Label htmlFor="primaryEmail">Email</Label>
+            <Label htmlFor="primaryEmail">{tc('email')}</Label>
             <Input
               id="primaryEmail"
               type="email"
@@ -423,7 +425,7 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
           </div>
           <div>
             <Label htmlFor="primaryPhone" required={!isEdit}>
-              Telefone
+              {tc('phone')}
             </Label>
             <Input
               id="primaryPhone"
@@ -440,11 +442,11 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
       {/* Preferências / observações */}
       <section>
         <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
-          Preferências e observações
+          {t('preferences')}
         </h3>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div>
-            <Label htmlFor="preferredLanguage">Idioma</Label>
+            <Label htmlFor="preferredLanguage">{t('language')}</Label>
             <Input
               id="preferredLanguage"
               value={v.preferredLanguage ?? ''}
@@ -453,7 +455,7 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
             />
           </div>
           <div>
-            <Label htmlFor="timezone">Fuso horário</Label>
+            <Label htmlFor="timezone">{t('timezone')}</Label>
             <Input
               id="timezone"
               value={v.timezone ?? ''}
@@ -462,7 +464,7 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
             />
           </div>
           <div className="md:col-span-2">
-            <Label htmlFor="shortNote">Observações rápidas</Label>
+            <Label htmlFor="shortNote">{t('shortNote')}</Label>
             <Textarea
               id="shortNote"
               maxLength={500}
@@ -470,7 +472,7 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
               value={v.shortNote ?? ''}
               onChange={(e) => upd('shortNote', e.target.value || null)}
             />
-            <FieldHelp>Máx. 500 caracteres. Use para notas internas não-formais.</FieldHelp>
+            <FieldHelp>{t('shortNoteHelp')}</FieldHelp>
           </div>
         </div>
       </section>
@@ -478,11 +480,11 @@ export function CustomerForm({ mode, initial, onSubmit, onCancel }: CustomerForm
       <footer className="flex items-center justify-end gap-2 border-t border-slate-200 pt-4 dark:border-slate-700">
         {onCancel && (
           <Button type="button" variant="ghost" onClick={onCancel} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
         )}
         <Button type="submit" loading={submitting}>
-          {isEdit ? 'Salvar alterações' : 'Criar cliente'}
+          {isEdit ? t('saveChanges') : t('createCustomer')}
         </Button>
       </footer>
     </form>

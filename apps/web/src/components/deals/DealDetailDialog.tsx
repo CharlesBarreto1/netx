@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { useEffect, useMemo, useState } from 'react';
 import useSWR from 'swr';
 
@@ -33,7 +34,6 @@ import {
   type UpdateDealInput,
 } from '@/lib/crm-sales-api';
 import {
-  DEAL_LOST_REASON_LABEL,
   DEAL_LOST_REASONS,
   type Deal,
   type DealHistoryEntry,
@@ -53,11 +53,6 @@ const STATUS_TONE: Record<DealStatus, 'info' | 'success' | 'danger'> = {
   OPEN: 'info',
   WON: 'success',
   LOST: 'danger',
-};
-const STATUS_LABEL: Record<DealStatus, string> = {
-  OPEN: 'Em aberto',
-  WON: 'Ganho',
-  LOST: 'Perdido',
 };
 
 /**
@@ -86,6 +81,8 @@ export function DealDetailDialog({
   /** Chamado após qualquer mutação para o board revalidar. */
   onMutated: () => void;
 }) {
+  const t = useTranslations('dealsComponents');
+  const tc = useTranslations('common');
   const canWrite = hasPermission('deals.write');
   const canDelete = hasPermission('deals.delete');
 
@@ -110,8 +107,8 @@ export function DealDetailDialog({
   }, [open]);
 
   const items: TabItem<TabKey>[] = [
-    { value: 'detalhes', label: 'Detalhes' },
-    { value: 'historico', label: 'Histórico' },
+    { value: 'detalhes', label: t('detail.tabDetails') },
+    { value: 'historico', label: t('detail.tabHistory') },
   ];
 
   function handleSavedOrAction() {
@@ -126,11 +123,11 @@ export function DealDetailDialog({
           <DialogHeader>
             <div className="flex flex-wrap items-center gap-2">
               <DialogTitle className="truncate">
-                {deal?.title ?? (isLoading ? 'Carregando…' : 'Deal')}
+                {deal?.title ?? (isLoading ? tc('loading') : t('detail.dealFallback'))}
               </DialogTitle>
               {deal && (
                 <Badge tone={STATUS_TONE[deal.status]}>
-                  {STATUS_LABEL[deal.status]}
+                  {t(`detail.status.${deal.status}`)}
                 </Badge>
               )}
               {deal?.stage?.name && (
@@ -140,7 +137,7 @@ export function DealDetailDialog({
             <DialogDescription>
               {deal && deal.customer ? (
                 <>
-                  Cliente:{' '}
+                  {t('detail.customerLabel')}{' '}
                   <Link
                     href={`/customers/${deal.customer.id}`}
                     className="font-medium text-text underline-offset-2 hover:underline"
@@ -149,7 +146,7 @@ export function DealDetailDialog({
                   </Link>
                 </>
               ) : (
-                <span className="text-text-muted">Sem cliente vinculado</span>
+                <span className="text-text-muted">{t('detail.noCustomerLinked')}</span>
               )}
             </DialogDescription>
           </DialogHeader>
@@ -185,7 +182,7 @@ export function DealDetailDialog({
                     size="sm"
                     onClick={() => setDeleteOpen(true)}
                   >
-                    Excluir
+                    {tc('delete')}
                   </Button>
                 )}
               </div>
@@ -199,7 +196,7 @@ export function DealDetailDialog({
                       size="sm"
                       onClick={() => setLoseOpen(true)}
                     >
-                      Marcar como perdido
+                      {t('detail.markAsLost')}
                     </Button>
                     <Button
                       type="button"
@@ -208,8 +205,8 @@ export function DealDetailDialog({
                       onClick={() => setConvertOpen(true)}
                     >
                       {deal.customerId
-                        ? 'Gerar contrato e marcar como ganho'
-                        : 'Converter em cliente'}
+                        ? t('detail.generateContractAndWin')
+                        : t('detail.convertToCustomer')}
                     </Button>
                   </>
                 )}
@@ -220,7 +217,7 @@ export function DealDetailDialog({
                     size="sm"
                     onClick={() => setReopenOpen(true)}
                   >
-                    Reabrir
+                    {t('detail.reopen')}
                   </Button>
                 )}
               </div>
@@ -273,21 +270,21 @@ export function DealDetailDialog({
       {deal && (
         <ConfirmDialog
           open={deleteOpen}
-          title="Excluir deal?"
-          message="Esta ação remove o deal do pipeline. Histórico fica preservado para auditoria."
-          confirmLabel="Excluir"
+          title={t('detail.deleteTitle')}
+          message={t('detail.deleteMessage')}
+          confirmLabel={tc('delete')}
           variant="danger"
           onClose={() => setDeleteOpen(false)}
           onConfirm={async () => {
             try {
               await dealsApi.remove(deal.id);
-              toast.success('Deal excluído');
+              toast.success(t('detail.deleted'));
               setDeleteOpen(false);
               onOpenChange(false);
               onMutated();
             } catch (err) {
               const msg =
-                err instanceof ApiError ? err.friendlyMessage : 'Falha ao excluir';
+                err instanceof ApiError ? err.friendlyMessage : t('detail.deleteFailed');
               toast.error(msg);
             }
           }}
@@ -311,6 +308,8 @@ function DealEditForm({
   canWrite: boolean;
   onSaved: () => void;
 }) {
+  const t = useTranslations('dealsComponents');
+  const tc = useTranslations('common');
   const [title, setTitle] = useState(deal.title);
   const [description, setDescription] = useState(deal.description ?? '');
   const [value, setValue] = useState(String(deal.value ?? ''));
@@ -362,7 +361,7 @@ function DealEditForm({
     e.preventDefault();
     if (!canWrite) return;
     if (!title.trim()) {
-      setError('Informe um título');
+      setError(t('edit.errTitleRequired'));
       return;
     }
 
@@ -386,11 +385,11 @@ function DealEditForm({
     setError(null);
     try {
       await dealsApi.update(deal.id, patch);
-      toast.success('Deal atualizado');
+      toast.success(t('edit.saved'));
       onSaved();
     } catch (err) {
       const msg =
-        err instanceof ApiError ? err.friendlyMessage : 'Falha ao salvar';
+        err instanceof ApiError ? err.friendlyMessage : t('edit.saveFailed');
       setError(msg);
     } finally {
       setSubmitting(false);
@@ -403,7 +402,7 @@ function DealEditForm({
     <form onSubmit={handleSubmit} className="flex flex-col gap-3">
       <div>
         <Label htmlFor="d-title" required>
-          Título
+          {t('edit.fieldTitle')}
         </Label>
         <Input
           id="d-title"
@@ -416,7 +415,7 @@ function DealEditForm({
 
       <div className="grid grid-cols-[1fr,80px,120px] gap-2">
         <div>
-          <Label htmlFor="d-value">Valor</Label>
+          <Label htmlFor="d-value">{t('edit.fieldValue')}</Label>
           <Input
             id="d-value"
             inputMode="decimal"
@@ -426,7 +425,7 @@ function DealEditForm({
           />
         </div>
         <div>
-          <Label htmlFor="d-currency">Moeda</Label>
+          <Label htmlFor="d-currency">{t('edit.fieldCurrency')}</Label>
           <Select
             id="d-currency"
             value={currency}
@@ -441,7 +440,7 @@ function DealEditForm({
           </Select>
         </div>
         <div>
-          <Label htmlFor="d-prob">Probabilidade</Label>
+          <Label htmlFor="d-prob">{t('edit.fieldProbability')}</Label>
           <Input
             id="d-prob"
             inputMode="numeric"
@@ -455,7 +454,7 @@ function DealEditForm({
 
       <div className="grid gap-2 md:grid-cols-2">
         <div>
-          <Label htmlFor="d-expected">Fechamento previsto</Label>
+          <Label htmlFor="d-expected">{t('edit.fieldExpectedClose')}</Label>
           <Input
             id="d-expected"
             type="date"
@@ -465,19 +464,19 @@ function DealEditForm({
           />
         </div>
         <div>
-          <Label>Estágio atual</Label>
+          <Label>{t('edit.fieldCurrentStage')}</Label>
           <div className="flex h-9 items-center rounded-md border border-border bg-surface-muted px-3 text-sm text-text">
             {stageInfo?.name ?? deal.stage?.name ?? '—'}
           </div>
-          <FieldHelp>Use o board para mover entre estágios.</FieldHelp>
+          <FieldHelp>{t('edit.stageHelp')}</FieldHelp>
         </div>
       </div>
 
       <div>
-        <Label htmlFor="d-customer">Cliente</Label>
+        <Label htmlFor="d-customer">{t('edit.fieldCustomer')}</Label>
         <Input
           id="d-customer"
-          placeholder="Buscar por nome…"
+          placeholder={t('edit.searchByName')}
           value={customerSearch}
           onChange={(e) => {
             setCustomerSearch(e.target.value);
@@ -514,13 +513,11 @@ function DealEditForm({
             ))}
           </div>
         )}
-        <FieldHelp>
-          Para criar um cliente novo, use “Converter em cliente” no rodapé.
-        </FieldHelp>
+        <FieldHelp>{t('edit.customerHelp')}</FieldHelp>
       </div>
 
       <div>
-        <Label htmlFor="d-desc">Descrição</Label>
+        <Label htmlFor="d-desc">{tc('description')}</Label>
         <Textarea
           id="d-desc"
           value={description}
@@ -532,16 +529,16 @@ function DealEditForm({
 
       <div className="flex flex-wrap items-center gap-3 text-xs text-text-muted">
         <span>
-          Valor atual: <strong>{formatMoney(deal.value, deal.currency)}</strong>
+          {t('edit.currentValue')} <strong>{formatMoney(deal.value, deal.currency)}</strong>
         </span>
         {deal.expectedCloseAt && (
           <span>
-            Previsto: <strong>{formatDate(deal.expectedCloseAt)}</strong>
+            {t('edit.expected')} <strong>{formatDate(deal.expectedCloseAt)}</strong>
           </span>
         )}
         {deal.owner?.name && (
           <span>
-            Owner: <strong>{deal.owner.name}</strong>
+            {t('edit.owner')} <strong>{deal.owner.name}</strong>
           </span>
         )}
       </div>
@@ -550,7 +547,7 @@ function DealEditForm({
 
       <div className="flex justify-end pt-1">
         <Button type="submit" loading={submitting} disabled={!canWrite}>
-          Salvar alterações
+          {t('edit.submit')}
         </Button>
       </div>
     </form>
@@ -561,6 +558,7 @@ function DealEditForm({
 // Histórico
 // =============================================================================
 function DealHistoryList({ dealId }: { dealId: string }) {
+  const t = useTranslations('dealsComponents');
   const { data, isLoading } = useSWR<DealHistoryEntry[]>(dealsApi.historyPath(dealId));
   if (isLoading || !data) {
     return (
@@ -570,7 +568,7 @@ function DealHistoryList({ dealId }: { dealId: string }) {
     );
   }
   if (data.length === 0) {
-    return <p className="text-sm text-text-muted">Nenhum evento registrado.</p>;
+    return <p className="text-sm text-text-muted">{t('history.empty')}</p>;
   }
   return (
     <ul className="flex flex-col gap-3 text-sm">
@@ -581,14 +579,14 @@ function DealHistoryList({ dealId }: { dealId: string }) {
         >
           <div className="flex items-center justify-between gap-2">
             <span className="font-medium text-text">
-              {h.fromStatus ?? 'OPEN'} → {h.toStatus}
+              {t(`detail.status.${h.fromStatus ?? 'OPEN'}`)} → {t(`detail.status.${h.toStatus}`)}
             </span>
             <span className="text-xs text-text-muted">
               {formatDateTime(h.createdAt)}
             </span>
           </div>
           {h.changedByName && (
-            <p className="mt-1 text-xs text-text-muted">por {h.changedByName}</p>
+            <p className="mt-1 text-xs text-text-muted">{t('history.by', { name: h.changedByName })}</p>
           )}
           {h.reason && <p className="mt-1 text-xs text-text">{h.reason}</p>}
         </li>
@@ -611,6 +609,8 @@ function LoseDealDialog({
   dealId: string;
   onDone: () => void;
 }) {
+  const t = useTranslations('dealsComponents');
+  const tc = useTranslations('common');
   const [reason, setReason] = useState<DealLostReason>('OTHER');
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -627,10 +627,10 @@ function LoseDealDialog({
     setSubmitting(true);
     try {
       await dealsApi.lose(dealId, { reason, note: note.trim() || undefined });
-      toast.success('Deal marcado como perdido');
+      toast.success(t('lose.done'));
       onDone();
     } catch (err) {
-      const msg = err instanceof ApiError ? err.friendlyMessage : 'Falha ao marcar';
+      const msg = err instanceof ApiError ? err.friendlyMessage : t('lose.failed');
       toast.error(msg);
     } finally {
       setSubmitting(false);
@@ -642,15 +642,13 @@ function LoseDealDialog({
       <DialogContent className="max-w-md">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Marcar deal como perdido</DialogTitle>
-            <DialogDescription>
-              Registre o motivo para alimentar o relatório de perdas.
-            </DialogDescription>
+            <DialogTitle>{t('lose.title')}</DialogTitle>
+            <DialogDescription>{t('lose.description')}</DialogDescription>
           </DialogHeader>
           <DialogBody className="flex flex-col gap-3">
             <div>
               <Label htmlFor="lose-reason" required>
-                Motivo
+                {t('lose.fieldReason')}
               </Label>
               <Select
                 id="lose-reason"
@@ -659,13 +657,13 @@ function LoseDealDialog({
               >
                 {DEAL_LOST_REASONS.map((r) => (
                   <option key={r} value={r}>
-                    {DEAL_LOST_REASON_LABEL[r]}
+                    {t(`lose.reason.${r}`)}
                   </option>
                 ))}
               </Select>
             </div>
             <div>
-              <Label htmlFor="lose-note">Observação (opcional)</Label>
+              <Label htmlFor="lose-note">{t('lose.fieldNote')}</Label>
               <Textarea
                 id="lose-note"
                 value={note}
@@ -681,10 +679,10 @@ function LoseDealDialog({
               onClick={() => onOpenChange(false)}
               disabled={submitting}
             >
-              Cancelar
+              {tc('cancel')}
             </Button>
             <Button type="submit" variant="danger" loading={submitting}>
-              Confirmar perda
+              {t('lose.confirm')}
             </Button>
           </DialogFooter>
         </form>
@@ -709,6 +707,8 @@ function ReopenDealDialog({
   pipeline: Pipeline;
   onDone: () => void;
 }) {
+  const t = useTranslations('dealsComponents');
+  const tc = useTranslations('common');
   const openStages = useMemo(
     () => pipeline.stages.filter((s) => !s.isWon && !s.isLost),
     [pipeline],
@@ -726,10 +726,10 @@ function ReopenDealDialog({
     setSubmitting(true);
     try {
       await dealsApi.reopen(deal.id, { stageId });
-      toast.success('Deal reaberto');
+      toast.success(t('reopen.done'));
       onDone();
     } catch (err) {
-      const msg = err instanceof ApiError ? err.friendlyMessage : 'Falha ao reabrir';
+      const msg = err instanceof ApiError ? err.friendlyMessage : t('reopen.failed');
       toast.error(msg);
     } finally {
       setSubmitting(false);
@@ -741,15 +741,13 @@ function ReopenDealDialog({
       <DialogContent className="max-w-sm">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Reabrir deal</DialogTitle>
-            <DialogDescription>
-              Selecione o estágio para o qual o deal voltará.
-            </DialogDescription>
+            <DialogTitle>{t('reopen.title')}</DialogTitle>
+            <DialogDescription>{t('reopen.description')}</DialogDescription>
           </DialogHeader>
           <DialogBody className="flex flex-col gap-3">
             <div>
               <Label htmlFor="reopen-stage" required>
-                Estágio
+                {t('reopen.fieldStage')}
               </Label>
               <Select
                 id="reopen-stage"
@@ -771,10 +769,10 @@ function ReopenDealDialog({
               onClick={() => onOpenChange(false)}
               disabled={submitting}
             >
-              Cancelar
+              {tc('cancel')}
             </Button>
             <Button type="submit" loading={submitting} disabled={!stageId}>
-              Reabrir
+              {t('reopen.submit')}
             </Button>
           </DialogFooter>
         </form>

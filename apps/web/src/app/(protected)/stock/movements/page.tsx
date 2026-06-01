@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
 import useSWR from 'swr';
 
@@ -21,18 +22,18 @@ import {
   type StockMovement,
 } from '@/lib/stock-api';
 
-const MOVEMENT_LABELS: Record<MovementType, string> = {
-  PURCHASE: 'Compra',
-  PURCHASE_RETURN: 'Devolução compra',
-  SALE: 'Venda',
-  SALE_RETURN: 'Devolução venda',
-  COMODATO_OUT: 'Comodato saída',
-  COMODATO_RETURN: 'Comodato retorno',
-  OS_CONSUMPTION: 'Consumo em OS',
-  ADJUSTMENT_IN: 'Ajuste +',
-  ADJUSTMENT_OUT: 'Ajuste -',
-  TRANSFER_OUT: 'Transferência saída',
-  TRANSFER_IN: 'Transferência entrada',
+const MOVEMENT_TYPE_KEYS: Record<MovementType, string> = {
+  PURCHASE: 'typePurchase',
+  PURCHASE_RETURN: 'typePurchaseReturn',
+  SALE: 'typeSale',
+  SALE_RETURN: 'typeSaleReturn',
+  COMODATO_OUT: 'typeComodatoOut',
+  COMODATO_RETURN: 'typeComodatoReturn',
+  OS_CONSUMPTION: 'typeOsConsumption',
+  ADJUSTMENT_IN: 'typeAdjustmentIn',
+  ADJUSTMENT_OUT: 'typeAdjustmentOut',
+  TRANSFER_OUT: 'typeTransferOut',
+  TRANSFER_IN: 'typeTransferIn',
 };
 
 const IN_TYPES = new Set<MovementType>([
@@ -44,6 +45,7 @@ const IN_TYPES = new Set<MovementType>([
 ]);
 
 export default function StockMovementsPage() {
+  const t = useTranslations('stock.movements');
   const [filters, setFilters] = useState<ListMovementsQuery>({ page: 1, pageSize: 50 });
 
   const { data, isLoading, error, mutate } = useSWR<PaginatedStock<StockMovement>>(
@@ -61,20 +63,19 @@ export default function StockMovementsPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Kardex</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Histórico completo de movimentos de estoque (compras, ajustes, transferências,
-            consumo). Fonte da verdade pra auditoria.
+            {t('subtitle')}
           </p>
         </div>
         <div className="flex gap-2">
           {canWrite && (
             <Button variant="ghost" onClick={() => setTransferring(true)}>
-              Transferir
+              {t('transfer')}
             </Button>
           )}
           {canAdjust && (
-            <Button onClick={() => setAdjusting(true)}>Ajuste de inventário</Button>
+            <Button onClick={() => setAdjusting(true)}>{t('adjustment')}</Button>
           )}
         </div>
       </header>
@@ -84,13 +85,13 @@ export default function StockMovementsPage() {
       {isLoading && <PageLoader />}
       {error && (
         <div className="rounded-md border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-          Falha ao carregar movimentos.
+          {t('loadFailed')}
         </div>
       )}
 
       {data && data.items.length === 0 && (
         <p className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
-          Nenhum movimento encontrado pros filtros atuais.
+          {t('empty')}
         </p>
       )}
 
@@ -100,13 +101,13 @@ export default function StockMovementsPage() {
             <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-700">
               <thead className="bg-slate-50 dark:bg-slate-900/40">
                 <tr className="text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  <th className="px-4 py-3">Data/hora</th>
-                  <th className="px-4 py-3">Tipo</th>
-                  <th className="px-4 py-3">Produto</th>
-                  <th className="px-4 py-3">Local</th>
-                  <th className="px-4 py-3 text-right">Qty</th>
-                  <th className="px-4 py-3 text-right">Custo</th>
-                  <th className="px-4 py-3">Operador</th>
+                  <th className="px-4 py-3">{t('colDatetime')}</th>
+                  <th className="px-4 py-3">{t('colType')}</th>
+                  <th className="px-4 py-3">{t('colProduct')}</th>
+                  <th className="px-4 py-3">{t('colLocation')}</th>
+                  <th className="px-4 py-3 text-right">{t('colQty')}</th>
+                  <th className="px-4 py-3 text-right">{t('colCost')}</th>
+                  <th className="px-4 py-3">{t('colOperator')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -125,7 +126,7 @@ export default function StockMovementsPage() {
                               : 'inline-flex rounded-full bg-orange-100 px-2 py-0.5 text-xs text-orange-800 dark:bg-orange-900/30 dark:text-orange-300'
                           }
                         >
-                          {MOVEMENT_LABELS[m.type]}
+                          {t(MOVEMENT_TYPE_KEYS[m.type])}
                         </span>
                       </td>
                       <td className="px-4 py-3">
@@ -208,6 +209,7 @@ function FilterBar({
   filters: ListMovementsQuery;
   onChange: (f: ListMovementsQuery) => void;
 }) {
+  const t = useTranslations('stock.movements');
   const { data: products } = useSWR<Product[]>(stockApi.productsPath(), () =>
     stockApi.listProducts(),
   );
@@ -224,7 +226,7 @@ function FilterBar({
           onChange({ ...filters, productId: e.target.value || null, page: 1 })
         }
       >
-        <option value="">Todos os produtos</option>
+        <option value="">{t('allProducts')}</option>
         {products?.map((p) => (
           <option key={p.id} value={p.id}>{p.sku} — {p.name}</option>
         ))}
@@ -237,7 +239,7 @@ function FilterBar({
           onChange({ ...filters, locationId: e.target.value || null, page: 1 })
         }
       >
-        <option value="">Todos os locais</option>
+        <option value="">{t('allLocations')}</option>
         {locations?.map((l) => (
           <option key={l.id} value={l.id}>{l.code}</option>
         ))}
@@ -250,9 +252,9 @@ function FilterBar({
           onChange({ ...filters, type: (e.target.value || null) as MovementType | null, page: 1 })
         }
       >
-        <option value="">Todos os tipos</option>
-        {Object.entries(MOVEMENT_LABELS).map(([t, label]) => (
-          <option key={t} value={t}>{label}</option>
+        <option value="">{t('allTypes')}</option>
+        {Object.entries(MOVEMENT_TYPE_KEYS).map(([type, key]) => (
+          <option key={type} value={type}>{t(key)}</option>
         ))}
       </select>
     </div>
@@ -273,11 +275,12 @@ function Pagination({
   total: number;
   onChange: (page: number) => void;
 }) {
+  const t = useTranslations('stock.movements');
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   return (
     <div className="flex items-center justify-between border-t border-slate-200 px-4 py-2 text-xs text-slate-500 dark:border-slate-700">
       <span>
-        {total} movimento(s) — página {page} de {totalPages}
+        {t('paginationInfo', { total, page, totalPages })}
       </span>
       <div className="flex gap-1">
         <Button
@@ -311,6 +314,8 @@ function AdjustmentFormModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('stock.movements');
+  const tc = useTranslations('common');
   const { data: products } = useSWR<Product[]>(stockApi.productsPath({ isActive: true }), () =>
     stockApi.listProducts({ isActive: true }),
   );
@@ -342,19 +347,19 @@ function AdjustmentFormModal({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!form.productId) return setError('Selecione o produto');
-    if (!form.locationId) return setError('Selecione o local');
-    if (!form.reason.trim()) return setError('Razão é obrigatória pra auditoria');
+    if (!form.productId) return setError(t('errSelectProduct'));
+    if (!form.locationId) return setError(t('errSelectLocation'));
+    if (!form.reason.trim()) return setError(t('errReasonRequired'));
     const qty = Number(form.quantity);
-    if (!Number.isFinite(qty) || qty <= 0) return setError('Quantidade inválida');
+    if (!Number.isFinite(qty) || qty <= 0) return setError(t('errInvalidQuantity'));
     if (form.direction === 'IN' && (!form.unitCost || Number(form.unitCost) <= 0)) {
-      return setError('Custo unitário é obrigatório em entradas (recalcula custo médio)');
+      return setError(t('errUnitCostRequired'));
     }
     if (isPatrimonial) {
       const serials = (form.serials ?? []).filter(Boolean);
       if (serials.length !== qty) {
         return setError(
-          `Patrimonial: precisa de ${qty} serial(is), tem ${serials.length}`,
+          t('errSerialCount', { needed: qty, have: serials.length }),
         );
       }
     }
@@ -369,18 +374,18 @@ function AdjustmentFormModal({
       });
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro ao salvar');
+      setError(err instanceof ApiError ? err.friendlyMessage : t('errSave'));
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Modal open onClose={onClose} title="Ajuste de inventário" size="lg">
+    <Modal open onClose={onClose} title={t('adjustment')} size="lg">
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <Label>Direção *</Label>
+            <Label>{t('directionLabel')}</Label>
             <select
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
               value={form.direction}
@@ -388,12 +393,12 @@ function AdjustmentFormModal({
                 setForm({ ...form, direction: e.target.value as 'IN' | 'OUT' })
               }
             >
-              <option value="IN">Entrada (+) — achado, devolução manual</option>
-              <option value="OUT">Saída (−) — perda, dano, descarte</option>
+              <option value="IN">{t('directionIn')}</option>
+              <option value="OUT">{t('directionOut')}</option>
             </select>
           </div>
           <div>
-            <Label>Local *</Label>
+            <Label>{t('locationLabel')}</Label>
             <select
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
               value={form.locationId}
@@ -409,7 +414,7 @@ function AdjustmentFormModal({
         </div>
 
         <div>
-          <Label>Produto *</Label>
+          <Label>{t('productLabel')}</Label>
           <select
             className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
             value={form.productId}
@@ -419,7 +424,7 @@ function AdjustmentFormModal({
             <option value="">—</option>
             {products?.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.sku} · {p.name} ({p.type === 'PATRIMONIAL' ? 'pat.' : 'cons.'})
+                {p.sku} · {p.name} ({p.type === 'PATRIMONIAL' ? t('abbrPatrimonial') : t('abbrConsumable')})
               </option>
             ))}
           </select>
@@ -427,7 +432,7 @@ function AdjustmentFormModal({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <Label>Quantidade *</Label>
+            <Label>{t('quantityLabel')}</Label>
             <Input
               type="number"
               step="0.0001"
@@ -449,7 +454,7 @@ function AdjustmentFormModal({
           </div>
           {form.direction === 'IN' && (
             <div>
-              <Label>Custo unitário *</Label>
+              <Label>{t('unitCostLabel')}</Label>
               <Input
                 type="number"
                 step="0.0001"
@@ -463,7 +468,7 @@ function AdjustmentFormModal({
                 }
               />
               <p className="text-xs text-slate-500 mt-1">
-                Entra no cálculo de custo médio
+                {t('unitCostHelp')}
               </p>
             </div>
           )}
@@ -471,12 +476,12 @@ function AdjustmentFormModal({
 
         {isPatrimonial && Number(form.quantity) > 0 && (
           <div>
-            <Label>Seriais</Label>
+            <Label>{t('serialsLabel')}</Label>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {Array.from({ length: Math.floor(Number(form.quantity)) }, (_, sidx) => (
                 <Input
                   key={sidx}
-                  placeholder={`Serial #${sidx + 1}`}
+                  placeholder={t('serialPlaceholder', { n: sidx + 1 })}
                   value={form.serials?.[sidx] ?? ''}
                   onChange={(e) => {
                     const next = [...(form.serials ?? [])];
@@ -490,9 +495,9 @@ function AdjustmentFormModal({
         )}
 
         <div>
-          <Label>Razão *</Label>
+          <Label>{t('reasonLabel')}</Label>
           <Input
-            placeholder="Ex: Contagem cíclica — encontrei +3 unid não registradas"
+            placeholder={t('reasonPlaceholder')}
             value={form.reason}
             onChange={(e) => setForm({ ...form, reason: e.target.value })}
             required
@@ -501,7 +506,7 @@ function AdjustmentFormModal({
         </div>
 
         <div>
-          <Label>Observações</Label>
+          <Label>{tc('notes')}</Label>
           <Textarea
             rows={2}
             value={form.notes ?? ''}
@@ -513,10 +518,10 @@ function AdjustmentFormModal({
 
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button type="submit" loading={submitting}>
-            Registrar ajuste
+            {t('registerAdjustment')}
           </Button>
         </div>
       </form>
@@ -534,6 +539,8 @@ function TransferFormModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('stock.movements');
+  const tc = useTranslations('common');
   const { data: products } = useSWR<Product[]>(stockApi.productsPath({ isActive: true }), () =>
     stockApi.listProducts({ isActive: true }),
   );
@@ -554,10 +561,10 @@ function TransferFormModal({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!form.productId) return setError('Selecione o produto');
-    if (!form.fromLocationId || !form.toLocationId) return setError('Selecione origem e destino');
+    if (!form.productId) return setError(t('errSelectProduct'));
+    if (!form.fromLocationId || !form.toLocationId) return setError(t('errSelectFromTo'));
     if (form.fromLocationId === form.toLocationId)
-      return setError('Origem e destino devem ser diferentes');
+      return setError(t('errFromToEqual'));
     setSubmitting(true);
     try {
       await stockApi.createTransfer({
@@ -567,17 +574,17 @@ function TransferFormModal({
       });
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro ao transferir');
+      setError(err instanceof ApiError ? err.friendlyMessage : t('errTransfer'));
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Modal open onClose={onClose} title="Transferência entre locais" size="lg">
+    <Modal open onClose={onClose} title={t('transferTitle')} size="lg">
       <form onSubmit={handleSubmit} className="space-y-3">
         <div>
-          <Label>Produto *</Label>
+          <Label>{t('productLabel')}</Label>
           <select
             className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
             value={form.productId}
@@ -593,7 +600,7 @@ function TransferFormModal({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <Label>De *</Label>
+            <Label>{t('fromLabel')}</Label>
             <select
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
               value={form.fromLocationId}
@@ -607,7 +614,7 @@ function TransferFormModal({
             </select>
           </div>
           <div>
-            <Label>Para *</Label>
+            <Label>{t('toLabel')}</Label>
             <select
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
               value={form.toLocationId}
@@ -623,7 +630,7 @@ function TransferFormModal({
         </div>
 
         <div>
-          <Label>Quantidade *</Label>
+          <Label>{t('quantityLabel')}</Label>
           <Input
             type="number"
             step="0.0001"
@@ -634,12 +641,12 @@ function TransferFormModal({
             }
           />
           <p className="text-xs text-slate-500 mt-1">
-            Pra patrimonial, selecione seriais específicos abaixo (UI completa em fase 2).
+            {t('transferQuantityHelp')}
           </p>
         </div>
 
         <div>
-          <Label>Observações</Label>
+          <Label>{tc('notes')}</Label>
           <Textarea
             rows={2}
             value={form.notes ?? ''}
@@ -651,10 +658,10 @@ function TransferFormModal({
 
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tc('cancel')}
           </Button>
           <Button type="submit" loading={submitting}>
-            Transferir
+            {t('transfer')}
           </Button>
         </div>
       </form>

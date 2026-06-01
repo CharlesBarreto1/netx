@@ -51,6 +51,7 @@ export interface UserFormProps {
 }
 
 export function UserForm({ mode, initial, onSuccess, onCancel }: UserFormProps) {
+  const t = useTranslations('miscComponents');
   const tCommon = useTranslations('common');
   const tForm = useTranslations('users.form');
   const tRoles = useTranslations('users.roles');
@@ -443,20 +444,19 @@ export function UserForm({ mode, initial, onSuccess, onCancel }: UserFormProps) 
             setTempPasswordInfo(null);
             onSuccess(info.user);
           }}
-          title="Senha provisória gerada"
+          title={t('userForm.tempPasswordTitle')}
           size="md"
         >
           <div className="space-y-4">
             <p className="text-sm text-text-muted">
-              Copie a senha abaixo e <strong>transmita ao usuário por canal seguro</strong>
-              {' '}(WhatsApp, presencial, etc). Ela só será mostrada UMA vez — após
-              fechar este aviso, ninguém mais consegue recuperá-la sem fazer
-              outro reset.
+              {t.rich('userForm.tempPasswordIntro', {
+                strong: (chunks) => <strong>{chunks}</strong>,
+              })}
             </p>
 
             <div className="rounded-md border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-950/30 p-4">
               <div className="text-2xs uppercase tracking-wider text-amber-700 dark:text-amber-300 mb-1">
-                Senha provisória de {tempPasswordInfo.user.email}
+                {t('userForm.tempPasswordOf', { email: tempPasswordInfo.user.email })}
               </div>
               <div className="flex items-center gap-2">
                 <code className="flex-1 rounded bg-white dark:bg-slate-900 px-3 py-2 font-mono text-base font-semibold text-text border border-amber-200 dark:border-amber-800 select-all">
@@ -468,17 +468,17 @@ export function UserForm({ mode, initial, onSuccess, onCancel }: UserFormProps) 
                   size="sm"
                   onClick={() => {
                     navigator.clipboard.writeText(tempPasswordInfo.password);
-                    toast.success('Senha copiada');
+                    toast.success(t('userForm.passwordCopied'));
                   }}
                 >
-                  Copiar
+                  {t('userForm.copy')}
                 </Button>
               </div>
             </div>
 
             <div className="text-xs text-text-muted space-y-1">
-              <p>O usuário será forçado a definir uma senha própria no primeiro login.</p>
-              <p>Se perdê-la, abra o usuário e use &quot;Resetar senha&quot;.</p>
+              <p>{t('userForm.tempPasswordForceReset')}</p>
+              <p>{t('userForm.tempPasswordLost')}</p>
             </div>
 
             <div className="flex justify-end pt-2">
@@ -490,7 +490,7 @@ export function UserForm({ mode, initial, onSuccess, onCancel }: UserFormProps) 
                   onSuccess(info.user);
                 }}
               >
-                Já anotei, prosseguir
+                {t('userForm.tempPasswordAck')}
               </Button>
             </div>
           </div>
