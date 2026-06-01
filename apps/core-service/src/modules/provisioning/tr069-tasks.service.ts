@@ -30,7 +30,7 @@ interface SetWifiInput {
   /**
    * Modo de Wi-Fi (depende do modelo da ONT):
    *   BAND_STEERING — SSID único nas 2 bandas (EG8145X6/X10).
-   *   DUAL_BAND     — 5G ganha prefixo "5G-" (EG8145V5).
+   *   DUAL_BAND     — 5G ganha sufixo "-5G" (EG8145V5), ex.: "Charles-5G".
    * Default BAND_STEERING.
    */
   wifiBandMode?: 'BAND_STEERING' | 'DUAL_BAND';
@@ -89,7 +89,7 @@ export class Tr069TasksService {
       { name: HUAWEI_EG8145_PATHS.pwd24, value: input.password, type: 'xsd:string' },
     ];
     if (bothBands) {
-      // 5GHz: SSID único (band steering) ou "5G-"+nome (dual band).
+      // 5GHz: SSID único (band steering) ou nome+"-5G" (dual band).
       const ssid5g = ssid5gFor(input.ssid, input.wifiBandMode ?? 'BAND_STEERING');
       params.push(
         { name: HUAWEI_EG8145_PATHS.ssid50, value: ssid5g, type: 'xsd:string' },

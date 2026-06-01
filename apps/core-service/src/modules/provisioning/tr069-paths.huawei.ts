@@ -65,11 +65,12 @@ export const HUAWEI_PPPOE_DEFAULT_VLAN = 1010;
 /**
  * Monta o SSID da banda 5GHz conforme o modo Wi-Fi do modelo de ONT:
  *   BAND_STEERING → mesmo nome (cliente vê uma rede só — EG8145X6/X10)
- *   DUAL_BAND     → "5G-" + nome (rede 5GHz distinta — EG8145V5)
+ *   DUAL_BAND     → nome + "-5G" (rede 5GHz distinta — EG8145V5)
+ *                   ex.: "Charles" → "Charles-5G"
  */
 export function ssid5gFor(
   ssid: string,
   mode: 'BAND_STEERING' | 'DUAL_BAND',
 ): string {
-  return mode === 'DUAL_BAND' ? `5G-${ssid}` : ssid;
+  return mode === 'DUAL_BAND' ? `${ssid}-5G` : ssid;
 }

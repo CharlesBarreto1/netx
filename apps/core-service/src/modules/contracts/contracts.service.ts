@@ -1496,7 +1496,7 @@ export class ContractsService {
           params: [
             { name: HUAWEI_EG8145_PATHS.ssid24, value: input.ssid, type: 'xsd:string' },
             { name: HUAWEI_EG8145_PATHS.pwd24, value: input.wifiPassword, type: 'xsd:string' },
-            // 5GHz: SSID único (band steering) ou "5G-"+nome (dual band),
+            // 5GHz: SSID único (band steering) ou nome+"-5G" (dual band),
             // conforme o modelo da ONT registrado no install.
             {
               name: HUAWEI_EG8145_PATHS.ssid50,

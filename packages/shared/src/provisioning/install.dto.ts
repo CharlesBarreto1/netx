@@ -60,7 +60,7 @@ export const InstallCustomerRequestSchema = z
     /**
      * Modo de Wi-Fi — depende do modelo da ONT:
      *   BAND_STEERING (EG8145X6/X10) — SSID único nas 2 bandas.
-     *   DUAL_BAND (EG8145V5) — 2.4G nome normal, 5G "5G-"+nome.
+     *   DUAL_BAND (EG8145V5) — 2.4G nome normal, 5G nome+"-5G".
      * Default BAND_STEERING (modelos mais novos).
      */
     wifiBandMode: WifiBandModeSchema.default('BAND_STEERING'),
