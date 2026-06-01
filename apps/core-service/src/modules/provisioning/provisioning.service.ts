@@ -56,6 +56,7 @@ import {
 
 import { AuditService } from '../audit/audit.service';
 import { recalcCustomerStatus } from '../contracts/customer-status';
+import { InvoiceGeneratorService } from '../contracts/invoice-generator.service';
 import { RadiusSyncService } from '../contracts/radius-sync.service';
 import { CryptoService } from '../crypto/crypto.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -80,6 +81,7 @@ export class ProvisioningService {
     private readonly drivers: OltDriverFactory,
     private readonly comodato: ComodatoService,
     private readonly ufinet: UfinetOrdersService,
+    private readonly invoiceGen: InvoiceGeneratorService,
   ) {}
 
   /**
@@ -411,6 +413,25 @@ export class ProvisioningService {
             updatedById: actorUserId,
           },
         });
+
+        // 4.2b Fatura inicial: o contrato é ativado AQUI (fluxo ZTP padrão —
+        // nasce PENDING_INSTALL e o técnico ativa em campo). O create() só
+        // gera a INITIAL quando nasce ACTIVE direto, então a ativação via
+        // instalação precisa gerá-la — senão PREPAID nunca fatura (o cron
+        // depende de prepaidUntil, inicializado só em generateInitialInvoice).
+        // Idempotente: só na 1ª ativação (vinha PENDING_INSTALL) e se ainda
+        // não existe INITIAL — re-provision de contrato já ACTIVE não duplica.
+        if (contract.status === PrismaContractStatus.PENDING_INSTALL) {
+          const hasInitial = await tx.contractInvoice.findFirst({
+            where: { tenantId, contractId: c.id, kind: 'INITIAL' },
+            select: { id: true },
+          });
+          if (!hasInitial) {
+            await this.invoiceGen.generateInitialInvoice(tx, c, {
+              activatedAt: c.activatedAt ?? new Date(),
+            });
+          }
+        }
 
         // 4.3 Enfileira radius_event AUTHORIZE (já reativa se SUSPENDED)
         if (c.authMethod === 'IPOE' || c.authMethod === 'PPPOE') {

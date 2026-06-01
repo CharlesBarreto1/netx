@@ -40,6 +40,11 @@ import { RadiusSyncService } from './radius-sync.service';
     PlansService,
     RadiusSyncService,
   ],
-  exports: [ContractsService, ContractInvoicesService, RadiusSyncService],
+  exports: [
+    ContractsService,
+    ContractInvoicesService,
+    InvoiceGeneratorService,
+    RadiusSyncService,
+  ],
 })
 export class ContractsModule {}
