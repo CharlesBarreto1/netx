@@ -283,6 +283,99 @@ export class UfinetOrdersService {
     );
   }
 
+  /**
+   * Ações pontuais de manutenção/diagnóstico na ONT (NÃO mexem no lifecycle do
+   * serviço — ele segue ACTIVE). Todas usam o mesmo shape: POST ServiceOrder/
+   * order com o ServiceOrderType + Action NOCHANGE + spec RES_PON_ACCESS, e
+   * poll curto até completed/Failed. Síncrono (não entra no poller de estado).
+   *
+   *   REFRESH_ONT  — reaplica config na ONT
+   *   RESET_ONT    — reinicia a ONT remotamente
+   *   STATUS_ONT   — lê níveis ópticos (sinal) — retorna serviceCharacteristic
+   */
+  async runOntAction(
+    tenantId: string,
+    contractId: string,
+    action: 'REFRESH_ONT' | 'RESET_ONT' | 'STATUS_ONT',
+    actorUserId?: string | null,
+  ): Promise<{
+    status: 'completed' | 'failed' | 'pending';
+    orderId: string | null;
+    characteristics: Array<{ name: string; value: string }>;
+    message?: string;
+  }> {
+    const svc = await this.getByContract(tenantId, contractId);
+    const olt = await this.prisma.olt.findUnique({ where: { id: svc.oltId } });
+    if (!olt) throw new NotFoundException('OLT do serviço Ufinet não encontrada');
+    const conn = this.resolveConnection(olt);
+
+    const descriptions: Record<typeof action, string> = {
+      REFRESH_ONT: 'REFRESCAR ONT',
+      RESET_ONT: 'RESETEAR ONT',
+      STATUS_ONT: 'CONSULTA DE NIVELES',
+    };
+    const payload = {
+      Region: conn.region,
+      Operator: conn.operator,
+      ServiceOrderType: action,
+      Description: descriptions[action],
+      ExternalId: svc.externalId,
+      RequestedStartDate: new Date().toISOString(),
+      Priority: '1',
+      RelatedParty: [{ name: conn.userName, role: 'requester' }],
+      ServiceOrderItem: [
+        {
+          Action: 'NOCHANGE',
+          Service: {
+            ExternalServiceId: svc.parentServiceId ?? svc.externalId,
+            ServiceType: 'CFS',
+            serviceCharacteristic: [],
+            ServiceSpecification: { id: 'RES_PON_ACCESS', version: '1.0' },
+          },
+        },
+      ],
+    };
+
+    const resp = await this.client.createOrder(conn, payload);
+    const orderId = extractOrderId(resp);
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId ?? null,
+      actor: actorUserId ? undefined : 'system',
+      action: `ufinet.ont.${action.toLowerCase()}`,
+      resource: 'ufinet_services',
+      resourceId: svc.id,
+      metadata: { externalId: svc.externalId, orderId },
+    });
+    if (!orderId) {
+      return { status: 'failed', orderId: null, characteristics: [], message: 'sem orderId' };
+    }
+
+    // Poll curto síncrono (a doc pede retry até completed/Failed). Máx ~24s.
+    for (let i = 0; i < 8; i++) {
+      const order = await this.client.getOrder(conn, orderId);
+      const state = normalizeUfinetState(order.state);
+      if (state === UFINET_STATE.COMPLETED) {
+        return {
+          status: 'completed',
+          orderId,
+          characteristics: extractOrderCharacteristics(order),
+        };
+      }
+      if (state === UFINET_STATE.FAILED) {
+        return {
+          status: 'failed',
+          orderId,
+          characteristics: [],
+          message: this.errText(order) ?? `${action} falhou`,
+        };
+      }
+      await sleep(3000);
+    }
+    // Ainda processando — devolve pending (cliente pode reconsultar a ordem).
+    return { status: 'pending', orderId, characteristics: [] };
+  }
+
   // ===========================================================================
   // API de leitura / retry (controller + UI)
   // ===========================================================================
@@ -1056,6 +1149,20 @@ export class UfinetOrdersService {
 
 function msg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Extrai serviceCharacteristic do 1º item de uma ordem (ex.: níveis STATUS_ONT). */
+function extractOrderCharacteristics(
+  order: UfinetOrderResponse,
+): Array<{ name: string; value: string }> {
+  const chars = order.serviceOrderItem?.[0]?.service?.serviceCharacteristic ?? [];
+  return chars
+    .filter((c) => c?.name != null)
+    .map((c) => ({ name: String(c.name), value: c.value != null ? String(c.value) : '' }));
 }
 
 function toJson(value: unknown): Prisma.InputJsonValue {

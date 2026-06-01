@@ -11,6 +11,7 @@
  */
 import { Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { z } from 'zod';
 import {
   ListUfinetServicesQuerySchema,
   RetryUfinetServiceRequestSchema,
@@ -18,6 +19,11 @@ import {
   type ListUfinetServicesQuery,
   type RetryUfinetServiceRequest,
 } from '@netx/shared';
+
+const OntActionSchema = z.object({
+  action: z.enum(['REFRESH_ONT', 'RESET_ONT', 'STATUS_ONT']),
+});
+type OntActionRequest = z.infer<typeof OntActionSchema>;
 
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { ZodBody, ZodValidationPipe } from '../../common/zod.pipe';
@@ -66,5 +72,19 @@ export class UfinetController {
     @ZodBody(RetryUfinetServiceRequestSchema) body: RetryUfinetServiceRequest,
   ) {
     return this.orders.retry(user.tenantId, id, body);
+  }
+
+  /**
+   * Ações de manutenção/diagnóstico na ONT (REFRESH/RESET/STATUS_ONT).
+   * Síncrono — devolve o resultado (STATUS_ONT traz os níveis ópticos).
+   */
+  @Post('contract/:contractId/ont-action')
+  @RequirePermissions('ufinet.orders.retry')
+  ontAction(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('contractId', new ParseUUIDPipe()) contractId: string,
+    @ZodBody(OntActionSchema) body: OntActionRequest,
+  ) {
+    return this.orders.runOntAction(user.tenantId, contractId, body.action, user.sub);
   }
 }
