@@ -168,12 +168,35 @@ netx_app_render_env() {
   export EVOLUTION_API_KEY
   EVOLUTION_API_KEY=$(secret_get_or_create EVOLUTION_API_KEY 48)
 
+  # Defaults pra vars que SÓ são setadas em steps opcionais. Sem isso, envsubst
+  # deixa o literal `${VAR}` no .env quando o step é pulado, e qualquer source
+  # com `set -u` (safe-migrate.sh, systemd EnvironmentFile) quebra.
+  : "${NETX_TRACCAR_URL:=}"
+  export NETX_TRACCAR_URL
+  : "${NETX_MINIO_ENDPOINT:=http://127.0.0.1:9000}"
+  : "${NETX_MINIO_PUBLIC_URL:=}"
+  : "${NETX_MINIO_BUCKET:=netx-photos}"
+  : "${NETX_MINIO_ACCESS_KEY:=}"
+  : "${NETX_MINIO_SECRET_KEY:=}"
+  export NETX_MINIO_ENDPOINT NETX_MINIO_PUBLIC_URL NETX_MINIO_BUCKET \
+         NETX_MINIO_ACCESS_KEY NETX_MINIO_SECRET_KEY
+
   log_info "Renderizando ${env}"
+  # CRÍTICO: TODA `${VAR}` que aparece no env.tmpl precisa estar listada aqui.
+  # envsubst deixa o literal `${VAR}` no output se a var não for passada — e
+  # depois `source .env` com `set -u` (safe-migrate.sh faz isso) explode com
+  # "variável não associada". Audita com:
+  #   grep -oE '\$\{[A-Z_][A-Z_0-9]*\}' templates/env.tmpl | sort -u
+  # Cada var ali tem que aparecer abaixo (e ter um default acima se vier de
+  # step opcional como minio/traccar).
   render_template "${tmpl}" "${env}" \
     NETX_DATABASE_URL NETX_REDIS_URL NETX_RABBITMQ_URL \
     NETX_JWT_ACCESS_SECRET NETX_JWT_REFRESH_SECRET NETX_PORTAL_JWT_SECRET NETX_KMS_MASTER_KEY \
-    NETX_PORT_API_GATEWAY NETX_PORT_CORE_SERVICE NETX_PORT_WEB \
+    NETX_PORT_API_GATEWAY NETX_PORT_CORE_SERVICE NETX_PORT_WEB NETX_PORT_CWMP \
     NETX_TENANT_SLUG NETX_CORS_ORIGINS \
+    NETX_MINIO_ENDPOINT NETX_MINIO_PUBLIC_URL NETX_MINIO_BUCKET \
+    NETX_MINIO_ACCESS_KEY NETX_MINIO_SECRET_KEY \
+    NETX_TRACCAR_URL \
     EVOLUTION_API_KEY
 
   chown root:"${NETX_USER}" "${env}"
