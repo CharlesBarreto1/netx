@@ -362,4 +362,32 @@ export const efiApi = {
   generate(invoiceId: string, input: GenerateEfiChargeInput = {}) {
     return api.post<EfiCharge>(`/v1/efi/invoices/${invoiceId}/charge`, input);
   },
+  saveConfig(input: UpsertEfiConfigInput) {
+    return api.put<EfiConfigView>('/v1/efi/config', input);
+  },
+  registerWebhook() {
+    return api.post<{ url: string }>('/v1/efi/config/register-webhook');
+  },
+  runAutogen() {
+    return api.post<{ created: number }>('/v1/efi/config/run-autogen');
+  },
 };
+
+/**
+ * Upsert da config EFI. Segredos (clientId/secret/.p12) são WRITE-ONLY —
+ * enviados aqui, nunca retornados; campos ausentes/'' mantêm o valor atual.
+ */
+export interface UpsertEfiConfigInput {
+  environment?: 'PRODUCTION' | 'SANDBOX';
+  enabled?: boolean;
+  clientId?: string;
+  clientSecret?: string;
+  certificateBase64?: string;
+  certificatePassword?: string;
+  pixKey?: string | null;
+  defaultChargeKind?: EfiChargeKind;
+  expirationDays?: number;
+  autoGenerate?: boolean;
+  finePercent?: number | null;
+  interestPercent?: number | null;
+}

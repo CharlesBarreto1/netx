@@ -73,6 +73,7 @@ const messages = {
     settings: 'Settings',
     serviceOrderReasons: 'S.O Reasons',
     cashRegisters: 'Cash Registers',
+    efiConfig: 'Payments (EFI)',
     users: 'Users',
     plans: 'Plans',
     backups: 'Backups',

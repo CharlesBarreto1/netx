@@ -83,6 +83,7 @@ const messages = {
     settings: 'Configurações',
     serviceOrderReasons: 'Motivos de O.S',
     cashRegisters: 'Caixas',
+    efiConfig: 'Pagamentos (EFI)',
     users: 'Usuários',
     plans: 'Planos',
     backups: 'Backups',
