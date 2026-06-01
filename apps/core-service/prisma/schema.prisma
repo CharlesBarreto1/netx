@@ -1398,6 +1398,13 @@ enum ServiceOrderStatus {
   CANCELLED
 }
 
+// Classificação operacional do motivo da O.S — define o fluxo da tela /os.
+enum ServiceOrderReasonKind {
+  INSTALLATION // provisiona tudo (one-touch)
+  SUPPORT // atende; opção de trocar ONT (re-provisiona só na troca)
+  RETRIEVAL // recolhe equipamento + desprovisiona/encerra contrato
+}
+
 // Cadastro de motivos para a O.S (config do tenant). O admin gerencia em
 // /settings/service-order-reasons. Linha não é deletada — vira `isActive=false`
 // pra preservar referências históricas.
@@ -1412,6 +1419,9 @@ model ServiceOrderReason {
   // contrato (vínculo comodato). Trava operacional de segurança: impede o
   // técnico finalizar sem registrar equipamento entregue.
   isInstallation Boolean @default(false) @map("is_installation")
+  // Classificação operacional — ramifica o fluxo da tela /os. Mantido em
+  // sincronia com isInstallation (= kind == INSTALLATION) por compat.
+  kind        ServiceOrderReasonKind @default(SUPPORT) @map("kind")
   // Ordem de exibição em selects (asc).
   order       Int      @default(0)
   createdAt   DateTime @default(now()) @map("created_at")
@@ -2930,6 +2940,7 @@ enum UfinetLifecycle {
   SUSPENDING
   SUSPENDED
   REACTIVATING
+  SWAPPING_ONT        // troca de ONT (CHANGE_RESOURCE) enviada; aguardando
   CEASING             // baja enviada
   CEASED
   CANCELLING          // cancelación enviada (só se ONT não confirmada)
