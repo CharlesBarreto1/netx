@@ -17,6 +17,9 @@ export type ServiceOrderStatus =
   | 'COMPLETED'
   | 'CANCELLED';
 
+/** Classificação do motivo — ramifica o fluxo da tela /os. */
+export type ServiceOrderReasonKind = 'INSTALLATION' | 'SUPPORT' | 'RETRIEVAL';
+
 /** Inclui OVERDUE — derivado pelo backend, não persistido. */
 export type ServiceOrderDisplayStatus =
   | 'OPEN'
@@ -58,7 +61,7 @@ export interface ServiceOrderResponse {
   assignedToId: string | null;
   createdAt: string;
   updatedAt: string;
-  reason?: { id: string; name: string } | null;
+  reason?: { id: string; name: string; kind: ServiceOrderReasonKind } | null;
   contract?: {
     id: string;
     code: string | null;
@@ -83,6 +86,7 @@ export interface ServiceOrderReasonResponse {
   isActive: boolean;
   /** Quando true, OS com esse motivo só pode ser fechada com equipamento em comodato. */
   isInstallation: boolean;
+  kind: ServiceOrderReasonKind;
   order: number;
   createdAt: string;
   updatedAt: string;
@@ -233,6 +237,53 @@ export interface InstallTimelineEvent {
   durationMs?: number;
 }
 
+/** Troca de ONT (suporte com troca). */
+export interface OntSwapInput {
+  newSerialItemId?: string | null;
+  newSnGpon?: string | null;
+  allowStockBypass?: boolean;
+  returnLocationId: string;
+  ssid: string;
+  wifiPassword: string;
+  wifiBandMode?: 'BAND_STEERING' | 'DUAL_BAND';
+}
+
+/** Finalização de campo, discriminada por `mode` (montado a partir de reason.kind). */
+export type CompleteFieldInput =
+  | {
+      mode: 'INSTALLATION';
+      install: InstallFieldsInput;
+      enclosureId?: string | null;
+      enclosurePort?: string | null;
+      materials?: FieldMaterialInput[];
+      photos?: ServiceOrderPhotoInput[];
+      closeDescription: string;
+      completedAt?: string;
+    }
+  | {
+      mode: 'SUPPORT';
+      materials?: FieldMaterialInput[];
+      photos?: ServiceOrderPhotoInput[];
+      closeDescription: string;
+      completedAt?: string;
+    }
+  | {
+      mode: 'SUPPORT_SWAP';
+      swap: OntSwapInput;
+      materials?: FieldMaterialInput[];
+      photos?: ServiceOrderPhotoInput[];
+      closeDescription: string;
+      completedAt?: string;
+    }
+  | {
+      mode: 'RETRIEVAL';
+      returnLocationId: string;
+      cancelReason?: string;
+      photos?: ServiceOrderPhotoInput[];
+      closeDescription: string;
+      completedAt?: string;
+    };
+
 export interface CompleteInstallationResult {
   serviceOrder: ServiceOrderResponse;
   install: {
@@ -300,6 +351,13 @@ export const serviceOrdersApi = {
       input,
     );
   },
+  /** Finalização ramificada por tipo de O.S (instalação/suporte/retirada). */
+  completeField(id: string, input: CompleteFieldInput) {
+    return api.post<{ serviceOrder: ServiceOrderResponse }>(
+      `/v1/service-orders/${id}/complete-field`,
+      input,
+    );
+  },
   remove(id: string) {
     return api.delete(`/v1/service-orders/${id}`);
   },
@@ -313,6 +371,7 @@ export interface CreateServiceOrderReasonInput {
   description?: string | null;
   isActive?: boolean;
   isInstallation?: boolean;
+  kind?: ServiceOrderReasonKind;
   order?: number;
 }
 
@@ -321,6 +380,7 @@ export interface UpdateServiceOrderReasonInput {
   description?: string | null;
   isActive?: boolean;
   isInstallation?: boolean;
+  kind?: ServiceOrderReasonKind;
   order?: number;
 }
 

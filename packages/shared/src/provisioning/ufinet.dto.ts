@@ -25,6 +25,7 @@ export const UFINET_LIFECYCLES = [
   'SUSPENDING',
   'SUSPENDED',
   'REACTIVATING',
+  'SWAPPING_ONT',
   'CEASING',
   'CEASED',
   'CANCELLING',
@@ -42,6 +43,7 @@ export const UFINET_TRANSIENT_LIFECYCLES = [
   'CONFIRMING_SERVICE',
   'SUSPENDING',
   'REACTIVATING',
+  'SWAPPING_ONT',
   'CEASING',
   'CANCELLING',
 ] as const satisfies readonly UfinetLifecycle[];

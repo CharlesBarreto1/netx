@@ -10,6 +10,7 @@ import {
   paginationMeta,
   type CancelServiceOrderRequest,
   type CheckinServiceOrderRequest,
+  type CompleteFieldRequest,
   type CompleteInstallationRequest,
   type CompleteServiceOrderRequest,
   type CreateServiceOrderRequest,
@@ -27,6 +28,7 @@ import {
 
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { ContractsService } from '../contracts/contracts.service';
 import { ProvisioningService } from '../provisioning/provisioning.service';
 import { OsConsumptionService } from '../stock/os-consumption.service';
 import { StorageService } from '../storage/storage.service';
@@ -63,6 +65,7 @@ export class ServiceOrdersService {
     private readonly provisioning: ProvisioningService,
     private readonly consumption: OsConsumptionService,
     private readonly storage: StorageService,
+    private readonly contracts: ContractsService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -620,6 +623,135 @@ export class ServiceOrdersService {
     return { serviceOrder, install };
   }
 
+  /**
+   * Finalização de campo ramificada por tipo de O.S (a tela /os monta `mode`
+   * a partir de reason.kind + "trocou ONT?"):
+   *   INSTALLATION → provisiona tudo (one-touch).
+   *   SUPPORT      → fecha + materiais opcionais + fotos (sem provisionar).
+   *   SUPPORT_SWAP → troca de ONT (devolve antiga, provisiona nova) + fecha.
+   *   RETRIEVAL    → recolhe equipamento + desprovisiona + cancela contrato.
+   */
+  async completeField(
+    tenantId: string,
+    actorUserId: string,
+    id: string,
+    input: CompleteFieldRequest,
+    opts: { isAdmin?: boolean } = {},
+  ): Promise<{ serviceOrder: ServiceOrderResponse }> {
+    const so = await this.prisma.serviceOrder.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true, contractId: true, status: true },
+    });
+    if (!so) throw new NotFoundException('O.S não encontrada');
+    if (so.status === PrismaSOStatus.COMPLETED)
+      throw new ConflictException('O.S já finalizada');
+    if (so.status === PrismaSOStatus.CANCELLED)
+      throw new ConflictException('O.S cancelada — reabra antes de finalizar');
+
+    switch (input.mode) {
+      case 'INSTALLATION': {
+        const install = await this.provisioning.installCustomer(
+          tenantId,
+          actorUserId,
+          so.contractId,
+          input.install,
+        );
+        if (install.status === 'FAILED')
+          throw new ConflictException('Provisionamento falhou — O.S não finalizada.');
+        await this.consumeMaterials(tenantId, actorUserId, id, input.materials, opts.isAdmin);
+        break;
+      }
+      case 'SUPPORT':
+        await this.consumeMaterials(tenantId, actorUserId, id, input.materials, opts.isAdmin);
+        break;
+      case 'SUPPORT_SWAP': {
+        const r = await this.provisioning.swapOnt(
+          tenantId,
+          actorUserId,
+          so.contractId,
+          input.swap,
+        );
+        if (r.status === 'FAILED')
+          throw new ConflictException('Troca de ONT falhou — O.S não finalizada.');
+        await this.consumeMaterials(tenantId, actorUserId, id, input.materials, opts.isAdmin);
+        break;
+      }
+      case 'RETRIEVAL':
+        await this.provisioning.deprovision(tenantId, actorUserId, so.contractId, {
+          returnLocationId: input.returnLocationId,
+        });
+        await this.contracts.cancel(tenantId, actorUserId, so.contractId, {
+          note: input.cancelReason ?? 'Retirada de equipamento (O.S)',
+        });
+        break;
+    }
+
+    await this.savePhotos(tenantId, actorUserId, id, input.photos);
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'service_order.field_complete',
+      resource: 'service_orders',
+      resourceId: id,
+      metadata: { mode: input.mode, contractId: so.contractId },
+    });
+
+    const serviceOrder = await this.complete(tenantId, actorUserId, id, {
+      closeDescription: input.closeDescription,
+      completedAt: input.completedAt,
+    });
+    return { serviceOrder };
+  }
+
+  private async consumeMaterials(
+    tenantId: string,
+    actorUserId: string,
+    serviceOrderId: string,
+    materials: { productId: string; locationId: string; quantity: number; notes?: string | null }[],
+    isAdmin?: boolean,
+  ): Promise<void> {
+    if (!materials.length) return;
+    await this.consumption.addConsumption(
+      tenantId,
+      actorUserId,
+      {
+        serviceOrderId,
+        items: materials.map((m) => ({
+          productId: m.productId,
+          locationId: m.locationId,
+          quantity: m.quantity,
+          notes: m.notes ?? undefined,
+        })),
+      },
+      { isAdmin },
+    );
+  }
+
+  private async savePhotos(
+    tenantId: string,
+    actorUserId: string,
+    serviceOrderId: string,
+    photos: {
+      storageKey: string;
+      contentType?: string | null;
+      sizeBytes?: number | null;
+      caption?: string | null;
+    }[],
+  ): Promise<void> {
+    if (!photos.length) return;
+    await this.prisma.serviceOrderPhoto.createMany({
+      data: photos.map((p) => ({
+        tenantId,
+        serviceOrderId,
+        storageKey: p.storageKey,
+        contentType: p.contentType ?? null,
+        sizeBytes: p.sizeBytes ?? null,
+        caption: p.caption ?? null,
+        createdById: actorUserId,
+      })),
+    });
+  }
+
   async cancel(
     tenantId: string,
     actorUserId: string,
@@ -707,7 +839,7 @@ function buildStatusFilter(
 
 function defaultInclude() {
   return {
-    reason: { select: { id: true, name: true } },
+    reason: { select: { id: true, name: true, kind: true } },
     contract: {
       select: {
         id: true,
@@ -759,7 +891,7 @@ function toResponse(o: any): ServiceOrderResponse {
     createdAt: o.createdAt.toISOString(),
     updatedAt: o.updatedAt.toISOString(),
     reason: o.reason
-      ? { id: o.reason.id, name: o.reason.name }
+      ? { id: o.reason.id, name: o.reason.name, kind: o.reason.kind ?? 'SUPPORT' }
       : null,
     contract: o.contract
       ? {

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuditModule } from '../audit/audit.module';
+import { ContractsModule } from '../contracts/contracts.module';
 import { ProvisioningModule } from '../provisioning/provisioning.module';
 import { StockModule } from '../stock/stock.module';
 
@@ -20,7 +21,7 @@ import { ServiceOrdersService } from './service-orders.service';
   // Provisioning + Stock pro orquestrador one-touch (completeInstallation).
   // StorageModule é @Global — não precisa importar. Sem ciclo: ninguém importa
   // ServiceOrdersModule.
-  imports: [AuditModule, ProvisioningModule, StockModule],
+  imports: [AuditModule, ContractsModule, ProvisioningModule, StockModule],
   controllers: [ServiceOrdersController, ServiceOrderReasonsController],
   providers: [ServiceOrdersService, ServiceOrderReasonsService],
   exports: [ServiceOrdersService],

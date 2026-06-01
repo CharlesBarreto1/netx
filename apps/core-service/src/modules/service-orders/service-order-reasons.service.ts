@@ -61,7 +61,9 @@ export class ServiceOrderReasonsService {
           name: input.name.trim(),
           description: input.description ?? null,
           isActive: input.isActive ?? true,
-          isInstallation: input.isInstallation ?? false,
+          kind: input.kind ?? 'SUPPORT',
+          // isInstallation segue o kind (fonte de verdade do fluxo /os).
+          isInstallation: (input.kind ?? 'SUPPORT') === 'INSTALLATION',
           order: input.order ?? 0,
         },
       });
@@ -105,7 +107,12 @@ export class ServiceOrderReasonsService {
           name: input.name?.trim(),
           description: input.description,
           isActive: input.isActive,
-          isInstallation: input.isInstallation,
+          kind: input.kind,
+          // Se o kind mudou, sincroniza isInstallation; senão respeita o input.
+          isInstallation:
+            input.kind !== undefined
+              ? input.kind === 'INSTALLATION'
+              : input.isInstallation,
           order: input.order,
         },
       });
@@ -166,6 +173,7 @@ function toResponse(r: any): ServiceOrderReasonResponse {
     description: r.description,
     isActive: r.isActive,
     isInstallation: r.isInstallation ?? false,
+    kind: r.kind ?? 'SUPPORT',
     order: r.order,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),

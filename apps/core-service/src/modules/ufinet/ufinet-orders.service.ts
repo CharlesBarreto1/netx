@@ -263,6 +263,26 @@ export class UfinetOrdersService {
     return this.transition(svc, target, this.resetStep(), actorUserId, action);
   }
 
+  /**
+   * Troca de ONT (Cambio de ONT). Grava o SN novo e transiciona pra
+   * SWAPPING_ONT; o poller envia o POST CHANGE_RESOURCE + faz poll até ACTIVE.
+   */
+  async requestSwapOnt(
+    tenantId: string,
+    contractId: string,
+    newSerial: string,
+    actorUserId?: string | null,
+  ): Promise<UfinetService> {
+    const svc = await this.getByContract(tenantId, contractId);
+    return this.transition(
+      svc,
+      'SWAPPING_ONT',
+      { ...this.resetStep(), serialNumber: newSerial },
+      actorUserId,
+      'ufinet.swap_ont.requested',
+    );
+  }
+
   // ===========================================================================
   // API de leitura / retry (controller + UI)
   // ===========================================================================
@@ -454,6 +474,8 @@ export class UfinetOrdersService {
           return await this.orderStep(service, conn, 'SUSPEND');
         case 'REACTIVATING':
           return await this.orderStep(service, conn, 'REACTIVATE');
+        case 'SWAPPING_ONT':
+          return await this.swapStep(service, conn);
         case 'CEASING':
           return await this.orderStep(service, conn, 'CEASE');
         case 'CANCELLING':
@@ -712,6 +734,40 @@ export class UfinetOrdersService {
     return this.keepPolling(svc, order);
   }
 
+  // CAMBIO DE ONT — POST CHANGE_RESOURCE (Action MODIFY + SERIAL_NUMBER novo) + poll
+  private async swapStep(svc: UfinetService, conn: UfinetConnection): Promise<void> {
+    if (!svc.currentOrderId) {
+      const resp = await this.client.createOrder(conn, this.buildSwapPayload(svc, conn));
+      const orderId = extractOrderId(resp);
+      if (!orderId) return this.fail(svc, 'swap ONT sem orderId');
+      await this.save(svc.id, {
+        currentOrderId: orderId,
+        lastResponse: toJson(resp),
+        nextAttemptAt: new Date(Date.now() + SEND_RETRY_MS),
+      });
+      return;
+    }
+    const order = await this.client.getOrder(conn, svc.currentOrderId);
+    const state = normalizeUfinetState(order.state);
+    if (state === UFINET_STATE.FAILED)
+      return this.fail(svc, this.errText(order) ?? 'swap ONT falhou');
+    if (state === UFINET_STATE.COMPLETED) {
+      await this.save(svc.id, {
+        lifecycle: 'ACTIVE',
+        currentOrderId: null,
+        nextAttemptAt: null,
+        attempts: 0,
+        error: null,
+        ufinetState: state,
+      });
+      this.logger.log(
+        `[ufinet] ${svc.externalId} troca de ONT ok → ACTIVE (SN ${svc.serialNumber})`,
+      );
+      return;
+    }
+    return this.keepPolling(svc, order);
+  }
+
   // CANCEL — POST CancelServiceOrder (imediato; sem poll dedicado na Fase 1)
   private async cancelStep(svc: UfinetService, conn: UfinetConnection): Promise<void> {
     if (!svc.serviceOrderId) return this.fail(svc, 'cancelar sem serviceOrderId');
@@ -820,6 +876,36 @@ export class UfinetOrdersService {
             ExternalServiceId: svc.parentServiceId ?? svc.externalId,
             ServiceType: 'CFS',
             serviceCharacteristic: [],
+            ServiceSpecification: { id: 'RES_PON_ACCESS', version: '1.0' },
+          },
+        },
+      ],
+    };
+  }
+
+  /** Payload do "Cambio de ONT" (CHANGE_RESOURCE) — SN novo em svc.serialNumber. */
+  private buildSwapPayload(
+    svc: UfinetService,
+    conn: UfinetConnection,
+  ): Record<string, unknown> {
+    return {
+      Region: conn.region,
+      Operator: conn.operator,
+      ServiceOrderType: 'CHANGE_RESOURCE',
+      Description: 'CAMBIO DE ONT',
+      ExternalId: svc.externalId,
+      RequestedStartDate: new Date().toISOString(),
+      Priority: '1',
+      RelatedParty: [{ name: conn.userName, role: 'requester' }],
+      ServiceOrderItem: [
+        {
+          Action: 'MODIFY',
+          Service: {
+            ExternalServiceId: svc.parentServiceId ?? svc.externalId,
+            ServiceType: 'CFS',
+            serviceCharacteristic: [
+              { name: 'SERIAL_NUMBER', value: svc.serialNumber ?? '', valueType: 'string' },
+            ],
             ServiceSpecification: { id: 'RES_PON_ACCESS', version: '1.0' },
           },
         },

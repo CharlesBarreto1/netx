@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { InstallCustomerRequestSchema } from '../provisioning/install.dto';
+import { type ServiceOrderReasonKind } from './service-order-reason.dto';
 
 /**
  * Status persistido no DB. `OVERDUE` NÃO é persistido — é um status derivado
@@ -200,6 +201,61 @@ export type CompleteInstallationRequest = z.infer<
 >;
 
 // =============================================================================
+// FINALIZAÇÃO DE CAMPO ramificada por tipo de O.S (instalação / suporte /
+// retirada) — a tela /os monta `mode` a partir de reason.kind + "trocou ONT?".
+// =============================================================================
+const fieldCommon = {
+  photos: z.array(ServiceOrderPhotoInputSchema).max(30).default([]),
+  closeDescription: z.string().min(1).max(10_000),
+  completedAt: z.string().datetime({ offset: true }).optional(),
+};
+
+/** Dados da troca de ONT (suporte com troca). */
+export const OntSwapSchema = z.object({
+  newSerialItemId: z.string().uuid().nullish(),
+  newSnGpon: z.string().max(64).nullish(),
+  allowStockBypass: z.boolean().default(false),
+  returnLocationId: z.string().uuid(),
+  ssid: z.string().min(1).max(32),
+  wifiPassword: z.string().min(8).max(63),
+  wifiBandMode: z.enum(['BAND_STEERING', 'DUAL_BAND']).default('BAND_STEERING'),
+});
+export type OntSwap = z.infer<typeof OntSwapSchema>;
+
+export const CompleteFieldRequestSchema = z.discriminatedUnion('mode', [
+  // INSTALLATION — provisiona tudo (one-touch).
+  z.object({
+    mode: z.literal('INSTALLATION'),
+    install: InstallCustomerRequestSchema,
+    enclosureId: z.string().uuid().nullish(),
+    enclosurePort: z.string().max(32).nullish(),
+    materials: z.array(FieldMaterialSchema).max(100).default([]),
+    ...fieldCommon,
+  }),
+  // SUPPORT — atendimento SEM troca de ONT (não mexe no provisionamento).
+  z.object({
+    mode: z.literal('SUPPORT'),
+    materials: z.array(FieldMaterialSchema).max(100).default([]),
+    ...fieldCommon,
+  }),
+  // SUPPORT_SWAP — atendimento COM troca de ONT.
+  z.object({
+    mode: z.literal('SUPPORT_SWAP'),
+    swap: OntSwapSchema,
+    materials: z.array(FieldMaterialSchema).max(100).default([]),
+    ...fieldCommon,
+  }),
+  // RETRIEVAL — recolhe equipamento + desprovisiona + encerra contrato.
+  z.object({
+    mode: z.literal('RETRIEVAL'),
+    returnLocationId: z.string().uuid(),
+    cancelReason: z.string().max(500).optional(),
+    ...fieldCommon,
+  }),
+]);
+export type CompleteFieldRequest = z.infer<typeof CompleteFieldRequestSchema>;
+
+// =============================================================================
 // LIST / FILTROS
 // =============================================================================
 export const ListServiceOrdersQuerySchema = z.object({
@@ -279,7 +335,7 @@ export interface ServiceOrderResponse {
   updatedAt: string;
 
   // Relations enxutos pra UI:
-  reason?: { id: string; name: string } | null;
+  reason?: { id: string; name: string; kind: ServiceOrderReasonKind } | null;
   contract?: {
     id: string;
     code: string | null;

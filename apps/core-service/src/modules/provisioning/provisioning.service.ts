@@ -575,6 +575,190 @@ export class ProvisioningService {
     return { ...ont, oltName: ont.olt.name };
   }
 
+  /**
+   * Troca de ONT (O.S de suporte). Devolve a ONT antiga ao estoque e provisiona
+   * a nova: Ufinet via "Cambio de ONT" (CHANGE_RESOURCE, assíncrono); rede
+   * própria via deauthorize + re-install. TR-069 sempre re-cadastra device+Wi-Fi.
+   */
+  async swapOnt(
+    tenantId: string,
+    actorUserId: string,
+    contractId: string,
+    input: {
+      newSerialItemId?: string | null;
+      newSnGpon?: string | null;
+      allowStockBypass?: boolean;
+      returnLocationId: string;
+      ssid: string;
+      wifiPassword: string;
+      wifiBandMode?: 'BAND_STEERING' | 'DUAL_BAND';
+    },
+  ): Promise<{ status: 'OK' | 'PARTIAL' | 'FAILED' }> {
+    const ont = await this.prisma.ont.findFirst({ where: { tenantId, contractId } });
+    if (!ont) {
+      throw new BadRequestException(
+        'Contrato sem ONT atual pra trocar — use uma O.S de instalação.',
+      );
+    }
+    const olt = await this.prisma.olt.findFirst({
+      where: { id: ont.oltId, tenantId, deletedAt: null },
+    });
+    if (!olt) throw new NotFoundException('OLT da ONT atual não encontrada');
+    const oldSn = ont.snGpon;
+
+    // Serial novo (do estoque ou manual via bypass).
+    let newSn = input.newSnGpon?.trim() || null;
+    if (input.newSerialItemId) {
+      const si = await this.prisma.serialItem.findFirst({
+        where: { id: input.newSerialItemId, tenantId },
+        select: { serial: true },
+      });
+      if (!si) throw new BadRequestException('ONT nova não encontrada no estoque');
+      newSn = si.serial;
+    }
+    if (!newSn)
+      throw new BadRequestException('Informe a ONT nova (estoque ou serial manual).');
+
+    // Devolve a ONT antiga ao estoque (comodato).
+    const oldComodato = await this.prisma.serialItem.findFirst({
+      where: { tenantId, contractId, status: 'ALLOCATED' },
+      select: { id: true },
+    });
+    if (oldComodato) {
+      await this.comodato.returnItem(
+        tenantId,
+        actorUserId,
+        { serialItemId: oldComodato.id, toLocationId: input.returnLocationId, notes: 'Troca de ONT (O.S)' },
+        { isAdmin: true },
+      );
+    }
+
+    const isUfinet = olt.vendor === 'UFINET' && olt.providerMode === 'ORCHESTRATOR';
+
+    if (isUfinet) {
+      if (input.newSerialItemId) {
+        await this.comodato.allocate(tenantId, actorUserId, {
+          contractId,
+          serialItemId: input.newSerialItemId,
+        });
+      }
+      await this.ufinet.requestSwapOnt(tenantId, contractId, newSn, actorUserId);
+      await this.prisma.tr069Device.deleteMany({ where: { tenantId, ontId: ont.id } });
+      await this.prisma.ont.update({
+        where: { id: ont.id },
+        data: { snGpon: newSn, status: 'PENDING_AUTH' },
+      });
+      await this.tr069.enqueueSetWifi(tenantId, ont.id, contractId, newSn, {
+        ssid: input.ssid,
+        password: input.wifiPassword,
+        bothBands: true,
+        wifiBandMode: input.wifiBandMode ?? 'BAND_STEERING',
+      });
+      await this.audit.log({
+        tenantId,
+        userId: actorUserId,
+        action: 'provisioning.ont_swap',
+        resource: 'onts',
+        resourceId: ont.id,
+        metadata: { oldSn, newSn, network: 'ufinet' },
+      });
+      return { status: 'OK' };
+    }
+
+    // Rede própria: desautoriza a antiga e re-instala a nova (reusa
+    // installCustomer → cria Ont nova + autoriza + comodato + TR-069 + RADIUS).
+    const ctx = buildConnectionContext(olt, this.crypto);
+    try {
+      await this.drivers.resolve(olt.vendor, olt.providerMode).deauthorizeOnt(ctx, oldSn);
+    } catch (err) {
+      this.logger.warn(
+        `[swap] deauthorize da ONT antiga falhou: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    await this.prisma.tr069Device.deleteMany({ where: { tenantId, ontId: ont.id } });
+    await this.prisma.ont.delete({ where: { id: ont.id } });
+    const res = await this.installCustomer(tenantId, actorUserId, contractId, {
+      oltId: olt.id,
+      serialItemId: input.newSerialItemId ?? null,
+      allowStockBypass: input.allowStockBypass ?? false,
+      snGpon: newSn,
+      ssid: input.ssid,
+      wifiPassword: input.wifiPassword,
+      wifiBandMode: input.wifiBandMode ?? 'BAND_STEERING',
+      pppoeVlan: 1010,
+    } as InstallCustomerRequest);
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'provisioning.ont_swap',
+      resource: 'onts',
+      resourceId: ont.id,
+      metadata: { oldSn, newSn, network: 'own' },
+    });
+    return { status: res.status };
+  }
+
+  /**
+   * Desprovisiona (O.S de retirada): devolve equipamento(s) ao estoque +
+   * desautoriza na OLT / dá baja na Ufinet. O cancelamento do contrato é
+   * disparado pelo ServiceOrdersService (completeField).
+   */
+  async deprovision(
+    tenantId: string,
+    actorUserId: string,
+    contractId: string,
+    input: { returnLocationId: string },
+  ): Promise<{ status: 'OK'; returned: number }> {
+    const allocated = await this.prisma.serialItem.findMany({
+      where: { tenantId, contractId, status: 'ALLOCATED' },
+      select: { id: true },
+    });
+    for (const s of allocated) {
+      await this.comodato.returnItem(
+        tenantId,
+        actorUserId,
+        { serialItemId: s.id, toLocationId: input.returnLocationId, notes: 'Retirada de equipamento (O.S)' },
+        { isAdmin: true },
+      );
+    }
+    const ont = await this.prisma.ont.findFirst({ where: { tenantId, contractId } });
+    if (ont) {
+      const olt = await this.prisma.olt.findFirst({ where: { id: ont.oltId, tenantId } });
+      if (olt) {
+        if (olt.vendor === 'UFINET' && olt.providerMode === 'ORCHESTRATOR') {
+          try {
+            await this.ufinet.requestTeardown(tenantId, contractId, actorUserId);
+          } catch (err) {
+            this.logger.warn(
+              `[retrieval] ufinet teardown falhou: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        } else {
+          try {
+            const ctx = buildConnectionContext(olt, this.crypto);
+            await this.drivers
+              .resolve(olt.vendor, olt.providerMode)
+              .deauthorizeOnt(ctx, ont.snGpon);
+          } catch (err) {
+            this.logger.warn(
+              `[retrieval] deauthorize falhou: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
+      }
+      await this.prisma.tr069Device.deleteMany({ where: { tenantId, ontId: ont.id } });
+    }
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'provisioning.deprovision',
+      resource: 'contracts',
+      resourceId: contractId,
+      metadata: { returned: allocated.length },
+    });
+    return { status: 'OK', returned: allocated.length };
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------

@@ -14,6 +14,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   CancelServiceOrderRequestSchema,
   CheckinServiceOrderRequestSchema,
+  CompleteFieldRequestSchema,
   CompleteInstallationRequestSchema,
   CompleteServiceOrderRequestSchema,
   CreateServiceOrderRequestSchema,
@@ -25,6 +26,7 @@ import {
   type AuthenticatedPrincipal,
   type CancelServiceOrderRequest,
   type CheckinServiceOrderRequest,
+  type CompleteFieldRequest,
   type CompleteInstallationRequest,
   type CompleteServiceOrderRequest,
   type CreateServiceOrderRequest,
@@ -154,6 +156,22 @@ export class ServiceOrdersController {
     @ZodBody(CompleteInstallationRequestSchema) body: CompleteInstallationRequest,
   ) {
     return this.orders.completeInstallation(user.tenantId, user.sub, id, body, {
+      isAdmin: user.permissions.includes('stock.admin'),
+    });
+  }
+
+  /**
+   * Finalização de campo ramificada por tipo de O.S (instalação / suporte /
+   * suporte com troca de ONT / retirada). A tela /os escolhe o `mode`.
+   */
+  @Post(':id/complete-field')
+  @RequirePermissions('service_orders.write')
+  completeField(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(CompleteFieldRequestSchema) body: CompleteFieldRequest,
+  ) {
+    return this.orders.completeField(user.tenantId, user.sub, id, body, {
       isAdmin: user.permissions.includes('stock.admin'),
     });
   }
