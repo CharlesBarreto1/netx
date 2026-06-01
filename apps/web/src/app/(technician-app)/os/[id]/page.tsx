@@ -12,6 +12,7 @@
  */
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -52,6 +53,7 @@ function genPassword() {
 }
 
 export default function OsDetailPage() {
+  const t = useTranslations('technician');
   const params = useParams<{ id: string }>();
   const id = params.id;
   const router = useRouter();
@@ -138,7 +140,7 @@ export default function OsDetailPage() {
       await serviceOrdersApi.enRoute(id);
       await mutate();
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.friendlyMessage : 'Erro');
+      toast.error(e instanceof ApiError ? e.friendlyMessage : t('errors.generic'));
     } finally {
       setBusy(false);
     }
@@ -149,7 +151,7 @@ export default function OsDetailPage() {
       await serviceOrdersApi.checkin(id);
       await mutate();
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.friendlyMessage : 'Erro');
+      toast.error(e instanceof ApiError ? e.friendlyMessage : t('errors.generic'));
     } finally {
       setBusy(false);
     }
@@ -172,14 +174,15 @@ export default function OsDetailPage() {
         body: file,
         headers: file.type ? { 'Content-Type': file.type } : {},
       });
-      if (!put.ok) throw new Error(`upload falhou (${put.status})`);
+      if (!put.ok)
+        throw new Error(t('errors.uploadStatus', { status: put.status }));
       setPhotos((p) => [
         ...p,
         { storageKey, contentType: file.type || null, sizeBytes: file.size },
       ]);
-      toast.success('Foto enviada');
+      toast.success(t('toast.photoSent'));
     } catch (er) {
-      toast.error(er instanceof Error ? er.message : 'Falha no upload');
+      toast.error(er instanceof Error ? er.message : t('errors.uploadFailed'));
     } finally {
       setBusy(false);
     }
@@ -198,25 +201,25 @@ export default function OsDetailPage() {
 
   // ── validação + payload por modo ──
   function buildPayload(): { payload: CompleteFieldInput } | { error: string } {
-    if (!closeDescription.trim()) return { error: 'Descreva o fechamento.' };
+    if (!closeDescription.trim()) return { error: t('errors.closeRequired') };
     for (const m of materials) {
       if (!m.productId || !m.locationId)
-        return { error: 'Materiais: selecione produto e local em todas as linhas.' };
+        return { error: t('errors.materialsRequired') };
     }
     const ontFields = () => {
-      if (bypass && !snGpon.trim()) return 'Informe o serial GPON da ONT.';
-      if (!bypass && !serialItemId) return 'Escolha a ONT do estoque (comodato).';
-      if (!ssid.trim()) return 'Informe o nome da rede (SSID).';
-      if (wifiPassword.trim().length < 8) return 'Senha Wi-Fi: mínimo 8 caracteres.';
+      if (bypass && !snGpon.trim()) return t('errors.snGponRequired');
+      if (!bypass && !serialItemId) return t('errors.ontStockRequired');
+      if (!ssid.trim()) return t('errors.ssidRequired');
+      if (wifiPassword.trim().length < 8) return t('errors.wifiMin');
       return null;
     };
 
     if (effectiveMode === 'INSTALLATION') {
-      if (!oltId) return { error: 'Escolha a OLT.' };
+      if (!oltId) return { error: t('errors.oltRequired') };
       const e = ontFields();
       if (e) return { error: e };
       if (isUfinet && !enclosureId)
-        return { error: 'Escolha a caixa (CTO) que atende o cliente.' };
+        return { error: t('errors.ctoRequired') };
       const ctoCode = selectedEnclosure?.code ?? null;
       return {
         payload: {
@@ -245,7 +248,7 @@ export default function OsDetailPage() {
 
     if (effectiveMode === 'SUPPORT_SWAP') {
       if (!returnLocationId)
-        return { error: 'Escolha o local de devolução da ONT antiga.' };
+        return { error: t('errors.returnOldRequired') };
       const e = ontFields();
       if (e) return { error: e };
       return {
@@ -268,7 +271,7 @@ export default function OsDetailPage() {
 
     if (effectiveMode === 'RETRIEVAL') {
       if (!returnLocationId)
-        return { error: 'Escolha o local de devolução do equipamento.' };
+        return { error: t('errors.returnEquipRequired') };
       return {
         payload: {
           mode: 'RETRIEVAL',
@@ -300,27 +303,23 @@ export default function OsDetailPage() {
     setBusy(true);
     try {
       await serviceOrdersApi.completeField(id, r.payload);
-      toast.success('O.S finalizada! 🎉');
+      toast.success(t('toast.completed'));
       router.replace('/os');
     } catch (e) {
-      setErr(e instanceof ApiError ? e.friendlyMessage : 'Erro ao finalizar');
+      setErr(e instanceof ApiError ? e.friendlyMessage : t('errors.finishFailed'));
     } finally {
       setBusy(false);
     }
   }
 
-  if (isLoading || !so) return <PageLoader label="Carregando O.S…" />;
+  if (isLoading || !so) return <PageLoader label={t('loadingOrder')} />;
 
-  const KIND_LABEL = {
-    INSTALLATION: 'Instalação',
-    SUPPORT: 'Suporte',
-    RETRIEVAL: 'Retirada',
-  }[kind];
+  const KIND_LABEL = t(`kind.${kind}`);
 
   return (
     <div className="space-y-4">
       <Link href="/os" className="text-sm text-text-subtle hover:text-text">
-        ← Minhas O.S
+        {t('detail.back')}
       </Link>
 
       <header className="rounded-lg border border-border bg-surface p-3">
@@ -331,7 +330,7 @@ export default function OsDetailPage() {
           </span>
         </div>
         <div className="mt-1 text-sm font-medium">
-          {so.customer?.displayName ?? 'Cliente'}
+          {so.customer?.displayName ?? t('customerFallback')}
         </div>
         <div className="mt-0.5 text-xs text-text-muted">
           {so.reason?.name}
@@ -347,17 +346,17 @@ export default function OsDetailPage() {
         so.status === 'SCHEDULED' ||
         so.displayStatus === 'OVERDUE') && (
         <Button onClick={doEnRoute} loading={busy} className="w-full">
-          🚗 Iniciar deslocamento
+          {t('detail.enRoute')}
         </Button>
       )}
       {so.status === 'EN_ROUTE' && (
         <Button onClick={doCheckin} loading={busy} className="w-full">
-          📍 Cheguei — fazer check-in
+          {t('detail.checkin')}
         </Button>
       )}
       {so.status === 'COMPLETED' && (
         <div className="rounded-md border border-green-300 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950/40 dark:text-green-200">
-          ✅ O.S concluída
+          {t('detail.completed')}
           {so.closeDescription ? ` — ${so.closeDescription}` : ''}.
         </div>
       )}
@@ -365,26 +364,28 @@ export default function OsDetailPage() {
       {/* ── Form de fechamento (em execução) ── */}
       {isInProgress && (
         <section className="space-y-4 rounded-lg border border-border bg-surface p-3">
-          <h2 className="text-sm font-bold">Fechamento — {KIND_LABEL}</h2>
+          <h2 className="text-sm font-bold">
+            {t('detail.closingTitle', { kind: KIND_LABEL })}
+          </h2>
 
           {/* Suporte: trocou ONT? */}
           {kind === 'SUPPORT' && (
             <div className="rounded-md border border-border p-2">
-              <Label>Precisou trocar a ONT?</Label>
+              <Label>{t('detail.swapQuestion')}</Label>
               <div className="mt-1 flex gap-2">
                 <button
                   type="button"
                   onClick={() => setSwappedOnt(false)}
                   className={`flex-1 rounded-md border px-3 py-2 text-sm ${!swappedOnt ? 'border-accent bg-accent-muted text-text' : 'border-border text-text-muted'}`}
                 >
-                  Não
+                  {t('detail.swapNo')}
                 </button>
                 <button
                   type="button"
                   onClick={() => setSwappedOnt(true)}
                   className={`flex-1 rounded-md border px-3 py-2 text-sm ${swappedOnt ? 'border-accent bg-accent-muted text-text' : 'border-border text-text-muted'}`}
                 >
-                  Sim — trocar ONT
+                  {t('detail.swapYes')}
                 </button>
               </div>
             </div>
@@ -394,10 +395,10 @@ export default function OsDetailPage() {
           {effectiveMode === 'INSTALLATION' && (
             <div>
               <Label htmlFor="olt" required>
-                OLT
+                {t('detail.olt')}
               </Label>
               <Select id="olt" value={oltId} onChange={(e) => setOltId(e.target.value)}>
-                <option value="">— selecione —</option>
+                <option value="">{t('detail.select')}</option>
                 {(olts ?? []).map((o) => (
                   <option key={o.id} value={o.id}>
                     {o.name} ({o.vendor})
@@ -410,13 +411,20 @@ export default function OsDetailPage() {
           {/* ONT nova (instalação + troca) */}
           {needsOnt && (
             <div>
-              <Label required>{effectiveMode === 'SUPPORT_SWAP' ? 'ONT nova' : 'ONT'} (serial GPON)</Label>
+              <Label required>
+                {t('detail.ontSerialLabel', {
+                  label:
+                    effectiveMode === 'SUPPORT_SWAP'
+                      ? t('detail.ontNew')
+                      : t('detail.ont'),
+                })}
+              </Label>
               {!bypass ? (
                 <Select
                   value={serialItemId}
                   onChange={(e) => setSerialItemId(e.target.value)}
                 >
-                  <option value="">— escolha do estoque (comodato) —</option>
+                  <option value="">{t('detail.ontStockSelect')}</option>
                   {(serials ?? []).map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.serial} · {s.product.name} ({s.location.code})
@@ -427,7 +435,7 @@ export default function OsDetailPage() {
                 <Input
                   value={snGpon}
                   onChange={(e) => setSnGpon(e.target.value)}
-                  placeholder="Serial GPON (ex.: 48575443...)"
+                  placeholder={t('detail.snGponPlaceholder')}
                   className="font-mono"
                 />
               )}
@@ -437,7 +445,7 @@ export default function OsDetailPage() {
                   checked={bypass}
                   onChange={(e) => setBypass(e.target.checked)}
                 />
-                ONT fora do estoque (digitar serial manualmente)
+                {t('detail.ontBypass')}
               </label>
             </div>
           )}
@@ -446,7 +454,7 @@ export default function OsDetailPage() {
           {effectiveMode === 'INSTALLATION' && oltId && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label required={isUfinet}>Caixa (CTO)</Label>
+                <Label required={isUfinet}>{t('detail.boxCto')}</Label>
                 <Select
                   value={enclosureId}
                   onChange={(e) => {
@@ -455,7 +463,9 @@ export default function OsDetailPage() {
                   }}
                 >
                   <option value="">
-                    {enclosures.length ? '— selecione —' : 'nenhuma CTO nesta OLT'}
+                    {enclosures.length
+                      ? t('detail.select')
+                      : t('detail.noCtoInOlt')}
                   </option>
                   {enclosures.map((c) => (
                     <option key={c.id} value={c.id}>
@@ -465,14 +475,14 @@ export default function OsDetailPage() {
                 </Select>
               </div>
               <div>
-                <Label>Porta usada</Label>
+                <Label>{t('detail.portUsed')}</Label>
                 <Select
                   value={portNumber}
                   onChange={(e) => setPortNumber(e.target.value)}
                   disabled={!enclosureId}
                 >
                   <option value="">
-                    {enclosureId ? '— porta —' : 'escolha a CTO'}
+                    {enclosureId ? t('detail.portSelect') : t('detail.chooseCto')}
                   </option>
                   {(ports ?? []).map((p) => (
                     <option
@@ -480,11 +490,11 @@ export default function OsDetailPage() {
                       value={String(p.number)}
                       disabled={p.status === 'USED' || p.status === 'DAMAGED'}
                     >
-                      Porta {p.number}
+                      {t('detail.portN', { n: p.number })}
                       {p.status === 'USED'
-                        ? ' (ocupada)'
+                        ? ` ${t('detail.portOccupied')}`
                         : p.status === 'DAMAGED'
-                          ? ' (danificada)'
+                          ? ` ${t('detail.portDamaged')}`
                           : ''}
                     </option>
                   ))}
@@ -497,14 +507,16 @@ export default function OsDetailPage() {
           {needsReturn && (
             <div>
               <Label required>
-                Local de devolução{' '}
-                {effectiveMode === 'SUPPORT_SWAP' ? '(ONT antiga)' : '(equipamento)'}
+                {t('detail.returnLocation')}{' '}
+                {effectiveMode === 'SUPPORT_SWAP'
+                  ? t('detail.returnLocationOld')
+                  : t('detail.returnLocationEquip')}
               </Label>
               <Select
                 value={returnLocationId}
                 onChange={(e) => setReturnLocationId(e.target.value)}
               >
-                <option value="">— selecione —</option>
+                <option value="">{t('detail.select')}</option>
                 {(locations ?? []).map((l) => (
                   <option key={l.id} value={l.id}>
                     {l.code} · {l.name}
@@ -519,7 +531,7 @@ export default function OsDetailPage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div>
                 <Label htmlFor="ssid" required>
-                  Nome da rede (SSID)
+                  {t('detail.ssid')}
                 </Label>
                 <Input
                   id="ssid"
@@ -530,7 +542,7 @@ export default function OsDetailPage() {
               </div>
               <div>
                 <Label htmlFor="wifi" required>
-                  Senha Wi-Fi
+                  {t('detail.wifiPassword')}
                 </Label>
                 <div className="flex gap-2">
                   <Input
@@ -544,7 +556,7 @@ export default function OsDetailPage() {
                     variant="secondary"
                     onClick={() => setWifiPassword(genPassword())}
                   >
-                    Gerar
+                    {t('detail.generate')}
                   </Button>
                 </div>
               </div>
@@ -555,9 +567,9 @@ export default function OsDetailPage() {
           {effectiveMode !== 'RETRIEVAL' && (
             <div>
               <div className="flex items-center justify-between">
-                <Label>Materiais usados</Label>
+                <Label>{t('detail.materials')}</Label>
                 <Button type="button" variant="ghost" onClick={addMaterial}>
-                  + Material
+                  {t('detail.addMaterial')}
                 </Button>
               </div>
               {materials.map((m, i) => (
@@ -567,7 +579,7 @@ export default function OsDetailPage() {
                       value={m.productId}
                       onChange={(e) => setMaterial(i, { productId: e.target.value })}
                     >
-                      <option value="">Produto</option>
+                      <option value="">{t('detail.product')}</option>
                       {(products ?? []).map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.name}
@@ -580,7 +592,7 @@ export default function OsDetailPage() {
                       value={m.locationId}
                       onChange={(e) => setMaterial(i, { locationId: e.target.value })}
                     >
-                      <option value="">Local</option>
+                      <option value="">{t('detail.location')}</option>
                       {(locations ?? []).map((l) => (
                         <option key={l.id} value={l.id}>
                           {l.code}
@@ -603,7 +615,7 @@ export default function OsDetailPage() {
                     type="button"
                     onClick={() => removeMaterial(i)}
                     className="col-span-1 text-danger"
-                    aria-label="Remover"
+                    aria-label={t('detail.remove')}
                   >
                     ×
                   </button>
@@ -614,7 +626,7 @@ export default function OsDetailPage() {
 
           {/* Fotos (sempre) */}
           <div>
-            <Label>Fotos</Label>
+            <Label>{t('detail.photos')}</Label>
             <input
               type="file"
               accept="image/*"
@@ -648,7 +660,7 @@ export default function OsDetailPage() {
           {/* Fechamento (sempre) */}
           <div>
             <Label htmlFor="close" required>
-              Descrição de fechamento
+              {t('detail.closeDescription')}
             </Label>
             <Textarea
               id="close"
@@ -666,20 +678,16 @@ export default function OsDetailPage() {
 
           <Button onClick={confirm} loading={busy} className="w-full">
             {effectiveMode === 'RETRIEVAL'
-              ? '✅ Confirmar retirada'
+              ? t('detail.confirmRetrieval')
               : effectiveMode === 'SUPPORT'
-                ? '✅ Finalizar atendimento'
-                : '✅ Confirmar (one-touch)'}
+                ? t('detail.confirmSupport')
+                : t('detail.confirmInstall')}
           </Button>
           <FieldHelp>
-            {effectiveMode === 'INSTALLATION' &&
-              'Ativa o contrato, movimenta o estoque, provisiona, vincula ao TR-069 e fecha a O.S — tudo de uma vez.'}
-            {effectiveMode === 'SUPPORT_SWAP' &&
-              'Devolve a ONT antiga ao estoque, provisiona a nova (rede/TR-069) e fecha a O.S.'}
-            {effectiveMode === 'SUPPORT' &&
-              'Registra o atendimento (materiais/fotos) e fecha a O.S, sem mexer no provisionamento.'}
-            {effectiveMode === 'RETRIEVAL' &&
-              'Recolhe o equipamento ao estoque, desprovisiona e encerra o contrato.'}
+            {effectiveMode === 'INSTALLATION' && t('detail.helpInstall')}
+            {effectiveMode === 'SUPPORT_SWAP' && t('detail.helpSwap')}
+            {effectiveMode === 'SUPPORT' && t('detail.helpSupport')}
+            {effectiveMode === 'RETRIEVAL' && t('detail.helpRetrieval')}
           </FieldHelp>
         </section>
       )}

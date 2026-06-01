@@ -289,7 +289,7 @@ function EquipmentFormDialog({
 
   async function handleTestConnection() {
     if (!initial) {
-      toast.error('Guarda el equipamiento primero pra testar conectividad');
+      toast.error('Guardá el equipamiento primero para probar conectividad');
       return;
     }
     setTesting(true);
@@ -420,7 +420,7 @@ function EquipmentFormDialog({
               placeholder="10.33.33.102"
             />
             <FieldHelp>
-              Mismo IP que el equipo usa pra mandar Access-Request al RADIUS.
+              Mismo IP que el equipo usa para mandar Access-Request al RADIUS.
             </FieldHelp>
           </div>
           <div>
@@ -569,7 +569,7 @@ function EquipmentFormDialog({
             {form.vendor === 'MIKROTIK' && (
               <div className="rounded bg-surface p-3 space-y-3">
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-                  RouterOS API (necesario pra IPoE)
+                  RouterOS API (necesario para IPoE)
                 </p>
                 <div className="grid gap-3 md:grid-cols-3">
                   <div className="md:col-span-2">

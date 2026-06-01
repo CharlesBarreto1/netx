@@ -23,26 +23,38 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 import { Eye, EyeOff, Check, X } from 'lucide-react';
 
 import { ApiError } from '@/lib/api';
+import { AuthI18nProvider } from '@/lib/auth-i18n-provider';
 import { authApi } from '@/lib/auth-api';
 import { getSession } from '@/lib/session';
 
 interface PasswordCheck {
-  label: string;
+  /** Chave de tradução em `auth.firstLogin`. */
+  key: string;
   test: (v: string) => boolean;
 }
 
 const CHECKS: PasswordCheck[] = [
-  { label: 'Pelo menos 8 caracteres', test: (v) => v.length >= 8 },
-  { label: '1 letra maiúscula', test: (v) => /[A-Z]/.test(v) },
-  { label: '1 letra minúscula', test: (v) => /[a-z]/.test(v) },
-  { label: '1 número', test: (v) => /\d/.test(v) },
-  { label: '1 símbolo (!@#$...)', test: (v) => /[^A-Za-z0-9]/.test(v) },
+  { key: 'checkMinLength', test: (v) => v.length >= 8 },
+  { key: 'checkUpper', test: (v) => /[A-Z]/.test(v) },
+  { key: 'checkLower', test: (v) => /[a-z]/.test(v) },
+  { key: 'checkDigit', test: (v) => /\d/.test(v) },
+  { key: 'checkSymbol', test: (v) => /[^A-Za-z0-9]/.test(v) },
 ];
 
 export default function FirstLoginPage() {
+  return (
+    <AuthI18nProvider>
+      <FirstLoginForm />
+    </AuthI18nProvider>
+  );
+}
+
+function FirstLoginForm() {
+  const t = useTranslations('auth.firstLogin');
   const router = useRouter();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -72,7 +84,7 @@ export default function FirstLoginPage() {
   const passwordChecks = useMemo(
     () =>
       CHECKS.map((c) => ({
-        label: c.label,
+        key: c.key,
         passed: newPassword.length > 0 && c.test(newPassword),
       })),
     [newPassword],
@@ -88,15 +100,15 @@ export default function FirstLoginPage() {
     e.preventDefault();
     setErr(null);
     if (!passwordsMatch) {
-      setErr('As senhas não conferem. Confirme que digitou igual nos dois campos.');
+      setErr(t('errNoMatch'));
       return;
     }
     if (!allChecksPassed) {
-      setErr('A nova senha não atende todos os requisitos.');
+      setErr(t('errRequirements'));
       return;
     }
     if (sameAsCurrent) {
-      setErr('A nova senha não pode ser igual à atual.');
+      setErr(t('errSameAsCurrent'));
       return;
     }
     setLoading(true);
@@ -125,7 +137,7 @@ export default function FirstLoginPage() {
   if (!bootChecked) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
-        <div className="text-sm text-slate-500">Verificando sessão…</div>
+        <div className="text-sm text-slate-500">{t('checkingSession')}</div>
       </main>
     );
   }
@@ -137,16 +149,17 @@ export default function FirstLoginPage() {
         className="w-full max-w-md rounded-xl shadow-xl bg-white dark:bg-slate-800 p-8 space-y-4"
       >
         <div className="space-y-1 text-center">
-          <h1 className="text-2xl font-bold">Defina sua nova senha</h1>
+          <h1 className="text-2xl font-bold">{t('title')}</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">
-            Por segurança, antes de continuar você precisa trocar a senha
-            inicial pela sua.
+            {t('subtitle')}
           </p>
         </div>
 
         {/* Senha atual */}
         <div>
-          <label className="block text-sm font-medium mb-1">Senha atual</label>
+          <label className="block text-sm font-medium mb-1">
+            {t('currentPassword')}
+          </label>
           <div className="relative">
             <input
               type={showCurrent ? 'text' : 'password'}
@@ -161,7 +174,7 @@ export default function FirstLoginPage() {
               type="button"
               onClick={() => setShowCurrent((v) => !v)}
               className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-              aria-label={showCurrent ? 'Ocultar senha' : 'Mostrar senha'}
+              aria-label={showCurrent ? t('hidePassword') : t('showPassword')}
               tabIndex={-1}
             >
               {showCurrent ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -171,7 +184,9 @@ export default function FirstLoginPage() {
 
         {/* Nova senha */}
         <div>
-          <label className="block text-sm font-medium mb-1">Nova senha</label>
+          <label className="block text-sm font-medium mb-1">
+            {t('newPassword')}
+          </label>
           <div className="relative">
             <input
               type={showNew ? 'text' : 'password'}
@@ -185,7 +200,7 @@ export default function FirstLoginPage() {
               type="button"
               onClick={() => setShowNew((v) => !v)}
               className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-              aria-label={showNew ? 'Ocultar senha' : 'Mostrar senha'}
+              aria-label={showNew ? t('hidePassword') : t('showPassword')}
               tabIndex={-1}
             >
               {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -196,7 +211,7 @@ export default function FirstLoginPage() {
             <ul className="mt-2 space-y-1">
               {passwordChecks.map((c) => (
                 <li
-                  key={c.label}
+                  key={c.key}
                   className={`flex items-center gap-1.5 text-xs ${
                     c.passed
                       ? 'text-emerald-600 dark:text-emerald-400'
@@ -208,22 +223,20 @@ export default function FirstLoginPage() {
                   ) : (
                     <X className="h-3.5 w-3.5" />
                   )}
-                  {c.label}
+                  {t(c.key)}
                 </li>
               ))}
             </ul>
           )}
           {sameAsCurrent && (
-            <p className="mt-2 text-xs text-red-600">
-              A nova senha não pode ser igual à atual.
-            </p>
+            <p className="mt-2 text-xs text-red-600">{t('sameAsCurrent')}</p>
           )}
         </div>
 
         {/* Confirmar nova senha */}
         <div>
           <label className="block text-sm font-medium mb-1">
-            Confirmar nova senha
+            {t('confirmPassword')}
           </label>
           <div className="relative">
             <input
@@ -238,7 +251,7 @@ export default function FirstLoginPage() {
               type="button"
               onClick={() => setShowConfirm((v) => !v)}
               className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-              aria-label={showConfirm ? 'Ocultar senha' : 'Mostrar senha'}
+              aria-label={showConfirm ? t('hidePassword') : t('showPassword')}
               tabIndex={-1}
             >
               {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -257,7 +270,7 @@ export default function FirstLoginPage() {
               ) : (
                 <X className="h-3.5 w-3.5" />
               )}
-              {passwordsMatch ? 'As senhas conferem' : 'As senhas não conferem'}
+              {passwordsMatch ? t('passwordsMatch') : t('passwordsNoMatch')}
             </p>
           )}
         </div>
@@ -272,7 +285,7 @@ export default function FirstLoginPage() {
           disabled={loading || !allChecksPassed || !passwordsMatch || sameAsCurrent}
           className="w-full py-2.5 rounded-md bg-brand-600 text-white font-semibold hover:bg-brand-700 disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          {loading ? 'Salvando…' : 'Definir nova senha e entrar'}
+          {loading ? t('submitting') : t('submit')}
         </button>
 
         <p className="text-[11px] text-center text-slate-400 pt-2">

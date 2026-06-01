@@ -142,10 +142,10 @@ export default function FiscalDocumentDetailPage() {
               copiar
             </button>
           </Row>
-          <Row label="Estab/Punto/Número">
+          <Row label="Estab/Ponto/Número">
             {doc.establecimiento}-{doc.puntoExpedicion}-{String(doc.numero).padStart(7, '0')}
           </Row>
-          <Row label="Emisor RUC">{doc.emisorRuc}</Row>
+          <Row label="Emissor RUC">{doc.emisorRuc}</Row>
           <Row label="Timbrado">{doc.emisorTimbrado}</Row>
           {doc.signedAt && <Row label="Assinado">{formatDateTime(doc.signedAt)}</Row>}
           {doc.sentAt && <Row label="Enviado">{formatDateTime(doc.sentAt)}</Row>}
@@ -161,7 +161,7 @@ export default function FiscalDocumentDetailPage() {
 
         {/* Receptor + total */}
         <Card title="Receptor">
-          <Row label="Nome">{doc.receptorName ?? <em className="text-text-muted">Sin nombre</em>}</Row>
+          <Row label="Nome">{doc.receptorName ?? <em className="text-text-muted">Sem nome</em>}</Row>
           <Row label="RUC/CI">{doc.receptorTaxId ?? <em className="text-text-muted">—</em>}</Row>
           <Row label="Total">
             <strong>{formatMoney(doc.totalAmount)}</strong> {doc.currency}
@@ -336,7 +336,7 @@ function CancelDialog({
       open
       onClose={submitting ? () => {} : onClose}
       title="Cancelar DTE"
-      description="Esta operação envia um evento de cancelación ao SET. Não pode ser desfeita."
+      description="Esta operação envia um evento de cancelamento à SET. Não pode ser desfeita."
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={submitting}>

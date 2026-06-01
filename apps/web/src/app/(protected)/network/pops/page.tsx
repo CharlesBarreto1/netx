@@ -232,7 +232,7 @@ function PopFormDialog({
             <Input
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="ex.: POP Centro Asunción"
+              placeholder="ej.: POP Centro Asunción"
               autoFocus
             />
           </div>

@@ -6,6 +6,7 @@
  */
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
 import useSWR from 'swr';
 
 import { PageLoader } from '@/components/ui/Spinner';
@@ -16,16 +17,6 @@ import {
   type ServiceOrderDisplayStatus,
   type ServiceOrderResponse,
 } from '@/lib/service-orders-api';
-
-const STATUS_LABEL: Record<ServiceOrderDisplayStatus, string> = {
-  OPEN: 'Aberta',
-  SCHEDULED: 'Agendada',
-  EN_ROUTE: 'A caminho',
-  IN_PROGRESS: 'Em execução',
-  OVERDUE: 'Atrasada',
-  COMPLETED: 'Concluída',
-  CANCELLED: 'Cancelada',
-};
 
 const STATUS_CLS: Record<ServiceOrderDisplayStatus, string> = {
   OPEN: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200',
@@ -40,18 +31,21 @@ const STATUS_CLS: Record<ServiceOrderDisplayStatus, string> = {
 };
 
 function StatusPill({ s }: { s: ServiceOrderDisplayStatus }) {
+  const t = useTranslations('technician.status');
   return (
     <span
       className={`inline-flex rounded-full px-2 py-0.5 text-2xs font-semibold ${STATUS_CLS[s]}`}
     >
-      {STATUS_LABEL[s]}
+      {t(s)}
     </span>
   );
 }
 
 function OsCard({ o }: { o: ServiceOrderResponse }) {
+  const t = useTranslations('technician');
+  const locale = useLocale();
   const when = o.scheduledAt
-    ? new Date(o.scheduledAt).toLocaleString('pt-BR', {
+    ? new Date(o.scheduledAt).toLocaleString(locale, {
         day: '2-digit',
         month: '2-digit',
         hour: '2-digit',
@@ -68,7 +62,7 @@ function OsCard({ o }: { o: ServiceOrderResponse }) {
         <StatusPill s={o.displayStatus} />
       </div>
       <div className="mt-1 text-sm font-medium">
-        {o.customer?.displayName ?? 'Cliente'}
+        {o.customer?.displayName ?? t('customerFallback')}
       </div>
       <div className="mt-0.5 text-xs text-text-muted">
         {o.reason?.name ?? '—'}
@@ -80,6 +74,7 @@ function OsCard({ o }: { o: ServiceOrderResponse }) {
 }
 
 export default function OsListPage() {
+  const t = useTranslations('technician');
   const [userId, setUserId] = useState<string | null>(null);
   useEffect(() => {
     setUserId(getSession()?.user.id ?? null);
@@ -95,7 +90,7 @@ export default function OsListPage() {
     : null;
   const { data, isLoading } = useSWR<Paginated<ServiceOrderResponse>>(key);
 
-  if (!userId || isLoading) return <PageLoader label="Carregando O.S…" />;
+  if (!userId || isLoading) return <PageLoader label={t('loadingOrder')} />;
 
   const orders = data?.data ?? [];
   const active = orders.filter(
@@ -105,18 +100,18 @@ export default function OsListPage() {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-lg font-bold">Minhas ordens de serviço</h1>
+      <h1 className="text-lg font-bold">{t('list.title')}</h1>
 
       {active.length === 0 && done.length === 0 && (
         <div className="rounded-md border border-border bg-surface p-4 text-sm text-text-muted">
-          Nenhuma O.S designada a você no momento.
+          {t('list.empty')}
         </div>
       )}
 
       {active.length > 0 && (
         <section className="space-y-2">
           <h2 className="text-2xs font-semibold uppercase tracking-wider text-text-subtle">
-            Em aberto ({active.length})
+            {t('list.activeSection', { n: active.length })}
           </h2>
           {active.map((o) => (
             <OsCard key={o.id} o={o} />
@@ -127,7 +122,7 @@ export default function OsListPage() {
       {done.length > 0 && (
         <section className="space-y-2">
           <h2 className="text-2xs font-semibold uppercase tracking-wider text-text-subtle">
-            Concluídas ({done.length})
+            {t('list.doneSection', { n: done.length })}
           </h2>
           {done.map((o) => (
             <OsCard key={o.id} o={o} />

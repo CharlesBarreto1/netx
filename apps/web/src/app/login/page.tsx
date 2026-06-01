@@ -2,15 +2,29 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTranslations } from 'next-intl';
 
 import { ApiError, apiLogin } from '@/lib/api';
+import { AuthI18nProvider } from '@/lib/auth-i18n-provider';
 
 /**
  * Tela de login. Quando o user tem 2FA ativo, o backend devolve 401 com
  * `type: 'urn:netx:error:mfa-required'` e mostramos o campo de token TOTP.
  * Próxima tentativa de submit reenvia email/senha + mfaToken.
+ *
+ * É pré-login (sem tenant), então o i18n vem do `AuthI18nProvider` (idioma do
+ * navegador → es-PY default), não do `I18nProvider` baseado em tenant.
  */
 export default function LoginPage() {
+  return (
+    <AuthI18nProvider>
+      <LoginForm />
+    </AuthI18nProvider>
+  );
+}
+
+function LoginForm() {
+  const t = useTranslations('auth.login');
   const router = useRouter();
   const [email, setEmail] = useState('admin@netx.local');
   const [password, setPassword] = useState('');
@@ -59,13 +73,13 @@ export default function LoginPage() {
           return;
         }
         if (e.problem.type === 'urn:netx:error:mfa-invalid') {
-          setErr('Código MFA inválido. Tente de novo.');
+          setErr(t('mfaInvalid'));
           setLoading(false);
           return;
         }
         setErr(e.friendlyMessage);
       } else {
-        setErr((e as Error)?.message ?? 'Falha ao autenticar');
+        setErr((e as Error)?.message ?? t('failed'));
       }
     } finally {
       setLoading(false);
@@ -78,7 +92,7 @@ export default function LoginPage() {
         onSubmit={onSubmit}
         className="w-full max-w-md rounded-xl shadow-xl bg-white dark:bg-slate-800 p-8 space-y-4"
       >
-        <h1 className="text-2xl font-bold text-center mb-2">Entrar no NetX</h1>
+        <h1 className="text-2xl font-bold text-center mb-2">{t('title')}</h1>
 
         {/*
           Tenant é detalhe interno — cada instância NetX serve um único ISP,
@@ -88,7 +102,7 @@ export default function LoginPage() {
         */}
 
         <div>
-          <label className="block text-sm font-medium mb-1">Email</label>
+          <label className="block text-sm font-medium mb-1">{t('email')}</label>
           <input
             type="email"
             className="w-full px-3 py-2 rounded-md border border-slate-300 dark:border-slate-600 bg-transparent"
@@ -100,7 +114,9 @@ export default function LoginPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">Senha</label>
+          <label className="block text-sm font-medium mb-1">
+            {t('password')}
+          </label>
           <input
             type="password"
             className="w-full px-3 py-2 rounded-md border border-slate-300 dark:border-slate-600 bg-transparent"
@@ -114,7 +130,7 @@ export default function LoginPage() {
         {needsMfa && (
           <div>
             <label className="block text-sm font-medium mb-1">
-              Código do app autenticador
+              {t('mfaLabel')}
             </label>
             <input
               inputMode="numeric"
@@ -127,8 +143,7 @@ export default function LoginPage() {
               required
             />
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              6 dígitos do app (Google Authenticator/Authy) ou 8 caracteres de
-              um backup code.
+              {t('mfaHelp')}
             </p>
           </div>
         )}
@@ -143,7 +158,11 @@ export default function LoginPage() {
           disabled={loading || (needsMfa && mfaToken.length < 6)}
           className="w-full py-2.5 rounded-md bg-brand-600 text-white font-semibold hover:bg-brand-700 disabled:opacity-60"
         >
-          {loading ? 'Autenticando…' : needsMfa ? 'Confirmar código' : 'Entrar'}
+          {loading
+            ? t('submitting')
+            : needsMfa
+              ? t('confirmCode')
+              : t('submit')}
         </button>
 
         {needsMfa && (
@@ -156,7 +175,7 @@ export default function LoginPage() {
             }}
             className="w-full text-xs text-slate-500 hover:underline dark:text-slate-400"
           >
-            ← voltar
+            {t('back')}
           </button>
         )}
       </form>
