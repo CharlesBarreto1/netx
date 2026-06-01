@@ -109,7 +109,11 @@ if [[ -f "${NETX_ETC}/.secrets" ]]; then
   for key in NETX_ADMIN_EMAIL NETX_ADMIN_PASSWORD NETX_DOMAIN NETX_LETSENCRYPT_EMAIL; do
     eval "current=\${$key:-}"
     if [[ -z "${current}" ]]; then
-      saved=$(grep "^${key}=" "${NETX_ETC}/.secrets" 2>/dev/null | tail -1 | cut -d= -f2-)
+      # `|| true` evita errexit quando grep não acha (pipefail propaga não-zero
+      # através de grep|tail|cut quando .secrets não tem essa key). Sem isso,
+      # o installer morre AQUI, ANTES do redirect de log abaixo na linha 126,
+      # e a saída fica completamente silenciosa — debug impossível.
+      saved=$(grep "^${key}=" "${NETX_ETC}/.secrets" 2>/dev/null | tail -1 | cut -d= -f2- || true)
       [[ -n "${saved}" ]] && export "${key}=${saved}"
     fi
   done
