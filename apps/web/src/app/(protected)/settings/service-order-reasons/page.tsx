@@ -20,6 +20,7 @@ import {
   FieldHelp,
   Input,
   Label,
+  Select,
   Textarea,
 } from '@/components/ui/Input';
 import { ConfirmDialog } from '@/components/ui/Modal';
@@ -29,6 +30,7 @@ import { ApiError } from '@/lib/api';
 import { hasPermission } from '@/lib/session';
 import {
   serviceOrderReasonsApi,
+  type ServiceOrderReasonKind,
   type ServiceOrderReasonResponse,
 } from '@/lib/service-orders-api';
 
@@ -203,8 +205,8 @@ function ReasonFormDialog({
   const [name, setName] = useState(initial?.name ?? '');
   const [description, setDescription] = useState(initial?.description ?? '');
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
-  const [isInstallation, setIsInstallation] = useState(
-    initial?.isInstallation ?? false,
+  const [kind, setKind] = useState<ServiceOrderReasonKind>(
+    initial?.kind ?? 'SUPPORT',
   );
   const [order, setOrder] = useState(String(initial?.order ?? 0));
   const [submitting, setSubmitting] = useState(false);
@@ -219,7 +221,7 @@ function ReasonFormDialog({
           name: name.trim(),
           description: description.trim() || null,
           isActive,
-          isInstallation,
+          kind,
           order: Number(order) || 0,
         });
       } else {
@@ -227,7 +229,7 @@ function ReasonFormDialog({
           name: name.trim(),
           description: description.trim() || null,
           isActive,
-          isInstallation,
+          kind,
           order: Number(order) || 0,
         });
       }
@@ -296,23 +298,30 @@ function ReasonFormDialog({
               </div>
             </div>
 
-            <label className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950">
-              <input
-                type="checkbox"
-                checked={isInstallation}
-                onChange={(e) => setIsInstallation(e.target.checked)}
-                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600"
-              />
-              <span className="text-amber-900 dark:text-amber-200">
-                <span className="font-medium">Motivo de instalação</span>
-                <span className="block text-xs">
-                  Quando marcado, O.S desse motivo só pode ser fechada com pelo
-                  menos um equipamento em comodato vinculado ao contrato. Trava
-                  de segurança para evitar instalação sem registro de equipamento
-                  entregue.
-                </span>
-              </span>
-            </label>
+            <div>
+              <Label htmlFor="r-kind">Tipo de O.S</Label>
+              <Select
+                id="r-kind"
+                value={kind}
+                onChange={(e) =>
+                  setKind(e.target.value as ServiceOrderReasonKind)
+                }
+              >
+                <option value="INSTALLATION">
+                  Instalação — provisiona tudo
+                </option>
+                <option value="SUPPORT">
+                  Suporte — atendimento (opção de trocar ONT)
+                </option>
+                <option value="RETRIEVAL">
+                  Retirada — recolhe equipamento e encerra
+                </option>
+              </Select>
+              <FieldHelp>
+                Define o fluxo da tela do técnico (/os). Instalação exige
+                equipamento em comodato pra fechar; Retirada cancela o contrato.
+              </FieldHelp>
+            </div>
           </DialogBody>
           <DialogFooter>
             <Button
