@@ -26,6 +26,7 @@ import {
 import { PageLoader } from '@/components/ui/Spinner';
 import { toast } from '@/components/ui/sonner';
 import { ApiError, api } from '@/lib/api';
+import { opticalApi, type OpticalPort } from '@/lib/optical-api';
 import { stockApi } from '@/lib/stock-api';
 import {
   serviceOrdersApi,
@@ -88,8 +89,8 @@ export default function OsDetailPage() {
   const [serialItemId, setSerialItemId] = useState('');
   const [bypass, setBypass] = useState(false);
   const [snGpon, setSnGpon] = useState('');
-  const [caixa, setCaixa] = useState('');
-  const [porta, setPorta] = useState('');
+  const [enclosureId, setEnclosureId] = useState(''); // CTO importada (Ufinet/própria)
+  const [portNumber, setPortNumber] = useState(''); // porta da CTO escolhida
   const [ssid, setSsid] = useState('');
   const [wifiPassword, setWifiPassword] = useState('');
   const [returnLocationId, setReturnLocationId] = useState('');
@@ -103,6 +104,18 @@ export default function OsDetailPage() {
   const isUfinet =
     selectedOlt?.vendor === 'UFINET' &&
     selectedOlt?.providerMode === 'ORCHESTRATOR';
+
+  // CTOs importadas (OpticalEnclosure) da OLT escolhida — fonte de verdade da
+  // caixa/porta real (Ufinet importou todas no NetX). Evita campo livre.
+  const { data: enclosuresResp } = useSWR(
+    oltId ? opticalApi.listPath({ oltId, pageSize: 500 }) : null,
+  );
+  const enclosures = (enclosuresResp as { data?: { id: string; code: string }[] } | undefined)?.data ?? [];
+  // Portas da CTO escolhida (status livre/usada) — valida a porta.
+  const { data: ports } = useSWR<OpticalPort[]>(
+    enclosureId ? opticalApi.portsPath(enclosureId) : null,
+  );
+  const selectedEnclosure = enclosures.find((c) => c.id === enclosureId);
 
   // SUPPORT vira SUPPORT_SWAP quando o técnico marca "trocou ONT".
   const effectiveMode: CompleteFieldInput['mode'] =
@@ -202,6 +215,9 @@ export default function OsDetailPage() {
       if (!oltId) return { error: 'Escolha a OLT.' };
       const e = ontFields();
       if (e) return { error: e };
+      if (isUfinet && !enclosureId)
+        return { error: 'Escolha a caixa (CTO) que atende o cliente.' };
+      const ctoCode = selectedEnclosure?.code ?? null;
       return {
         payload: {
           mode: 'INSTALLATION',
@@ -212,13 +228,14 @@ export default function OsDetailPage() {
             ...(bypass
               ? { allowStockBypass: true, snGpon: snGpon.trim() }
               : { serialItemId }),
+            // Caixa real = code da CTO importada (Ufinet); porta = número da CTO.
             ...(isUfinet
-              ? { ufinetCto: caixa || null, ufinetPort: porta || null }
-              : caixa || porta
-                ? { notes: `Caixa: ${caixa || '—'} / Porta: ${porta || '—'}` }
+              ? { ufinetCto: ctoCode, ufinetPort: portNumber || null }
+              : ctoCode || portNumber
+                ? { notes: `CTO: ${ctoCode ?? '—'} / Porta: ${portNumber || '—'}` }
                 : {}),
           },
-          ...(!isUfinet ? { enclosurePort: porta || null } : {}),
+          ...(!isUfinet ? { enclosureId: enclosureId || null, enclosurePort: portNumber || null } : {}),
           materials,
           photos,
           closeDescription: closeDescription.trim(),
@@ -425,20 +442,55 @@ export default function OsDetailPage() {
             </div>
           )}
 
-          {/* Caixa/porta (só instalação) */}
-          {effectiveMode === 'INSTALLATION' && (
-            <>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>{isUfinet ? 'Caixa Ufinet (CTO)' : 'Caixa usada (CTO)'}</Label>
-                  <Input value={caixa} onChange={(e) => setCaixa(e.target.value)} />
-                </div>
-                <div>
-                  <Label>Porta usada</Label>
-                  <Input value={porta} onChange={(e) => setPorta(e.target.value)} />
-                </div>
+          {/* Caixa/porta (só instalação) — dropdowns das CTOs importadas da OLT */}
+          {effectiveMode === 'INSTALLATION' && oltId && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label required={isUfinet}>Caixa (CTO)</Label>
+                <Select
+                  value={enclosureId}
+                  onChange={(e) => {
+                    setEnclosureId(e.target.value);
+                    setPortNumber('');
+                  }}
+                >
+                  <option value="">
+                    {enclosures.length ? '— selecione —' : 'nenhuma CTO nesta OLT'}
+                  </option>
+                  {enclosures.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.code}
+                    </option>
+                  ))}
+                </Select>
               </div>
-            </>
+              <div>
+                <Label>Porta usada</Label>
+                <Select
+                  value={portNumber}
+                  onChange={(e) => setPortNumber(e.target.value)}
+                  disabled={!enclosureId}
+                >
+                  <option value="">
+                    {enclosureId ? '— porta —' : 'escolha a CTO'}
+                  </option>
+                  {(ports ?? []).map((p) => (
+                    <option
+                      key={p.id}
+                      value={String(p.number)}
+                      disabled={p.status === 'USED' || p.status === 'DAMAGED'}
+                    >
+                      Porta {p.number}
+                      {p.status === 'USED'
+                        ? ' (ocupada)'
+                        : p.status === 'DAMAGED'
+                          ? ' (danificada)'
+                          : ''}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </div>
           )}
 
           {/* Local de devolução (troca + retirada) */}
