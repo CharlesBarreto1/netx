@@ -51,22 +51,34 @@ firewall_setup() {
   log_ok "UFW configurado"
 }
 
-# Cria /etc/sudoers.d/netx-infra-sync com NOPASSWD pros 2 scripts de sync.
+# Cria /etc/sudoers.d/netx-infra-sync com NOPASSWD pros scripts de sync.
 # Idempotente — usa `visudo -c` pra validar antes de escrever.
+#
+# Por que sync-firewall.sh precisa de systemctl reload freeradius dentro dele:
+# UFW + radius.nas sozinhos não bastam — FreeRADIUS carrega a lista de NAS
+# clients em memória no startup e NÃO releé sozinho. Sem reload, NAS recém
+# cadastrado pela UI fica "desconhecido" pro FR e pacotes são descartados
+# silenciosamente. Por isso o script chama systemctl reload internamente, e
+# pra ELE conseguir, autorizamos o user netx a rodar `systemctl reload
+# freeradius` direto no sudoers (NOPASSWD restrito só pra esse comando).
 firewall_install_sudoers() {
   local sudoers="/etc/sudoers.d/netx-infra-sync"
   local tmp
   tmp=$(mktemp)
   cat > "${tmp}" <<EOF
 # Auto-gerado pelo NetX installer. Permite ao user netx rodar resync de
-# UFW e NTP allowlist após mudança em NetworkEquipment via UI.
+# UFW + NTP allowlist + reload de FreeRADIUS após mudança em NetworkEquipment.
 ${NETX_USER:-netx} ALL=(root) NOPASSWD: ${NETX_HOME:-/opt/netx}/infra/installer/scripts/sync-firewall.sh
 ${NETX_USER:-netx} ALL=(root) NOPASSWD: ${NETX_HOME:-/opt/netx}/infra/installer/scripts/sync-ntp.sh
+${NETX_USER:-netx} ALL=(root) NOPASSWD: /usr/bin/systemctl reload freeradius
+${NETX_USER:-netx} ALL=(root) NOPASSWD: /usr/bin/systemctl restart freeradius
+${NETX_USER:-netx} ALL=(root) NOPASSWD: /bin/systemctl reload freeradius
+${NETX_USER:-netx} ALL=(root) NOPASSWD: /bin/systemctl restart freeradius
 EOF
   chmod 0440 "${tmp}"
   if visudo -c -f "${tmp}" >/dev/null 2>&1; then
     install -o root -g root -m 0440 "${tmp}" "${sudoers}"
-    log_dim "Sudoers: ${sudoers} (netx pode rodar sync-firewall.sh + sync-ntp.sh)"
+    log_dim "Sudoers: ${sudoers} (netx pode rodar sync-firewall.sh + sync-ntp.sh + reload freeradius)"
   else
     log_warn "Sudoers ${sudoers} falhou na validação — backend não conseguirá auto-sync"
   fi

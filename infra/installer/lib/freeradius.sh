@@ -13,6 +13,7 @@ freeradius_setup() {
   freeradius_render_sql_module
   freeradius_enable_sql
   freeradius_enable_default_site
+  freeradius_enable_coa_site
   freeradius_validate_config
   freeradius_restart
 }
@@ -63,6 +64,27 @@ freeradius_enable_default_site() {
   # Garante que existe link no sites-enabled
   if [[ ! -L "${FR_SITES_ENABLED}/default" ]]; then
     ln -sf "../sites-available/default" "${FR_SITES_ENABLED}/default"
+  fi
+}
+
+# Habilita o site `coa` (Change-of-Authorization / Disconnect-Request).
+# Sem isso, FreeRADIUS NÃO escuta na porta 3799 e o NetX não consegue
+# desconectar sessão remotamente — botão "Desconectar" da UI vira tijolo
+# e auto-disconnect de contrato suspenso/reativado também falha.
+#
+# O site default do Debian já vem com config minimal de CoA pronta; só
+# falta o symlink em sites-enabled/.
+freeradius_enable_coa_site() {
+  local site="${FR_SITES_AVAIL}/coa"
+  if [[ ! -f "${site}" ]]; then
+    log_warn "Site coa ausente em sites-available/ — disconnect remoto não vai funcionar"
+    return
+  fi
+  if [[ ! -L "${FR_SITES_ENABLED}/coa" ]]; then
+    log_info "Habilitando site coa (porta 3799 — Disconnect-Request)"
+    ln -sf "../sites-available/coa" "${FR_SITES_ENABLED}/coa"
+  else
+    log_dim "Site coa já habilitado"
   fi
 }
 

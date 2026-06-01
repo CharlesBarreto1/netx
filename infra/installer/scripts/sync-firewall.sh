@@ -38,4 +38,20 @@ fi
 source "${INSTALLER_DIR}/lib/firewall.sh"
 
 firewall_sync_radius_nas
-log_ok "Firewall sincronizado com radius.nas"
+
+# CRÍTICO: abrir UFW sozinho NÃO basta — FreeRADIUS carrega a lista de clients
+# (radius.nas) em memória no startup. Sem reload, ele continua sem conhecer o
+# NAS novo e descarta o pacote SILENCIOSAMENTE como "unknown client" (FR não
+# loga isso em produção, só em -X). Por isso reload tem que ser parte do mesmo
+# fluxo de sync. `reload` é leve (HUP, ~50ms), não derruba sessões em andamento.
+if systemctl is-active --quiet freeradius 2>/dev/null; then
+  if systemctl reload freeradius 2>/dev/null; then
+    log_dim "FreeRADIUS recarregado (releu radius.nas)"
+  else
+    # Reload pode falhar em FR antigo — fallback pra restart (corta ~5s de auth)
+    log_warn "Reload falhou — tentando restart"
+    systemctl restart freeradius
+  fi
+fi
+
+log_ok "Firewall + FreeRADIUS sincronizados com radius.nas"

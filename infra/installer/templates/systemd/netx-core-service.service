@@ -30,11 +30,45 @@ StandardError=journal
 SyslogIdentifier=netx-core
 
 # Security hardening
-NoNewPrivileges=true
+#
+# NoNewPrivileges INTENCIONALMENTE OMITIDO. Quando true, o kernel ignora o
+# bit setuid de /usr/bin/sudo dentro deste processo, o que QUEBRA o hook
+# do NetworkEquipmentService que dispara sync-firewall.sh + sync-ntp.sh via
+# `execFile('sudo', ['-n', script])`. Resultado seria: cadastrar NAS pela
+# UI não abriria UFW automaticamente nem recarregaria FreeRADIUS — operador
+# teria que rodar sync manualmente em cada cadastro.
+#
+# Trade-off: o user `netx` é unprivileged e o sudoers (/etc/sudoers.d/
+# netx-infra-sync) restringe NOPASSWD APENAS a 4 comandos específicos
+# (2 scripts + reload/restart freeradius). Sem ALL=ALL=NOPASSWD aberto,
+# o blast radius de um RCE no backend permanece pequeno.
+#
+# TODO v1.1: migrar pra systemd Path activation (netx escreve flag file
+# em /var/lib/netx/sync-requested, um .path unit detecta inotify e dispara
+# um .service rodando como root). Aí pode voltar NoNewPrivileges=true.
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/netx /var/log/netx /opt/netx/apps/core-service/dist
+# IMPORTANTE: ProtectSystem=strict deixa todo / read-only no mount namespace
+# DESTE cgroup — inclui processos escalados via sudo. Sem expor explicitamente
+# /etc/chrony e /etc/ufw em ReadWritePaths, os scripts sync-ntp.sh e
+# sync-firewall.sh falham silenciosamente ao tentar escrever:
+#   sync-ntp:      /etc/chrony/conf.d/netx-allows.conf
+#   sync-firewall: ufw escreve em /etc/ufw/user.rules
+#
+# CUIDADO: systemd RECUSA criar o namespace se algum path em ReadWritePaths
+# NÃO EXISTIR — serviço fica em crash loop com status=226/NAMESPACE e
+# "Failed to set up mount namespacing: /path: No such file or directory".
+# UFW no Debian 13 NÃO USA /var/lib/ufw (estado fica em /etc/ufw/), então
+# NÃO inclua aqui mesmo que outras distros usem.
+#
+# Prefixo `-` em ReadWritePaths torna o path opcional: systemd ignora se
+# não existir em vez de derrubar o serviço. Defesa em profundidade pra
+# diferenças entre distros (ex.: Ubuntu sem chrony default).
+#
+# Não adicione /etc/sudoers.d aqui — ele NÃO precisa ser writable em runtime
+# (install.sh popula durante setup) e expor sudoers ao backend = vetor de RCE.
+ReadWritePaths=/var/lib/netx /var/log/netx /opt/netx/apps/core-service/dist -/etc/chrony -/etc/ufw
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
