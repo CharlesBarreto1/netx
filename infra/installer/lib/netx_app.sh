@@ -213,16 +213,35 @@ netx_app_install() {
   as_netx "cd ${NETX_HOME} && rm -rf node_modules apps/*/node_modules packages/*/node_modules"
   as_netx "cd ${NETX_HOME} && NODE_ENV=development npm_config_yes=true npm install --include=dev --no-audit --no-fund"
 
-  # Sanity check — binários críticos pra build
+  # Sanity check — binários críticos pra build.
+  #
+  # Em npm workspaces, deps são hoisted pro root node_modules/ E pros workspaces
+  # individuais. Quando há conflito de peer-deps (ex.: @nestjs/cli usado por
+  # 3 apps com mesmas versões), npm às vezes deixa o binário SÓ no workspace
+  # local em vez de root/.bin/. Pra build via `nx run X:build` que executa
+  # `npm run build` dentro do workspace, isso é OK — node resolve via
+  # node_modules walker. Então testamos root OR qualquer workspace.
+  _has_bin() {
+    local bin=$1
+    [[ -x "${NETX_HOME}/node_modules/.bin/${bin}" ]] && return 0
+    for ws in "${NETX_HOME}/apps"/*/node_modules/.bin/${bin} \
+              "${NETX_HOME}/packages"/*/node_modules/.bin/${bin}; do
+      [[ -x "${ws}" ]] && return 0
+    done
+    return 1
+  }
   local missing=()
-  [[ -x "${NETX_HOME}/node_modules/.bin/nx" ]] || missing+=("nx")
-  [[ -x "${NETX_HOME}/node_modules/.bin/nest" ]] || missing+=("nest")
-  [[ -x "${NETX_HOME}/node_modules/.bin/dotenv" ]] || missing+=("dotenv-cli")
-  [[ -x "${NETX_HOME}/node_modules/.bin/prisma" ]] || missing+=("prisma")
+  _has_bin nx     || missing+=("nx")
+  _has_bin nest   || missing+=("nest (@nestjs/cli)")
+  _has_bin dotenv || missing+=("dotenv-cli")
+  _has_bin prisma || missing+=("prisma")
   if [[ ${#missing[@]} -gt 0 ]]; then
-    log_error "Binários ausentes em node_modules/.bin/: ${missing[*]}"
+    log_error "Binários ausentes (root nem workspaces): ${missing[*]}"
     log_error "Provavelmente NODE_ENV=production no shell pulou devDeps."
-    log_error "Tente: NODE_ENV=development npm ci --include=dev (manual)"
+    log_error "Diagnóstico:"
+    log_error "  ls ${NETX_HOME}/node_modules/.bin/ | head -20"
+    log_error "  ls ${NETX_HOME}/apps/core-service/node_modules/.bin/ 2>/dev/null | head"
+    log_error "Tente: NODE_ENV=development npm install --include=dev (manual)"
     exit 1
   fi
 
