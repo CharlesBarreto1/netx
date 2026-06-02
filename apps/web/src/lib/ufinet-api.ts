@@ -59,9 +59,14 @@ export interface UfinetTraceEntry {
 
 export type OntAction = 'REFRESH_ONT' | 'RESET_ONT' | 'STATUS_ONT';
 
+export interface OntActionDispatch {
+  orderId: string | null;
+  status: 'dispatched' | 'failed';
+  message?: string;
+}
+
 export interface OntActionResult {
   status: 'completed' | 'failed' | 'pending';
-  orderId: string | null;
   characteristics: Array<{ name: string; value: string }>;
   message?: string;
 }
@@ -73,10 +78,18 @@ export const ufinetApi = {
   retry: (id: string) =>
     api.post<UfinetService>(`/v1/ufinet/services/${id}/retry`, { resetAttempts: true }),
   trace: (id: string) => api.get<UfinetTraceEntry[]>(`/v1/ufinet/services/${id}/trace`),
-  /** Ações de manutenção/diagnóstico na ONT (REFRESH/RESET/STATUS_ONT). */
-  ontAction: (contractId: string, action: OntAction) =>
-    api.post<OntActionResult>(
+  /**
+   * Ações de manutenção/diagnóstico na ONT (REFRESH/RESET/STATUS_ONT).
+   * Assíncrono: `dispatch` dispara e devolve orderId; `result` consulta até
+   * completar (a cadeia orquestrador→NCS→OLT→ONT é lenta).
+   */
+  ontActionDispatch: (contractId: string, action: OntAction) =>
+    api.post<OntActionDispatch>(
       `/v1/ufinet/services/contract/${contractId}/ont-action`,
       { action },
+    ),
+  ontActionResult: (contractId: string, orderId: string) =>
+    api.get<OntActionResult>(
+      `/v1/ufinet/services/contract/${contractId}/ont-action/${orderId}`,
     ),
 };

@@ -298,29 +298,24 @@ export class UfinetOrdersService {
 
   /**
    * Ações pontuais de manutenção/diagnóstico na ONT (NÃO mexem no lifecycle do
-   * serviço — ele segue ACTIVE). Todas usam o mesmo shape: POST ServiceOrder/
-   * order com o ServiceOrderType + Action NOCHANGE + spec RES_PON_ACCESS, e
-   * poll curto até completed/Failed. Síncrono (não entra no poller de estado).
-   *
+   * serviço — ele segue ACTIVE):
    *   REFRESH_ONT  — reaplica config na ONT
    *   RESET_ONT    — reinicia a ONT remotamente
-   *   STATUS_ONT   — lê níveis ópticos (sinal) — retorna serviceCharacteristic
+   *   STATUS_ONT   — lê níveis ópticos (sinal)
+   *
+   * ASSÍNCRONO (a cadeia orquestrador→NCS→OLT→ONT é lenta e estoura o timeout
+   * de 15s do gateway): `dispatchOntAction` só DISPARA o POST e devolve o
+   * orderId na hora; o front consulta o resultado com `pollOntAction(orderId)`
+   * (GET rápido) até completar. Cada chamada fica bem abaixo dos 15s.
    */
-  async runOntAction(
+  async dispatchOntAction(
     tenantId: string,
     contractId: string,
     action: 'REFRESH_ONT' | 'RESET_ONT' | 'STATUS_ONT',
     actorUserId?: string | null,
-  ): Promise<{
-    status: 'completed' | 'failed' | 'pending';
-    orderId: string | null;
-    characteristics: Array<{ name: string; value: string }>;
-    message?: string;
-  }> {
-    const svc = await this.getByContract(tenantId, contractId);
-    const olt = await this.prisma.olt.findUnique({ where: { id: svc.oltId } });
-    if (!olt) throw new NotFoundException('OLT do serviço Ufinet não encontrada');
-    const conn = this.resolveConnection(olt);
+  ): Promise<{ orderId: string | null; status: 'dispatched' | 'failed'; message?: string }> {
+    const conn = await this.connForContract(tenantId, contractId);
+    const svc = conn.svc;
 
     const descriptions: Record<typeof action, string> = {
       REFRESH_ONT: 'REFRESCAR ONT',
@@ -360,33 +355,41 @@ export class UfinetOrdersService {
       resourceId: svc.id,
       metadata: { externalId: svc.externalId, orderId },
     });
-    if (!orderId) {
-      return { status: 'failed', orderId: null, characteristics: [], message: 'sem orderId' };
-    }
+    if (!orderId) return { orderId: null, status: 'failed', message: 'sem orderId' };
+    return { orderId, status: 'dispatched' };
+  }
 
-    // Poll curto síncrono (a doc pede retry até completed/Failed). Máx ~24s.
-    for (let i = 0; i < 8; i++) {
-      const order = await this.client.getOrder(conn, orderId);
-      const state = normalizeUfinetState(order.state);
-      if (state === UFINET_STATE.COMPLETED) {
-        return {
-          status: 'completed',
-          orderId,
-          characteristics: extractOrderCharacteristics(order),
-        };
-      }
-      if (state === UFINET_STATE.FAILED) {
-        return {
-          status: 'failed',
-          orderId,
-          characteristics: [],
-          message: this.errText(order) ?? `${action} falhou`,
-        };
-      }
-      await sleep(3000);
+  /** Consulta o resultado de uma ação de ONT já disparada (GET rápido). */
+  async pollOntAction(
+    tenantId: string,
+    contractId: string,
+    orderId: string,
+  ): Promise<{
+    status: 'completed' | 'failed' | 'pending';
+    characteristics: Array<{ name: string; value: string }>;
+    message?: string;
+  }> {
+    const conn = await this.connForContract(tenantId, contractId);
+    const order = await this.client.getOrder(conn, orderId);
+    const state = normalizeUfinetState(order.state);
+    if (state === UFINET_STATE.COMPLETED) {
+      return { status: 'completed', characteristics: extractOrderCharacteristics(order) };
     }
-    // Ainda processando — devolve pending (cliente pode reconsultar a ordem).
-    return { status: 'pending', orderId, characteristics: [] };
+    if (state === UFINET_STATE.FAILED) {
+      return { status: 'failed', characteristics: [], message: this.errText(order) ?? 'falhou' };
+    }
+    return { status: 'pending', characteristics: [] };
+  }
+
+  /** Resolve a conexão Ufinet a partir do contrato (svc + OLT decriptada). */
+  private async connForContract(
+    tenantId: string,
+    contractId: string,
+  ): Promise<UfinetConnection & { svc: UfinetService }> {
+    const svc = await this.getByContract(tenantId, contractId);
+    const olt = await this.prisma.olt.findUnique({ where: { id: svc.oltId } });
+    if (!olt) throw new NotFoundException('OLT do serviço Ufinet não encontrada');
+    return { ...this.resolveConnection(olt), svc };
   }
 
   // ===========================================================================
@@ -1164,9 +1167,6 @@ function msg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 /** Extrai serviceCharacteristic do 1º item de uma ordem (ex.: níveis STATUS_ONT). */
 function extractOrderCharacteristics(

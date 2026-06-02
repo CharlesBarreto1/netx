@@ -62,15 +62,29 @@ export function UfinetStatusPanel({ contractId }: { contractId: string }) {
     setOntBusy(action);
     setLevels(null);
     try {
-      const res = await ufinetApi.ontAction(contractId, action);
-      if (res.status === 'failed') {
-        toast.error(t('ufinet.ont.failed', { error: res.message ?? '' }));
-      } else if (res.status === 'pending') {
-        toast.info(t('ufinet.ont.pending'));
-      } else {
-        toast.success(t('ufinet.ont.ok'));
-        if (action === 'STATUS_ONT') setLevels(res);
+      // 1) Dispara (rápido) — devolve orderId.
+      const disp = await ufinetApi.ontActionDispatch(contractId, action);
+      if (disp.status === 'failed' || !disp.orderId) {
+        toast.error(t('ufinet.ont.failed', { error: disp.message ?? '' }));
+        return;
       }
+      toast.info(t('ufinet.ont.dispatched'));
+      // 2) Poll do resultado (a cadeia até a ONT é lenta). ~90s no total.
+      const orderId = disp.orderId;
+      for (let i = 0; i < 22; i++) {
+        await new Promise((r) => setTimeout(r, 4000));
+        const res = await ufinetApi.ontActionResult(contractId, orderId);
+        if (res.status === 'completed') {
+          toast.success(t('ufinet.ont.ok'));
+          if (action === 'STATUS_ONT') setLevels(res);
+          return;
+        }
+        if (res.status === 'failed') {
+          toast.error(t('ufinet.ont.failed', { error: res.message ?? '' }));
+          return;
+        }
+      }
+      toast.info(t('ufinet.ont.pending'));
     } catch (err) {
       const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
       toast.error(t('ufinet.ont.failed', { error: msg }));

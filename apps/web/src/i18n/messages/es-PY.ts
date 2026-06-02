@@ -3197,8 +3197,9 @@ const messages = {
         refresh: 'Actualizar ONT',
         reset: 'Reiniciar ONT',
         levelsTitle: 'Niveles ópticos',
-        ok: 'Comando enviado a la ONT',
-        pending: 'Ufinet procesando — consultá de nuevo en unos instantes',
+        dispatched: 'Comando enviado — esperando respuesta de la ONT…',
+        ok: 'Comando completado en la ONT',
+        pending: 'Ufinet todavía procesando — consultá de nuevo en unos instantes',
         failed: 'Falla en la acción de la ONT: {error}',
       },
       lifecycle: {

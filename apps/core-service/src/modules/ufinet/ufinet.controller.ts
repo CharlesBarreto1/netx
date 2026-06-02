@@ -9,7 +9,7 @@
  *   ufinet.orders.read   — listar / ver status
  *   ufinet.orders.retry  — reprocessar um serviço FAILED
  */
-import { Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import {
@@ -76,7 +76,9 @@ export class UfinetController {
 
   /**
    * Ações de manutenção/diagnóstico na ONT (REFRESH/RESET/STATUS_ONT).
-   * Síncrono — devolve o resultado (STATUS_ONT traz os níveis ópticos).
+   * ASSÍNCRONO: dispara o comando e devolve o orderId — a cadeia
+   * orquestrador→NCS→OLT→ONT é lenta e estouraria o timeout do gateway.
+   * O resultado é consultado em GET .../ont-action/:orderId.
    */
   @Post('contract/:contractId/ont-action')
   @RequirePermissions('ufinet.orders.retry')
@@ -85,6 +87,18 @@ export class UfinetController {
     @Param('contractId', new ParseUUIDPipe()) contractId: string,
     @ZodBody(OntActionSchema) body: OntActionRequest,
   ) {
-    return this.orders.runOntAction(user.tenantId, contractId, body.action, user.sub);
+    return this.orders.dispatchOntAction(user.tenantId, contractId, body.action, user.sub);
+  }
+
+  /** Consulta o resultado de uma ação de ONT já disparada (front faz poll). */
+  @Get('contract/:contractId/ont-action/:orderId')
+  @RequirePermissions('ufinet.orders.retry')
+  ontActionResult(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('contractId', new ParseUUIDPipe()) contractId: string,
+    @Param('orderId') orderId: string,
+  ) {
+    if (!/^\d+$/.test(orderId)) throw new BadRequestException('orderId inválido');
+    return this.orders.pollOntAction(user.tenantId, contractId, orderId);
   }
 }
