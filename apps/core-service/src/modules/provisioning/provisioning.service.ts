@@ -640,7 +640,26 @@ export class ProvisioningService {
     if (!newSn)
       throw new BadRequestException('Informe a ONT nova (estoque ou serial manual).');
 
-    // Devolve a ONT antiga ao estoque (comodato).
+    const isUfinet = olt.vendor === 'UFINET' && olt.providerMode === 'ORCHESTRATOR';
+
+    // VALIDAÇÃO ANTES de mexer em estoque/rede: troca Ufinet exige um
+    // UfinetService já existente (contrato que passou pela alta/ativação). Sem
+    // isso, requestSwapOnt lançaria erro DEPOIS de devolver a ONT antiga ao
+    // estoque → estado inconsistente. Falha cedo com mensagem clara.
+    if (isUfinet) {
+      const ufSvc = await this.prisma.ufinetService.findUnique({
+        where: { contractId },
+        select: { id: true },
+      });
+      if (!ufSvc) {
+        throw new ConflictException(
+          'Este contrato não tem serviço Ufinet ativo — troca de ONT indisponível. ' +
+            'Provavelmente foi ativado por outro caminho; use uma O.S de instalação.',
+        );
+      }
+    }
+
+    // Devolve a ONT antiga ao estoque (comodato) — só APÓS validações acima.
     const oldComodato = await this.prisma.serialItem.findFirst({
       where: { tenantId, contractId, status: 'ALLOCATED' },
       select: { id: true },
@@ -653,8 +672,6 @@ export class ProvisioningService {
         { isAdmin: true },
       );
     }
-
-    const isUfinet = olt.vendor === 'UFINET' && olt.providerMode === 'ORCHESTRATOR';
 
     if (isUfinet) {
       if (input.newSerialItemId) {

@@ -252,14 +252,27 @@ export class UfinetOrdersService {
   }
 
   /**
-   * Cancela (ONT ainda não confirmada) OU dá baja (já ativo). Decide pelo
-   * lifecycle: ACTIVE/SUSPENDED → CEASING; antes disso → CANCELLING.
+   * Encerra o serviço Ufinet. Decide entre:
+   *   - Cancelación (CancelServiceOrder) — só funciona enquanto o serviço está
+   *     em Reserved/Design (ONT NUNCA confirmada). Estados iniciais.
+   *   - Baja (cease) — pra serviço que JÁ foi provisionado (ONT confirmada),
+   *     esteja ele active, suspended, swapping ou até FAILED (um swap que
+   *     falhou NÃO desfaz a ativação na Ufinet — lá o serviço segue active).
+   *
+   * Decidir por "já foi provisionado" (e não pelo lifecycle exato) é o robusto:
+   * o lifecycle local pode estar FAILED/dessincronizado por uma operação de
+   * manutenção que falhou, mas o serviço continua ativo na Ufinet → baja.
    */
   async requestTeardown(tenantId: string, contractId: string, actorUserId?: string | null) {
     const svc = await this.getByContract(tenantId, contractId);
-    const canCease = svc.lifecycle === 'ACTIVE' || svc.lifecycle === 'SUSPENDED';
-    const target = canCease ? 'CEASING' : 'CANCELLING';
-    const action = canCease ? 'ufinet.cease.requested' : 'ufinet.cancel.requested';
+    // Só é cancelável (Cancelación) enquanto NUNCA confirmou a ONT.
+    const neverConfirmed =
+      (svc.lifecycle === 'PENDING_PROVIDE' ||
+        svc.lifecycle === 'PROVIDING' ||
+        svc.lifecycle === 'RESERVED') &&
+      !svc.resPonAccessServiceId;
+    const target = neverConfirmed ? 'CANCELLING' : 'CEASING';
+    const action = neverConfirmed ? 'ufinet.cancel.requested' : 'ufinet.cease.requested';
     return this.transition(svc, target, this.resetStep(), actorUserId, action);
   }
 
