@@ -344,7 +344,12 @@ export class UfinetOrdersService {
       ],
     };
 
-    const resp = await this.client.createOrder(conn, payload);
+    // Roda dentro do contexto de trace pra o client persistir o request/response
+    // em ufinet_request_logs (senão a chamada acontece mas o trace fica vazio).
+    const resp = await ufinetTrace.run(
+      { tenantId: svc.tenantId, externalId: svc.externalId },
+      () => this.client.createOrder(conn, payload),
+    );
     const orderId = extractOrderId(resp);
     await this.audit.log({
       tenantId,
@@ -370,7 +375,10 @@ export class UfinetOrdersService {
     message?: string;
   }> {
     const conn = await this.connForContract(tenantId, contractId);
-    const order = await this.client.getOrder(conn, orderId);
+    const order = await ufinetTrace.run(
+      { tenantId: conn.svc.tenantId, externalId: conn.svc.externalId },
+      () => this.client.getOrder(conn, orderId),
+    );
     const state = normalizeUfinetState(order.state);
     if (state === UFINET_STATE.COMPLETED) {
       const characteristics = extractOrderCharacteristics(order);
