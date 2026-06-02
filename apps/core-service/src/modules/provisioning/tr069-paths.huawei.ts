@@ -36,6 +36,10 @@ export const HUAWEI_EG8145_PATHS = {
   sec50: 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.X_HW_SecurityMode',
   // Inform interval — reduzir após primeira config pra próxima sessão ser rápida
   informInterval: 'InternetGatewayDevice.ManagementServer.PeriodicInformInterval',
+  // Credenciais de Connection Request — o NetX define valores conhecidos pra
+  // poder acionar o CPE (ACS→CPE) e forçar uma sessão imediata.
+  connReqUsername: 'InternetGatewayDevice.ManagementServer.ConnectionRequestUsername',
+  connReqPassword: 'InternetGatewayDevice.ManagementServer.ConnectionRequestPassword',
 
   // ── WAN PPPoE (internet) — ZTP injeta a credencial do contrato aqui ──────
   pppoeUsername: `${pppPrefix}.Username`,

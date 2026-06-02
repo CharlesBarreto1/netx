@@ -15,6 +15,8 @@
  *
  * @provenance Y2hhcmxlc2JhcnJldG86MDg0NzI5Njg5MDE=
  */
+import { randomBytes } from 'node:crypto';
+
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
@@ -30,8 +32,11 @@ import {
   type Tr069WifiClient,
 } from '@netx/shared';
 
+import { CryptoService } from '../crypto/crypto.service';
+
 import { PrismaService } from '../prisma/prisma.service';
-import { huaweiDiagnosticParamNames } from './tr069-paths.huawei';
+import { performConnectionRequest } from './tr069-connection-request';
+import { HUAWEI_EG8145_PATHS, huaweiDiagnosticParamNames } from './tr069-paths.huawei';
 
 /** Intervalo (min) entre coletas proativas por device. */
 const DIAGNOSTIC_INTERVAL_MIN = parseInt(process.env.TR069_DIAGNOSTIC_INTERVAL_MIN ?? '15', 10);
@@ -48,7 +53,10 @@ function dec(d: Prisma.Decimal | null): number | null {
 export class Tr069DiagnosticsService {
   private readonly logger = new Logger(Tr069DiagnosticsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly crypto: CryptoService,
+  ) {}
 
   private get enabled(): boolean {
     return (process.env.TR069_DIAGNOSTICS_ENABLED ?? '1') !== '0';
@@ -86,18 +94,99 @@ export class Tr069DiagnosticsService {
     return { taskId: task.id };
   }
 
-  /** Pedido manual de refresh (botão na UI). */
+  /**
+   * Pedido manual de refresh (botão na UI). Enfileira a coleta e tenta acionar
+   * o CPE via Connection Request pra que a sessão aconteça em segundos; se o
+   * CPE for inalcançável (NAT/rede neutra), cai no Periodic Inform.
+   */
   async requestRefresh(tenantId: string, deviceId: string): Promise<Tr069RefreshResponse> {
     const device = await this.prisma.tr069Device.findFirst({
       where: { id: deviceId, tenantId },
-      select: { id: true },
+      select: {
+        id: true,
+        connectionRequestUrl: true,
+        connectionRequestUser: true,
+        connectionRequestPwdEnc: true,
+      },
     });
     if (!device) throw new NotFoundException('Device TR-069 não encontrado');
     const { taskId } = await this.enqueueDiagnostics(tenantId, device.id);
+
+    if (!device.connectionRequestUrl) {
+      return {
+        taskId,
+        message: 'Coleta enfileirada — será aplicada no próximo Inform (CPE sem URL de acionamento).',
+      };
+    }
+
+    const creds = await this.ensureConnReqCreds(tenantId, device);
+    if (!creds.ready) {
+      return {
+        taskId,
+        message:
+          'Coleta enfileirada — credenciais de acionamento sendo aplicadas; o próximo Inform já traz o diagnóstico.',
+      };
+    }
+
+    const cr = await performConnectionRequest(
+      device.connectionRequestUrl,
+      creds.username,
+      creds.password,
+    );
+    this.logger.log(
+      `[TR-069] connection-request device=${device.id} ok=${cr.ok} ` +
+        `status=${cr.status ?? '∅'} reason=${cr.reason ?? '∅'}`,
+    );
     return {
       taskId,
-      message: 'Coleta enfileirada — será aplicada no próximo Inform do CPE (até ~1 min).',
+      message: cr.ok
+        ? 'CPE acionado — diagnóstico chega em instantes.'
+        : `Coleta enfileirada — acionamento imediato indisponível (${cr.reason ?? 'falhou'}); aplica no próximo Inform.`,
     };
+  }
+
+  /**
+   * Garante que o device tem credenciais de Connection Request. Se faltam,
+   * gera, cifra, persiste e enfileira um SET_PARAMS pra gravá-las no CPE
+   * (aplica no próximo Inform — por isso `ready=false` na primeira vez).
+   */
+  private async ensureConnReqCreds(
+    tenantId: string,
+    device: { id: string; connectionRequestUser: string | null; connectionRequestPwdEnc: string | null },
+  ): Promise<{ username: string; password: string; ready: boolean }> {
+    if (device.connectionRequestUser && device.connectionRequestPwdEnc) {
+      return {
+        username: device.connectionRequestUser,
+        password: this.crypto.decrypt(device.connectionRequestPwdEnc),
+        ready: true,
+      };
+    }
+    const username = `netx-${device.id.slice(0, 8)}`;
+    const password = randomBytes(12).toString('hex');
+    await this.prisma.tr069Device.update({
+      where: { id: device.id },
+      data: {
+        connectionRequestUser: username,
+        connectionRequestPwdEnc: this.crypto.encrypt(password),
+      },
+    });
+    await this.prisma.tr069Task.create({
+      data: {
+        tenantId,
+        deviceId: device.id,
+        action: 'SET_PARAMS',
+        payload: {
+          params: [
+            { name: HUAWEI_EG8145_PATHS.connReqUsername, value: username, type: 'xsd:string' },
+            { name: HUAWEI_EG8145_PATHS.connReqPassword, value: password, type: 'xsd:string' },
+          ],
+          purpose: 'CONN_REQ_CREDS',
+        },
+        status: 'PENDING',
+      },
+    });
+    this.logger.log(`[TR-069] credenciais de connection-request criadas device=${device.id}`);
+    return { username, password, ready: false };
   }
 
   // ---------------------------------------------------------------------------
