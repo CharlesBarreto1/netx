@@ -93,6 +93,10 @@ export class ProxyService {
     // requests seguem com o body já parseado (JSON/urlencoded).
     const contentType = (req.headers['content-type'] ?? '').toString().toLowerCase();
     const isMultipart = contentType.includes('multipart/form-data');
+    // Rotas que falam com integrações externas lentas (Ufinet: cadeia
+    // orquestrador→NCS→OLT→ONT) precisam de mais que os 15s padrão — só a ONT
+    // responder já passa disso. Timeout ampliado SÓ pra elas; resto segue 15s.
+    const isSlowExternal = /\/v1\/ufinet\/.*ont-action/.test(targetPath);
 
     try {
       const res = await firstValueFrom(
@@ -112,7 +116,7 @@ export class ProxyService {
           maxBodyLength: Infinity,
           maxContentLength: Infinity,
           validateStatus: () => true, // never throw on 4xx/5xx
-          timeout: isMultipart ? 60_000 : 15_000,
+          timeout: isMultipart ? 60_000 : isSlowExternal ? 90_000 : 15_000,
         }),
       );
       return { status: res.status, headers: res.headers as any, body: res.data };
