@@ -5,7 +5,7 @@
  * Hub do Atendente: read-only + botão "reprocessar" quando FAILED.
  * Não renderiza nada se o contrato não tem serviço Ufinet.
  */
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -16,7 +16,6 @@ import { hasPermission } from '@/lib/session';
 import {
   ufinetApi,
   type OntAction,
-  type OntActionResult,
   type UfinetLifecycle,
   type UfinetService,
 } from '@/lib/ufinet-api';
@@ -42,6 +41,7 @@ function Row({ label, value }: { label: string; value: string | null | undefined
 
 export function UfinetStatusPanel({ contractId }: { contractId: string }) {
   const t = useTranslations('contractCards');
+  const locale = useLocale();
   const { data, isLoading, mutate } = useSWR<UfinetService | null>(
     ufinetApi.byContractPath(contractId),
     () => ufinetApi.byContract(contractId),
@@ -49,7 +49,6 @@ export function UfinetStatusPanel({ contractId }: { contractId: string }) {
 
   const [downloading, setDownloading] = useState(false);
   const [ontBusy, setOntBusy] = useState<OntAction | null>(null);
-  const [levels, setLevels] = useState<OntActionResult | null>(null);
 
   if (isLoading || !data) return null;
   const svc = data;
@@ -60,7 +59,6 @@ export function UfinetStatusPanel({ contractId }: { contractId: string }) {
 
   async function handleOntAction(action: OntAction) {
     setOntBusy(action);
-    setLevels(null);
     try {
       // 1) Dispara (rápido) — devolve orderId.
       const disp = await ufinetApi.ontActionDispatch(contractId, action);
@@ -76,7 +74,9 @@ export function UfinetStatusPanel({ contractId }: { contractId: string }) {
         const res = await ufinetApi.ontActionResult(contractId, orderId);
         if (res.status === 'completed') {
           toast.success(t('ufinet.ont.ok'));
-          if (action === 'STATUS_ONT') setLevels(res);
+          // STATUS_ONT grava os níveis no banco — re-busca pra exibir a leitura
+          // persistida (com timestamp). REFRESH/RESET não têm níveis.
+          await mutate();
           return;
         }
         if (res.status === 'failed') {
@@ -158,14 +158,29 @@ export function UfinetStatusPanel({ contractId }: { contractId: string }) {
         </p>
       )}
 
-      {/* Níveis ópticos retornados por STATUS_ONT */}
-      {levels && levels.characteristics.length > 0 && (
+      {/* Níveis ópticos — SEMPRE a última leitura persistida (STATUS_ONT), com timestamp */}
+      {svc.lastSignalLevels && svc.lastSignalLevels.length > 0 && (
         <div className="mt-2 rounded-md bg-slate-50 p-2 dark:bg-slate-900">
-          <p className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
-            {t('ufinet.ont.levelsTitle')}
-          </p>
+          <div className="mb-1 flex items-center justify-between">
+            <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+              {t('ufinet.ont.levelsTitle')}
+            </p>
+            {svc.lastSignalAt && (
+              <span className="text-2xs text-slate-400">
+                {t('ufinet.ont.lastReadAt', {
+                  when: new Date(svc.lastSignalAt).toLocaleString(locale, {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  }),
+                })}
+              </span>
+            )}
+          </div>
           <div className="space-y-0.5">
-            {levels.characteristics.map((c) => (
+            {svc.lastSignalLevels.map((c) => (
               <Row key={c.name} label={c.name} value={c.value} />
             ))}
           </div>

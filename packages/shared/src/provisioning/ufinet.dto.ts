@@ -134,6 +134,9 @@ export interface UfinetServiceResponse {
   /** Porta do drop (1..16) — controle interno do NetX, não vai pra Ufinet. */
   dropPort: string | null;
   serialNumber: string | null;
+  /** Última leitura de níveis ópticos (STATUS_ONT) — exibida sempre no contrato. */
+  lastSignalLevels: Array<{ name: string; value: string }> | null;
+  lastSignalAt: string | null;
   /** Operação em voo / diagnóstico. */
   ufinetState: string | null;
   waitingCode: string | null;

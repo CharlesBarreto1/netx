@@ -2977,6 +2977,11 @@ model UfinetService {
   dropPort              String?         @map("drop_port") @db.VarChar(16)
   serialNumber          String?         @map("serial_number") @db.VarChar(32)       // SN GPON da ONT confirmada
 
+  // Última leitura de níveis ópticos (STATUS_ONT) — array [{name,value}] + quando.
+  // Sempre exibido no contrato (a última leitura disponível, com timestamp).
+  lastSignalLevels      Json?           @map("last_signal_levels")
+  lastSignalAt          DateTime?       @map("last_signal_at")
+
   // ── Operação em voo (consumida pelo poller) ──────────────────────────────
   currentOrderId        String?         @map("current_order_id") @db.VarChar(32)    // serviceOrderId do passo atual
   ufinetState           String?         @map("ufinet_state") @db.VarChar(32)        // initial/inProgress/completed/Failed

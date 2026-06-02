@@ -36,6 +36,9 @@ export interface UfinetService {
   ctoPort: string | null;
   dropPort: string | null;
   serialNumber: string | null;
+  /** Última leitura de níveis ópticos (STATUS_ONT) — exibida sempre no contrato. */
+  lastSignalLevels: Array<{ name: string; value: string }> | null;
+  lastSignalAt: string | null;
   ufinetState: string | null;
   waitingCode: string | null;
   attempts: number;

@@ -3175,6 +3175,7 @@ const messages = {
         refresh: 'Refresh ONT',
         reset: 'Reboot ONT',
         levelsTitle: 'Optical levels',
+        lastReadAt: 'read at {when}',
         dispatched: 'Command sent — waiting for the ONT to respond…',
         ok: 'Command completed on the ONT',
         pending: 'Ufinet still processing — check again shortly',

@@ -373,7 +373,22 @@ export class UfinetOrdersService {
     const order = await this.client.getOrder(conn, orderId);
     const state = normalizeUfinetState(order.state);
     if (state === UFINET_STATE.COMPLETED) {
-      return { status: 'completed', characteristics: extractOrderCharacteristics(order) };
+      const characteristics = extractOrderCharacteristics(order);
+      // STATUS_ONT (consulta de níveis): persiste a leitura pra exibir no
+      // contrato com timestamp. REFRESH/RESET não têm níveis — array vazio.
+      if (
+        characteristics.length > 0 &&
+        (order.serviceOrderType ?? '').toUpperCase() === 'STATUS_ONT'
+      ) {
+        await this.prisma.ufinetService.update({
+          where: { id: conn.svc.id },
+          data: {
+            lastSignalLevels: characteristics as Prisma.InputJsonValue,
+            lastSignalAt: new Date(),
+          },
+        });
+      }
+      return { status: 'completed', characteristics };
     }
     if (state === UFINET_STATE.FAILED) {
       return { status: 'failed', characteristics: [], message: this.errText(order) ?? 'falhou' };
@@ -508,6 +523,9 @@ export class UfinetOrdersService {
       ctoPort: s.ctoPort,
       dropPort: s.dropPort,
       serialNumber: s.serialNumber,
+      lastSignalLevels:
+        (s.lastSignalLevels as Array<{ name: string; value: string }> | null) ?? null,
+      lastSignalAt: s.lastSignalAt?.toISOString() ?? null,
       ufinetState: s.ufinetState,
       waitingCode: s.waitingCode,
       attempts: s.attempts,
