@@ -14,6 +14,7 @@ import { UfinetOrchestratorDriver } from './drivers/ufinet.driver';
 import { OltsService } from './olts.service';
 import { ProvisioningController, OltsController, Tr069Controller } from './provisioning.controller';
 import { ProvisioningService } from './provisioning.service';
+import { Tr069DiagnosticsService } from './tr069-diagnostics.service';
 import { Tr069TasksService } from './tr069-tasks.service';
 
 @Module({
@@ -29,8 +30,9 @@ import { Tr069TasksService } from './tr069-tasks.service';
     // Services
     OltsService,
     Tr069TasksService,
+    Tr069DiagnosticsService,
     ProvisioningService,
   ],
-  exports: [ProvisioningService, OltsService, Tr069TasksService],
+  exports: [ProvisioningService, OltsService, Tr069TasksService, Tr069DiagnosticsService],
 })
 export class ProvisioningModule {}

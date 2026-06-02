@@ -30,6 +30,7 @@
  */
 import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { Tr069AlertSeverity, Tr069AlertStatus, Tr069AlertType } from '@prisma/client';
 import type { Tr069Task } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -40,6 +41,13 @@ import {
   type ParsedCwmpMessage,
 } from './cwmp-soap';
 import { buildRpcForTask, detectFault, isResponseForTask } from './cwmp-rpc';
+import {
+  extractDiagnostics,
+  isTxPowerAbnormal,
+  parseParameterList,
+  RX_THRESHOLDS,
+  type ExtractedDiagnostics,
+} from './diagnostics';
 
 interface SessionState {
   /** OUI-Serial do device (set após Inform). */
@@ -215,6 +223,11 @@ export class CwmpSessionService {
       }
     }
 
+    // CPE voltou a comunicar — fecha qualquer alerta de OFFLINE aberto.
+    if (state.deviceDbId) {
+      await this.resolveAlert(state.deviceDbId, Tr069AlertType.DEVICE_OFFLINE);
+    }
+
     return {
       xml: buildInformResponse(parsed.cwmpId ?? '1'),
       status: 200,
@@ -315,6 +328,176 @@ export class CwmpSessionService {
       },
     });
     this.logger.log(`[CWMP] task ${task.id.slice(0, 8)} DONE (${parsed.kind})`);
+
+    // GET_PARAMS de diagnóstico — transforma a ParameterList em métricas
+    // (níveis ópticos + Wi-Fi), persiste a série temporal e avalia alertas.
+    if (task.action === 'GET_PARAMS' && parsed.kind === 'GetParameterValuesResponse') {
+      await this.persistDiagnostics(state, parsed).catch((err: unknown) =>
+        this.logger.error(`[CWMP] falha ao persistir diagnóstico: ${String(err)}`),
+      );
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Diagnóstico proativo
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Converte a resposta de um GET_PARAMS de diagnóstico em um Tr069Diagnostic,
+   * atualiza os últimos níveis ópticos na ONT e abre/resolve alertas conforme
+   * os limiares. Best-effort: qualquer falha é logada, nunca derruba a session.
+   */
+  private async persistDiagnostics(state: SessionState, parsed: ParsedCwmpMessage): Promise<void> {
+    if (!state.deviceDbId) return;
+    const params = parseParameterList(parsed.body);
+    const diag = extractDiagnostics(params);
+    // Nada de óptico nem Wi-Fi — não vale gravar ruído.
+    if (!diag.hasOptical && diag.wifiClients24 === null && diag.wifiClients5 === null) {
+      this.logger.warn(
+        `[CWMP] diagnóstico sem métricas reconhecidas (device=${state.deviceId ?? '∅'}) — ` +
+          'confira HUAWEI_GPON_IFACE_PATH',
+      );
+      return;
+    }
+
+    const device = await this.prisma.tr069Device.findUnique({
+      where: { id: state.deviceDbId },
+      select: { id: true, tenantId: true, ontId: true },
+    });
+    if (!device) return;
+
+    await this.prisma.tr069Diagnostic.create({
+      data: {
+        tenantId: device.tenantId,
+        deviceId: device.id,
+        rxPower: diag.rxPower,
+        txPower: diag.txPower,
+        temperature: diag.temperature,
+        voltage: diag.voltage,
+        biasCurrent: diag.biasCurrent,
+        opticalHealth: diag.opticalHealth,
+        wifiClients24: diag.wifiClients24,
+        wifiClients5: diag.wifiClients5,
+        wifiChannel24: diag.wifiChannel24,
+        wifiChannel5: diag.wifiChannel5,
+        raw: diag.raw as unknown as object,
+      },
+    });
+
+    await this.prisma.tr069Device.update({
+      where: { id: device.id },
+      data: { lastDiagnosticAt: new Date() },
+    });
+
+    // Denormaliza os últimos níveis na ONT (mesma fonte que o poll de OLT usa).
+    if (device.ontId && (diag.rxPower !== null || diag.txPower !== null)) {
+      await this.prisma.ont.update({
+        where: { id: device.ontId },
+        data: {
+          ...(diag.rxPower !== null ? { lastRxPower: diag.rxPower } : {}),
+          ...(diag.txPower !== null ? { lastTxPower: diag.txPower } : {}),
+          lastSeenAt: new Date(),
+        },
+      });
+    }
+
+    await this.evaluateOpticalAlerts(device.tenantId, device.id, diag);
+    this.logger.log(
+      `[CWMP] diagnóstico device=${state.deviceId ?? '∅'} rx=${diag.rxPower ?? '∅'}dBm ` +
+        `tx=${diag.txPower ?? '∅'}dBm health=${diag.opticalHealth} ` +
+        `wifi=${diag.wifiClients24 ?? '∅'}/${diag.wifiClients5 ?? '∅'}`,
+    );
+  }
+
+  /** Abre/atualiza ou resolve alertas ópticos com base na última leitura. */
+  private async evaluateOpticalAlerts(
+    tenantId: string,
+    deviceId: string,
+    diag: ExtractedDiagnostics,
+  ): Promise<void> {
+    const rx = diag.rxPower;
+
+    // RX fraco (abaixo do piso de atenção).
+    if (rx !== null && rx < RX_THRESHOLDS.warnLow) {
+      await this.openAlert(
+        tenantId,
+        deviceId,
+        Tr069AlertType.OPTICAL_RX_LOW,
+        rx < RX_THRESHOLDS.critLow ? Tr069AlertSeverity.CRITICAL : Tr069AlertSeverity.WARNING,
+        `Sinal óptico de recepção fraco: ${rx} dBm (esperado ≥ ${RX_THRESHOLDS.warnLow} dBm)`,
+        rx,
+      );
+    } else {
+      await this.resolveAlert(deviceId, Tr069AlertType.OPTICAL_RX_LOW);
+    }
+
+    // RX forte demais (acima do teto de atenção) — risco de saturar o receptor.
+    if (rx !== null && rx > RX_THRESHOLDS.warnHigh) {
+      await this.openAlert(
+        tenantId,
+        deviceId,
+        Tr069AlertType.OPTICAL_RX_HIGH,
+        rx > RX_THRESHOLDS.critHigh ? Tr069AlertSeverity.CRITICAL : Tr069AlertSeverity.WARNING,
+        `Sinal óptico de recepção forte demais: ${rx} dBm (esperado ≤ ${RX_THRESHOLDS.warnHigh} dBm)`,
+        rx,
+      );
+    } else {
+      await this.resolveAlert(deviceId, Tr069AlertType.OPTICAL_RX_HIGH);
+    }
+
+    // TX da ONT fora da faixa.
+    if (isTxPowerAbnormal(diag.txPower)) {
+      await this.openAlert(
+        tenantId,
+        deviceId,
+        Tr069AlertType.OPTICAL_TX_ABNORMAL,
+        Tr069AlertSeverity.WARNING,
+        `Potência de transmissão da ONT fora da faixa: ${diag.txPower} dBm`,
+        diag.txPower,
+      );
+    } else {
+      await this.resolveAlert(deviceId, Tr069AlertType.OPTICAL_TX_ABNORMAL);
+    }
+  }
+
+  /**
+   * Garante no máximo 1 alerta OPEN por (device, type): atualiza o existente
+   * (refresh de valor/severidade/lastSeen) ou cria um novo.
+   */
+  private async openAlert(
+    tenantId: string,
+    deviceId: string,
+    type: Tr069AlertType,
+    severity: Tr069AlertSeverity,
+    message: string,
+    value: number | null,
+  ): Promise<void> {
+    const existing = await this.prisma.tr069Alert.findFirst({
+      where: { deviceId, type, status: Tr069AlertStatus.OPEN },
+      select: { id: true },
+    });
+    if (existing) {
+      await this.prisma.tr069Alert.update({
+        where: { id: existing.id },
+        data: { severity, message, value, lastSeenAt: new Date() },
+      });
+      return;
+    }
+    await this.prisma.tr069Alert.create({
+      data: { tenantId, deviceId, type, severity, message, value },
+    });
+    this.logger.warn(`[CWMP] alerta ${type} aberto device=${deviceId.slice(0, 8)} sev=${severity}`);
+  }
+
+  /** Resolve qualquer alerta OPEN do tipo (condição voltou ao normal). */
+  private async resolveAlert(deviceId: string, type: Tr069AlertType): Promise<void> {
+    const res = await this.prisma.tr069Alert.updateMany({
+      where: { deviceId, type, status: Tr069AlertStatus.OPEN },
+      data: { status: Tr069AlertStatus.RESOLVED, resolvedAt: new Date() },
+    });
+    if (res.count > 0) {
+      this.logger.log(`[CWMP] alerta ${type} resolvido device=${deviceId.slice(0, 8)}`);
+    }
   }
 
   // ---------------------------------------------------------------------------

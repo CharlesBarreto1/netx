@@ -186,6 +186,107 @@ export interface Tr069DeviceRow {
   _count: { tasks: number };
 }
 
+// ── Diagnóstico (espelha @netx/shared/provisioning/tr069.dto) ─────────────────
+export type Tr069OpticalHealth = 'OK' | 'WARNING' | 'CRITICAL' | 'UNKNOWN';
+export type Tr069AlertType =
+  | 'OPTICAL_RX_LOW'
+  | 'OPTICAL_RX_HIGH'
+  | 'OPTICAL_TX_ABNORMAL'
+  | 'DEVICE_OFFLINE'
+  | 'WIFI_WEAK_CLIENT'
+  | 'WIFI_HIGH_UTIL';
+export type Tr069AlertSeverity = 'INFO' | 'WARNING' | 'CRITICAL';
+export type Tr069AlertStatus = 'OPEN' | 'RESOLVED';
+
+/** Limiares de RX (dBm) — espelho de OPTICAL_RX_THRESHOLDS do shared. */
+export const OPTICAL_RX_THRESHOLDS = {
+  critHigh: -5,
+  warnHigh: -8,
+  warnLow: -25,
+  critLow: -27,
+} as const;
+
+/** Classifica a saúde do RX óptico pra colorir a UI (mesma regra do backend). */
+export function classifyRxPower(rx: number | null | undefined): Tr069OpticalHealth {
+  if (rx === null || rx === undefined || Number.isNaN(rx)) return 'UNKNOWN';
+  const t = OPTICAL_RX_THRESHOLDS;
+  if (rx < t.critLow || rx > t.critHigh) return 'CRITICAL';
+  if (rx < t.warnLow || rx > t.warnHigh) return 'WARNING';
+  return 'OK';
+}
+
+export interface Tr069DiagnosticDto {
+  id: string;
+  capturedAt: string;
+  rxPower: number | null;
+  txPower: number | null;
+  temperature: number | null;
+  voltage: number | null;
+  biasCurrent: number | null;
+  opticalHealth: Tr069OpticalHealth;
+  wifiClients24: number | null;
+  wifiClients5: number | null;
+  wifiChannel24: number | null;
+  wifiChannel5: number | null;
+  wifiWorstRssi: number | null;
+}
+
+export interface Tr069AlertDto {
+  id: string;
+  deviceId: string;
+  type: Tr069AlertType;
+  severity: Tr069AlertSeverity;
+  status: Tr069AlertStatus;
+  message: string;
+  value: number | null;
+  openedAt: string;
+  resolvedAt: string | null;
+  lastSeenAt: string;
+  device?: { id: string; deviceId: string; ontSnGpon: string | null } | null;
+}
+
+export interface Tr069TaskDto {
+  id: string;
+  action: string;
+  status: string;
+  attempts: number;
+  error: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  completedAt: string | null;
+}
+
+export interface Tr069DeviceDetailResponse {
+  id: string;
+  deviceId: string;
+  manufacturer: string | null;
+  oui: string | null;
+  productClass: string | null;
+  hardwareVersion: string | null;
+  softwareVersion: string | null;
+  status: string;
+  lastInformAt: string | null;
+  lastInformReason: string | null;
+  lastDiagnosticAt: string | null;
+  connectionRequestUrl: string | null;
+  ont: {
+    id: string;
+    snGpon: string;
+    contractId: string;
+    status: string;
+    lastRxPower: string | null;
+    lastTxPower: string | null;
+  } | null;
+  latest: Tr069DiagnosticDto | null;
+  openAlerts: Tr069AlertDto[];
+  recentTasks: Tr069TaskDto[];
+}
+
+export interface Tr069RefreshResponse {
+  taskId: string;
+  message: string;
+}
+
 // =============================================================================
 // /v1/olts
 // =============================================================================
@@ -219,7 +320,19 @@ export const provisioningApi = {
 // =============================================================================
 export const tr069Api = {
   listDevices: () => api.get<Tr069DeviceRow[]>('/v1/tr069/devices'),
+  getDevice: (id: string) => api.get<Tr069DeviceDetailResponse>(`/v1/tr069/devices/${id}`),
   listTasksForDevice: (deviceId: string) =>
     api.get<unknown[]>(`/v1/tr069/devices/${deviceId}/tasks`),
+  diagnostics: (id: string, limit = 100) =>
+    api.get<Tr069DiagnosticDto[]>(`/v1/tr069/devices/${id}/diagnostics${qs({ limit })}`),
+  refresh: (id: string) => api.post<Tr069RefreshResponse>(`/v1/tr069/devices/${id}/refresh`, {}),
+  reboot: (id: string) => api.post<{ taskId: string }>(`/v1/tr069/devices/${id}/reboot`, {}),
+  listAlerts: (params?: {
+    status?: Tr069AlertStatus;
+    severity?: Tr069AlertSeverity;
+    deviceId?: string;
+    page?: number;
+    pageSize?: number;
+  }) => api.get<Paginated<Tr069AlertDto>>(`/v1/tr069/alerts${qs(params)}`),
   cancelTask: (taskId: string) => api.delete<void>(`/v1/tr069/tasks/${taskId}`),
 };

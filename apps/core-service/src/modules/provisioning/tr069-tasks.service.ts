@@ -147,6 +147,14 @@ export class Tr069TasksService {
     deviceDbId: string,
     contractId: string | null,
   ): Promise<{ taskId: string }> {
+    // Multi-tenancy estrito: garante que o device é deste tenant antes de
+    // enfileirar (evita criar task cruzando tenants via id arbitrário).
+    const device = await this.prisma.tr069Device.findFirst({
+      where: { id: deviceDbId, tenantId },
+      select: { id: true },
+    });
+    if (!device) throw new NotFoundException('Device TR-069 não encontrado');
+
     const task = await this.prisma.tr069Task.create({
       data: {
         tenantId,

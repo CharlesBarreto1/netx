@@ -121,6 +121,8 @@ model Tenant {
   onts                 Ont[]
   tr069Devices         Tr069Device[]
   tr069Tasks           Tr069Task[]
+  tr069Diagnostics     Tr069Diagnostic[]
+  tr069Alerts          Tr069Alert[]
   provisioningEvents   ProvisioningEvent[]
   ufinetServices       UfinetService[]
 
@@ -2787,6 +2789,9 @@ model Tr069Device {
                                     // "UNKNOWN"|"ONLINE"|"OFFLINE"|"PROVISIONING"
   lastInformAt             DateTime? @map("last_inform_at")
   lastInformReason         String?   @map("last_inform_reason") @db.VarChar(64)
+  // Última coleta de diagnóstico (GetParameterValues) bem-sucedida — usada
+  // pelo cron de coleta proativa pra espaçar as leituras por device.
+  lastDiagnosticAt         DateTime? @map("last_diagnostic_at")
                                     // "0 BOOTSTRAP"|"1 BOOT"|"2 PERIODIC"|...
 
   createdAt                DateTime  @default(now()) @map("created_at")
@@ -2795,6 +2800,8 @@ model Tr069Device {
   tenant                   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   ont                      Ont?     @relation(fields: [ontId], references: [id], onDelete: SetNull)
   tasks                    Tr069Task[]
+  diagnostics              Tr069Diagnostic[]
+  alerts                   Tr069Alert[]
 
   @@index([tenantId, status])
   @@index([tenantId, lastInformAt])
@@ -2853,6 +2860,114 @@ model Tr069Task {
   @@index([tenantId, deviceId, status])
   @@index([tenantId, status, createdAt])
   @@map("tr069_tasks")
+}
+
+// =============================================================================
+// TR-069 DIAGNOSTICS & ALERTS — monitoramento proativo de CPEs
+// =============================================================================
+// O ACS (apps/cwmp-server) enfileira GET_PARAMS periódicos (cron no
+// core-service) lendo nível óptico (RX/TX PON), temperatura/tensão do
+// transceiver e a experiência Wi-Fi do cliente. Cada resposta vira um
+// Tr069Diagnostic (série temporal) e, ao cruzar limiares, abre/atualiza um
+// Tr069Alert. Limiares canônicos vivem em @netx/shared (tr069.dto.ts).
+
+enum Tr069OpticalHealth {
+  OK
+  WARNING
+  CRITICAL
+  UNKNOWN
+}
+
+enum Tr069AlertType {
+  OPTICAL_RX_LOW      // recepção fraca (fibra suja/dobrada, distância, splitter)
+  OPTICAL_RX_HIGH     // recepção forte demais (falta atenuador) — satura o receptor
+  OPTICAL_TX_ABNORMAL // potência de transmissão da ONT fora da faixa
+  DEVICE_OFFLINE      // CPE sem Inform há mais de N intervalos
+  WIFI_WEAK_CLIENT    // cliente Wi-Fi com RSSI muito baixo (cobertura ruim)
+  WIFI_HIGH_UTIL      // utilização de canal alta (congestionamento)
+}
+
+enum Tr069AlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum Tr069AlertStatus {
+  OPEN
+  RESOLVED
+}
+
+/// Série temporal de leituras de diagnóstico de um CPE (via GetParameterValues).
+/// Uma linha por coleta — base pra tendência (gráfico de RX) e disparo de alertas.
+/// Append-only; retenção/limpeza por cron fica pra incremento futuro.
+model Tr069Diagnostic {
+  id            String   @id @default(uuid()) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  deviceId      String   @map("device_id") @db.Uuid
+
+  capturedAt    DateTime @default(now()) @map("captured_at")
+
+  // ── Óptico (transceiver GPON da ONT, já normalizado) ───────────────────────
+  rxPower       Decimal? @map("rx_power") @db.Decimal(6, 2)      // dBm (recepção)
+  txPower       Decimal? @map("tx_power") @db.Decimal(6, 2)      // dBm (transmissão)
+  temperature   Decimal? @map("temperature") @db.Decimal(6, 2)   // °C
+  voltage       Decimal? @map("voltage") @db.Decimal(7, 3)       // V
+  biasCurrent   Decimal? @map("bias_current") @db.Decimal(7, 2)  // mA
+  opticalHealth Tr069OpticalHealth @default(UNKNOWN) @map("optical_health")
+
+  // ── Wi-Fi (agregado por banda) ─────────────────────────────────────────────
+  wifiClients24 Int?     @map("wifi_clients_24")
+  wifiClients5  Int?     @map("wifi_clients_5")
+  wifiChannel24 Int?     @map("wifi_channel_24")
+  wifiChannel5  Int?     @map("wifi_channel_5")
+  // Pior RSSI entre os clientes associados (dBm) — indicador de cobertura.
+  wifiWorstRssi Int?     @map("wifi_worst_rssi")
+
+  // Snapshot bruto dos parâmetros lidos (nome→valor) — debug e métricas futuras.
+  raw           Json?
+
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  tenant        Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  device        Tr069Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, deviceId, capturedAt])
+  @@index([deviceId, capturedAt])
+  @@map("tr069_diagnostics")
+}
+
+/// Alerta de diagnóstico proativo. Aberto quando um limiar é cruzado
+/// (ex.: RX < -27 dBm) e resolvido quando o valor normaliza ou o CPE volta a
+/// comunicar. A regra "1 alerta OPEN por (device,type)" é garantida em código
+/// (não dá pra expressar índice único parcial no Prisma).
+model Tr069Alert {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  deviceId    String   @map("device_id") @db.Uuid
+
+  type        Tr069AlertType
+  severity    Tr069AlertSeverity @default(WARNING)
+  status      Tr069AlertStatus   @default(OPEN)
+
+  // Mensagem legível + valor que disparou (pra UI e histórico).
+  message     String   @db.Text
+  value       Decimal? @db.Decimal(8, 2)
+
+  openedAt    DateTime  @default(now()) @map("opened_at")
+  resolvedAt  DateTime? @map("resolved_at")
+  // Última vez que a condição foi reobservada (mantém o alerta "fresco").
+  lastSeenAt  DateTime  @default(now()) @map("last_seen_at")
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  device      Tr069Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status, severity])
+  @@index([deviceId, status])
+  @@map("tr069_alerts")
 }
 
 // =============================================================================

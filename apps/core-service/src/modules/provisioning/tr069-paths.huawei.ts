@@ -74,3 +74,56 @@ export function ssid5gFor(
 ): string {
   return mode === 'DUAL_BAND' ? `${ssid}-5G` : ssid;
 }
+
+// =============================================================================
+// DIAGNÓSTICO — paths de leitura (GetParameterValues) p/ monitoramento proativo
+// =============================================================================
+/**
+ * ⚠️ ATENÇÃO (mesma natureza do HUAWEI_PPPOE_WAN_INDEX): o Huawei devolve um
+ * SOAP Fault para o GetParameterValues INTEIRO se UM ÚNICO parâmetro pedido
+ * não existir no data model do firmware. Por isso pedimos um conjunto canônico
+ * (um path por métrica), não uma lista de alternativas. Se a coleta falhar com
+ * fault 9005 (Invalid parameter name), o primeiro suspeito é o prefixo da
+ * interface GPON — confirme no firmware da ONT e ajuste `HUAWEI_GPON_IFACE_PATH`.
+ *
+ * Prefixo da interface óptica GPON na WAN. Vendor extension Huawei
+ * (X_HW_WANGponInterfaceConfig) é o padrão nos EG8145V5/X10.
+ */
+export const HUAWEI_GPON_IFACE_PATH =
+  process.env.HUAWEI_GPON_IFACE_PATH ??
+  'InternetGatewayDevice.WANDevice.1.X_HW_WANGponInterfaceConfig';
+
+/** Índices das WLANs (mesmos usados na config de SSID). */
+const WLAN_24 = 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1';
+const WLAN_50 = 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5';
+
+/**
+ * Paths de diagnóstico óptico — transceiver GPON da ONT.
+ * Unidades dependem do firmware (ver normalização no ACS); guardamos o bruto.
+ */
+export const HUAWEI_OPTICAL_PATHS = {
+  rxPower: `${HUAWEI_GPON_IFACE_PATH}.RXPower`,
+  txPower: `${HUAWEI_GPON_IFACE_PATH}.TXPower`,
+  temperature: `${HUAWEI_GPON_IFACE_PATH}.TransceiverTemperature`,
+  voltage: `${HUAWEI_GPON_IFACE_PATH}.SupplyVoltage`,
+  biasCurrent: `${HUAWEI_GPON_IFACE_PATH}.Bias`,
+} as const;
+
+/** Paths de diagnóstico Wi-Fi (agregado por banda). */
+export const HUAWEI_WIFI_DIAG_PATHS = {
+  clients24: `${WLAN_24}.TotalAssociations`,
+  clients5: `${WLAN_50}.TotalAssociations`,
+  channel24: `${WLAN_24}.Channel`,
+  channel5: `${WLAN_50}.Channel`,
+} as const;
+
+/**
+ * Lista achatada de nomes de parâmetro para o GetParameterValues de
+ * diagnóstico. Mantém ordem estável (óptico → Wi-Fi) só por legibilidade no log.
+ */
+export function huaweiDiagnosticParamNames(): string[] {
+  return [
+    ...Object.values(HUAWEI_OPTICAL_PATHS),
+    ...Object.values(HUAWEI_WIFI_DIAG_PATHS),
+  ];
+}

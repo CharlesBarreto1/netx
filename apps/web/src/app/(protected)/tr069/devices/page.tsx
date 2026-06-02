@@ -8,6 +8,7 @@
  * apps/cwmp-server existir.
  */
 import { useTranslations } from 'next-intl';
+import Link from 'next/link';
 import useSWR from 'swr';
 
 import { PageLoader } from '@/components/ui/Spinner';
@@ -63,8 +64,15 @@ export default function Tr069DevicesPage() {
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {rows.map((d) => (
-                <tr key={d.id}>
-                  <td className="px-3 py-2 font-mono text-xs">{d.deviceId}</td>
+                <tr key={d.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/50">
+                  <td className="px-3 py-2 font-mono text-xs">
+                    <Link
+                      href={`/tr069/devices/${d.id}`}
+                      className="text-sky-600 hover:underline dark:text-sky-400"
+                    >
+                      {d.deviceId}
+                    </Link>
+                  </td>
                   <td className="px-3 py-2">{d.manufacturer ?? '—'}</td>
                   <td className="px-3 py-2 font-mono text-xs">{d.ont?.snGpon ?? '—'}</td>
                   <td className="px-3 py-2">

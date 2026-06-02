@@ -34,12 +34,16 @@ import {
   InstallCustomerRequestSchema,
   ListOltsQuerySchema,
   ListPendingInstallsQuerySchema,
+  ListTr069AlertsQuerySchema,
+  ListTr069DiagnosticsQuerySchema,
   UpdateOltRequestSchema,
   type AuthenticatedPrincipal,
   type CreateOltRequest,
   type InstallCustomerRequest,
   type ListOltsQuery,
   type ListPendingInstallsQuery,
+  type ListTr069AlertsQuery,
+  type ListTr069DiagnosticsQuery,
   type UpdateOltRequest,
 } from '@netx/shared';
 
@@ -48,6 +52,7 @@ import { ZodBody, ZodValidationPipe } from '../../common/zod.pipe';
 
 import { OltsService } from './olts.service';
 import { ProvisioningService } from './provisioning.service';
+import { Tr069DiagnosticsService } from './tr069-diagnostics.service';
 import { Tr069TasksService } from './tr069-tasks.service';
 
 // =============================================================================
@@ -166,12 +171,25 @@ export class ProvisioningController {
 @ApiBearerAuth()
 @Controller('tr069')
 export class Tr069Controller {
-  constructor(private readonly svc: Tr069TasksService) {}
+  constructor(
+    private readonly svc: Tr069TasksService,
+    private readonly diag: Tr069DiagnosticsService,
+  ) {}
 
   @Get('devices')
   @RequirePermissions('tr069.admin')
   listDevices(@CurrentUser() user: AuthenticatedPrincipal) {
     return this.svc.listDevices(user.tenantId);
+  }
+
+  /** Detalhe do device: status + último diagnóstico + alertas abertos + tasks. */
+  @Get('devices/:id')
+  @RequirePermissions('tr069.admin')
+  deviceDetail(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.diag.getDeviceDetail(user.tenantId, id);
   }
 
   @Get('devices/:id/tasks')
@@ -181,6 +199,49 @@ export class Tr069Controller {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     return this.svc.listForDevice(user.tenantId, id);
+  }
+
+  /** Série temporal de diagnóstico (gráfico de RX, histórico Wi-Fi). */
+  @Get('devices/:id/diagnostics')
+  @RequirePermissions('tr069.admin')
+  diagnostics(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Query(new ZodValidationPipe(ListTr069DiagnosticsQuerySchema)) q: ListTr069DiagnosticsQuery,
+  ) {
+    return this.diag.listDiagnostics(user.tenantId, id, q.limit);
+  }
+
+  /** Enfileira uma coleta de diagnóstico imediata (aplicada no próximo Inform). */
+  @Post('devices/:id/refresh')
+  @HttpCode(200)
+  @RequirePermissions('tr069.admin')
+  refresh(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.diag.requestRefresh(user.tenantId, id);
+  }
+
+  /** Enfileira um REBOOT do CPE. */
+  @Post('devices/:id/reboot')
+  @HttpCode(200)
+  @RequirePermissions('tr069.admin')
+  reboot(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.svc.enqueueReboot(user.tenantId, id, null);
+  }
+
+  /** Lista de alertas de diagnóstico (dashboard / triagem). */
+  @Get('alerts')
+  @RequirePermissions('tr069.admin')
+  alerts(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Query(new ZodValidationPipe(ListTr069AlertsQuerySchema)) q: ListTr069AlertsQuery,
+  ) {
+    return this.diag.listAlerts(user.tenantId, q);
   }
 
   @Delete('tasks/:id')
