@@ -13,7 +13,13 @@ import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/sonner';
 import { ApiError } from '@/lib/api';
 import { hasPermission } from '@/lib/session';
-import { ufinetApi, type UfinetLifecycle, type UfinetService } from '@/lib/ufinet-api';
+import {
+  ufinetApi,
+  type OntAction,
+  type OntActionResult,
+  type UfinetLifecycle,
+  type UfinetService,
+} from '@/lib/ufinet-api';
 
 function badgeClass(lc: UfinetLifecycle): string {
   if (lc === 'ACTIVE') return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
@@ -42,10 +48,36 @@ export function UfinetStatusPanel({ contractId }: { contractId: string }) {
   );
 
   const [downloading, setDownloading] = useState(false);
+  const [ontBusy, setOntBusy] = useState<OntAction | null>(null);
+  const [levels, setLevels] = useState<OntActionResult | null>(null);
 
   if (isLoading || !data) return null;
   const svc = data;
   const canRetry = hasPermission('ufinet.orders.retry');
+  // Ações de ONT só fazem sentido depois que o serviço foi provisionado.
+  const canOntActions =
+    canRetry && (svc.lifecycle === 'ACTIVE' || svc.lifecycle === 'SUSPENDED');
+
+  async function handleOntAction(action: OntAction) {
+    setOntBusy(action);
+    setLevels(null);
+    try {
+      const res = await ufinetApi.ontAction(contractId, action);
+      if (res.status === 'failed') {
+        toast.error(t('ufinet.ont.failed', { error: res.message ?? '' }));
+      } else if (res.status === 'pending') {
+        toast.info(t('ufinet.ont.pending'));
+      } else {
+        toast.success(t('ufinet.ont.ok'));
+        if (action === 'STATUS_ONT') setLevels(res);
+      }
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
+      toast.error(t('ufinet.ont.failed', { error: msg }));
+    } finally {
+      setOntBusy(null);
+    }
+  }
 
   async function handleRetry() {
     try {
@@ -111,6 +143,54 @@ export function UfinetStatusPanel({ contractId }: { contractId: string }) {
           {svc.error}
         </p>
       )}
+
+      {/* Níveis ópticos retornados por STATUS_ONT */}
+      {levels && levels.characteristics.length > 0 && (
+        <div className="mt-2 rounded-md bg-slate-50 p-2 dark:bg-slate-900">
+          <p className="mb-1 text-xs font-semibold text-slate-600 dark:text-slate-300">
+            {t('ufinet.ont.levelsTitle')}
+          </p>
+          <div className="space-y-0.5">
+            {levels.characteristics.map((c) => (
+              <Row key={c.name} label={c.name} value={c.value} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Ações de manutenção da ONT (só com serviço ativo) */}
+      {canOntActions && (
+        <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+          <Button
+            size="sm"
+            variant="outline"
+            loading={ontBusy === 'STATUS_ONT'}
+            disabled={ontBusy !== null}
+            onClick={() => handleOntAction('STATUS_ONT')}
+          >
+            {t('ufinet.ont.signal')}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            loading={ontBusy === 'REFRESH_ONT'}
+            disabled={ontBusy !== null}
+            onClick={() => handleOntAction('REFRESH_ONT')}
+          >
+            {t('ufinet.ont.refresh')}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            loading={ontBusy === 'RESET_ONT'}
+            disabled={ontBusy !== null}
+            onClick={() => handleOntAction('RESET_ONT')}
+          >
+            {t('ufinet.ont.reset')}
+          </Button>
+        </div>
+      )}
+
       <div className="mt-3 flex justify-end gap-2">
         <Button size="sm" variant="outline" loading={downloading} onClick={handleDownloadTrace}>
           {t('ufinet.downloadTrace')}

@@ -3200,6 +3200,15 @@ const messages = {
       waitingCode: 'waitingCode (trabalho de campo)',
       downloadTrace: 'Baixar trace (evidência)',
       reprocess: 'Reprocessar',
+      ont: {
+        signal: 'Ver sinal',
+        refresh: 'Atualizar ONT',
+        reset: 'Reiniciar ONT',
+        levelsTitle: 'Níveis ópticos',
+        ok: 'Comando enviado à ONT',
+        pending: 'Ufinet processando — consulte novamente em instantes',
+        failed: 'Falha na ação da ONT: {error}',
+      },
       lifecycle: {
         PENDING_PROVIDE: 'Aguardando alta',
         PROVIDING: 'Reservando porta…',

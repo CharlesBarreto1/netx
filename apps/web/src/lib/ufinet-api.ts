@@ -57,6 +57,15 @@ export interface UfinetTraceEntry {
   createdAt: string;
 }
 
+export type OntAction = 'REFRESH_ONT' | 'RESET_ONT' | 'STATUS_ONT';
+
+export interface OntActionResult {
+  status: 'completed' | 'failed' | 'pending';
+  orderId: string | null;
+  characteristics: Array<{ name: string; value: string }>;
+  message?: string;
+}
+
 export const ufinetApi = {
   byContractPath: (contractId: string) => `/v1/ufinet/services/contract/${contractId}`,
   byContract: (contractId: string) =>
@@ -64,4 +73,10 @@ export const ufinetApi = {
   retry: (id: string) =>
     api.post<UfinetService>(`/v1/ufinet/services/${id}/retry`, { resetAttempts: true }),
   trace: (id: string) => api.get<UfinetTraceEntry[]>(`/v1/ufinet/services/${id}/trace`),
+  /** Ações de manutenção/diagnóstico na ONT (REFRESH/RESET/STATUS_ONT). */
+  ontAction: (contractId: string, action: OntAction) =>
+    api.post<OntActionResult>(
+      `/v1/ufinet/services/contract/${contractId}/ont-action`,
+      { action },
+    ),
 };

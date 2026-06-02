@@ -3170,6 +3170,15 @@ const messages = {
       waitingCode: 'waitingCode (field work)',
       downloadTrace: 'Download trace (evidence)',
       reprocess: 'Reprocess',
+      ont: {
+        signal: 'Check signal',
+        refresh: 'Refresh ONT',
+        reset: 'Reboot ONT',
+        levelsTitle: 'Optical levels',
+        ok: 'Command sent to the ONT',
+        pending: 'Ufinet processing — check again shortly',
+        failed: 'ONT action failed: {error}',
+      },
       lifecycle: {
         PENDING_PROVIDE: 'Awaiting provisioning',
         PROVIDING: 'Reserving port…',
