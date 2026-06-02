@@ -118,12 +118,33 @@ export const HUAWEI_WIFI_DIAG_PATHS = {
 } as const;
 
 /**
+ * Caminhos PARCIAIS (objeto, terminam em ".") da tabela de clientes Wi-Fi
+ * associados por banda. Num GetParameterValues, um path de objeto faz o CPE
+ * devolver TODA a subárvore (`AssociatedDevice.1.*`, `.2.*`, …) — assim
+ * descobrimos quantos clientes há e o RSSI de cada um sem saber a contagem
+ * de antemão (TR-069 §A.3.2.1).
+ *
+ * ⚠️ Se algum firmware der fault no path parcial, desligue só a enumeração
+ * por cliente com `TR069_WIFI_CLIENTS_ENABLED=0` — o diagnóstico óptico segue.
+ */
+export const HUAWEI_WIFI_ASSOC_PATHS = {
+  assoc24: `${WLAN_24}.AssociatedDevice.`,
+  assoc5: `${WLAN_50}.AssociatedDevice.`,
+} as const;
+
+/** Habilita a enumeração por cliente Wi-Fi (RSSI/MAC/taxa) no diagnóstico. */
+export const HUAWEI_WIFI_CLIENTS_ENABLED =
+  (process.env.TR069_WIFI_CLIENTS_ENABLED ?? '1') !== '0';
+
+/**
  * Lista achatada de nomes de parâmetro para o GetParameterValues de
- * diagnóstico. Mantém ordem estável (óptico → Wi-Fi) só por legibilidade no log.
+ * diagnóstico. Ordem estável (óptico → Wi-Fi agregado → clientes) só por
+ * legibilidade no log.
  */
 export function huaweiDiagnosticParamNames(): string[] {
   return [
     ...Object.values(HUAWEI_OPTICAL_PATHS),
     ...Object.values(HUAWEI_WIFI_DIAG_PATHS),
+    ...(HUAWEI_WIFI_CLIENTS_ENABLED ? Object.values(HUAWEI_WIFI_ASSOC_PATHS) : []),
   ];
 }

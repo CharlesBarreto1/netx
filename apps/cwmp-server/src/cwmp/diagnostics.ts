@@ -39,6 +39,8 @@ const WIFI_PATHS = {
 // ── Limiares ópticos (cópia de @netx/shared OPTICAL_RX_THRESHOLDS) ────────────
 export const RX_THRESHOLDS = { critHigh: -5, warnHigh: -8, warnLow: -25, critLow: -27 } as const;
 export const TX_THRESHOLDS = { min: 0.0, max: 7.0 } as const;
+/** RSSI (dBm) abaixo do qual um cliente Wi-Fi é considerado mal coberto. */
+export const WIFI_WEAK_RSSI_DBM = -75;
 
 export type OpticalHealth = 'OK' | 'WARNING' | 'CRITICAL' | 'UNKNOWN';
 
@@ -55,6 +57,14 @@ export function isTxPowerAbnormal(tx: number | null): boolean {
   return tx < TX_THRESHOLDS.min || tx > TX_THRESHOLDS.max;
 }
 
+export interface WifiClient {
+  mac: string | null;
+  band: string;
+  rssi: number | null;
+  txRate: number | null;
+  rxRate: number | null;
+}
+
 export interface ExtractedDiagnostics {
   rxPower: number | null;
   txPower: number | null;
@@ -66,6 +76,8 @@ export interface ExtractedDiagnostics {
   wifiClients5: number | null;
   wifiChannel24: number | null;
   wifiChannel5: number | null;
+  wifiClients: WifiClient[];
+  wifiWorstRssi: number | null;
   raw: Record<string, string>;
   /** Algum parâmetro óptico veio preenchido — define se vale persistir. */
   hasOptical: boolean;
@@ -127,8 +139,49 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+const ASSOC_RE = /WLANConfiguration\.(\d+)\.AssociatedDevice\.(\d+)\.(.+)$/;
+
+function bandOf(wlanIdx: string): string {
+  if (wlanIdx === '1') return '2.4GHz';
+  if (wlanIdx === '5') return '5GHz';
+  return `WLAN${wlanIdx}`;
+}
+
+/**
+ * Reconstrói a lista de clientes Wi-Fi a partir dos params da subárvore
+ * AssociatedDevice. Tolerante a variações de firmware: casa MAC/RSSI/taxas
+ * por substring no nome do campo.
+ */
+export function extractWifiClients(params: Record<string, string>): {
+  clients: WifiClient[];
+  worstRssi: number | null;
+} {
+  const byKey = new Map<string, WifiClient>();
+  for (const [name, value] of Object.entries(params)) {
+    const m = ASSOC_RE.exec(name);
+    if (!m) continue;
+    const [, wlanIdx, clientIdx, field] = m;
+    const key = `${wlanIdx}:${clientIdx}`;
+    let c = byKey.get(key);
+    if (!c) {
+      c = { mac: null, band: bandOf(wlanIdx), rssi: null, txRate: null, rxRate: null };
+      byKey.set(key, c);
+    }
+    if (/MACAddress/i.test(field)) c.mac = value || null;
+    else if (/RSSI|SignalStrength/i.test(field)) c.rssi = numOrNull(value);
+    else if (/TxRate/i.test(field)) c.txRate = numOrNull(value);
+    else if (/RxRate/i.test(field)) c.rxRate = numOrNull(value);
+  }
+  // Só conta como cliente real se identificamos MAC ou RSSI.
+  const clients = [...byKey.values()].filter((c) => c.mac !== null || c.rssi !== null);
+  const rssis = clients.map((c) => c.rssi).filter((v): v is number => v !== null);
+  const worstRssi = rssis.length ? Math.min(...rssis) : null;
+  return { clients, worstRssi };
+}
+
 /** Extrai métricas de diagnóstico de uma ParameterList já achatada. */
 export function extractDiagnostics(params: Record<string, string>): ExtractedDiagnostics {
+  const { clients: wifiClients, worstRssi: wifiWorstRssi } = extractWifiClients(params);
   const rxPower = normalizePower(params[OPTICAL_PATHS.rxPower]);
   const txPower = normalizePower(params[OPTICAL_PATHS.txPower]);
   const temperature = numOrNull(params[OPTICAL_PATHS.temperature]);
@@ -153,6 +206,8 @@ export function extractDiagnostics(params: Record<string, string>): ExtractedDia
     wifiClients5: intOrNull(params[WIFI_PATHS.clients5]),
     wifiChannel24: intOrNull(params[WIFI_PATHS.channel24]),
     wifiChannel5: intOrNull(params[WIFI_PATHS.channel5]),
+    wifiClients,
+    wifiWorstRssi,
     raw: params,
     hasOptical,
   };

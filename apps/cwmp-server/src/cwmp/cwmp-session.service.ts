@@ -46,6 +46,7 @@ import {
   isTxPowerAbnormal,
   parseParameterList,
   RX_THRESHOLDS,
+  WIFI_WEAK_RSSI_DBM,
   type ExtractedDiagnostics,
 } from './diagnostics';
 
@@ -352,7 +353,12 @@ export class CwmpSessionService {
     const params = parseParameterList(parsed.body);
     const diag = extractDiagnostics(params);
     // Nada de óptico nem Wi-Fi — não vale gravar ruído.
-    if (!diag.hasOptical && diag.wifiClients24 === null && diag.wifiClients5 === null) {
+    if (
+      !diag.hasOptical &&
+      diag.wifiClients24 === null &&
+      diag.wifiClients5 === null &&
+      diag.wifiClients.length === 0
+    ) {
       this.logger.warn(
         `[CWMP] diagnóstico sem métricas reconhecidas (device=${state.deviceId ?? '∅'}) — ` +
           'confira HUAWEI_GPON_IFACE_PATH',
@@ -380,6 +386,8 @@ export class CwmpSessionService {
         wifiClients5: diag.wifiClients5,
         wifiChannel24: diag.wifiChannel24,
         wifiChannel5: diag.wifiChannel5,
+        wifiWorstRssi: diag.wifiWorstRssi,
+        wifiClients: diag.wifiClients as unknown as object,
         raw: diag.raw as unknown as object,
       },
     });
@@ -457,6 +465,24 @@ export class CwmpSessionService {
       );
     } else {
       await this.resolveAlert(deviceId, Tr069AlertType.OPTICAL_TX_ABNORMAL);
+    }
+
+    // Cliente Wi-Fi com cobertura ruim (RSSI baixo). Só avalia quando houve
+    // enumeração por cliente (worstRssi != null) — senão não mexe no alerta.
+    if (diag.wifiWorstRssi !== null && diag.wifiWorstRssi < WIFI_WEAK_RSSI_DBM) {
+      const weak = diag.wifiClients.filter(
+        (c) => c.rssi !== null && c.rssi < WIFI_WEAK_RSSI_DBM,
+      ).length;
+      await this.openAlert(
+        tenantId,
+        deviceId,
+        Tr069AlertType.WIFI_WEAK_CLIENT,
+        Tr069AlertSeverity.WARNING,
+        `${weak} cliente(s) Wi-Fi com sinal fraco (pior RSSI ${diag.wifiWorstRssi} dBm)`,
+        diag.wifiWorstRssi,
+      );
+    } else if (diag.wifiWorstRssi !== null) {
+      await this.resolveAlert(deviceId, Tr069AlertType.WIFI_WEAK_CLIENT);
     }
   }
 

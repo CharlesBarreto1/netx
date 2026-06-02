@@ -2923,6 +2923,8 @@ model Tr069Diagnostic {
   wifiChannel5  Int?     @map("wifi_channel_5")
   // Pior RSSI entre os clientes associados (dBm) — indicador de cobertura.
   wifiWorstRssi Int?     @map("wifi_worst_rssi")
+  // Lista por cliente Wi-Fi associado: [{ mac, band, rssi, txRate, rxRate }].
+  wifiClients   Json?    @map("wifi_clients")
 
   // Snapshot bruto dos parâmetros lidos (nome→valor) — debug e métricas futuras.
   raw           Json?

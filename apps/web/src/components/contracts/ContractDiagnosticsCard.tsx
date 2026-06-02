@@ -40,6 +40,13 @@ const HEALTH_TEXT: Record<Tr069OpticalHealth, string> = {
   UNKNOWN: 'text-text-muted',
 };
 
+function rssiClass(rssi: number | null): string {
+  if (rssi === null) return 'text-text-muted';
+  if (rssi >= -65) return 'text-emerald-600 dark:text-emerald-400';
+  if (rssi >= -75) return 'text-amber-600 dark:text-amber-400';
+  return 'text-red-600 dark:text-red-400';
+}
+
 export function ContractDiagnosticsCard({ contractId }: { contractId: string }) {
   const t = useTranslations('contractCards');
   const { data, isLoading, mutate } = useSWR(
@@ -127,6 +134,28 @@ export function ContractDiagnosticsCard({ contractId }: { contractId: string }) 
               {d.lastDiagnosticAt ? new Date(d.lastDiagnosticAt).toLocaleString('pt-BR') : '—'}
             </p>
           </div>
+        </div>
+      )}
+
+      {/* Experiência Wi-Fi por cliente — Hub do Atendente vê quem está fraco. */}
+      {latest && latest.wifiClients.length > 0 && (
+        <div className="mt-3 border-t border-border pt-3">
+          <p className="mb-1 text-xs text-text-muted">
+            {t('diag.wifiDevices')} ({latest.wifiClients.length})
+          </p>
+          <ul className="space-y-0.5">
+            {latest.wifiClients.map((c, i) => (
+              <li key={c.mac ?? i} className="flex items-center justify-between gap-3 text-xs">
+                <span className="font-mono text-text">{c.mac ?? '—'}</span>
+                <span className="flex items-center gap-2">
+                  <span className="text-text-muted">{c.band}</span>
+                  <span className={`font-medium ${rssiClass(c.rssi)}`}>
+                    {c.rssi === null ? '—' : `${c.rssi} dBm`}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 

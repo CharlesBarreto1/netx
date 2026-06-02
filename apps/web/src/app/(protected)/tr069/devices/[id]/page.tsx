@@ -45,6 +45,14 @@ function fmt(n: number | null | undefined, unit: string): string {
   return n === null || n === undefined ? '—' : `${n} ${unit}`;
 }
 
+/** Cor do RSSI Wi-Fi: ≥-65 bom, -65..-75 atenção, <-75 ruim. */
+function rssiClass(rssi: number | null): string {
+  if (rssi === null) return 'text-slate-500';
+  if (rssi >= -65) return 'text-emerald-600 dark:text-emerald-400';
+  if (rssi >= -75) return 'text-amber-600 dark:text-amber-400';
+  return 'text-red-600 dark:text-red-400';
+}
+
 /** Sparkline SVG puro da série de RX (sem dependência de chart lib). */
 function RxSparkline({ points }: { points: number[] }) {
   if (points.length < 2) return null;
@@ -223,12 +231,60 @@ export default function Tr069DeviceDetailPage() {
             <CardHeader>
               <CardTitle>{t('detail.sectionWifi')}</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-4">
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
                 <Metric label={t('detail.clients24')} value={fmt(latest.wifiClients24, '')} big />
                 <Metric label={t('detail.clients5')} value={fmt(latest.wifiClients5, '')} big />
+                <Metric
+                  label={t('detail.worstRssi')}
+                  value={fmt(latest.wifiWorstRssi, 'dBm')}
+                  tone={
+                    latest.wifiWorstRssi === null
+                      ? 'neutral'
+                      : latest.wifiWorstRssi >= -65
+                        ? 'success'
+                        : latest.wifiWorstRssi >= -75
+                          ? 'warning'
+                          : 'danger'
+                  }
+                  big
+                />
                 <Metric label={`${t('detail.channel')} 2.4 GHz`} value={fmt(latest.wifiChannel24, '')} />
                 <Metric label={`${t('detail.channel')} 5 GHz`} value={fmt(latest.wifiChannel5, '')} />
+              </div>
+
+              <div className="border-t border-slate-100 pt-3 dark:border-slate-800">
+                <p className="mb-2 text-xs text-slate-500">{t('detail.connectedDevices')}</p>
+                {latest.wifiClients.length === 0 ? (
+                  <p className="text-sm text-slate-500">{t('detail.noClients')}</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead className="text-left text-slate-500">
+                        <tr>
+                          <th className="py-1 pr-2 font-medium">{t('detail.colMac')}</th>
+                          <th className="py-1 pr-2 font-medium">{t('detail.colBand')}</th>
+                          <th className="py-1 pr-2 font-medium">{t('detail.colRssi')}</th>
+                          <th className="py-1 pr-2 font-medium">{t('detail.colRate')}</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {latest.wifiClients.map((c, i) => (
+                          <tr key={c.mac ?? i}>
+                            <td className="py-1 pr-2 font-mono">{c.mac ?? '—'}</td>
+                            <td className="py-1 pr-2">{c.band}</td>
+                            <td className={`py-1 pr-2 font-medium ${rssiClass(c.rssi)}`}>
+                              {c.rssi === null ? '—' : `${c.rssi} dBm`}
+                            </td>
+                            <td className="py-1 pr-2 text-slate-500">
+                              {c.rxRate ?? c.txRate ? `${c.rxRate ?? '—'}/${c.txRate ?? '—'}` : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>

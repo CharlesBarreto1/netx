@@ -92,6 +92,14 @@ export type ListTr069DiagnosticsQuery = z.infer<typeof ListTr069DiagnosticsQuery
 // =============================================================================
 // Response DTOs
 // =============================================================================
+export interface Tr069WifiClient {
+  mac: string | null;
+  band: string;
+  rssi: number | null;
+  txRate: number | null;
+  rxRate: number | null;
+}
+
 export interface Tr069DiagnosticDto {
   id: string;
   capturedAt: string;
@@ -106,6 +114,7 @@ export interface Tr069DiagnosticDto {
   wifiChannel24: number | null;
   wifiChannel5: number | null;
   wifiWorstRssi: number | null;
+  wifiClients: Tr069WifiClient[];
 }
 
 export interface Tr069AlertDto {

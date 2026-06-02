@@ -27,6 +27,7 @@ import {
   type Tr069DiagnosticDto,
   type Tr069RefreshResponse,
   type Tr069TaskDto,
+  type Tr069WifiClient,
 } from '@netx/shared';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -322,6 +323,7 @@ export class Tr069DiagnosticsService {
     wifiChannel24: number | null;
     wifiChannel5: number | null;
     wifiWorstRssi: number | null;
+    wifiClients: Prisma.JsonValue | null;
   }): Tr069DiagnosticDto {
     return {
       id: r.id,
@@ -337,6 +339,9 @@ export class Tr069DiagnosticsService {
       wifiChannel24: r.wifiChannel24,
       wifiChannel5: r.wifiChannel5,
       wifiWorstRssi: r.wifiWorstRssi,
+      wifiClients: Array.isArray(r.wifiClients)
+        ? (r.wifiClients as unknown as Tr069WifiClient[])
+        : [],
     };
   }
 
