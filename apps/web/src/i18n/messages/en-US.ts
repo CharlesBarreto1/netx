@@ -3193,6 +3193,18 @@ const messages = {
     document: 'document',
   },
   contractCards: {
+    diag: {
+      title: 'CPE diagnostics',
+      collect: 'Collect',
+      detail: 'View detail',
+      rx: 'Optical RX',
+      tx: 'Optical TX',
+      wifiClients: 'Wi-Fi clients',
+      lastReading: 'Last reading',
+      noReading: 'No diagnostics yet — click "Collect".',
+      queued: 'Collection queued — arrives on the next CPE Inform.',
+      health: { OK: 'Healthy', WARNING: 'Warning', CRITICAL: 'Critical', UNKNOWN: 'No reading' },
+    },
     session: {
       online: 'ONLINE',
       offline: 'OFFLINE',

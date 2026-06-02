@@ -158,6 +158,23 @@ export class Tr069DiagnosticsService {
     };
   }
 
+  /**
+   * Resolve o device TR-069 de um contrato (via ONT) e devolve o detalhe.
+   * Null quando o contrato não tem CPE gerenciada — o card no contrato some.
+   * Usado pelo "Hub do Atendente" (painel de diagnóstico dentro do contrato).
+   */
+  async getDeviceByContract(
+    tenantId: string,
+    contractId: string,
+  ): Promise<Tr069DeviceDetailResponse | null> {
+    const device = await this.prisma.tr069Device.findFirst({
+      where: { tenantId, ont: { contractId } },
+      select: { id: true },
+    });
+    if (!device) return null;
+    return this.getDeviceDetail(tenantId, device.id);
+  }
+
   async listDiagnostics(
     tenantId: string,
     deviceId: string,

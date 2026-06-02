@@ -321,6 +321,9 @@ export const provisioningApi = {
 export const tr069Api = {
   listDevices: () => api.get<Tr069DeviceRow[]>('/v1/tr069/devices'),
   getDevice: (id: string) => api.get<Tr069DeviceDetailResponse>(`/v1/tr069/devices/${id}`),
+  byContractPath: (contractId: string) => `/v1/tr069/by-contract/${contractId}`,
+  byContract: (contractId: string) =>
+    api.get<Tr069DeviceDetailResponse | null>(`/v1/tr069/by-contract/${contractId}`),
   listTasksForDevice: (deviceId: string) =>
     api.get<unknown[]>(`/v1/tr069/devices/${deviceId}/tasks`),
   diagnostics: (id: string, limit = 100) =>

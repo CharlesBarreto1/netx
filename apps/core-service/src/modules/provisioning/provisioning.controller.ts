@@ -192,6 +192,20 @@ export class Tr069Controller {
     return this.diag.getDeviceDetail(user.tenantId, id);
   }
 
+  /**
+   * Diagnóstico do CPE de um contrato (Hub do Atendente — painel no contrato).
+   * Leitura liberada pra operador (provisioning.read); retorna null se o
+   * contrato não tem CPE gerenciada.
+   */
+  @Get('by-contract/:contractId')
+  @RequirePermissions('provisioning.read')
+  byContract(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('contractId', new ParseUUIDPipe()) contractId: string,
+  ) {
+    return this.diag.getDeviceByContract(user.tenantId, contractId);
+  }
+
   @Get('devices/:id/tasks')
   @RequirePermissions('tr069.admin')
   tasksForDevice(

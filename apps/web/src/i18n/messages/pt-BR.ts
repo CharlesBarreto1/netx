@@ -3223,6 +3223,18 @@ const messages = {
     document: 'documento',
   },
   contractCards: {
+    diag: {
+      title: 'Diagnóstico do CPE',
+      collect: 'Coletar',
+      detail: 'Ver detalhe',
+      rx: 'RX óptico',
+      tx: 'TX óptico',
+      wifiClients: 'Clientes Wi-Fi',
+      lastReading: 'Última leitura',
+      noReading: 'Sem diagnóstico ainda — clique em "Coletar".',
+      queued: 'Coleta enfileirada — chega no próximo Inform do CPE.',
+      health: { OK: 'Saudável', WARNING: 'Atenção', CRITICAL: 'Crítico', UNKNOWN: 'Sem leitura' },
+    },
     session: {
       online: 'ONLINE',
       offline: 'OFFLINE',

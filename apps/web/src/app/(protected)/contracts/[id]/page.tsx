@@ -32,6 +32,7 @@ import { ContractComodatoCard } from '@/components/contracts/ContractComodatoCar
 import { ContractSessionCard } from '@/components/contracts/ContractSessionCard';
 import { ContractWifiCard } from '@/components/contracts/ContractWifiCard';
 import { ContractUsageChart } from '@/components/contracts/ContractUsageChart';
+import { ContractDiagnosticsCard } from '@/components/contracts/ContractDiagnosticsCard';
 import { UfinetStatusPanel } from '@/components/contracts/UfinetStatusPanel';
 import { EditContractDialog } from '@/components/contracts/EditContractDialog';
 import { PaymentDialog } from '@/components/finance/PaymentDialog';
@@ -467,6 +468,10 @@ export default function ContractDetailPage() {
       {/* Wi-Fi (TR-069 ACS) — só faz sentido pra contratos com ONT vinculada,
           mas o próprio card renderiza um aviso quando não há TR-069 device. */}
       <ContractWifiCard contractId={contract.id} />
+
+      {/* Diagnóstico do CPE (TR-069) — óptico/Wi-Fi/alertas; some se não houver
+          CPE gerenciada. Hub do Atendente: evita ir até /tr069 copiar serial. */}
+      <ContractDiagnosticsCard contractId={contract.id} />
 
       {/* Rede neutra Ufinet (PY) — só renderiza se o contrato tem serviço Ufinet */}
       <UfinetStatusPanel contractId={contract.id} />
