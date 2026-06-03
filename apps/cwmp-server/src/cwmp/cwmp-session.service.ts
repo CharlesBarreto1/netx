@@ -190,25 +190,44 @@ export class CwmpSessionService {
       });
       state.deviceDbId = updated.id;
     } else {
-      this.logger.warn(
-        `[CWMP] device órfão (sem ProvisioningService prep) — criando row sem tenantId. ` +
-          `Admin precisa vincular manualmente. device=${inform.deviceId}`,
-      );
-      // Cria placeholder pra admin investigar. tenantId tem que existir
-      // (NOT NULL no schema). Usamos o primeiro tenant ativo como fallback —
-      // suficiente pro MVP single-tenant; multi-tenant exigirá lookup por
-      // SerialNumber → contract.macAddress → contract.tenantId.
-      const anyTenant = await this.prisma.tenant.findFirst({
-        where: { deletedAt: null },
-        select: { id: true },
-        orderBy: { createdAt: 'asc' },
-      });
-      if (!anyTenant) {
-        this.logger.error('[CWMP] nenhum tenant cadastrado — não consigo persistir device órfão');
+      // Device desconhecido: resolve o tenant pela ONT (SN GPON == SerialNumber
+      // do CPE, típico em Huawei). NUNCA cair no "primeiro tenant" — isso
+      // poluía cross-tenant (multi-tenancy estrito). Sem ONT correspondente,
+      // logamos e NÃO persistimos (evita órfão mal-atribuído).
+      const ont = inform.serialNumber
+        ? await this.prisma.ont.findFirst({
+            where: { snGpon: { equals: inform.serialNumber, mode: 'insensitive' } },
+            select: { id: true, tenantId: true, tr069Device: { select: { id: true } } },
+          })
+        : null;
+
+      if (!ont) {
+        this.logger.warn(
+          `[CWMP] device desconhecido sem ONT correspondente (SN=${inform.serialNumber}) — ` +
+            `ignorando p/ não cruzar tenants. device=${inform.deviceId}`,
+        );
+      } else if (ont.tr069Device) {
+        // ONT já tem device (deviceId divergente) — atualiza o existente.
+        const updated = await this.prisma.tr069Device.update({
+          where: { id: ont.tr069Device.id },
+          data: {
+            deviceId: inform.deviceId,
+            manufacturer: inform.manufacturer,
+            oui: inform.oui,
+            productClass: inform.productClass,
+            connectionRequestUrl: inform.connectionRequestUrl,
+            parametersSnapshot: inform.parameters as unknown as object,
+            status: 'ONLINE',
+            lastInformAt: new Date(),
+            lastInformReason: inform.events[0] ?? null,
+          },
+        });
+        state.deviceDbId = updated.id;
       } else {
         const created = await this.prisma.tr069Device.create({
           data: {
-            tenantId: anyTenant.id,
+            tenantId: ont.tenantId,
+            ontId: ont.id,
             deviceId: inform.deviceId,
             manufacturer: inform.manufacturer,
             oui: inform.oui,
@@ -221,6 +240,7 @@ export class CwmpSessionService {
           },
         });
         state.deviceDbId = created.id;
+        this.logger.log(`[CWMP] device vinculado à ONT ${ont.id} via SN — tenant=${ont.tenantId}`);
       }
     }
 
@@ -386,6 +406,13 @@ export class CwmpSessionService {
     });
     if (!device) return;
 
+    // Leitura anterior — pra calcular delta de FEC/HEC (degradação de fibra).
+    const prev = await this.prisma.tr069Diagnostic.findFirst({
+      where: { deviceId: device.id },
+      orderBy: { capturedAt: 'desc' },
+      select: { fecErrors: true, hecErrors: true },
+    });
+
     await this.prisma.tr069Diagnostic.create({
       data: {
         tenantId: device.tenantId,
@@ -429,6 +456,7 @@ export class CwmpSessionService {
     }
 
     await this.evaluateOpticalAlerts(device.tenantId, device.id, diag);
+    await this.evaluateFiberAlert(device.tenantId, device.id, diag, prev);
     this.logger.log(
       `[CWMP] diagnóstico device=${deviceLabel} rx=${diag.rxPower ?? '∅'}dBm ` +
         `tx=${diag.txPower ?? '∅'}dBm health=${diag.opticalHealth} ` +
@@ -502,6 +530,45 @@ export class CwmpSessionService {
       );
     } else if (diag.wifiWorstRssi !== null) {
       await this.resolveAlert(deviceId, Tr069AlertType.WIFI_WEAK_CLIENT);
+    }
+  }
+
+  /**
+   * Alerta de degradação de fibra: FEC/HEC corrigidos subindo entre leituras.
+   * Compara contadores com a leitura anterior; ignora reset (delta negativo).
+   * ⚠️ Limiar em env (TR069_FEC_HEC_DELTA_ALERT, default 1000) — validar com
+   * dados reais; contadores são cumulativos e a unidade varia por firmware.
+   */
+  private async evaluateFiberAlert(
+    tenantId: string,
+    deviceId: string,
+    diag: ExtractedDiagnostics,
+    prev: { fecErrors: bigint | null; hecErrors: bigint | null } | null,
+  ): Promise<void> {
+    const threshold = Number(process.env.TR069_FEC_HEC_DELTA_ALERT ?? '1000');
+    if (
+      !prev ||
+      diag.fecErrors === null ||
+      diag.hecErrors === null ||
+      prev.fecErrors === null ||
+      prev.hecErrors === null
+    ) {
+      return; // sem base de comparação — não mexe no alerta
+    }
+    const fecD = diag.fecErrors - Number(prev.fecErrors);
+    const hecD = diag.hecErrors - Number(prev.hecErrors);
+    const delta = (fecD > 0 ? fecD : 0) + (hecD > 0 ? hecD : 0);
+    if (delta >= threshold) {
+      await this.openAlert(
+        tenantId,
+        deviceId,
+        Tr069AlertType.OPTICAL_FIBER_DEGRADED,
+        Tr069AlertSeverity.WARNING,
+        `Erros ópticos (FEC+HEC) subiram ${delta} desde a última leitura — verifique fibra/conector`,
+        delta,
+      );
+    } else {
+      await this.resolveAlert(deviceId, Tr069AlertType.OPTICAL_FIBER_DEGRADED);
     }
   }
 
