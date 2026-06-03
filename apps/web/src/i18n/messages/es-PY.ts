@@ -2770,6 +2770,12 @@ const messages = {
       queued: 'Acción encolada — se aplicará en el próximo Inform del CPE.',
       noDiagnostic:
         'Aún sin diagnóstico. Hacé clic en "Recolectar diagnóstico" — la lectura llega en el próximo Inform (hasta ~1 min).',
+      diagPending:
+        'Recolección encolada. Esperando que el CPE abra sesión (Inform). Si demora, el equipo puede estar offline o con intervalo de Inform largo.',
+      diagRunning: 'Recolectando diagnóstico ahora…',
+      diagFailed: 'La última recolección falló (el CPE rechazó los parámetros):',
+      diagEmpty:
+        'La recolección terminó pero el CPE no devolvió métricas reconocidas. Verificá HUAWEI_GPON_IFACE_PATH y si la migration fue aplicada.',
       sectionOptical: 'Señal óptica (GPON)',
       sectionWifi: 'Experiencia Wi-Fi',
       sectionInfo: 'Equipo',

@@ -2748,6 +2748,12 @@ const messages = {
       queued: 'Action queued — it will be applied on the next CPE Inform.',
       noDiagnostic:
         'No diagnostics yet. Click "Collect diagnostics" — the reading arrives on the next Inform (up to ~1 min).',
+      diagPending:
+        'Collection queued. Waiting for the CPE to open a session (Inform). If it takes long, the device may be offline or have a long Inform interval.',
+      diagRunning: 'Collecting diagnostics now…',
+      diagFailed: 'The last collection failed (the CPE rejected the parameters):',
+      diagEmpty:
+        'Collection finished but the CPE returned no recognized metrics. Check HUAWEI_GPON_IFACE_PATH and whether the migration was applied.',
       sectionOptical: 'Optical signal (GPON)',
       sectionWifi: 'Wi-Fi experience',
       sectionInfo: 'Equipment',

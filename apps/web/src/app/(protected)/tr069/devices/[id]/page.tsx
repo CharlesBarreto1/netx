@@ -136,6 +136,7 @@ export default function Tr069DeviceDetailPage() {
 
   const d = data;
   const latest = d.latest;
+  const lastDiagTask = d.recentTasks.find((task) => task.action === 'GET_PARAMS');
   const rxPoints = (history ?? [])
     .map((h: Tr069DiagnosticDto) => h.rxPower)
     .filter((v): v is number => v !== null)
@@ -191,8 +192,21 @@ export default function Tr069DeviceDetailPage() {
       )}
 
       {!latest ? (
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-          {t('detail.noDiagnostic')}
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-6 text-center text-sm dark:border-slate-800 dark:bg-slate-900">
+          {lastDiagTask?.status === 'FAILED' ? (
+            <div className="text-red-700 dark:text-red-300">
+              <p className="font-medium">{t('detail.diagFailed')}</p>
+              <p className="mt-1 font-mono text-xs">{lastDiagTask.error ?? '—'}</p>
+            </div>
+          ) : lastDiagTask?.status === 'RUNNING' ? (
+            <p className="text-slate-500 dark:text-slate-400">{t('detail.diagRunning')}</p>
+          ) : lastDiagTask?.status === 'PENDING' ? (
+            <p className="text-slate-500 dark:text-slate-400">{t('detail.diagPending')}</p>
+          ) : lastDiagTask?.status === 'DONE' ? (
+            <p className="text-amber-700 dark:text-amber-300">{t('detail.diagEmpty')}</p>
+          ) : (
+            <p className="text-slate-500 dark:text-slate-400">{t('detail.noDiagnostic')}</p>
+          )}
         </div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
