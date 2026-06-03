@@ -250,7 +250,7 @@ export class ComodatoService {
     tenantId: string,
     actorUserId: string,
     input: { serialItemId: string; toLocationId: string; notes?: string | null },
-    options: { isAdmin?: boolean } = {},
+    options: { isAdmin?: boolean; skipOntLinkGuard?: boolean } = {},
   ) {
     // Pré-check de ACL fora da transaction (mais barato).
     // Admin bypassa; demais usuários precisam ter canWrite=true no local.
@@ -274,6 +274,30 @@ export class ComodatoService {
         throw new BadRequestException(
           'Serial em ALLOCATED mas sem contractId — estado inconsistente',
         );
+      }
+
+      // Guarda-rail: bloqueia devolver avulsa uma ONT que ainda é a ONT
+      // PROVISIONADA do contrato (Ont.snGpon == serial). Devolver só o item de
+      // estoque deixaria a Ont row + Tr069Device apontando pro equipamento
+      // antigo — o TR-069 não atualiza e o contrato fica inconsistente. A troca
+      // correta passa pelo swapOnt (que repassa skipOntLinkGuard=true).
+      if (!options.skipOntLinkGuard) {
+        const linkedOnt = await tx.ont.findFirst({
+          where: {
+            tenantId,
+            contractId: serial.contractId,
+            snGpon: { equals: serial.serial, mode: 'insensitive' },
+          },
+          select: { id: true },
+        });
+        if (linkedOnt) {
+          throw new ConflictException(
+            'Esta ONT está provisionada e vinculada ao contrato no TR-069. ' +
+              'Para trocar o equipamento use "Trocar ONT" no contrato (ou a O.S de ' +
+              'troca) — esse fluxo devolve a antiga e atualiza o provisionamento. ' +
+              'A devolução avulsa deixaria o contrato inconsistente.',
+          );
+        }
       }
 
       // Confere que o local existe (e é mesmo tenant)

@@ -130,6 +130,23 @@ export interface InstallCustomerRequest {
   ufinetPort?: string | null;
 }
 
+export interface OntSwapRequest {
+  /** ONT nova do estoque (caminho normal). */
+  newSerialItemId?: string | null;
+  /** Serial manual — só com allowStockBypass=true. */
+  newSnGpon?: string | null;
+  allowStockBypass?: boolean;
+  /** Local de estoque onde devolver a ONT antiga. */
+  returnLocationId: string;
+  ssid: string;
+  wifiPassword: string;
+  wifiBandMode?: 'BAND_STEERING' | 'DUAL_BAND';
+}
+
+export interface OntSwapResponse {
+  status: 'OK' | 'PARTIAL' | 'FAILED';
+}
+
 export interface InstallTimelineEvent {
   action:
     | 'OLT_AUTHORIZE'
@@ -371,6 +388,8 @@ export const provisioningApi = {
     api.get<Paginated<PendingInstallItem>>(`/v1/provisioning/pending${qs(params)}`),
   install: (contractId: string, body: InstallCustomerRequest) =>
     api.post<InstallCustomerResponse>(`/v1/provisioning/install/${contractId}`, body),
+  swapOnt: (contractId: string, body: OntSwapRequest) =>
+    api.post<OntSwapResponse>(`/v1/provisioning/contracts/${contractId}/swap-ont`, body),
   ontStatus: (ontId: string) => api.get<OntStatusResponse>(`/v1/provisioning/onts/${ontId}/status`),
 };
 

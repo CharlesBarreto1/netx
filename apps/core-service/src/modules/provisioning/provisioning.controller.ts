@@ -38,6 +38,7 @@ import {
   ListTr069AlertsQuerySchema,
   ListTr069DiagnosticsQuerySchema,
   ListWifiCoverageQuerySchema,
+  OntSwapSchema,
   PingRequestSchema,
   SpeedTestRequestSchema,
   UpdateOltRequestSchema,
@@ -50,6 +51,7 @@ import {
   type ListTr069AlertsQuery,
   type ListTr069DiagnosticsQuery,
   type ListWifiCoverageQuery,
+  type OntSwap,
   type PingRequest,
   type SpeedTestRequest,
   type UpdateOltRequest,
@@ -159,6 +161,22 @@ export class ProvisioningController {
     @ZodBody(InstallCustomerRequestSchema) input: InstallCustomerRequest,
   ) {
     return this.svc.installCustomer(user.tenantId, user.sub, contractId, input);
+  }
+
+  /**
+   * Troca administrativa da ONT de um contrato (sem abrir O.S de campo).
+   * Devolve a ONT antiga ao estoque, provisiona a nova e — crucial —
+   * re-cadastra device + Wi-Fi no TR-069 (mesma rotina da O.S SUPPORT_SWAP).
+   */
+  @Post('contracts/:contractId/swap-ont')
+  @HttpCode(200)
+  @RequirePermissions('provisioning.write')
+  swapOnt(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('contractId', new ParseUUIDPipe()) contractId: string,
+    @ZodBody(OntSwapSchema) input: OntSwap,
+  ) {
+    return this.svc.swapOnt(user.tenantId, user.sub, contractId, input);
   }
 
   /** Poll do status da ONT pós-install. */

@@ -35,6 +35,7 @@ import { ContractUsageChart } from '@/components/contracts/ContractUsageChart';
 import { ContractDiagnosticsCard } from '@/components/contracts/ContractDiagnosticsCard';
 import { UfinetStatusPanel } from '@/components/contracts/UfinetStatusPanel';
 import { EditContractDialog } from '@/components/contracts/EditContractDialog';
+import { SwapOntDialog } from '@/components/contracts/SwapOntDialog';
 import { PaymentDialog } from '@/components/finance/PaymentDialog';
 
 import { StatusBadge } from '../_components/StatusBadge';
@@ -53,6 +54,7 @@ export default function ContractDetailPage() {
 
   const canWrite = hasPermission('contracts.write');
   const canDelete = hasPermission('contracts.delete');
+  const canProvision = hasPermission('provisioning.write');
   const canEmitSifen = hasPermission('sifen.emit');
   const tenantConfig = useTenantConfig();
   const tenantCountry = tenantConfig?.tenant?.country ?? null;
@@ -85,6 +87,7 @@ export default function ContractDetailPage() {
   const [cancelOpen, setCancelOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
+  const [swapOpen, setSwapOpen] = useState(false);
 
   const [noteValue, setNoteValue] = useState('');
   const [busy, setBusy] = useState(false);
@@ -241,6 +244,11 @@ export default function ContractDetailPage() {
               {tCommon('edit')}
             </Button>
           )}
+          {canProvision && isActive && (
+            <Button variant="outline" size="sm" onClick={() => setSwapOpen(true)}>
+              {tDetail('swapOnt')}
+            </Button>
+          )}
           {canWrite && isActive && (
             <Button variant="outline" size="sm" onClick={() => setSuspendOpen(true)}>
               {tDetail('suspendContract')}
@@ -291,6 +299,19 @@ export default function ContractDetailPage() {
           contract={contract}
           onClose={() => setEditOpen(false)}
           onUpdated={() => {
+            void refresh();
+          }}
+        />
+      )}
+
+      {/* Troca de ONT (administrativo — reusa o swapOnt, atualiza o TR-069) */}
+      {swapOpen && (
+        <SwapOntDialog
+          contractId={contract.id}
+          onClose={() => setSwapOpen(false)}
+          onDone={() => {
+            setSwapOpen(false);
+            toast.success(tDetail('swapOntDone'));
             void refresh();
           }}
         />

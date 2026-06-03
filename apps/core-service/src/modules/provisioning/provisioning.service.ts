@@ -669,7 +669,7 @@ export class ProvisioningService {
         tenantId,
         actorUserId,
         { serialItemId: oldComodato.id, toLocationId: input.returnLocationId, notes: 'Troca de ONT (O.S)' },
-        { isAdmin: true },
+        { isAdmin: true, skipOntLinkGuard: true },
       );
     }
 
@@ -756,7 +756,7 @@ export class ProvisioningService {
         tenantId,
         actorUserId,
         { serialItemId: s.id, toLocationId: input.returnLocationId, notes: 'Retirada de equipamento (O.S)' },
-        { isAdmin: true },
+        { isAdmin: true, skipOntLinkGuard: true },
       );
     }
     const ont = await this.prisma.ont.findFirst({ where: { tenantId, contractId } });
