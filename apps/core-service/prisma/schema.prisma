@@ -2889,6 +2889,7 @@ enum Tr069AlertType {
   DEVICE_OFFLINE      // CPE sem Inform há mais de N intervalos
   WIFI_WEAK_CLIENT    // cliente Wi-Fi com RSSI muito baixo (cobertura ruim)
   WIFI_HIGH_UTIL      // utilização de canal alta (congestionamento)
+  OPTICAL_FIBER_DEGRADED // FEC/HEC subindo — fibra suja/conector ruim
 }
 
 enum Tr069AlertSeverity {

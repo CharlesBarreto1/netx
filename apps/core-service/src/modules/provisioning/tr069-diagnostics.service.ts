@@ -48,6 +48,8 @@ const DIAGNOSTIC_INTERVAL_MIN = parseInt(process.env.TR069_DIAGNOSTIC_INTERVAL_M
 const OFFLINE_AFTER_MIN = parseInt(process.env.TR069_OFFLINE_AFTER_MIN ?? '10', 10);
 /** Quantos devices processar por tick de cron (proteção contra varredura gigante). */
 const CRON_BATCH = 200;
+/** Dias de retenção da série temporal de diagnóstico (limpeza diária). */
+const RETENTION_DAYS = parseInt(process.env.TR069_DIAGNOSTIC_RETENTION_DAYS ?? '30', 10);
 
 function dec(d: Prisma.Decimal | null): number | null {
   return d === null ? null : Number(d);
@@ -365,6 +367,19 @@ export class Tr069DiagnosticsService {
       }
     }
     if (armed > 0) this.logger.log(`[TR-069] notificações armadas em ${armed} device(s)`);
+  }
+
+  /** Retenção: apaga diagnósticos antigos (a série cresce a cada Inform). */
+  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  async pruneOldDiagnostics(): Promise<void> {
+    if (RETENTION_DAYS <= 0) return;
+    const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60_000);
+    const res = await this.prisma.tr069Diagnostic.deleteMany({
+      where: { capturedAt: { lt: cutoff } },
+    });
+    if (res.count > 0) {
+      this.logger.log(`[TR-069] retenção: ${res.count} diagnóstico(s) > ${RETENTION_DAYS}d removidos`);
+    }
   }
 
   /** Coleta proativa — enfileira diagnóstico pros devices ONLINE com leitura velha. */
