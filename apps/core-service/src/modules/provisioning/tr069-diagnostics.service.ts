@@ -27,6 +27,7 @@ import {
   type Tr069AlertDto,
   type Tr069DeviceDetailResponse,
   type Tr069DiagnosticDto,
+  type Tr069LanHost,
   type Tr069RefreshResponse,
   type Tr069TaskDto,
   type Tr069WifiClient,
@@ -478,6 +479,11 @@ export class Tr069DiagnosticsService {
     hecErrors: bigint | null;
     dropRate: Prisma.Decimal | null;
     errorRate: Prisma.Decimal | null;
+    pppStatus: string | null;
+    pppLastError: string | null;
+    wanUptime: number | null;
+    hostsCount: number | null;
+    hosts: Prisma.JsonValue | null;
     wifiClients24: number | null;
     wifiClients5: number | null;
     wifiChannel24: number | null;
@@ -499,6 +505,11 @@ export class Tr069DiagnosticsService {
       hecErrors: r.hecErrors === null ? null : Number(r.hecErrors),
       dropRate: dec(r.dropRate),
       errorRate: dec(r.errorRate),
+      pppStatus: r.pppStatus,
+      pppLastError: r.pppLastError,
+      wanUptime: r.wanUptime,
+      hostsCount: r.hostsCount,
+      hosts: Array.isArray(r.hosts) ? (r.hosts as unknown as Tr069LanHost[]) : [],
       wifiClients24: r.wifiClients24,
       wifiClients5: r.wifiClients5,
       wifiChannel24: r.wifiChannel24,

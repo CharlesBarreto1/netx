@@ -152,6 +152,23 @@ export function huaweiNotificationAttributes(): Array<{ name: string; notificati
   ];
 }
 
+/**
+ * Diagnóstico da WAN PPPoE (lado do CPE) — responde "por que o cliente não
+ * conecta?" sem olhar o RADIUS. Mesmo índice de WAN do provisionamento.
+ */
+export const HUAWEI_PPP_PATHS = {
+  status: `${pppPrefix}.ConnectionStatus`,
+  lastError: `${pppPrefix}.LastConnectionError`,
+  uptime: `${pppPrefix}.Uptime`,
+} as const;
+
+/** Caminho PARCIAL da tabela de hosts (dispositivos na LAN do cliente). */
+export const HUAWEI_HOSTS_PATH = 'InternetGatewayDevice.LANDevice.1.Hosts.Host.';
+
+/** Toggles — desligue se algum firmware der fault no GET (o óptico vem por Inform). */
+export const HUAWEI_PPP_DIAG_ENABLED = (process.env.TR069_PPP_ENABLED ?? '1') !== '0';
+export const HUAWEI_HOSTS_ENABLED = (process.env.TR069_HOSTS_ENABLED ?? '1') !== '0';
+
 /** Paths de diagnóstico Wi-Fi (agregado por banda). */
 export const HUAWEI_WIFI_DIAG_PATHS = {
   clients24: `${WLAN_24}.TotalAssociations`,
@@ -189,7 +206,9 @@ export function huaweiDiagnosticParamNames(): string[] {
     ...Object.values(HUAWEI_OPTICAL_PATHS),
     HUAWEI_GPON_STATUS_PATH,
     ...Object.values(HUAWEI_GPON_STATS_PATHS),
+    ...(HUAWEI_PPP_DIAG_ENABLED ? Object.values(HUAWEI_PPP_PATHS) : []),
     ...Object.values(HUAWEI_WIFI_DIAG_PATHS),
     ...(HUAWEI_WIFI_CLIENTS_ENABLED ? Object.values(HUAWEI_WIFI_ASSOC_PATHS) : []),
+    ...(HUAWEI_HOSTS_ENABLED ? [HUAWEI_HOSTS_PATH] : []),
   ];
 }

@@ -428,6 +428,11 @@ export class CwmpSessionService {
         hecErrors: diag.hecErrors,
         dropRate: diag.dropRate,
         errorRate: diag.errorRate,
+        pppStatus: diag.pppStatus,
+        pppLastError: diag.pppLastError,
+        wanUptime: diag.wanUptime,
+        hostsCount: diag.hosts.length || null,
+        hosts: diag.hosts.length ? (diag.hosts as unknown as object) : undefined,
         wifiClients24: diag.wifiClients24,
         wifiClients5: diag.wifiClients5,
         wifiChannel24: diag.wifiChannel24,
@@ -457,6 +462,7 @@ export class CwmpSessionService {
 
     await this.evaluateOpticalAlerts(device.tenantId, device.id, diag);
     await this.evaluateFiberAlert(device.tenantId, device.id, diag, prev);
+    await this.evaluateWanAlert(device.tenantId, device.id, diag);
     this.logger.log(
       `[CWMP] diagnóstico device=${deviceLabel} rx=${diag.rxPower ?? '∅'}dBm ` +
         `tx=${diag.txPower ?? '∅'}dBm health=${diag.opticalHealth} ` +
@@ -570,6 +576,32 @@ export class CwmpSessionService {
     } else {
       await this.resolveAlert(deviceId, Tr069AlertType.OPTICAL_FIBER_DEGRADED);
     }
+  }
+
+  /**
+   * Alerta de WAN/PPPoE caída pelo lado do CPE. Abre quando ConnectionStatus
+   * não está "Connected" (e o CPE ainda alcança o ACS pela WAN de gerência);
+   * resolve quando reconecta. Mostra o LastConnectionError pra triagem.
+   */
+  private async evaluateWanAlert(
+    tenantId: string,
+    deviceId: string,
+    diag: ExtractedDiagnostics,
+  ): Promise<void> {
+    if (diag.pppStatus === null) return; // sem dado de PPP — não mexe
+    if (/connected/i.test(diag.pppStatus)) {
+      await this.resolveAlert(deviceId, Tr069AlertType.WAN_DOWN);
+      return;
+    }
+    const err = diag.pppLastError && !/ERROR_NONE/i.test(diag.pppLastError) ? ` (${diag.pppLastError})` : '';
+    await this.openAlert(
+      tenantId,
+      deviceId,
+      Tr069AlertType.WAN_DOWN,
+      Tr069AlertSeverity.WARNING,
+      `WAN do cliente não conectada: ${diag.pppStatus}${err}`,
+      null,
+    );
   }
 
   /**

@@ -336,6 +336,15 @@ export default function Tr069DeviceDetailPage() {
                 value={d.lastDiagnosticAt ? new Date(d.lastDiagnosticAt).toLocaleString('pt-BR') : null}
               />
               {d.ont && <Info label={t('detail.snGpon')} value={d.ont.snGpon} mono />}
+              {latest?.pppStatus != null && (
+                <Info label={t('detail.wanStatus')} value={latest.pppStatus} />
+              )}
+              {latest?.pppLastError != null && (
+                <Info label={t('detail.wanError')} value={latest.pppLastError} />
+              )}
+              {latest?.hostsCount != null && (
+                <Info label={t('detail.hostsCount')} value={String(latest.hostsCount)} />
+              )}
             </dl>
           </CardContent>
         </Card>

@@ -2890,6 +2890,7 @@ enum Tr069AlertType {
   WIFI_WEAK_CLIENT    // cliente Wi-Fi com RSSI muito baixo (cobertura ruim)
   WIFI_HIGH_UTIL      // utilização de canal alta (congestionamento)
   OPTICAL_FIBER_DEGRADED // FEC/HEC subindo — fibra suja/conector ruim
+  WAN_DOWN            // PPPoE/WAN do cliente caiu (erro de autenticação etc.)
 }
 
 enum Tr069AlertSeverity {
@@ -2927,6 +2928,15 @@ model Tr069Diagnostic {
   hecErrors     BigInt?  @map("hec_errors")    // erros de HEC (contador)
   dropRate      Decimal? @map("drop_rate") @db.Decimal(8, 3)
   errorRate     Decimal? @map("error_rate") @db.Decimal(8, 3)
+
+  // ── WAN/PPPoE (lado do CPE — diagnóstico de autenticação/conexão) ───────────
+  pppStatus     String?  @map("ppp_status") @db.VarChar(32)   // Connected/Disconnected/...
+  pppLastError  String?  @map("ppp_last_error") @db.VarChar(64)
+  wanUptime     Int?     @map("wan_uptime")   // segundos
+
+  // ── Hosts da LAN (dispositivos conectados na casa do cliente) ───────────────
+  hostsCount    Int?     @map("hosts_count")
+  hosts         Json?    // [{mac,ip,hostname,active}]
 
   // ── Wi-Fi (agregado por banda) ─────────────────────────────────────────────
   wifiClients24 Int?     @map("wifi_clients_24")

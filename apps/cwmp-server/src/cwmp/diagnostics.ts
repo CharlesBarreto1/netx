@@ -40,6 +40,16 @@ const STATS_PATHS = {
   errorRate: `${GPON_IFACE}.Stats.ErrorRate`,
 };
 
+const PPP_WAN_INDEX = process.env.HUAWEI_PPPOE_WAN_INDEX ?? '2';
+const PPP_PREFIX = `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${PPP_WAN_INDEX}.WANPPPConnection.1`;
+const PPP_PATHS = {
+  status: `${PPP_PREFIX}.ConnectionStatus`,
+  lastError: `${PPP_PREFIX}.LastConnectionError`,
+  uptime: `${PPP_PREFIX}.Uptime`,
+};
+// Regex de host da LAN: ...Hosts.Host.{i}.{campo}
+const HOST_RE = /Hosts\.Host\.(\d+)\.(.+)$/;
+
 const WIFI_PATHS = {
   clients24: `${WLAN_24}.TotalAssociations`,
   clients5: `${WLAN_50}.TotalAssociations`,
@@ -76,6 +86,13 @@ export interface WifiClient {
   rxRate: number | null;
 }
 
+export interface LanHost {
+  mac: string | null;
+  ip: string | null;
+  hostname: string | null;
+  active: boolean | null;
+}
+
 export interface ExtractedDiagnostics {
   rxPower: number | null;
   txPower: number | null;
@@ -88,6 +105,10 @@ export interface ExtractedDiagnostics {
   hecErrors: number | null;
   dropRate: number | null;
   errorRate: number | null;
+  pppStatus: string | null;
+  pppLastError: string | null;
+  wanUptime: number | null;
+  hosts: LanHost[];
   wifiClients24: number | null;
   wifiClients5: number | null;
   wifiChannel24: number | null;
@@ -212,9 +233,30 @@ export function extractWifiClients(params: Record<string, string>): {
   return { clients, worstRssi };
 }
 
+/** Reconstrói a tabela de hosts da LAN a partir da subárvore Hosts.Host. */
+export function extractLanHosts(params: Record<string, string>): LanHost[] {
+  const byIdx = new Map<string, LanHost>();
+  for (const [name, value] of Object.entries(params)) {
+    const m = HOST_RE.exec(name);
+    if (!m) continue;
+    const [, idx, field] = m;
+    let h = byIdx.get(idx);
+    if (!h) {
+      h = { mac: null, ip: null, hostname: null, active: null };
+      byIdx.set(idx, h);
+    }
+    if (/MACAddress/i.test(field)) h.mac = value || null;
+    else if (/IPAddress/i.test(field)) h.ip = value || null;
+    else if (/HostName/i.test(field)) h.hostname = value || null;
+    else if (/^Active$/i.test(field)) h.active = value === '1' || /true/i.test(value);
+  }
+  return [...byIdx.values()].filter((h) => h.mac !== null || h.ip !== null);
+}
+
 /** Extrai métricas de diagnóstico de uma ParameterList já achatada. */
 export function extractDiagnostics(params: Record<string, string>): ExtractedDiagnostics {
   const { clients: wifiClients, worstRssi: wifiWorstRssi } = extractWifiClients(params);
+  const hosts = extractLanHosts(params);
   const rxPower = normalizePower(params[OPTICAL_PATHS.rxPower]);
   const txPower = normalizePower(params[OPTICAL_PATHS.txPower]);
   const temperature = numOrNull(params[OPTICAL_PATHS.temperature]);
@@ -240,6 +282,10 @@ export function extractDiagnostics(params: Record<string, string>): ExtractedDia
     hecErrors: intOrNull(params[STATS_PATHS.hecErrors]),
     dropRate: numOrNull(params[STATS_PATHS.dropRate]),
     errorRate: numOrNull(params[STATS_PATHS.errorRate]),
+    pppStatus: params[PPP_PATHS.status] || null,
+    pppLastError: params[PPP_PATHS.lastError] || null,
+    wanUptime: intOrNull(params[PPP_PATHS.uptime]),
+    hosts,
     wifiClients24: intOrNull(params[WIFI_PATHS.clients24]),
     wifiClients5: intOrNull(params[WIFI_PATHS.clients5]),
     wifiChannel24: intOrNull(params[WIFI_PATHS.channel24]),

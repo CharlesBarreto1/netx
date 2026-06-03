@@ -223,6 +223,13 @@ export interface Tr069WifiClient {
   rxRate: number | null;
 }
 
+export interface Tr069LanHost {
+  mac: string | null;
+  ip: string | null;
+  hostname: string | null;
+  active: boolean | null;
+}
+
 export interface Tr069DiagnosticDto {
   id: string;
   capturedAt: string;
@@ -237,6 +244,11 @@ export interface Tr069DiagnosticDto {
   hecErrors: number | null;
   dropRate: number | null;
   errorRate: number | null;
+  pppStatus: string | null;
+  pppLastError: string | null;
+  wanUptime: number | null;
+  hostsCount: number | null;
+  hosts: Tr069LanHost[];
   wifiClients24: number | null;
   wifiClients5: number | null;
   wifiChannel24: number | null;
