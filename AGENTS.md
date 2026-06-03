@@ -173,7 +173,7 @@ sudo journalctl -u netx-web -f
 sudo journalctl -u netx-api-gateway -f
 
 # DB
-sudo -u postgres psql netx_app
+sudo -u postgres psql netx
 ```
 
 ### Paths em produção

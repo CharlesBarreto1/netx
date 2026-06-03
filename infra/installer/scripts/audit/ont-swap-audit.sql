@@ -7,7 +7,7 @@
 -- SEM passar pelo swapOnt — então onts/tr069_devices continuam no equipamento antigo.
 --
 -- Como rodar na VPS:
---   sudo -u postgres psql netx_app -f /opt/netx/infra/installer/scripts/audit/ont-swap-audit.sql
+--   sudo -u postgres psql netx -f /opt/netx/infra/installer/scripts/audit/ont-swap-audit.sql
 -- Ou colar este conteúdo direto no psql.
 --
 -- O elo Ont↔SerialItem é só o serial (onts.sn_gpon == serial_items.serial); não há
