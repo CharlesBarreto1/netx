@@ -539,7 +539,7 @@ export class CwmpSessionService {
 
     const device = await this.prisma.tr069Device.findUnique({
       where: { id: deviceDbId },
-      select: { id: true, tenantId: true, ontId: true },
+      select: { id: true, tenantId: true, ontId: true, lastDiagnosticAt: true },
     });
     if (!device) return;
 
@@ -550,41 +550,55 @@ export class CwmpSessionService {
       select: { fecErrors: true, hecErrors: true },
     });
 
-    await this.prisma.tr069Diagnostic.create({
-      data: {
-        tenantId: device.tenantId,
-        deviceId: device.id,
-        rxPower: diag.rxPower,
-        txPower: diag.txPower,
-        temperature: diag.temperature,
-        voltage: diag.voltage,
-        biasCurrent: diag.biasCurrent,
-        opticalHealth: diag.opticalHealth,
-        gponStatus: diag.gponStatus,
-        fecErrors: diag.fecErrors,
-        hecErrors: diag.hecErrors,
-        dropRate: diag.dropRate,
-        errorRate: diag.errorRate,
-        pppStatus: diag.pppStatus,
-        pppLastError: diag.pppLastError,
-        wanUptime: diag.wanUptime,
-        hostsCount: diag.hosts.length || null,
-        hosts: diag.hosts.length ? (diag.hosts as unknown as object) : undefined,
-        wifiClients24: diag.wifiClients24,
-        wifiClients5: diag.wifiClients5,
-        wifiChannel24: diag.wifiChannel24,
-        wifiChannel5: diag.wifiChannel5,
-        wifiWorstRssi: diag.wifiWorstRssi,
-        wifiAvgRssi: diag.wifiAvgRssi,
-        wifiClients: diag.wifiClients as unknown as object,
-        raw: diag.raw as unknown as object,
-      },
-    });
+    // THROTTLE da série temporal: com notificações armadas o CPE informa a cada
+    // ~60s; gravar 1 linha/min/device inflaria o banco. Gravamos no máximo 1
+    // ponto a cada TR069_DIAGNOSTIC_MIN_INTERVAL_MIN (default 10) — suficiente
+    // pra tendência/ranking. `force=true` (coleta manual) ignora o throttle.
+    // Alertas e níveis da ONT são SEMPRE atualizados abaixo (real-time preservado).
+    const minIntervalMs = parseInt(process.env.TR069_DIAGNOSTIC_MIN_INTERVAL_MIN ?? '10', 10) * 60_000;
+    const writeSeries =
+      warnIfEmpty || // coleta manual sempre grava
+      !device.lastDiagnosticAt ||
+      Date.now() - device.lastDiagnosticAt.getTime() >= minIntervalMs;
 
-    await this.prisma.tr069Device.update({
-      where: { id: device.id },
-      data: { lastDiagnosticAt: new Date() },
-    });
+    if (writeSeries) {
+      await this.prisma.tr069Diagnostic.create({
+        data: {
+          tenantId: device.tenantId,
+          deviceId: device.id,
+          rxPower: diag.rxPower,
+          txPower: diag.txPower,
+          temperature: diag.temperature,
+          voltage: diag.voltage,
+          biasCurrent: diag.biasCurrent,
+          opticalHealth: diag.opticalHealth,
+          gponStatus: diag.gponStatus,
+          fecErrors: diag.fecErrors,
+          hecErrors: diag.hecErrors,
+          dropRate: diag.dropRate,
+          errorRate: diag.errorRate,
+          pppStatus: diag.pppStatus,
+          pppLastError: diag.pppLastError,
+          wanUptime: diag.wanUptime,
+          hostsCount: diag.hosts.length || null,
+          hosts: diag.hosts.length ? (diag.hosts as unknown as object) : undefined,
+          wifiClients24: diag.wifiClients24,
+          wifiClients5: diag.wifiClients5,
+          wifiChannel24: diag.wifiChannel24,
+          wifiChannel5: diag.wifiChannel5,
+          wifiWorstRssi: diag.wifiWorstRssi,
+          wifiAvgRssi: diag.wifiAvgRssi,
+          wifiClients: diag.wifiClients as unknown as object,
+          // `raw` (mapa completo) só na coleta manual — é o que mais pesa. O
+          // snapshot mais recente já vive em tr069_devices.parametersSnapshot.
+          raw: warnIfEmpty ? (diag.raw as unknown as object) : undefined,
+        },
+      });
+      await this.prisma.tr069Device.update({
+        where: { id: device.id },
+        data: { lastDiagnosticAt: new Date() },
+      });
+    }
 
     // Denormaliza os últimos níveis na ONT (mesma fonte que o poll de OLT usa).
     if (device.ontId && (diag.rxPower !== null || diag.txPower !== null)) {
