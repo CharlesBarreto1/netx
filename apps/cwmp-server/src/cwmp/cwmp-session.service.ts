@@ -674,6 +674,27 @@ export class CwmpSessionService {
     } else if (diag.wifiWorstRssi !== null) {
       await this.resolveAlert(deviceId, Tr069AlertType.WIFI_WEAK_CLIENT);
     }
+
+    // Congestionamento Wi-Fi. ⚠️ O firmware HW_WAP_CWMP_V02 NÃO expõe utilização
+    // de canal (airtime), então usamos um PROXY: nº de clientes associados por
+    // banda. Acima de TR069_WIFI_MAX_CLIENTS (default 20) abre WIFI_HIGH_UTIL.
+    if (diag.wifiClients24 !== null || diag.wifiClients5 !== null) {
+      const maxClients = Number(process.env.TR069_WIFI_MAX_CLIENTS ?? '20');
+      const c24 = diag.wifiClients24 ?? 0;
+      const c5 = diag.wifiClients5 ?? 0;
+      if (c24 >= maxClients || c5 >= maxClients) {
+        await this.openAlert(
+          tenantId,
+          deviceId,
+          Tr069AlertType.WIFI_HIGH_UTIL,
+          Tr069AlertSeverity.WARNING,
+          `Wi-Fi congestionado: ${c24} cliente(s) em 2.4GHz / ${c5} em 5GHz (limite ${maxClients})`,
+          Math.max(c24, c5),
+        );
+      } else {
+        await this.resolveAlert(deviceId, Tr069AlertType.WIFI_HIGH_UTIL);
+      }
+    }
   }
 
   /**
