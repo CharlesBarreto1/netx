@@ -39,6 +39,7 @@ export interface ContractWifiStatus {
     action:
       | 'SET_PARAMS'
       | 'GET_PARAMS'
+      | 'SET_ATTRIBUTES'
       | 'REBOOT'
       | 'FACTORY_RESET'
       | 'DOWNLOAD'

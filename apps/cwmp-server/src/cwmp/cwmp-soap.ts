@@ -252,6 +252,41 @@ export function buildGetParameterValues(cwmpId: string, names: string[]): string
   });
 }
 
+export interface SetAttr {
+  name: string;
+  /** 0 = none, 1 = passive (vai junto no Inform periódico), 2 = active (Inform na hora). */
+  notification: 0 | 1 | 2;
+}
+
+/**
+ * SetParameterAttributes — marca parâmetros pra notificação. Passiva (1) faz o
+ * valor ser incluído no Inform periódico (lemos óptico sem GET); ativa (2) faz
+ * o CPE mandar Inform assim que o valor muda (ex.: Status do GPON).
+ */
+export function buildSetParameterAttributes(cwmpId: string, attrs: SetAttr[]): string {
+  const items = attrs
+    .map(
+      (a) =>
+        '<SetParameterAttributesStruct>' +
+        `<Name>${escapeXml(a.name)}</Name>` +
+        '<NotificationChange>true</NotificationChange>' +
+        `<Notification>${a.notification}</Notification>` +
+        '<AccessListChange>false</AccessListChange>' +
+        '<AccessList soap-enc:arrayType="xsd:string[0]" ' +
+        'xmlns:soap-enc="http://schemas.xmlsoap.org/soap/encoding/"></AccessList>' +
+        '</SetParameterAttributesStruct>',
+    )
+    .join('');
+  const arrayAttr = `soap-enc:arrayType="cwmp:SetParameterAttributesStruct[${attrs.length}]" xmlns:soap-enc="http://schemas.xmlsoap.org/soap/encoding/"`;
+  return buildEnvelope({
+    cwmpId,
+    bodyXml:
+      '<cwmp:SetParameterAttributes>' +
+      `<ParameterList ${arrayAttr}>${items}</ParameterList>` +
+      '</cwmp:SetParameterAttributes>',
+  });
+}
+
 export function buildReboot(cwmpId: string, commandKey = ''): string {
   return buildEnvelope({
     cwmpId,

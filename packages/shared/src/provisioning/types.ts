@@ -50,6 +50,7 @@ export type WifiBandMode = z.infer<typeof WifiBandModeSchema>;
 export const TR069_TASK_ACTIONS = [
   'SET_PARAMS',
   'GET_PARAMS',
+  'SET_ATTRIBUTES',
   'REBOOT',
   'FACTORY_RESET',
   'DOWNLOAD',

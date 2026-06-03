@@ -23,7 +23,9 @@ import {
   buildFactoryReset,
   buildGetParameterValues,
   buildReboot,
+  buildSetParameterAttributes,
   buildSetParameterValues,
+  type SetAttr,
   type SetParam,
 } from './cwmp-soap';
 
@@ -35,6 +37,9 @@ interface SetParamsPayload {
 }
 interface GetParamsPayload {
   names: string[];
+}
+interface SetAttributesPayload {
+  attributes: SetAttr[];
 }
 
 /**
@@ -64,6 +69,13 @@ export function buildRpcForTask(task: Tr069Task): { xml: string; cwmpId: string 
         throw new Error(`GET_PARAMS task ${task.id} sem names`);
       }
       return { xml: buildGetParameterValues(cwmpId, p.names), cwmpId };
+    }
+    case 'SET_ATTRIBUTES': {
+      const p = payload as SetAttributesPayload;
+      if (!Array.isArray(p?.attributes) || p.attributes.length === 0) {
+        throw new Error(`SET_ATTRIBUTES task ${task.id} sem attributes`);
+      }
+      return { xml: buildSetParameterAttributes(cwmpId, p.attributes), cwmpId };
     }
     case 'REBOOT': {
       return { xml: buildReboot(cwmpId, task.id), cwmpId };
@@ -111,6 +123,7 @@ export function isResponseForTask(taskAction: Tr069Task['action'], rpcKind: stri
   const expected: Record<Tr069Task['action'], string> = {
     SET_PARAMS: 'SetParameterValuesResponse',
     GET_PARAMS: 'GetParameterValuesResponse',
+    SET_ATTRIBUTES: 'SetParameterAttributesResponse',
     REBOOT: 'RebootResponse',
     FACTORY_RESET: 'FactoryResetResponse',
     DOWNLOAD: 'DownloadResponse',

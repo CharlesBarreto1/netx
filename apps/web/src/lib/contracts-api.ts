@@ -325,7 +325,7 @@ export interface ContractWifiStatus {
   hasTr069Device: boolean;
   lastTask: {
     id: string;
-    action: 'SET_PARAMS' | 'GET_PARAMS' | 'REBOOT' | 'FACTORY_RESET' | 'DOWNLOAD' | 'ADD_OBJECT' | 'DELETE_OBJECT';
+    action: 'SET_PARAMS' | 'GET_PARAMS' | 'SET_ATTRIBUTES' | 'REBOOT' | 'FACTORY_RESET' | 'DOWNLOAD' | 'ADD_OBJECT' | 'DELETE_OBJECT';
     status: 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED' | 'CANCELLED';
     createdAt: string;
     completedAt: string | null;

@@ -227,6 +227,12 @@ export class CwmpSessionService {
     // CPE voltou a comunicar — fecha qualquer alerta de OFFLINE aberto.
     if (state.deviceDbId) {
       await this.resolveAlert(state.deviceDbId, Tr069AlertType.DEVICE_OFFLINE);
+      // Notificações armadas (passivas) fazem o Inform já trazer os níveis
+      // ópticos — grava o diagnóstico direto daqui, sem precisar de GET_PARAMS.
+      // Sem óptico (CPE ainda não armado) o persist sai silencioso.
+      await this.persistDiagnostics(state.deviceDbId, inform.deviceId, inform.parameters, false).catch(
+        (err: unknown) => this.logger.error(`[CWMP] persist diag (inform) falhou: ${String(err)}`),
+      );
     }
 
     return {
@@ -332,9 +338,9 @@ export class CwmpSessionService {
 
     // GET_PARAMS de diagnóstico — transforma a ParameterList em métricas
     // (níveis ópticos + Wi-Fi), persiste a série temporal e avalia alertas.
-    if (task.action === 'GET_PARAMS' && parsed.kind === 'GetParameterValuesResponse') {
-      await this.persistDiagnostics(state, parsed).catch((err: unknown) =>
-        this.logger.error(`[CWMP] falha ao persistir diagnóstico: ${String(err)}`),
+    if (task.action === 'GET_PARAMS' && parsed.kind === 'GetParameterValuesResponse' && state.deviceDbId) {
+      await this.persistDiagnostics(state.deviceDbId, state.deviceId ?? '∅', parseParameterList(parsed.body), true).catch(
+        (err: unknown) => this.logger.error(`[CWMP] falha ao persistir diagnóstico: ${String(err)}`),
       );
     }
   }
@@ -344,13 +350,19 @@ export class CwmpSessionService {
   // ---------------------------------------------------------------------------
 
   /**
-   * Converte a resposta de um GET_PARAMS de diagnóstico em um Tr069Diagnostic,
-   * atualiza os últimos níveis ópticos na ONT e abre/resolve alertas conforme
-   * os limiares. Best-effort: qualquer falha é logada, nunca derruba a session.
+   * Converte um mapa de parâmetros (de um GET_PARAMS OU de um Inform que já
+   * carrega os ópticos por notificação passiva) em um Tr069Diagnostic, atualiza
+   * os últimos níveis na ONT e abre/resolve alertas. Best-effort.
+   *
+   * `warnIfEmpty`: GET explícito loga aviso se não veio métrica (suspeita de
+   * path errado); Inform NÃO loga (a maioria não traz óptico antes de armar).
    */
-  private async persistDiagnostics(state: SessionState, parsed: ParsedCwmpMessage): Promise<void> {
-    if (!state.deviceDbId) return;
-    const params = parseParameterList(parsed.body);
+  private async persistDiagnostics(
+    deviceDbId: string,
+    deviceLabel: string,
+    params: Record<string, string>,
+    warnIfEmpty: boolean,
+  ): Promise<void> {
     const diag = extractDiagnostics(params);
     // Nada de óptico nem Wi-Fi — não vale gravar ruído.
     if (
@@ -359,15 +371,17 @@ export class CwmpSessionService {
       diag.wifiClients5 === null &&
       diag.wifiClients.length === 0
     ) {
-      this.logger.warn(
-        `[CWMP] diagnóstico sem métricas reconhecidas (device=${state.deviceId ?? '∅'}) — ` +
-          'confira HUAWEI_GPON_IFACE_PATH',
-      );
+      if (warnIfEmpty) {
+        this.logger.warn(
+          `[CWMP] diagnóstico sem métricas reconhecidas (device=${deviceLabel}) — ` +
+            'confira HUAWEI_GPON_IFACE_PATH',
+        );
+      }
       return;
     }
 
     const device = await this.prisma.tr069Device.findUnique({
-      where: { id: state.deviceDbId },
+      where: { id: deviceDbId },
       select: { id: true, tenantId: true, ontId: true },
     });
     if (!device) return;
@@ -411,7 +425,7 @@ export class CwmpSessionService {
 
     await this.evaluateOpticalAlerts(device.tenantId, device.id, diag);
     this.logger.log(
-      `[CWMP] diagnóstico device=${state.deviceId ?? '∅'} rx=${diag.rxPower ?? '∅'}dBm ` +
+      `[CWMP] diagnóstico device=${deviceLabel} rx=${diag.rxPower ?? '∅'}dBm ` +
         `tx=${diag.txPower ?? '∅'}dBm health=${diag.opticalHealth} ` +
         `wifi=${diag.wifiClients24 ?? '∅'}/${diag.wifiClients5 ?? '∅'}`,
     );

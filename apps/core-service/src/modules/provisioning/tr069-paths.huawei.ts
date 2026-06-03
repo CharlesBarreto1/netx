@@ -115,6 +115,27 @@ export const HUAWEI_OPTICAL_PATHS = {
   biasCurrent: `${HUAWEI_GPON_IFACE_PATH}.BiasCurrent`,
 } as const;
 
+/** Status do enlace GPON (Up/Down) — bom alvo de notificação ATIVA. */
+export const HUAWEI_GPON_STATUS_PATH = `${HUAWEI_GPON_IFACE_PATH}.Status`;
+
+/**
+ * Atributos de notificação a armar no CPE (SetParameterAttributes):
+ *   - Status do GPON → ATIVA (2): o CPE manda Inform assim que muda.
+ *   - Níveis ópticos → PASSIVA (1): vão de carona no Inform periódico, então
+ *     lemos óptico sem GET_PARAMS (sem risco de fault atômico).
+ * Todos confirmados como existentes via probe de data model.
+ */
+export function huaweiNotificationAttributes(): Array<{ name: string; notification: 0 | 1 | 2 }> {
+  return [
+    { name: HUAWEI_GPON_STATUS_PATH, notification: 2 },
+    { name: HUAWEI_OPTICAL_PATHS.rxPower, notification: 1 },
+    { name: HUAWEI_OPTICAL_PATHS.txPower, notification: 1 },
+    { name: HUAWEI_OPTICAL_PATHS.temperature, notification: 1 },
+    { name: HUAWEI_OPTICAL_PATHS.voltage, notification: 1 },
+    { name: HUAWEI_OPTICAL_PATHS.biasCurrent, notification: 1 },
+  ];
+}
+
 /** Paths de diagnóstico Wi-Fi (agregado por banda). */
 export const HUAWEI_WIFI_DIAG_PATHS = {
   clients24: `${WLAN_24}.TotalAssociations`,

@@ -36,7 +36,11 @@ import { CryptoService } from '../crypto/crypto.service';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { performConnectionRequest } from './tr069-connection-request';
-import { HUAWEI_EG8145_PATHS, huaweiDiagnosticParamNames } from './tr069-paths.huawei';
+import {
+  HUAWEI_EG8145_PATHS,
+  huaweiDiagnosticParamNames,
+  huaweiNotificationAttributes,
+} from './tr069-paths.huawei';
 
 /** Intervalo (min) entre coletas proativas por device. */
 const DIAGNOSTIC_INTERVAL_MIN = parseInt(process.env.TR069_DIAGNOSTIC_INTERVAL_MIN ?? '15', 10);
@@ -90,6 +94,29 @@ export class Tr069DiagnosticsService {
         payload: { names: huaweiDiagnosticParamNames(), purpose: 'DIAGNOSTICS' },
         status: 'PENDING',
       },
+    });
+    return { taskId: task.id };
+  }
+
+  /**
+   * Arma as notificações (SetParameterAttributes) no CPE: Status ativo + níveis
+   * ópticos passivos. Depois disso os ópticos chegam de carona no Inform — sem
+   * GET. Marca notificationsArmedAt (otimista) pra não rearmar toda hora; o
+   * polling segue como fallback caso o arme falhe.
+   */
+  async enqueueArmNotifications(tenantId: string, deviceDbId: string): Promise<{ taskId: string }> {
+    const task = await this.prisma.tr069Task.create({
+      data: {
+        tenantId,
+        deviceId: deviceDbId,
+        action: 'SET_ATTRIBUTES',
+        payload: { attributes: huaweiNotificationAttributes() },
+        status: 'PENDING',
+      },
+    });
+    await this.prisma.tr069Device.update({
+      where: { id: deviceDbId },
+      data: { notificationsArmedAt: new Date() },
     });
     return { taskId: task.id };
   }
@@ -315,6 +342,30 @@ export class Tr069DiagnosticsService {
   // ---------------------------------------------------------------------------
   // Crons
   // ---------------------------------------------------------------------------
+
+  /**
+   * Arma notificações nos devices ONLINE ainda não armados (uma vez por device).
+   * Depois disso os níveis ópticos passam a chegar no Inform periódico.
+   */
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async armNotifications(): Promise<void> {
+    if (!this.enabled) return;
+    const unarmed = await this.prisma.tr069Device.findMany({
+      where: { status: 'ONLINE', notificationsArmedAt: null },
+      select: { id: true, tenantId: true },
+      take: CRON_BATCH,
+    });
+    let armed = 0;
+    for (const d of unarmed) {
+      try {
+        await this.enqueueArmNotifications(d.tenantId, d.id);
+        armed += 1;
+      } catch (err) {
+        this.logger.error(`[TR-069] arme de notificações falhou device=${d.id}: ${String(err)}`);
+      }
+    }
+    if (armed > 0) this.logger.log(`[TR-069] notificações armadas em ${armed} device(s)`);
+  }
 
   /** Coleta proativa — enfileira diagnóstico pros devices ONLINE com leitura velha. */
   @Cron(CronExpression.EVERY_MINUTE)
