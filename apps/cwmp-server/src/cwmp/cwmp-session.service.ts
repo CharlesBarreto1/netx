@@ -36,6 +36,7 @@ import type { Tr069Task } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   buildInformResponse,
+  buildTransferCompleteResponse,
   extractInform,
   parseCwmp,
   type ParsedCwmpMessage,
@@ -108,6 +109,14 @@ export class CwmpSessionService {
     // 2. Empty body — CPE pede "próxima RPC" OU confirma fim de session.
     if (parsed.kind === 'EmptyPost') {
       return this.handleEmptyPost(state, sid);
+    }
+
+    // 2b. TransferComplete — CPE avisa que terminou um Download (firmware).
+    if (parsed.kind === 'TransferComplete') {
+      await this.handleTransferComplete(parsed).catch((err: unknown) =>
+        this.logger.error(`[CWMP] TransferComplete falhou: ${String(err)}`),
+      );
+      return { xml: buildTransferCompleteResponse(parsed.cwmpId ?? '1'), status: 200, sessionId: sid };
     }
 
     // 3. Response a uma RPC que mandamos — atualiza task em DB.
@@ -260,6 +269,35 @@ export class CwmpSessionService {
       status: 200,
       sessionId: sid,
     };
+  }
+
+  /**
+   * TransferComplete (CPE→ACS) após um Download. O CommandKey == task.id, então
+   * correlacionamos e fechamos a task de firmware como DONE/FAILED pelo FaultCode.
+   */
+  private async handleTransferComplete(parsed: ParsedCwmpMessage): Promise<void> {
+    const body = parsed.body;
+    const commandKey = body.CommandKey != null ? String(body.CommandKey) : null;
+    const faultStruct = body.FaultStruct as Record<string, unknown> | undefined;
+    const faultCode = faultStruct?.FaultCode != null ? Number(faultStruct.FaultCode) : 0;
+    const faultString = faultStruct?.FaultString != null ? String(faultStruct.FaultString) : null;
+    this.logger.log(
+      `[CWMP] TransferComplete commandKey=${commandKey ?? '∅'} faultCode=${faultCode}`,
+    );
+    if (!commandKey) return;
+    // commandKey é o task.id; só atualiza se for um UUID de task DOWNLOAD válido.
+    const task = await this.prisma.tr069Task.findFirst({
+      where: { id: commandKey, action: 'DOWNLOAD' },
+      select: { id: true },
+    });
+    if (!task) return;
+    await this.prisma.tr069Task.update({
+      where: { id: task.id },
+      data:
+        faultCode === 0
+          ? { status: 'DONE', completedAt: new Date(), result: { transferComplete: true } as object }
+          : { status: 'FAILED', completedAt: new Date(), error: `TransferComplete fault ${faultCode}: ${faultString ?? '?'}` },
+    });
   }
 
   private async handleEmptyPost(state: SessionState, sid: string): Promise<CwmpResponse> {

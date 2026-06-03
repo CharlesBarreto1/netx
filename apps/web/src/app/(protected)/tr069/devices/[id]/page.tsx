@@ -8,7 +8,7 @@
  * e as tasks recentes. Ações: coletar diagnóstico agora (GET_PARAMS) e
  * reiniciar o CPE (Reboot) — ambas aplicadas no próximo Inform.
  */
-import { ArrowLeft, RefreshCw, RotateCcw, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, HardDriveDownload, RefreshCw, RotateCcw, TriangleAlert } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -120,6 +120,21 @@ export default function Tr069DeviceDetailPage() {
     }
   }
 
+  async function handleFirmware() {
+    const url = window.prompt(t('detail.firmwarePrompt'));
+    if (!url) return;
+    setBusy(true);
+    try {
+      await tr069Api.firmwareUpgrade(id, { url });
+      notify.success(t('detail.queued'));
+      await mutate();
+    } catch (e) {
+      notify.apiError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (isLoading) return <PageLoader />;
   if (error || !data) {
     return (
@@ -167,6 +182,9 @@ export default function Tr069DeviceDetailPage() {
           </Button>
           <Button variant="outline" size="sm" loading={busy} onClick={handleReboot}>
             <RotateCcw className="mr-1 h-4 w-4" /> {t('detail.reboot')}
+          </Button>
+          <Button variant="outline" size="sm" loading={busy} onClick={handleFirmware}>
+            <HardDriveDownload className="mr-1 h-4 w-4" /> {t('detail.firmware')}
           </Button>
         </div>
       </div>

@@ -168,6 +168,37 @@ export class Tr069TasksService {
     return { taskId: task.id };
   }
 
+  /**
+   * Enfileira um Download de firmware (RPC Download). O CPE baixa da URL e
+   * aplica; ao terminar manda TransferComplete (o ACS fecha a task).
+   */
+  async enqueueFirmwareUpgrade(
+    tenantId: string,
+    deviceDbId: string,
+    input: { url: string; fileType?: string; targetFileName?: string },
+  ): Promise<{ taskId: string }> {
+    const device = await this.prisma.tr069Device.findFirst({
+      where: { id: deviceDbId, tenantId },
+      select: { id: true },
+    });
+    if (!device) throw new NotFoundException('Device TR-069 não encontrado');
+    const task = await this.prisma.tr069Task.create({
+      data: {
+        tenantId,
+        deviceId: deviceDbId,
+        action: 'DOWNLOAD',
+        payload: {
+          url: input.url,
+          fileType: input.fileType ?? '1 Firmware Upgrade Image',
+          ...(input.targetFileName ? { targetFileName: input.targetFileName } : {}),
+        },
+        status: 'PENDING',
+      },
+    });
+    this.logger.log(`[TR-069] firmware Download enfileirado device=${deviceDbId} url=${input.url}`);
+    return { taskId: task.id };
+  }
+
   /** Lista tasks de um device (UI admin). */
   async listForDevice(tenantId: string, deviceDbId: string) {
     return this.prisma.tr069Task.findMany({

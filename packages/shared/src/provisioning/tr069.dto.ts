@@ -89,6 +89,15 @@ export const ListTr069DiagnosticsQuerySchema = z.object({
 });
 export type ListTr069DiagnosticsQuery = z.infer<typeof ListTr069DiagnosticsQuerySchema>;
 
+export const FirmwareUpgradeRequestSchema = z.object({
+  /** URL HTTP(S) de onde o CPE baixa a imagem. */
+  url: z.string().url().max(512),
+  /** TR-069 FileType; default "1 Firmware Upgrade Image". */
+  fileType: z.string().max(64).optional(),
+  targetFileName: z.string().max(128).optional(),
+});
+export type FirmwareUpgradeRequest = z.infer<typeof FirmwareUpgradeRequestSchema>;
+
 // =============================================================================
 // Response DTOs
 // =============================================================================

@@ -31,6 +31,7 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   CreateOltRequestSchema,
+  FirmwareUpgradeRequestSchema,
   InstallCustomerRequestSchema,
   ListOltsQuerySchema,
   ListPendingInstallsQuerySchema,
@@ -39,6 +40,7 @@ import {
   UpdateOltRequestSchema,
   type AuthenticatedPrincipal,
   type CreateOltRequest,
+  type FirmwareUpgradeRequest,
   type InstallCustomerRequest,
   type ListOltsQuery,
   type ListPendingInstallsQuery,
@@ -246,6 +248,18 @@ export class Tr069Controller {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     return this.svc.enqueueReboot(user.tenantId, id, null);
+  }
+
+  /** Enfileira um Download de firmware (CPE baixa e aplica). */
+  @Post('devices/:id/firmware')
+  @HttpCode(200)
+  @RequirePermissions('tr069.admin')
+  firmware(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(FirmwareUpgradeRequestSchema) input: FirmwareUpgradeRequest,
+  ) {
+    return this.svc.enqueueFirmwareUpgrade(user.tenantId, id, input);
   }
 
   /** Lista de alertas de diagnóstico (dashboard / triagem). */

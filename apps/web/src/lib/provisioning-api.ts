@@ -356,6 +356,8 @@ export const tr069Api = {
     api.get<Tr069DiagnosticDto[]>(`/v1/tr069/devices/${id}/diagnostics${qs({ limit })}`),
   refresh: (id: string) => api.post<Tr069RefreshResponse>(`/v1/tr069/devices/${id}/refresh`, {}),
   reboot: (id: string) => api.post<{ taskId: string }>(`/v1/tr069/devices/${id}/reboot`, {}),
+  firmwareUpgrade: (id: string, body: { url: string; fileType?: string; targetFileName?: string }) =>
+    api.post<{ taskId: string }>(`/v1/tr069/devices/${id}/firmware`, body),
   listAlerts: (params?: {
     status?: Tr069AlertStatus;
     severity?: Tr069AlertSeverity;

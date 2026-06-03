@@ -2745,6 +2745,8 @@ const messages = {
       refresh: 'Collect diagnostics',
       reboot: 'Reboot CPE',
       rebootConfirm: 'Reboot this CPE now? The customer will lose connection for a few minutes.',
+      firmware: 'Upgrade firmware',
+      firmwarePrompt: 'Firmware URL (HTTP/HTTPS) for the CPE to download and apply:',
       queued: 'Action queued — it will be applied on the next CPE Inform.',
       noDiagnostic:
         'No diagnostics yet. Click "Collect diagnostics" — the reading arrives on the next Inform (up to ~1 min).',

@@ -304,6 +304,42 @@ export function buildFactoryReset(cwmpId: string): string {
   });
 }
 
+export interface DownloadParams {
+  url: string;
+  /** TR-069: "1 Firmware Upgrade Image" (default) | "3 Vendor Configuration File". */
+  fileType?: string;
+  commandKey?: string;
+  username?: string;
+  password?: string;
+  fileSize?: number;
+  targetFileName?: string;
+}
+
+/** Download — firmware upgrade (ou config file). CPE baixa da URL e aplica. */
+export function buildDownload(cwmpId: string, p: DownloadParams): string {
+  return buildEnvelope({
+    cwmpId,
+    bodyXml:
+      '<cwmp:Download>' +
+      `<CommandKey>${escapeXml(p.commandKey ?? '')}</CommandKey>` +
+      `<FileType>${escapeXml(p.fileType ?? '1 Firmware Upgrade Image')}</FileType>` +
+      `<URL>${escapeXml(p.url)}</URL>` +
+      `<Username>${escapeXml(p.username ?? '')}</Username>` +
+      `<Password>${escapeXml(p.password ?? '')}</Password>` +
+      `<FileSize>${p.fileSize ?? 0}</FileSize>` +
+      `<TargetFileName>${escapeXml(p.targetFileName ?? '')}</TargetFileName>` +
+      '<DelaySeconds>0</DelaySeconds>' +
+      '<SuccessURL></SuccessURL>' +
+      '<FailureURL></FailureURL>' +
+      '</cwmp:Download>',
+  });
+}
+
+/** Resposta ao TransferComplete (CPE→ACS) após concluir um Download. */
+export function buildTransferCompleteResponse(cwmpId: string): string {
+  return buildEnvelope({ cwmpId, bodyXml: '<cwmp:TransferCompleteResponse></cwmp:TransferCompleteResponse>' });
+}
+
 // =============================================================================
 // Helpers
 // =============================================================================

@@ -20,11 +20,13 @@ import { Logger } from '@nestjs/common';
 import type { Tr069Task } from '@prisma/client';
 
 import {
+  buildDownload,
   buildFactoryReset,
   buildGetParameterValues,
   buildReboot,
   buildSetParameterAttributes,
   buildSetParameterValues,
+  type DownloadParams,
   type SetAttr,
   type SetParam,
 } from './cwmp-soap';
@@ -83,7 +85,11 @@ export function buildRpcForTask(task: Tr069Task): { xml: string; cwmpId: string 
     case 'FACTORY_RESET': {
       return { xml: buildFactoryReset(cwmpId), cwmpId };
     }
-    case 'DOWNLOAD':
+    case 'DOWNLOAD': {
+      const p = payload as DownloadParams;
+      if (!p?.url) throw new Error(`DOWNLOAD task ${task.id} sem url`);
+      return { xml: buildDownload(cwmpId, { ...p, commandKey: p.commandKey ?? task.id }), cwmpId };
+    }
     case 'ADD_OBJECT':
     case 'DELETE_OBJECT':
       throw new Error(`Action ${task.action} ainda não suportada pelo ACS embedded`);

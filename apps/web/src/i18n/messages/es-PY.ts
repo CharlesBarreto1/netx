@@ -2767,6 +2767,8 @@ const messages = {
       refresh: 'Recolectar diagnóstico',
       reboot: 'Reiniciar CPE',
       rebootConfirm: '¿Reiniciar este CPE ahora? El cliente queda unos minutos sin conexión.',
+      firmware: 'Actualizar firmware',
+      firmwarePrompt: 'URL del firmware (HTTP/HTTPS) para que el CPE descargue y aplique:',
       queued: 'Acción encolada — se aplicará en el próximo Inform del CPE.',
       noDiagnostic:
         'Aún sin diagnóstico. Hacé clic en "Recolectar diagnóstico" — la lectura llega en el próximo Inform (hasta ~1 min).',
