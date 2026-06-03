@@ -40,6 +40,18 @@ export class CwmpController {
       return;
     }
 
+    // Auth opcional (default OFF). Quando CWMP_AUTH_USER está setado, exige
+    // Basic auth — as CPEs autenticam com ManagementServer.Username/Password.
+    // ⚠️ Antes de habilitar, provisione essas credenciais nos CPEs (SET_PARAMS),
+    // senão todos tomam 401 e param de informar.
+    if (!this.checkAuth(req)) {
+      res
+        .status(401)
+        .set('WWW-Authenticate', 'Basic realm="NetX ACS"')
+        .send('Unauthorized');
+      return;
+    }
+
     const rawBody = (req.body as Buffer | undefined) ?? Buffer.alloc(0);
     const xml = rawBody.toString('utf8');
     const sessionId = this.extractSessionCookie(req);
@@ -80,6 +92,21 @@ export class CwmpController {
       cwmpVersion: '1-0',
       ...stats,
     };
+  }
+
+  /** Valida Basic auth quando CWMP_AUTH_USER está configurado (senão libera). */
+  private checkAuth(req: Request): boolean {
+    const user = process.env.CWMP_AUTH_USER;
+    const pass = process.env.CWMP_AUTH_PASSWORD ?? '';
+    if (!user) return true; // auth desligada
+    const header = req.headers.authorization ?? '';
+    if (!/^Basic /i.test(header)) return false;
+    try {
+      const [u, p] = Buffer.from(header.slice(6).trim(), 'base64').toString('utf8').split(':');
+      return u === user && (p ?? '') === pass;
+    } catch {
+      return false;
+    }
   }
 
   private extractSessionCookie(req: Request): string | null {
