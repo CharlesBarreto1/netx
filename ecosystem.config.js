@@ -53,6 +53,11 @@ function appEnv(extra = {}) {
     'TENANT_RESOLUTION_STRATEGY', 'TENANT_HEADER_NAME', 'DEFAULT_TENANT_SLUG',
     'EVOLUTION_URL', 'EVOLUTION_API_KEY', 'WEBHOOK_BASE_URL', 'WHATSAPP_MEDIA_ROOT',
     'OTEL_EXPORTER_OTLP_ENDPOINT', 'OTEL_SERVICE_NAME',
+    // TR-069 ACS (cwmp-server) — porta + tuning de diagnóstico/paths Huawei.
+    'CWMP_PORT', 'CWMP_HOST',
+    'HUAWEI_GPON_IFACE_PATH', 'HUAWEI_OPTICAL_DIVISOR', 'HUAWEI_PPPOE_WAN_INDEX',
+    'TR069_DIAGNOSTIC_INTERVAL_MIN', 'TR069_OFFLINE_AFTER_MIN',
+    'TR069_DIAGNOSTICS_ENABLED', 'TR069_WIFI_CLIENTS_ENABLED',
   ];
   const env = {};
   for (const k of keys) {
@@ -106,6 +111,23 @@ module.exports = {
       max_memory_restart: '512M',
       out_file: '/home/netx/.pm2/logs/netx-web.out.log',
       error_file: '/home/netx/.pm2/logs/netx-web.err.log',
+      merge_logs: true,
+      time: true,
+    },
+    {
+      // ACS TR-069 (CWMP) — escuta CPEs na porta 7547. PRECISA estar aqui pra
+      // que o deploy rebuilde/reinicie junto: a lógica de diagnóstico (parse de
+      // GetParameterValues, gravação de Tr069Diagnostic, alertas) vive neste
+      // processo. Sem isto, o ACS roda código velho e nenhum diagnóstico é gravado.
+      name: 'netx-cwmp',
+      cwd: '/home/netx/apps/netx/apps/cwmp-server',
+      script: 'dist/main.js',
+      instances: 1,
+      exec_mode: 'fork',
+      env: appEnv({ CWMP_PORT: process.env.CWMP_PORT ?? '7547' }),
+      max_memory_restart: '512M',
+      out_file: '/home/netx/.pm2/logs/netx-cwmp.out.log',
+      error_file: '/home/netx/.pm2/logs/netx-cwmp.err.log',
       merge_logs: true,
       time: true,
     },
