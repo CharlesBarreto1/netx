@@ -2793,6 +2793,8 @@ const messages = {
       temperature: 'Temperatura',
       voltage: 'Tensão',
       bias: 'Corrente de bias',
+      dropRate: 'Taxa de descarte',
+      errorRate: 'Taxa de erro',
       rxTrend: 'Tendência de RX (dBm)',
       clients24: 'Clientes 2.4 GHz',
       clients5: 'Clientes 5 GHz',

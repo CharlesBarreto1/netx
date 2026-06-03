@@ -2920,6 +2920,13 @@ model Tr069Diagnostic {
   biasCurrent   Decimal? @map("bias_current") @db.Decimal(7, 2)  // mA
   opticalHealth Tr069OpticalHealth @default(UNKNOWN) @map("optical_health")
 
+  // ── Estatísticas GPON (qualidade do enlace — alerta precoce de fibra) ───────
+  gponStatus    String?  @map("gpon_status") @db.VarChar(16)    // "Up"/"Down"
+  fecErrors     BigInt?  @map("fec_errors")    // corrigidos por FEC (contador)
+  hecErrors     BigInt?  @map("hec_errors")    // erros de HEC (contador)
+  dropRate      Decimal? @map("drop_rate") @db.Decimal(8, 3)
+  errorRate     Decimal? @map("error_rate") @db.Decimal(8, 3)
+
   // ── Wi-Fi (agregado por banda) ─────────────────────────────────────────────
   wifiClients24 Int?     @map("wifi_clients_24")
   wifiClients5  Int?     @map("wifi_clients_5")

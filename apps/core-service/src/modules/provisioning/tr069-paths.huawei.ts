@@ -119,6 +119,18 @@ export const HUAWEI_OPTICAL_PATHS = {
 export const HUAWEI_GPON_STATUS_PATH = `${HUAWEI_GPON_IFACE_PATH}.Status`;
 
 /**
+ * Estatísticas de qualidade do enlace GPON (subárvore .Stats). FEC/HEC subindo
+ * é sinal precoce de fibra suja/conector ruim — antes do RX cair. Nomes
+ * confirmados via probe de data model (HW_WAP_CWMP_V02).
+ */
+export const HUAWEI_GPON_STATS_PATHS = {
+  fecErrors: `${HUAWEI_GPON_IFACE_PATH}.Stats.FECError`,
+  hecErrors: `${HUAWEI_GPON_IFACE_PATH}.Stats.HECError`,
+  dropRate: `${HUAWEI_GPON_IFACE_PATH}.Stats.DropRate`,
+  errorRate: `${HUAWEI_GPON_IFACE_PATH}.Stats.ErrorRate`,
+} as const;
+
+/**
  * Atributos de notificação a armar no CPE (SetParameterAttributes):
  *   - Status do GPON → ATIVA (2): o CPE manda Inform assim que muda.
  *   - Níveis ópticos → PASSIVA (1): vão de carona no Inform periódico, então
@@ -133,6 +145,10 @@ export function huaweiNotificationAttributes(): Array<{ name: string; notificati
     { name: HUAWEI_OPTICAL_PATHS.temperature, notification: 1 },
     { name: HUAWEI_OPTICAL_PATHS.voltage, notification: 1 },
     { name: HUAWEI_OPTICAL_PATHS.biasCurrent, notification: 1 },
+    { name: HUAWEI_GPON_STATS_PATHS.fecErrors, notification: 1 },
+    { name: HUAWEI_GPON_STATS_PATHS.hecErrors, notification: 1 },
+    { name: HUAWEI_GPON_STATS_PATHS.dropRate, notification: 1 },
+    { name: HUAWEI_GPON_STATS_PATHS.errorRate, notification: 1 },
   ];
 }
 
@@ -171,6 +187,8 @@ export const HUAWEI_WIFI_CLIENTS_ENABLED =
 export function huaweiDiagnosticParamNames(): string[] {
   return [
     ...Object.values(HUAWEI_OPTICAL_PATHS),
+    HUAWEI_GPON_STATUS_PATH,
+    ...Object.values(HUAWEI_GPON_STATS_PATHS),
     ...Object.values(HUAWEI_WIFI_DIAG_PATHS),
     ...(HUAWEI_WIFI_CLIENTS_ENABLED ? Object.values(HUAWEI_WIFI_ASSOC_PATHS) : []),
   ];

@@ -32,6 +32,14 @@ const OPTICAL_PATHS = {
   biasCurrent: `${GPON_IFACE}.BiasCurrent`,
 };
 
+const STATS_PATHS = {
+  status: `${GPON_IFACE}.Status`,
+  fecErrors: `${GPON_IFACE}.Stats.FECError`,
+  hecErrors: `${GPON_IFACE}.Stats.HECError`,
+  dropRate: `${GPON_IFACE}.Stats.DropRate`,
+  errorRate: `${GPON_IFACE}.Stats.ErrorRate`,
+};
+
 const WIFI_PATHS = {
   clients24: `${WLAN_24}.TotalAssociations`,
   clients5: `${WLAN_50}.TotalAssociations`,
@@ -75,6 +83,11 @@ export interface ExtractedDiagnostics {
   voltage: number | null;
   biasCurrent: number | null;
   opticalHealth: OpticalHealth;
+  gponStatus: string | null;
+  fecErrors: number | null;
+  hecErrors: number | null;
+  dropRate: number | null;
+  errorRate: number | null;
   wifiClients24: number | null;
   wifiClients5: number | null;
   wifiChannel24: number | null;
@@ -222,6 +235,11 @@ export function extractDiagnostics(params: Record<string, string>): ExtractedDia
     voltage,
     biasCurrent,
     opticalHealth: classifyRxPower(rxPower),
+    gponStatus: params[STATS_PATHS.status] || null,
+    fecErrors: intOrNull(params[STATS_PATHS.fecErrors]),
+    hecErrors: intOrNull(params[STATS_PATHS.hecErrors]),
+    dropRate: numOrNull(params[STATS_PATHS.dropRate]),
+    errorRate: numOrNull(params[STATS_PATHS.errorRate]),
     wifiClients24: intOrNull(params[WIFI_PATHS.clients24]),
     wifiClients5: intOrNull(params[WIFI_PATHS.clients5]),
     wifiChannel24: intOrNull(params[WIFI_PATHS.channel24]),

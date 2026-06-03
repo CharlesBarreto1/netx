@@ -232,6 +232,11 @@ export interface Tr069DiagnosticDto {
   voltage: number | null;
   biasCurrent: number | null;
   opticalHealth: Tr069OpticalHealth;
+  gponStatus: string | null;
+  fecErrors: number | null;
+  hecErrors: number | null;
+  dropRate: number | null;
+  errorRate: number | null;
   wifiClients24: number | null;
   wifiClients5: number | null;
   wifiChannel24: number | null;

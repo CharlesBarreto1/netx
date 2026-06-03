@@ -458,6 +458,11 @@ export class Tr069DiagnosticsService {
     voltage: Prisma.Decimal | null;
     biasCurrent: Prisma.Decimal | null;
     opticalHealth: string;
+    gponStatus: string | null;
+    fecErrors: bigint | null;
+    hecErrors: bigint | null;
+    dropRate: Prisma.Decimal | null;
+    errorRate: Prisma.Decimal | null;
     wifiClients24: number | null;
     wifiClients5: number | null;
     wifiChannel24: number | null;
@@ -474,6 +479,11 @@ export class Tr069DiagnosticsService {
       voltage: dec(r.voltage),
       biasCurrent: dec(r.biasCurrent),
       opticalHealth: r.opticalHealth as Tr069DiagnosticDto['opticalHealth'],
+      gponStatus: r.gponStatus,
+      fecErrors: r.fecErrors === null ? null : Number(r.fecErrors),
+      hecErrors: r.hecErrors === null ? null : Number(r.hecErrors),
+      dropRate: dec(r.dropRate),
+      errorRate: dec(r.errorRate),
       wifiClients24: r.wifiClients24,
       wifiClients5: r.wifiClients5,
       wifiChannel24: r.wifiChannel24,

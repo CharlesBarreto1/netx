@@ -231,6 +231,15 @@ export default function Tr069DeviceDetailPage() {
                 <Metric label={t('detail.voltage')} value={fmt(latest.voltage, 'V')} />
                 <Metric label={t('detail.bias')} value={fmt(latest.biasCurrent, 'mA')} />
               </div>
+              {/* Qualidade do enlace GPON — FEC/HEC subindo = fibra degradando */}
+              {(latest.fecErrors !== null || latest.hecErrors !== null) && (
+                <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-3 dark:border-slate-800 sm:grid-cols-4">
+                  <Metric label="FEC" value={fmt(latest.fecErrors, '')} />
+                  <Metric label="HEC" value={fmt(latest.hecErrors, '')} />
+                  <Metric label={t('detail.dropRate')} value={fmt(latest.dropRate, '')} />
+                  <Metric label={t('detail.errorRate')} value={fmt(latest.errorRate, '')} />
+                </div>
+              )}
               {rxPoints.length >= 2 && (
                 <div className="border-t border-slate-100 pt-3 dark:border-slate-800">
                   <p className="mb-1 text-xs text-slate-500">{t('detail.rxTrend')}</p>
