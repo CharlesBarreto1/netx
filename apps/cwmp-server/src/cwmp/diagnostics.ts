@@ -14,9 +14,12 @@
 
 // Mesmo env do core-service (tr069-paths.huawei.ts) — os dois lados precisam
 // concordar no prefixo da interface óptica.
+// ⚠️ Objeto com o erro de digitação de fábrica da Huawei ("Inter**af**ce") —
+// confirmado ao vivo no firmware HW_WAP_CWMP_V02 (EG8145V5/X10). Mesmo default
+// do core-service (tr069-paths.huawei.ts); os dois lados precisam concordar.
 const GPON_IFACE =
   process.env.HUAWEI_GPON_IFACE_PATH ??
-  'InternetGatewayDevice.WANDevice.1.X_HW_WANGponInterfaceConfig';
+  'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig';
 
 const WLAN_24 = 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1';
 const WLAN_50 = 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5';
@@ -26,7 +29,7 @@ const OPTICAL_PATHS = {
   txPower: `${GPON_IFACE}.TXPower`,
   temperature: `${GPON_IFACE}.TransceiverTemperature`,
   voltage: `${GPON_IFACE}.SupplyVoltage`,
-  biasCurrent: `${GPON_IFACE}.Bias`,
+  biasCurrent: `${GPON_IFACE}.BiasCurrent`,
 };
 
 const WIFI_PATHS = {
@@ -130,6 +133,23 @@ function numOrNull(raw: string | undefined): number | null {
   return Number.isNaN(n) ? null : n;
 }
 
+/**
+ * Tensão de alimentação do transceiver. O firmware HW_WAP_CWMP_V02 reporta em
+ * milivolts (ex.: 3338 = 3.338 V); valores <100 já vêm em volts. Override fixo
+ * via HUAWEI_VOLTAGE_DIVISOR.
+ */
+function normalizeVoltage(raw: string | undefined): number | null {
+  const n = numOrNull(raw);
+  if (n === null) return null;
+  const round3 = (v: number) => Math.round(v * 1000) / 1000;
+  const forced = process.env.HUAWEI_VOLTAGE_DIVISOR;
+  if (forced) {
+    const d = Number(forced);
+    return d > 0 ? round3(n / d) : n;
+  }
+  return n > 100 ? round3(n / 1000) : n;
+}
+
 function intOrNull(raw: string | undefined): number | null {
   const n = numOrNull(raw);
   return n === null ? null : Math.trunc(n);
@@ -185,7 +205,7 @@ export function extractDiagnostics(params: Record<string, string>): ExtractedDia
   const rxPower = normalizePower(params[OPTICAL_PATHS.rxPower]);
   const txPower = normalizePower(params[OPTICAL_PATHS.txPower]);
   const temperature = numOrNull(params[OPTICAL_PATHS.temperature]);
-  const voltage = numOrNull(params[OPTICAL_PATHS.voltage]);
+  const voltage = normalizeVoltage(params[OPTICAL_PATHS.voltage]);
   const biasCurrent = numOrNull(params[OPTICAL_PATHS.biasCurrent]);
 
   const hasOptical =

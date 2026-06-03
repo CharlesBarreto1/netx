@@ -90,12 +90,14 @@ export function ssid5gFor(
  * fault 9005 (Invalid parameter name), o primeiro suspeito é o prefixo da
  * interface GPON — confirme no firmware da ONT e ajuste `HUAWEI_GPON_IFACE_PATH`.
  *
- * Prefixo da interface óptica GPON na WAN. Vendor extension Huawei
- * (X_HW_WANGponInterfaceConfig) é o padrão nos EG8145V5/X10.
+ * Prefixo da interface óptica GPON na WAN. ⚠️ O objeto correto nos
+ * EG8145V5/X10 (firmware HW_WAP_CWMP_V02) é `X_GponInterafceConfig` — sim, com
+ * o ERRO DE DIGITAÇÃO de fábrica da Huawei ("Inter**af**ce"). Confirmado ao
+ * vivo via probe de data model (GetParameterValues por caminho parcial).
  */
 export const HUAWEI_GPON_IFACE_PATH =
   process.env.HUAWEI_GPON_IFACE_PATH ??
-  'InternetGatewayDevice.WANDevice.1.X_HW_WANGponInterfaceConfig';
+  'InternetGatewayDevice.WANDevice.1.X_GponInterafceConfig';
 
 /** Índices das WLANs (mesmos usados na config de SSID). */
 const WLAN_24 = 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1';
@@ -110,7 +112,7 @@ export const HUAWEI_OPTICAL_PATHS = {
   txPower: `${HUAWEI_GPON_IFACE_PATH}.TXPower`,
   temperature: `${HUAWEI_GPON_IFACE_PATH}.TransceiverTemperature`,
   voltage: `${HUAWEI_GPON_IFACE_PATH}.SupplyVoltage`,
-  biasCurrent: `${HUAWEI_GPON_IFACE_PATH}.Bias`,
+  biasCurrent: `${HUAWEI_GPON_IFACE_PATH}.BiasCurrent`,
 } as const;
 
 /** Paths de diagnóstico Wi-Fi (agregado por banda). */

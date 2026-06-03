@@ -84,10 +84,17 @@ export function buildRpcForTask(task: Tr069Task): { xml: string; cwmpId: string 
 
 /** Inspeciona resposta do CPE pra detectar fault. */
 export function detectFault(parsedBody: Record<string, unknown>): string | null {
+  // O parser entrega o body já "desembrulhado": pra um <soap:Fault> o kind é
+  // 'Fault' e parsedBody É o conteúdo do Fault (faultcode/faultstring/detail).
+  // Aceitamos as duas formas: parsedBody.Fault (aninhado) OU o próprio body.
+  const fault =
+    (parsedBody.Fault as Record<string, unknown> | undefined) ??
+    (parsedBody.faultcode || parsedBody.faultstring || parsedBody.detail
+      ? parsedBody
+      : undefined);
+  if (!fault) return null;
   // SOAP Fault: <soap:Fault>...<detail><cwmp:Fault><FaultCode>...</FaultCode>
   //                                              <FaultString>...
-  const fault = parsedBody.Fault as Record<string, unknown> | undefined;
-  if (!fault) return null;
   const detail = fault.detail as Record<string, unknown> | undefined;
   const cwmpFault = detail?.Fault as Record<string, unknown> | undefined;
   if (cwmpFault) {
