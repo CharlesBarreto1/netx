@@ -126,6 +126,7 @@ export function NewChargeDialog({
                   onChange={(e) => {
                     setCustomerSearch(e.target.value);
                     setPickedCustomerId(null);
+                    setContractId('');
                   }}
                   placeholder={t('newCharge.customerSearchPlaceholder')}
                 />
@@ -143,6 +144,7 @@ export function NewChargeDialog({
                           onClick={() => {
                             setPickedCustomerId(c.id);
                             setCustomerSearch(c.displayName);
+                            setContractId('');
                           }}
                           className={
                             'flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left text-xs hover:bg-surface-hover ' +
@@ -161,7 +163,7 @@ export function NewChargeDialog({
               </div>
             )}
 
-            {isLocked && contracts.length > 0 && (
+            {pickedCustomerId && contracts.length > 0 && (
               <div>
                 <Label>{t('newCharge.contractLabel')}</Label>
                 <Select

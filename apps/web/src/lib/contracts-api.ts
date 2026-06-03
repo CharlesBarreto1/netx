@@ -370,6 +370,10 @@ export const contractInvoicesApi = {
   byContract(contractId: string) {
     return api.get<Paginated<ContractInvoice>>(`/v1/contracts/${contractId}/invoices?pageSize=200&sortBy=dueDate&sortDir=desc`);
   },
+  /** Gera uma fatura manual no contrato (casos excepcionais; o normal é o cron). */
+  create(contractId: string, input: { amount: number; dueDate: string; reference?: string }) {
+    return api.post<ContractInvoice>(`/v1/contracts/${contractId}/invoices`, input);
+  },
   pay(id: string, input: PayInvoiceInput = {}) {
     return api.post<ContractInvoice>(`/v1/contract-invoices/${id}/pay`, input);
   },

@@ -36,7 +36,9 @@ import { ContractDiagnosticsCard } from '@/components/contracts/ContractDiagnost
 import { UfinetStatusPanel } from '@/components/contracts/UfinetStatusPanel';
 import { EditContractDialog } from '@/components/contracts/EditContractDialog';
 import { SwapOntDialog } from '@/components/contracts/SwapOntDialog';
+import { NewInvoiceDialog } from '@/components/contracts/NewInvoiceDialog';
 import { PaymentDialog } from '@/components/finance/PaymentDialog';
+import { chargesApi, type OneTimeCharge } from '@/lib/finance-api';
 
 import { StatusBadge } from '../_components/StatusBadge';
 
@@ -67,21 +69,30 @@ export default function ContractDetailPage() {
 
   const contractKey = id ? `/v1/contracts/${id}` : null;
   const invoicesKey = id ? contractInvoicesApi.byContractPath(id) : null;
+  // Cobranças avulsas (OneTimeCharge) vinculadas a este contrato — o painel
+  // financeiro precisa mostrá-las junto das faturas (antes só apareciam em
+  // Financeiro > Cobranças).
+  const chargesKey = id ? chargesApi.listPath({ contractId: id, pageSize: 200 }) : null;
 
   const { data: contract, isLoading: loadingContract, error: contractError } =
     useSWR<Contract>(contractKey);
   const { data: invoicesResp, isLoading: loadingInvoices } =
     useSWR<Paginated<ContractInvoice>>(invoicesKey);
+  const { data: chargesResp } = useSWR<Paginated<OneTimeCharge>>(chargesKey);
 
   async function refresh() {
     await Promise.all([
       contractKey ? mutate(contractKey) : Promise.resolve(),
       invoicesKey ? mutate(invoicesKey) : Promise.resolve(),
+      chargesKey ? mutate(chargesKey) : Promise.resolve(),
     ]);
   }
 
   // --- Estados de modais ---------------------------------------------------
   const [payInvoice, setPayInvoice] = useState<ContractInvoice | null>(null);
+  const [newInvoiceOpen, setNewInvoiceOpen] = useState(false);
+  const [payCharge, setPayCharge] = useState<OneTimeCharge | null>(null);
+  const [cancelCharge, setCancelCharge] = useState<OneTimeCharge | null>(null);
   const [suspendOpen, setSuspendOpen] = useState(false);
   const [reactivateOpen, setReactivateOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -109,6 +120,7 @@ export default function ContractDetailPage() {
   if (!contract) return null;
 
   const invoices = invoicesResp?.data ?? [];
+  const charges = chargesResp?.data ?? [];
   const isActive = contract.status === 'ACTIVE';
   const isSuspended = contract.status === 'SUSPENDED';
   const isCancelled = contract.status === 'CANCELLED';
@@ -544,6 +556,11 @@ export default function ContractDetailPage() {
       <div>
         <div className="mb-2 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-text">{tDetail('invoicesTitle')}</h2>
+          {canWrite && !isCancelled && (
+            <Button size="sm" variant="outline" onClick={() => setNewInvoiceOpen(true)}>
+              {tDetail('newInvoice.button')}
+            </Button>
+          )}
         </div>
 
         {loadingInvoices && !invoicesResp ? (
@@ -619,6 +636,118 @@ export default function ContractDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Cobranças avulsas (OneTimeCharge) vinculadas a este contrato */}
+      {charges.length > 0 && (
+        <div>
+          <h2 className="mb-2 text-sm font-semibold text-text">
+            {tDetail('chargesTitle')}
+          </h2>
+          <div className="overflow-x-auto rounded-md border border-border bg-surface">
+            <table className="min-w-full text-sm">
+              <thead className="bg-surface-muted text-xs uppercase tracking-wide text-text-muted">
+                <tr>
+                  <th className="px-3 py-2 text-left">{tDetail('chargeDescription')}</th>
+                  <th className="px-3 py-2 text-right">Valor</th>
+                  <th className="px-3 py-2 text-center">Vencimento</th>
+                  <th className="px-3 py-2 text-left">Status</th>
+                  <th className="px-3 py-2 text-left">Pago em</th>
+                  <th className="px-3 py-2 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {charges.map((ch) => (
+                  <tr key={ch.id} className="border-t border-border">
+                    <td className="px-3 py-2">
+                      <div className="text-xs text-text">{ch.description}</div>
+                      {ch.code && (
+                        <div className="font-mono text-2xs text-text-muted">{ch.code}</div>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 text-right">{formatMoney(ch.amount)}</td>
+                    <td className="px-3 py-2 text-center">{formatDate(ch.dueDate)}</td>
+                    <td className="px-3 py-2">
+                      <ChargeBadge status={ch.status} />
+                    </td>
+                    <td className="px-3 py-2 text-xs text-text-muted">
+                      {ch.paidAt ? formatDate(ch.paidAt) : '—'}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {ch.status === 'OPEN' && canWrite && (
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            onClick={() => setPayCharge(ch)}
+                          >
+                            Dar baixa
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => setCancelCharge(ch)}
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Gerar fatura manual do contrato */}
+      {newInvoiceOpen && (
+        <NewInvoiceDialog
+          contractId={contract.id}
+          onClose={() => setNewInvoiceOpen(false)}
+          onCreated={() => {
+            setNewInvoiceOpen(false);
+            void refresh();
+          }}
+        />
+      )}
+
+      {/* Dar baixa numa cobrança avulsa */}
+      {payCharge && (
+        <PaymentDialog
+          open
+          onOpenChange={(v) => !v && setPayCharge(null)}
+          amount={payCharge.amount}
+          description={`${payCharge.code ? `${payCharge.code} · ` : ''}${payCharge.description}`}
+          onConfirm={async (input) => {
+            const chargeId = payCharge.id;
+            await chargesApi.pay(chargeId, input);
+            setPayCharge(null);
+            toast.success(tCommon('success'));
+            await refresh();
+            window.open(`/receipts/charge/${chargeId}`, '_blank');
+          }}
+        />
+      )}
+
+      {/* Cancelar cobrança avulsa */}
+      <ConfirmDialog
+        open={!!cancelCharge}
+        onClose={() => setCancelCharge(null)}
+        onConfirm={async () => {
+          if (!cancelCharge) return;
+          try {
+            await chargesApi.cancel(cancelCharge.id);
+            setCancelCharge(null);
+            toast.success(tCommon('success'));
+            await refresh();
+          } catch (err) {
+            toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
+          }
+        }}
+        title={tDetail('cancelChargeTitle')}
+        message={tDetail('cancelChargeMessage')}
+      />
 
       {/* -------------------- Pagamento -------------------- */}
       {payInvoice && (
@@ -782,6 +911,19 @@ function InvoiceBadge({ status }: { status: InvoiceStatus }) {
       return <Badge tone="info">Em aberto</Badge>;
     case 'OVERDUE':
       return <Badge tone="danger">Vencida</Badge>;
+    case 'CANCELLED':
+      return <Badge tone="neutral">Cancelada</Badge>;
+    default:
+      return <Badge>{status}</Badge>;
+  }
+}
+
+function ChargeBadge({ status }: { status: OneTimeCharge['status'] }) {
+  switch (status) {
+    case 'PAID':
+      return <Badge tone="success">Paga</Badge>;
+    case 'OPEN':
+      return <Badge tone="info">Em aberto</Badge>;
     case 'CANCELLED':
       return <Badge tone="neutral">Cancelada</Badge>;
     default:
