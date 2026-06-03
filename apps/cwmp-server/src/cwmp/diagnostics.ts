@@ -210,6 +210,7 @@ export interface ExtractedDiagnostics {
   wifiChannel5: number | null;
   wifiClients: WifiClient[];
   wifiWorstRssi: number | null;
+  wifiAvgRssi: number | null;
   raw: Record<string, string>;
   /** Algum parâmetro óptico veio preenchido — define se vale persistir. */
   hasOptical: boolean;
@@ -304,6 +305,7 @@ function bandOf(wlanIdx: string): string {
 export function extractWifiClients(params: Record<string, string>): {
   clients: WifiClient[];
   worstRssi: number | null;
+  avgRssi: number | null;
 } {
   const byKey = new Map<string, WifiClient>();
   for (const [name, value] of Object.entries(params)) {
@@ -325,7 +327,8 @@ export function extractWifiClients(params: Record<string, string>): {
   const clients = [...byKey.values()].filter((c) => c.mac !== null || c.rssi !== null);
   const rssis = clients.map((c) => c.rssi).filter((v): v is number => v !== null);
   const worstRssi = rssis.length ? Math.min(...rssis) : null;
-  return { clients, worstRssi };
+  const avgRssi = rssis.length ? Math.round(rssis.reduce((a, b) => a + b, 0) / rssis.length) : null;
+  return { clients, worstRssi, avgRssi };
 }
 
 /** Reconstrói a tabela de hosts da LAN a partir da subárvore Hosts.Host. */
@@ -350,7 +353,8 @@ export function extractLanHosts(params: Record<string, string>): LanHost[] {
 
 /** Extrai métricas de diagnóstico de uma ParameterList já achatada. */
 export function extractDiagnostics(params: Record<string, string>): ExtractedDiagnostics {
-  const { clients: wifiClients, worstRssi: wifiWorstRssi } = extractWifiClients(params);
+  const { clients: wifiClients, worstRssi: wifiWorstRssi, avgRssi: wifiAvgRssi } =
+    extractWifiClients(params);
   const hosts = extractLanHosts(params);
   const rxPower = normalizePower(params[OPTICAL_PATHS.rxPower]);
   const txPower = normalizePower(params[OPTICAL_PATHS.txPower]);
@@ -387,6 +391,7 @@ export function extractDiagnostics(params: Record<string, string>): ExtractedDia
     wifiChannel5: intOrNull(params[WIFI_PATHS.channel5]),
     wifiClients,
     wifiWorstRssi,
+    wifiAvgRssi,
     raw: params,
     hasOptical,
   };

@@ -575,6 +575,7 @@ export class CwmpSessionService {
         wifiChannel24: diag.wifiChannel24,
         wifiChannel5: diag.wifiChannel5,
         wifiWorstRssi: diag.wifiWorstRssi,
+        wifiAvgRssi: diag.wifiAvgRssi,
         wifiClients: diag.wifiClients as unknown as object,
         raw: diag.raw as unknown as object,
       },

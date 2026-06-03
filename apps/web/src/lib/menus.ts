@@ -201,6 +201,7 @@ export const MENU_GROUPS: MenuGroup[] = [
       { key: 'olts', href: '/olts', labelKey: 'olts', permission: 'olts.admin' },
       { key: 'tr069Devices', href: '/tr069/devices', labelKey: 'tr069Devices', permission: 'tr069.admin' },
       { key: 'tr069Alerts', href: '/tr069/alerts', labelKey: 'tr069Alerts', permission: 'tr069.admin' },
+      { key: 'tr069WifiCoverage', href: '/tr069/wifi-coverage', labelKey: 'tr069WifiCoverage', permission: 'provisioning.read' },
     ],
   },
 

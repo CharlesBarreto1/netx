@@ -37,6 +37,7 @@ import {
   ListPendingInstallsQuerySchema,
   ListTr069AlertsQuerySchema,
   ListTr069DiagnosticsQuerySchema,
+  ListWifiCoverageQuerySchema,
   PingRequestSchema,
   SpeedTestRequestSchema,
   UpdateOltRequestSchema,
@@ -48,6 +49,7 @@ import {
   type ListPendingInstallsQuery,
   type ListTr069AlertsQuery,
   type ListTr069DiagnosticsQuery,
+  type ListWifiCoverageQuery,
   type PingRequest,
   type SpeedTestRequest,
   type UpdateOltRequest,
@@ -298,6 +300,16 @@ export class Tr069Controller {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     return this.diag.listDiagRuns(user.tenantId, id);
+  }
+
+  /** Ranking de cobertura Wi-Fi (piores RSSI médios) — proativo / venda de mesh. */
+  @Get('wifi-coverage')
+  @RequirePermissions('provisioning.read')
+  wifiCoverage(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Query(new ZodValidationPipe(ListWifiCoverageQuerySchema)) q: ListWifiCoverageQuery,
+  ) {
+    return this.diag.getWifiCoverage(user.tenantId, q);
   }
 
   /** Lista de alertas de diagnóstico (dashboard / triagem). */

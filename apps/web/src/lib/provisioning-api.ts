@@ -313,6 +313,20 @@ export interface Tr069RefreshResponse {
   message: string;
 }
 
+export interface WifiCoverageRow {
+  deviceId: string;
+  deviceLabel: string;
+  ontSnGpon: string | null;
+  contractId: string | null;
+  contractCode: string | null;
+  customerId: string | null;
+  customerName: string | null;
+  avgRssi: number | null;
+  worstRssi: number | null;
+  samples: number;
+  lastSeenAt: string | null;
+}
+
 export type Tr069DiagKind = 'DOWNLOAD' | 'UPLOAD' | 'PING' | 'TRACEROUTE';
 export type Tr069DiagState = 'REQUESTED' | 'COMPLETED' | 'ERROR';
 
@@ -382,6 +396,8 @@ export const tr069Api = {
   ping: (id: string, host: string) =>
     api.post<{ runId: string; message: string }>(`/v1/tr069/devices/${id}/ping`, { host }),
   diagRuns: (id: string) => api.get<Tr069DiagRunDto[]>(`/v1/tr069/devices/${id}/diag-runs`),
+  wifiCoverage: (params?: { days?: number; maxRssi?: number; minSamples?: number; page?: number; pageSize?: number }) =>
+    api.get<Paginated<WifiCoverageRow>>(`/v1/tr069/wifi-coverage${qs(params)}`),
   listAlerts: (params?: {
     status?: Tr069AlertStatus;
     severity?: Tr069AlertSeverity;

@@ -30,6 +30,8 @@ import {
   type Tr069DiagRunDto,
   type Tr069LanHost,
   type Tr069RefreshResponse,
+  type ListWifiCoverageQuery,
+  type WifiCoverageRow,
   type Tr069TaskDto,
   type Tr069WifiClient,
 } from '@netx/shared';
@@ -446,6 +448,77 @@ export class Tr069DiagnosticsService {
       take: limit,
     });
     return rows.map((r) => this.toDiagnosticDto(r));
+  }
+
+  /**
+   * Ranking de cobertura Wi-Fi: ONTs com RSSI médio dos clientes pior (mais
+   * alto = mais negativo) na janela. Base pra atendimento proativo / venda de
+   * mesh. Agrega a série denormalizada (wifiAvgRssi) e junta cliente/contrato.
+   */
+  async getWifiCoverage(
+    tenantId: string,
+    query: ListWifiCoverageQuery,
+  ): Promise<Paginated<WifiCoverageRow>> {
+    const cutoff = new Date(Date.now() - query.days * 24 * 60 * 60_000);
+    const grouped = await this.prisma.tr069Diagnostic.groupBy({
+      by: ['deviceId'],
+      where: { tenantId, capturedAt: { gt: cutoff }, wifiAvgRssi: { not: null } },
+      _avg: { wifiAvgRssi: true },
+      _min: { wifiWorstRssi: true },
+      _count: { _all: true },
+      _max: { capturedAt: true },
+    });
+
+    // Filtra por amostras mínimas + limiar de RSSI ruim, ordena do pior pro melhor.
+    const filtered = grouped
+      .map((g) => ({
+        deviceId: g.deviceId,
+        avgRssi: g._avg.wifiAvgRssi === null ? null : Math.round(g._avg.wifiAvgRssi),
+        worstRssi: g._min.wifiWorstRssi,
+        samples: g._count._all,
+        lastSeenAt: g._max.capturedAt,
+      }))
+      .filter((g) => g.samples >= query.minSamples && g.avgRssi !== null && g.avgRssi <= query.maxRssi)
+      .sort((a, b) => (a.avgRssi ?? 0) - (b.avgRssi ?? 0));
+
+    const total = filtered.length;
+    const pageRows = filtered.slice((query.page - 1) * query.pageSize, query.page * query.pageSize);
+
+    // Enriquece com device → ONT → contrato → cliente.
+    const devices = await this.prisma.tr069Device.findMany({
+      where: { id: { in: pageRows.map((r) => r.deviceId) } },
+      select: {
+        id: true,
+        deviceId: true,
+        ont: {
+          select: {
+            snGpon: true,
+            contract: { select: { id: true, code: true, customer: { select: { id: true, displayName: true } } } },
+          },
+        },
+      },
+    });
+    const byId = new Map(devices.map((d) => [d.id, d]));
+
+    const data: WifiCoverageRow[] = pageRows.map((r) => {
+      const dev = byId.get(r.deviceId);
+      const contract = dev?.ont?.contract ?? null;
+      return {
+        deviceId: r.deviceId,
+        deviceLabel: dev?.deviceId ?? r.deviceId,
+        ontSnGpon: dev?.ont?.snGpon ?? null,
+        contractId: contract?.id ?? null,
+        contractCode: contract?.code ?? null,
+        customerId: contract?.customer?.id ?? null,
+        customerName: contract?.customer?.displayName ?? null,
+        avgRssi: r.avgRssi,
+        worstRssi: r.worstRssi,
+        samples: r.samples,
+        lastSeenAt: r.lastSeenAt?.toISOString() ?? null,
+      };
+    });
+
+    return { data, pagination: paginationMeta(total, query.page, query.pageSize) };
   }
 
   async listAlerts(

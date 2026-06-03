@@ -119,6 +119,32 @@ export interface Tr069DiagRunDto {
   completedAt: string | null;
 }
 
+export const ListWifiCoverageQuerySchema = z.object({
+  /** Janela de análise em dias. */
+  days: z.coerce.number().int().min(1).max(90).default(7),
+  /** Só lista quem tem RSSI médio ≤ este limiar (dBm). -70 = cobertura ruim. */
+  maxRssi: z.coerce.number().int().min(-100).max(0).default(-70),
+  /** Mínimo de amostras no período pra evitar leitura isolada. */
+  minSamples: z.coerce.number().int().min(1).max(1000).default(3),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(200).default(50),
+});
+export type ListWifiCoverageQuery = z.infer<typeof ListWifiCoverageQuerySchema>;
+
+export interface WifiCoverageRow {
+  deviceId: string;
+  deviceLabel: string;
+  ontSnGpon: string | null;
+  contractId: string | null;
+  contractCode: string | null;
+  customerId: string | null;
+  customerName: string | null;
+  avgRssi: number | null;
+  worstRssi: number | null;
+  samples: number;
+  lastSeenAt: string | null;
+}
+
 export const FirmwareUpgradeRequestSchema = z.object({
   /** URL HTTP(S) de onde o CPE baixa a imagem. */
   url: z.string().url().max(512),
