@@ -30,6 +30,8 @@ export interface UfinetConnection {
   nmsId: string;
   bandwidthProfile: string;
   bandwidthProfileId: string;
+  /** Alta enxuta: omite PII (contato + geometria) do payload de provide. */
+  minimalProvidePayload: boolean;
 }
 
 export interface UfinetErrorMessage {

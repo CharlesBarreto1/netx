@@ -96,6 +96,14 @@ export const UfinetOltConfigSchema = z.object({
    * `{prefixo}-{n}` → "ZUX-1", "ZUX-2", … (curto e legível pro técnico em campo).
    */
   externalIdPrefix: z.string().min(1).max(16).default('ZUX'),
+  /**
+   * Alta enxuta: quando true, o payload de ALTA (provide) NÃO envia dados
+   * pessoais — omite CONTACT_NAME, CONTACT_PHONE e a geometria (lat/long) do
+   * endereço. Mantém só o necessário pra Ufinet: externalId, region, operator,
+   * BANDWIDTH_PROFILE, polygonAlias (+ NMS) — e CTO_PORT/LABEL_DROP na
+   * confirmação. Por-OLT, pra atender operação que não quer compartilhar PII.
+   */
+  minimalProvidePayload: z.boolean().default(false),
 });
 export type UfinetOltConfig = z.infer<typeof UfinetOltConfigSchema>;
 

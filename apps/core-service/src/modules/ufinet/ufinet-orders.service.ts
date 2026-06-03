@@ -94,6 +94,7 @@ export class UfinetOrdersService {
       nmsId: config.nmsId,
       bandwidthProfile: config.bandwidthProfile,
       bandwidthProfileId: config.bandwidthProfileId,
+      minimalProvidePayload: config.minimalProvidePayload,
     };
   }
 
@@ -932,17 +933,35 @@ export class UfinetOrdersService {
     contract: { latitude: Prisma.Decimal | null; longitude: Prisma.Decimal | null; customer: { displayName: string; primaryPhone: string | null } },
   ): Record<string, unknown> {
     const now = new Date().toISOString();
+    const minimal = conn.minimalProvidePayload;
+
+    // Endereço: polygonAlias é necessário pra Ufinet localizar a porta (mantido
+    // sempre). geometry (lat/long) = PII → omitida no modo enxuto.
     const address: Record<string, unknown> = {
       country: conn.country,
       city: conn.city ?? undefined,
     };
-    if (contract.latitude != null && contract.longitude != null) {
+    if (!minimal && contract.latitude != null && contract.longitude != null) {
       address.geometry = {
         latitude: String(contract.latitude),
         longitude: String(contract.longitude),
       };
     }
     if (conn.polygonAlias) address.polygonAlias = conn.polygonAlias;
+
+    // Características: NMS + BANDWIDTH_PROFILE sempre. CONTACT_NAME/PHONE = PII →
+    // omitidos no modo enxuto (operação que não quer compartilhar dados do cliente).
+    const serviceCharacteristic: Array<Record<string, unknown>> = [];
+    if (!minimal) {
+      serviceCharacteristic.push(
+        { id: '110', name: 'CONTACT_NAME', description: 'Nombre contacto', valueType: 'string', value: contract.customer.displayName },
+        { id: '111', name: 'CONTACT_PHONE', description: 'Teléfono de contacto', valueType: 'string', value: contract.customer.primaryPhone ?? '0000000000' },
+      );
+    }
+    serviceCharacteristic.push(
+      { id: conn.nmsId, name: 'NMS', description: 'NMS', valueType: 'string', value: conn.nms },
+      { id: conn.bandwidthProfileId, name: 'BANDWIDTH_PROFILE', description: 'Perfil de ancho de banda', valueType: 'string', value: conn.bandwidthProfile },
+    );
 
     return {
       orderDate: now,
@@ -962,12 +981,7 @@ export class UfinetOrdersService {
             serviceName: 'Conectividad',
             externalServiceId: svc.externalId,
             serviceSpecification: { id: 'Datos', version: '1.0' },
-            serviceCharacteristic: [
-              { id: '110', name: 'CONTACT_NAME', description: 'Nombre contacto', valueType: 'string', value: contract.customer.displayName },
-              { id: '111', name: 'CONTACT_PHONE', description: 'Teléfono de contacto', valueType: 'string', value: contract.customer.primaryPhone ?? '0000000000' },
-              { id: conn.nmsId, name: 'NMS', description: 'NMS', valueType: 'string', value: conn.nms },
-              { id: conn.bandwidthProfileId, name: 'BANDWIDTH_PROFILE', description: 'Perfil de ancho de banda', valueType: 'string', value: conn.bandwidthProfile },
-            ],
+            serviceCharacteristic,
             place: [{ address }],
           },
         },
