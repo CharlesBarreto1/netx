@@ -57,6 +57,11 @@ const TR143 = {
   dlTotalBytes: 'InternetGatewayDevice.DownloadDiagnostics.TotalBytesReceived',
   dlBom: 'InternetGatewayDevice.DownloadDiagnostics.BOMTime',
   dlEom: 'InternetGatewayDevice.DownloadDiagnostics.EOMTime',
+  ulState: 'InternetGatewayDevice.UploadDiagnostics.DiagnosticsState',
+  ulTotalBytes: 'InternetGatewayDevice.UploadDiagnostics.TotalBytesSent',
+  ulTestLen: 'InternetGatewayDevice.UploadDiagnostics.TestFileLength',
+  ulBom: 'InternetGatewayDevice.UploadDiagnostics.BOMTime',
+  ulEom: 'InternetGatewayDevice.UploadDiagnostics.EOMTime',
   pingState: 'InternetGatewayDevice.IPPingDiagnostics.DiagnosticsState',
   pingSuccess: 'InternetGatewayDevice.IPPingDiagnostics.SuccessCount',
   pingFailure: 'InternetGatewayDevice.IPPingDiagnostics.FailureCount',
@@ -68,6 +73,7 @@ const TR143 = {
 /** Nomes lidos no GET de resultado após "8 DIAGNOSTICS COMPLETE". */
 export const TR143_RESULT_NAMES: string[] = [
   TR143.dlState, TR143.dlTestBytes, TR143.dlTotalBytes, TR143.dlBom, TR143.dlEom,
+  TR143.ulState, TR143.ulTotalBytes, TR143.ulTestLen, TR143.ulBom, TR143.ulEom,
   TR143.pingState, TR143.pingSuccess, TR143.pingFailure, TR143.pingAvg, TR143.pingMin, TR143.pingMax,
 ];
 
@@ -101,12 +107,26 @@ function throughputKbps(testBytes: string | undefined, bom: string | undefined, 
  */
 export function parseTr143Result(params: Record<string, string>): {
   download: Tr143Download | null;
+  upload: Tr143Download | null;
   ping: Tr143Ping | null;
 } {
   const dlState = params[TR143.dlState];
   const download: Tr143Download | null =
     dlState && dlState !== 'None' && dlState !== 'Requested'
       ? { state: dlState, throughputKbps: throughputKbps(params[TR143.dlTestBytes], params[TR143.dlBom], params[TR143.dlEom]) }
+      : null;
+
+  const ulState = params[TR143.ulState];
+  const upload: Tr143Download | null =
+    ulState && ulState !== 'None' && ulState !== 'Requested'
+      ? {
+          state: ulState,
+          throughputKbps: throughputKbps(
+            params[TR143.ulTotalBytes] ?? params[TR143.ulTestLen],
+            params[TR143.ulBom],
+            params[TR143.ulEom],
+          ),
+        }
       : null;
 
   const pingState = params[TR143.pingState];
@@ -122,7 +142,7 @@ export function parseTr143Result(params: Record<string, string>): {
         }
       : null;
 
-  return { download, ping };
+  return { download, upload, ping };
 }
 
 const WIFI_PATHS = {

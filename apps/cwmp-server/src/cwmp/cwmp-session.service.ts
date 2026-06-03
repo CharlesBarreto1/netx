@@ -447,27 +447,31 @@ export class CwmpSessionService {
    * Correlaciona por kind (a última REQUESTED daquele tipo). Best-effort.
    */
   private async processDiagResult(deviceDbId: string, params: Record<string, string>): Promise<void> {
-    const { download, ping } = parseTr143Result(params);
+    const { download, upload, ping } = parseTr143Result(params);
 
-    if (download) {
+    for (const [kind, res] of [
+      [Tr069DiagKind.DOWNLOAD, download],
+      [Tr069DiagKind.UPLOAD, upload],
+    ] as const) {
+      if (!res) continue;
       const run = await this.prisma.tr069DiagnosticRun.findFirst({
-        where: { deviceId: deviceDbId, kind: Tr069DiagKind.DOWNLOAD, state: Tr069DiagState.REQUESTED },
+        where: { deviceId: deviceDbId, kind, state: Tr069DiagState.REQUESTED },
         orderBy: { createdAt: 'desc' },
         select: { id: true },
       });
       if (run) {
-        const ok = /^Completed$/i.test(download.state);
+        const ok = /^Completed$/i.test(res.state);
         await this.prisma.tr069DiagnosticRun.update({
           where: { id: run.id },
           data: {
             state: ok ? Tr069DiagState.COMPLETED : Tr069DiagState.ERROR,
-            throughputKbps: ok ? download.throughputKbps : null,
-            errorText: ok ? null : download.state,
+            throughputKbps: ok ? res.throughputKbps : null,
+            errorText: ok ? null : res.state,
             raw: params as unknown as object,
             completedAt: new Date(),
           },
         });
-        this.logger.log(`[CWMP] speed test device=${deviceDbId.slice(0, 8)} ${download.state} ${download.throughputKbps ?? '∅'}kbps`);
+        this.logger.log(`[CWMP] ${kind} device=${deviceDbId.slice(0, 8)} ${res.state} ${res.throughputKbps ?? '∅'}kbps`);
       }
     }
 

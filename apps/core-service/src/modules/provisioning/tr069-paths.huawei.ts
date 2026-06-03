@@ -209,6 +209,15 @@ export const TR143_DOWNLOAD = {
   eomTime: 'InternetGatewayDevice.DownloadDiagnostics.EOMTime',
 } as const;
 
+export const TR143_UPLOAD = {
+  state: 'InternetGatewayDevice.UploadDiagnostics.DiagnosticsState',
+  url: 'InternetGatewayDevice.UploadDiagnostics.UploadURL',
+  testFileLength: 'InternetGatewayDevice.UploadDiagnostics.TestFileLength',
+  totalBytesSent: 'InternetGatewayDevice.UploadDiagnostics.TotalBytesSent',
+  bomTime: 'InternetGatewayDevice.UploadDiagnostics.BOMTime',
+  eomTime: 'InternetGatewayDevice.UploadDiagnostics.EOMTime',
+} as const;
+
 export const TR143_PING = {
   state: 'InternetGatewayDevice.IPPingDiagnostics.DiagnosticsState',
   host: 'InternetGatewayDevice.IPPingDiagnostics.Host',
@@ -229,6 +238,11 @@ export function tr143ResultParamNames(): string[] {
     TR143_DOWNLOAD.totalBytes,
     TR143_DOWNLOAD.bomTime,
     TR143_DOWNLOAD.eomTime,
+    TR143_UPLOAD.state,
+    TR143_UPLOAD.totalBytesSent,
+    TR143_UPLOAD.testFileLength,
+    TR143_UPLOAD.bomTime,
+    TR143_UPLOAD.eomTime,
     TR143_PING.state,
     TR143_PING.success,
     TR143_PING.failure,

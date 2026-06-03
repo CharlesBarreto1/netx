@@ -44,6 +44,7 @@ import {
   huaweiNotificationAttributes,
   TR143_DOWNLOAD,
   TR143_PING,
+  TR143_UPLOAD,
 } from './tr069-paths.huawei';
 
 /** Intervalo (min) entre coletas proativas por device. */
@@ -260,7 +261,39 @@ export class Tr069DiagnosticsService {
         status: 'PENDING',
       },
     });
-    return { runId: run.id, message: 'Speed test disparado — resultado em alguns segundos.' };
+
+    // Upload (opcional): só dispara se houver um sink HTTP configurado.
+    const uploadUrl = process.env.TR069_SPEEDTEST_UPLOAD_URL;
+    let withUpload = false;
+    if (uploadUrl) {
+      const bytes = process.env.TR069_SPEEDTEST_UPLOAD_BYTES ?? '50000000';
+      await this.prisma.tr069DiagnosticRun.create({
+        data: { tenantId, deviceId, kind: 'UPLOAD', target: uploadUrl, requestedBy: userId },
+      });
+      await this.prisma.tr069Task.create({
+        data: {
+          tenantId,
+          deviceId,
+          action: 'SET_PARAMS',
+          payload: {
+            params: [
+              { name: TR143_UPLOAD.url, value: uploadUrl, type: 'xsd:string' },
+              { name: TR143_UPLOAD.testFileLength, value: bytes, type: 'xsd:unsignedInt' },
+              { name: TR143_UPLOAD.state, value: 'Requested', type: 'xsd:string' },
+            ],
+            purpose: 'TR143_UPLOAD',
+          },
+          status: 'PENDING',
+        },
+      });
+      withUpload = true;
+    }
+    return {
+      runId: run.id,
+      message: withUpload
+        ? 'Speed test (download + upload) disparado — resultado em alguns segundos.'
+        : 'Speed test (download) disparado — resultado em alguns segundos.',
+    };
   }
 
   /** Dispara um ping (IPPingDiagnostics) pra um host. Resultado async. */

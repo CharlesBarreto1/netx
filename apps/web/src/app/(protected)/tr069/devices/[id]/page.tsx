@@ -477,7 +477,7 @@ export default function Tr069DeviceDetailPage() {
                   {runs.map((r) => (
                     <tr key={r.id}>
                       <td className="py-1 pr-2 font-medium">
-                        {r.kind === 'PING' ? `Ping ${r.target ?? ''}` : t('detail.speedTest')}
+                        {r.kind === 'PING' ? `Ping ${r.target ?? ''}` : r.kind === 'UPLOAD' ? 'Upload' : 'Download'}
                       </td>
                       <td className="py-1 pr-2 font-mono">
                         {r.state === 'ERROR'
