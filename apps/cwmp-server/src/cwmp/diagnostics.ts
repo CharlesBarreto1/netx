@@ -50,6 +50,81 @@ const PPP_PATHS = {
 // Regex de host da LAN: ...Hosts.Host.{i}.{campo}
 const HOST_RE = /Hosts\.Host\.(\d+)\.(.+)$/;
 
+// ── TR-143 (speed test / ping) — nomes padrão TR-098 ─────────────────────────
+const TR143 = {
+  dlState: 'InternetGatewayDevice.DownloadDiagnostics.DiagnosticsState',
+  dlTestBytes: 'InternetGatewayDevice.DownloadDiagnostics.TestBytesReceived',
+  dlTotalBytes: 'InternetGatewayDevice.DownloadDiagnostics.TotalBytesReceived',
+  dlBom: 'InternetGatewayDevice.DownloadDiagnostics.BOMTime',
+  dlEom: 'InternetGatewayDevice.DownloadDiagnostics.EOMTime',
+  pingState: 'InternetGatewayDevice.IPPingDiagnostics.DiagnosticsState',
+  pingSuccess: 'InternetGatewayDevice.IPPingDiagnostics.SuccessCount',
+  pingFailure: 'InternetGatewayDevice.IPPingDiagnostics.FailureCount',
+  pingAvg: 'InternetGatewayDevice.IPPingDiagnostics.AverageResponseTime',
+  pingMin: 'InternetGatewayDevice.IPPingDiagnostics.MinimumResponseTime',
+  pingMax: 'InternetGatewayDevice.IPPingDiagnostics.MaximumResponseTime',
+};
+
+/** Nomes lidos no GET de resultado após "8 DIAGNOSTICS COMPLETE". */
+export const TR143_RESULT_NAMES: string[] = [
+  TR143.dlState, TR143.dlTestBytes, TR143.dlTotalBytes, TR143.dlBom, TR143.dlEom,
+  TR143.pingState, TR143.pingSuccess, TR143.pingFailure, TR143.pingAvg, TR143.pingMin, TR143.pingMax,
+];
+
+export interface Tr143Download {
+  state: string;
+  throughputKbps: number | null;
+}
+export interface Tr143Ping {
+  state: string;
+  success: number | null;
+  failure: number | null;
+  avgMs: number | null;
+  minMs: number | null;
+  maxMs: number | null;
+}
+
+/** Vazão de download em kbps a partir de bytes + janela BOM/EOM (ISO 8601). */
+function throughputKbps(testBytes: string | undefined, bom: string | undefined, eom: string | undefined): number | null {
+  const bytes = numOrNull(testBytes ?? '');
+  if (bytes === null || !bom || !eom) return null;
+  const t0 = Date.parse(bom);
+  const t1 = Date.parse(eom);
+  if (Number.isNaN(t0) || Number.isNaN(t1) || t1 <= t0) return null;
+  const sec = (t1 - t0) / 1000;
+  return Math.round((bytes * 8) / sec / 1000);
+}
+
+/**
+ * Extrai resultados TR-143 de um GetParameterValues. Retorna apenas as partes
+ * presentes (download e/ou ping) com DiagnosticsState != None/Requested.
+ */
+export function parseTr143Result(params: Record<string, string>): {
+  download: Tr143Download | null;
+  ping: Tr143Ping | null;
+} {
+  const dlState = params[TR143.dlState];
+  const download: Tr143Download | null =
+    dlState && dlState !== 'None' && dlState !== 'Requested'
+      ? { state: dlState, throughputKbps: throughputKbps(params[TR143.dlTestBytes], params[TR143.dlBom], params[TR143.dlEom]) }
+      : null;
+
+  const pingState = params[TR143.pingState];
+  const ping: Tr143Ping | null =
+    pingState && pingState !== 'None' && pingState !== 'Requested'
+      ? {
+          state: pingState,
+          success: intOrNull(params[TR143.pingSuccess]),
+          failure: intOrNull(params[TR143.pingFailure]),
+          avgMs: numOrNull(params[TR143.pingAvg]),
+          minMs: numOrNull(params[TR143.pingMin]),
+          maxMs: numOrNull(params[TR143.pingMax]),
+        }
+      : null;
+
+  return { download, ping };
+}
+
 const WIFI_PATHS = {
   clients24: `${WLAN_24}.TotalAssociations`,
   clients5: `${WLAN_50}.TotalAssociations`,

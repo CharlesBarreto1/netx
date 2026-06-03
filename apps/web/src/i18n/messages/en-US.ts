@@ -2747,6 +2747,12 @@ const messages = {
       rebootConfirm: 'Reboot this CPE now? The customer will lose connection for a few minutes.',
       firmware: 'Upgrade firmware',
       firmwarePrompt: 'Firmware URL (HTTP/HTTPS) for the CPE to download and apply:',
+      speedTest: 'Speed test',
+      ping: 'Ping',
+      pingPrompt: 'Host/IP for the CPE to ping:',
+      sectionDiagRuns: 'On-demand diagnostics (speed / ping)',
+      diagKind: 'Test',
+      diagResult: 'Result',
       queued: 'Action queued — it will be applied on the next CPE Inform.',
       noDiagnostic:
         'No diagnostics yet. Click "Collect diagnostics" — the reading arrives on the next Inform (up to ~1 min).',

@@ -2769,6 +2769,12 @@ const messages = {
       rebootConfirm: '¿Reiniciar este CPE ahora? El cliente queda unos minutos sin conexión.',
       firmware: 'Actualizar firmware',
       firmwarePrompt: 'URL del firmware (HTTP/HTTPS) para que el CPE descargue y aplique:',
+      speedTest: 'Test de velocidad',
+      ping: 'Ping',
+      pingPrompt: 'Host/IP para que el CPE haga ping:',
+      sectionDiagRuns: 'Diagnósticos a pedido (velocidad / ping)',
+      diagKind: 'Test',
+      diagResult: 'Resultado',
       queued: 'Acción encolada — se aplicará en el próximo Inform del CPE.',
       noDiagnostic:
         'Aún sin diagnóstico. Hacé clic en "Recolectar diagnóstico" — la lectura llega en el próximo Inform (hasta ~1 min).',

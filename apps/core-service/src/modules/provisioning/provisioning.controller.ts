@@ -37,6 +37,8 @@ import {
   ListPendingInstallsQuerySchema,
   ListTr069AlertsQuerySchema,
   ListTr069DiagnosticsQuerySchema,
+  PingRequestSchema,
+  SpeedTestRequestSchema,
   UpdateOltRequestSchema,
   type AuthenticatedPrincipal,
   type CreateOltRequest,
@@ -46,6 +48,8 @@ import {
   type ListPendingInstallsQuery,
   type ListTr069AlertsQuery,
   type ListTr069DiagnosticsQuery,
+  type PingRequest,
+  type SpeedTestRequest,
   type UpdateOltRequest,
 } from '@netx/shared';
 
@@ -260,6 +264,40 @@ export class Tr069Controller {
     @ZodBody(FirmwareUpgradeRequestSchema) input: FirmwareUpgradeRequest,
   ) {
     return this.svc.enqueueFirmwareUpgrade(user.tenantId, id, input);
+  }
+
+  /** Dispara um speed test (TR-143 DownloadDiagnostics). */
+  @Post('devices/:id/speedtest')
+  @HttpCode(200)
+  @RequirePermissions('tr069.admin')
+  speedTest(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(SpeedTestRequestSchema) input: SpeedTestRequest,
+  ) {
+    return this.diag.requestSpeedTest(user.tenantId, id, user.sub, input.url);
+  }
+
+  /** Dispara um ping (TR-143 IPPingDiagnostics) pra um host. */
+  @Post('devices/:id/ping')
+  @HttpCode(200)
+  @RequirePermissions('tr069.admin')
+  ping(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(PingRequestSchema) input: PingRequest,
+  ) {
+    return this.diag.requestPing(user.tenantId, id, user.sub, input.host);
+  }
+
+  /** Histórico de runs TR-143 (speed test / ping) do device. */
+  @Get('devices/:id/diag-runs')
+  @RequirePermissions('tr069.admin')
+  diagRuns(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.diag.listDiagRuns(user.tenantId, id);
   }
 
   /** Lista de alertas de diagnóstico (dashboard / triagem). */

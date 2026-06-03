@@ -313,6 +313,25 @@ export interface Tr069RefreshResponse {
   message: string;
 }
 
+export type Tr069DiagKind = 'DOWNLOAD' | 'UPLOAD' | 'PING' | 'TRACEROUTE';
+export type Tr069DiagState = 'REQUESTED' | 'COMPLETED' | 'ERROR';
+
+export interface Tr069DiagRunDto {
+  id: string;
+  kind: Tr069DiagKind;
+  state: Tr069DiagState;
+  target: string | null;
+  throughputKbps: number | null;
+  pingSuccess: number | null;
+  pingFailure: number | null;
+  pingAvgMs: number | null;
+  pingMinMs: number | null;
+  pingMaxMs: number | null;
+  errorText: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
 // =============================================================================
 // /v1/olts
 // =============================================================================
@@ -358,6 +377,11 @@ export const tr069Api = {
   reboot: (id: string) => api.post<{ taskId: string }>(`/v1/tr069/devices/${id}/reboot`, {}),
   firmwareUpgrade: (id: string, body: { url: string; fileType?: string; targetFileName?: string }) =>
     api.post<{ taskId: string }>(`/v1/tr069/devices/${id}/firmware`, body),
+  speedTest: (id: string, url?: string) =>
+    api.post<{ runId: string; message: string }>(`/v1/tr069/devices/${id}/speedtest`, url ? { url } : {}),
+  ping: (id: string, host: string) =>
+    api.post<{ runId: string; message: string }>(`/v1/tr069/devices/${id}/ping`, { host }),
+  diagRuns: (id: string) => api.get<Tr069DiagRunDto[]>(`/v1/tr069/devices/${id}/diag-runs`),
   listAlerts: (params?: {
     status?: Tr069AlertStatus;
     severity?: Tr069AlertSeverity;

@@ -123,6 +123,7 @@ model Tenant {
   tr069Tasks           Tr069Task[]
   tr069Diagnostics     Tr069Diagnostic[]
   tr069Alerts          Tr069Alert[]
+  tr069DiagRuns        Tr069DiagnosticRun[]
   provisioningEvents   ProvisioningEvent[]
   ufinetServices       UfinetService[]
 
@@ -2805,6 +2806,7 @@ model Tr069Device {
   tasks                    Tr069Task[]
   diagnostics              Tr069Diagnostic[]
   alerts                   Tr069Alert[]
+  diagRuns                 Tr069DiagnosticRun[]
 
   @@index([tenantId, status])
   @@index([tenantId, lastInformAt])
@@ -2992,6 +2994,53 @@ model Tr069Alert {
   @@index([tenantId, status, severity])
   @@index([deviceId, status])
   @@map("tr069_alerts")
+}
+
+enum Tr069DiagKind {
+  DOWNLOAD
+  UPLOAD
+  PING
+  TRACEROUTE
+}
+
+enum Tr069DiagState {
+  REQUESTED
+  COMPLETED
+  ERROR
+}
+
+/// Execução on-demand de um diagnóstico TR-143 (speed test / ping) disparado
+/// pelo operador. O ACS seta DiagnosticsState=Requested no CPE; quando o CPE
+/// manda "8 DIAGNOSTICS COMPLETE", o ACS lê os resultados e fecha a run.
+model Tr069DiagnosticRun {
+  id             String          @id @default(uuid()) @db.Uuid
+  tenantId       String          @map("tenant_id") @db.Uuid
+  deviceId       String          @map("device_id") @db.Uuid
+
+  kind           Tr069DiagKind
+  state          Tr069DiagState  @default(REQUESTED)
+  target         String?         @db.VarChar(512)   // URL (speed) ou host (ping)
+
+  // Resultados (preenchidos quando COMPLETED):
+  throughputKbps Int?            @map("throughput_kbps")   // download/upload
+  pingSuccess    Int?            @map("ping_success")
+  pingFailure    Int?            @map("ping_failure")
+  pingAvgMs      Decimal?        @map("ping_avg_ms") @db.Decimal(8, 2)
+  pingMinMs      Decimal?        @map("ping_min_ms") @db.Decimal(8, 2)
+  pingMaxMs      Decimal?        @map("ping_max_ms") @db.Decimal(8, 2)
+  errorText      String?         @map("error_text") @db.Text
+  raw            Json?
+
+  requestedBy    String?         @map("requested_by") @db.Uuid
+  createdAt      DateTime        @default(now()) @map("created_at")
+  completedAt    DateTime?       @map("completed_at")
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  device         Tr069Device     @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, deviceId, createdAt])
+  @@index([deviceId, kind, state])
+  @@map("tr069_diagnostic_runs")
 }
 
 // =============================================================================

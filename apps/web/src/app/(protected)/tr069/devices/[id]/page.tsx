@@ -8,7 +8,7 @@
  * e as tasks recentes. Ações: coletar diagnóstico agora (GET_PARAMS) e
  * reiniciar o CPE (Reboot) — ambas aplicadas no próximo Inform.
  */
-import { ArrowLeft, HardDriveDownload, RefreshCw, RotateCcw, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, Gauge, HardDriveDownload, Network, RefreshCw, RotateCcw, TriangleAlert } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -93,6 +93,12 @@ export default function Tr069DeviceDetailPage() {
     { refreshInterval: 60_000 },
   );
 
+  const { data: runs, mutate: mutateRuns } = useSWR(
+    id ? `tr069/devices/${id}/diag-runs` : null,
+    () => tr069Api.diagRuns(id),
+    { refreshInterval: 10_000 },
+  );
+
   async function handleRefresh() {
     setBusy(true);
     try {
@@ -113,6 +119,34 @@ export default function Tr069DeviceDetailPage() {
       await tr069Api.reboot(id);
       notify.success(t('detail.queued'));
       await mutate();
+    } catch (e) {
+      notify.apiError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSpeedTest() {
+    setBusy(true);
+    try {
+      const res = await tr069Api.speedTest(id);
+      notify.success(res.message);
+      await mutateRuns();
+    } catch (e) {
+      notify.apiError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handlePing() {
+    const host = window.prompt(t('detail.pingPrompt'), '8.8.8.8');
+    if (!host) return;
+    setBusy(true);
+    try {
+      const res = await tr069Api.ping(id, host);
+      notify.success(res.message);
+      await mutateRuns();
     } catch (e) {
       notify.apiError(e);
     } finally {
@@ -179,6 +213,12 @@ export default function Tr069DeviceDetailPage() {
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" loading={busy} onClick={handleRefresh}>
             <RefreshCw className="mr-1 h-4 w-4" /> {t('detail.refresh')}
+          </Button>
+          <Button variant="secondary" size="sm" loading={busy} onClick={handleSpeedTest}>
+            <Gauge className="mr-1 h-4 w-4" /> {t('detail.speedTest')}
+          </Button>
+          <Button variant="secondary" size="sm" loading={busy} onClick={handlePing}>
+            <Network className="mr-1 h-4 w-4" /> {t('detail.ping')}
           </Button>
           <Button variant="outline" size="sm" loading={busy} onClick={handleReboot}>
             <RotateCcw className="mr-1 h-4 w-4" /> {t('detail.reboot')}
@@ -415,6 +455,61 @@ export default function Tr069DeviceDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Diagnósticos sob demanda (TR-143) */}
+      {runs && runs.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t('detail.sectionDiagRuns')}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead className="text-left text-slate-500">
+                  <tr>
+                    <th className="py-1 pr-2 font-medium">{t('detail.diagKind')}</th>
+                    <th className="py-1 pr-2 font-medium">{t('detail.diagResult')}</th>
+                    <th className="py-1 pr-2 font-medium">{t('detail.colStatus')}</th>
+                    <th className="py-1 pr-2 font-medium">{t('detail.colCreated')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {runs.map((r) => (
+                    <tr key={r.id}>
+                      <td className="py-1 pr-2 font-medium">
+                        {r.kind === 'PING' ? `Ping ${r.target ?? ''}` : t('detail.speedTest')}
+                      </td>
+                      <td className="py-1 pr-2 font-mono">
+                        {r.state === 'ERROR'
+                          ? (r.errorText ?? '—')
+                          : r.kind === 'PING'
+                            ? r.pingAvgMs !== null
+                              ? `${r.pingAvgMs} ms · ${r.pingSuccess ?? 0}/${(r.pingSuccess ?? 0) + (r.pingFailure ?? 0)} ok`
+                              : '…'
+                            : r.throughputKbps !== null
+                              ? `${(r.throughputKbps / 1000).toFixed(1)} Mbps`
+                              : '…'}
+                      </td>
+                      <td className="py-1 pr-2">
+                        <Badge
+                          tone={
+                            r.state === 'COMPLETED' ? 'success' : r.state === 'ERROR' ? 'danger' : 'warning'
+                          }
+                        >
+                          {r.state}
+                        </Badge>
+                      </td>
+                      <td className="py-1 pr-2 text-slate-500">
+                        {new Date(r.createdAt).toLocaleString('pt-BR')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

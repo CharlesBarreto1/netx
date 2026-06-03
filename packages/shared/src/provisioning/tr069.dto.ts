@@ -89,6 +89,36 @@ export const ListTr069DiagnosticsQuerySchema = z.object({
 });
 export type ListTr069DiagnosticsQuery = z.infer<typeof ListTr069DiagnosticsQuerySchema>;
 
+export const SpeedTestRequestSchema = z.object({
+  /** URL do arquivo de teste; se omitida usa TR069_SPEEDTEST_URL. */
+  url: z.string().url().max(512).optional(),
+});
+export type SpeedTestRequest = z.infer<typeof SpeedTestRequestSchema>;
+
+export const PingRequestSchema = z.object({
+  host: z.string().min(1).max(255),
+});
+export type PingRequest = z.infer<typeof PingRequestSchema>;
+
+export type Tr069DiagKind = 'DOWNLOAD' | 'UPLOAD' | 'PING' | 'TRACEROUTE';
+export type Tr069DiagState = 'REQUESTED' | 'COMPLETED' | 'ERROR';
+
+export interface Tr069DiagRunDto {
+  id: string;
+  kind: Tr069DiagKind;
+  state: Tr069DiagState;
+  target: string | null;
+  throughputKbps: number | null;
+  pingSuccess: number | null;
+  pingFailure: number | null;
+  pingAvgMs: number | null;
+  pingMinMs: number | null;
+  pingMaxMs: number | null;
+  errorText: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
 export const FirmwareUpgradeRequestSchema = z.object({
   /** URL HTTP(S) de onde o CPE baixa a imagem. */
   url: z.string().url().max(512),

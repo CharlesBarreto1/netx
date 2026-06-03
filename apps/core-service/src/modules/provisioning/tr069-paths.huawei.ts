@@ -196,6 +196,48 @@ export const HUAWEI_WIFI_ASSOC_PATHS = {
 export const HUAWEI_WIFI_CLIENTS_ENABLED =
   (process.env.TR069_WIFI_CLIENTS_ENABLED ?? '1') !== '0';
 
+// =============================================================================
+// TR-143 — diagnósticos a pedido (speed test / ping). Nomes padrão TR-098,
+// confirmados ao vivo no firmware HW_WAP_CWMP_V02.
+// =============================================================================
+export const TR143_DOWNLOAD = {
+  state: 'InternetGatewayDevice.DownloadDiagnostics.DiagnosticsState',
+  url: 'InternetGatewayDevice.DownloadDiagnostics.DownloadURL',
+  testBytes: 'InternetGatewayDevice.DownloadDiagnostics.TestBytesReceived',
+  totalBytes: 'InternetGatewayDevice.DownloadDiagnostics.TotalBytesReceived',
+  bomTime: 'InternetGatewayDevice.DownloadDiagnostics.BOMTime',
+  eomTime: 'InternetGatewayDevice.DownloadDiagnostics.EOMTime',
+} as const;
+
+export const TR143_PING = {
+  state: 'InternetGatewayDevice.IPPingDiagnostics.DiagnosticsState',
+  host: 'InternetGatewayDevice.IPPingDiagnostics.Host',
+  reps: 'InternetGatewayDevice.IPPingDiagnostics.NumberOfRepetitions',
+  timeout: 'InternetGatewayDevice.IPPingDiagnostics.Timeout',
+  success: 'InternetGatewayDevice.IPPingDiagnostics.SuccessCount',
+  failure: 'InternetGatewayDevice.IPPingDiagnostics.FailureCount',
+  avg: 'InternetGatewayDevice.IPPingDiagnostics.AverageResponseTime',
+  min: 'InternetGatewayDevice.IPPingDiagnostics.MinimumResponseTime',
+  max: 'InternetGatewayDevice.IPPingDiagnostics.MaximumResponseTime',
+} as const;
+
+/** Nomes a ler no GET de resultado após "8 DIAGNOSTICS COMPLETE". */
+export function tr143ResultParamNames(): string[] {
+  return [
+    TR143_DOWNLOAD.state,
+    TR143_DOWNLOAD.testBytes,
+    TR143_DOWNLOAD.totalBytes,
+    TR143_DOWNLOAD.bomTime,
+    TR143_DOWNLOAD.eomTime,
+    TR143_PING.state,
+    TR143_PING.success,
+    TR143_PING.failure,
+    TR143_PING.avg,
+    TR143_PING.min,
+    TR143_PING.max,
+  ];
+}
+
 /**
  * Lista achatada de nomes de parâmetro para o GetParameterValues de
  * diagnóstico. Ordem estável (óptico → Wi-Fi agregado → clientes) só por

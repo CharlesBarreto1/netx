@@ -17,7 +17,7 @@
  */
 import { randomBytes } from 'node:crypto';
 
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma } from '@prisma/client';
 import {
@@ -27,6 +27,7 @@ import {
   type Tr069AlertDto,
   type Tr069DeviceDetailResponse,
   type Tr069DiagnosticDto,
+  type Tr069DiagRunDto,
   type Tr069LanHost,
   type Tr069RefreshResponse,
   type Tr069TaskDto,
@@ -41,6 +42,8 @@ import {
   HUAWEI_EG8145_PATHS,
   huaweiDiagnosticParamNames,
   huaweiNotificationAttributes,
+  TR143_DOWNLOAD,
+  TR143_PING,
 } from './tr069-paths.huawei';
 
 /** Intervalo (min) entre coletas proativas por device. */
@@ -217,6 +220,105 @@ export class Tr069DiagnosticsService {
     });
     this.logger.log(`[TR-069] credenciais de connection-request criadas device=${device.id}`);
     return { username, password, ready: false };
+  }
+
+  // ---------------------------------------------------------------------------
+  // TR-143 — speed test / ping a pedido
+  // ---------------------------------------------------------------------------
+
+  /** Dispara um speed test (DownloadDiagnostics). Resultado chega async. */
+  async requestSpeedTest(
+    tenantId: string,
+    deviceId: string,
+    userId: string,
+    url?: string,
+  ): Promise<{ runId: string; message: string }> {
+    const device = await this.prisma.tr069Device.findFirst({
+      where: { id: deviceId, tenantId },
+      select: { id: true },
+    });
+    if (!device) throw new NotFoundException('Device TR-069 não encontrado');
+    const target = url ?? process.env.TR069_SPEEDTEST_URL;
+    if (!target) {
+      throw new BadRequestException('Defina TR069_SPEEDTEST_URL (arquivo de teste) ou informe a URL.');
+    }
+    const run = await this.prisma.tr069DiagnosticRun.create({
+      data: { tenantId, deviceId, kind: 'DOWNLOAD', target, requestedBy: userId },
+    });
+    await this.prisma.tr069Task.create({
+      data: {
+        tenantId,
+        deviceId,
+        action: 'SET_PARAMS',
+        payload: {
+          params: [
+            { name: TR143_DOWNLOAD.url, value: target, type: 'xsd:string' },
+            { name: TR143_DOWNLOAD.state, value: 'Requested', type: 'xsd:string' },
+          ],
+          purpose: 'TR143_DOWNLOAD',
+        },
+        status: 'PENDING',
+      },
+    });
+    return { runId: run.id, message: 'Speed test disparado — resultado em alguns segundos.' };
+  }
+
+  /** Dispara um ping (IPPingDiagnostics) pra um host. Resultado async. */
+  async requestPing(
+    tenantId: string,
+    deviceId: string,
+    userId: string,
+    host: string,
+  ): Promise<{ runId: string; message: string }> {
+    const device = await this.prisma.tr069Device.findFirst({
+      where: { id: deviceId, tenantId },
+      select: { id: true },
+    });
+    if (!device) throw new NotFoundException('Device TR-069 não encontrado');
+    const run = await this.prisma.tr069DiagnosticRun.create({
+      data: { tenantId, deviceId, kind: 'PING', target: host, requestedBy: userId },
+    });
+    await this.prisma.tr069Task.create({
+      data: {
+        tenantId,
+        deviceId,
+        action: 'SET_PARAMS',
+        payload: {
+          params: [
+            { name: TR143_PING.host, value: host, type: 'xsd:string' },
+            { name: TR143_PING.reps, value: '4', type: 'xsd:unsignedInt' },
+            { name: TR143_PING.state, value: 'Requested', type: 'xsd:string' },
+          ],
+          purpose: 'TR143_PING',
+        },
+        status: 'PENDING',
+      },
+    });
+    return { runId: run.id, message: 'Ping disparado — resultado em alguns segundos.' };
+  }
+
+  /** Lista as runs de diagnóstico (speed test / ping) recentes do device. */
+  async listDiagRuns(tenantId: string, deviceId: string): Promise<Tr069DiagRunDto[]> {
+    const rows = await this.prisma.tr069DiagnosticRun.findMany({
+      where: { tenantId, deviceId },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      state: r.state,
+      target: r.target,
+      throughputKbps: r.throughputKbps,
+      pingSuccess: r.pingSuccess,
+      pingFailure: r.pingFailure,
+      pingAvgMs: dec(r.pingAvgMs),
+      pingMinMs: dec(r.pingMinMs),
+      pingMaxMs: dec(r.pingMaxMs),
+      errorText: r.errorText,
+      createdAt: r.createdAt.toISOString(),
+      completedAt: r.completedAt?.toISOString() ?? null,
+    }));
   }
 
   // ---------------------------------------------------------------------------

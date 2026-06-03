@@ -30,7 +30,13 @@
  */
 import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { Tr069AlertSeverity, Tr069AlertStatus, Tr069AlertType } from '@prisma/client';
+import {
+  Tr069AlertSeverity,
+  Tr069AlertStatus,
+  Tr069AlertType,
+  Tr069DiagKind,
+  Tr069DiagState,
+} from '@prisma/client';
 import type { Tr069Task } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -46,7 +52,9 @@ import {
   extractDiagnostics,
   isTxPowerAbnormal,
   parseParameterList,
+  parseTr143Result,
   RX_THRESHOLDS,
+  TR143_RESULT_NAMES,
   WIFI_WEAK_RSSI_DBM,
   type ExtractedDiagnostics,
 } from './diagnostics';
@@ -253,6 +261,14 @@ export class CwmpSessionService {
       }
     }
 
+    // TR-143: CPE terminou um diagnóstico (speed test / ping) — enfileira o GET
+    // dos resultados pra ler ainda nesta sessão.
+    if (state.deviceDbId && inform.events.some((e) => /DIAGNOSTICS COMPLETE/i.test(e))) {
+      await this.enqueueDiagResultGet(state.deviceDbId).catch((err: unknown) =>
+        this.logger.error(`[CWMP] enfileirar DIAG_RESULT falhou: ${String(err)}`),
+      );
+    }
+
     // CPE voltou a comunicar — fecha qualquer alerta de OFFLINE aberto.
     if (state.deviceDbId) {
       await this.resolveAlert(state.deviceDbId, Tr069AlertType.DEVICE_OFFLINE);
@@ -397,9 +413,88 @@ export class CwmpSessionService {
     // GET_PARAMS de diagnóstico — transforma a ParameterList em métricas
     // (níveis ópticos + Wi-Fi), persiste a série temporal e avalia alertas.
     if (task.action === 'GET_PARAMS' && parsed.kind === 'GetParameterValuesResponse' && state.deviceDbId) {
-      await this.persistDiagnostics(state.deviceDbId, state.deviceId ?? '∅', parseParameterList(parsed.body), true).catch(
+      const params = parseParameterList(parsed.body);
+      await this.persistDiagnostics(state.deviceDbId, state.deviceId ?? '∅', params, true).catch(
         (err: unknown) => this.logger.error(`[CWMP] falha ao persistir diagnóstico: ${String(err)}`),
       );
+      // Resultado de TR-143 (speed test / ping), se presente nesse GET.
+      await this.processDiagResult(state.deviceDbId, params).catch((err: unknown) =>
+        this.logger.error(`[CWMP] processar TR-143 falhou: ${String(err)}`),
+      );
+    }
+  }
+
+  /** Enfileira o GET dos resultados TR-143 (após "8 DIAGNOSTICS COMPLETE"). */
+  private async enqueueDiagResultGet(deviceDbId: string): Promise<void> {
+    const device = await this.prisma.tr069Device.findUnique({
+      where: { id: deviceDbId },
+      select: { tenantId: true },
+    });
+    if (!device) return;
+    await this.prisma.tr069Task.create({
+      data: {
+        tenantId: device.tenantId,
+        deviceId: deviceDbId,
+        action: 'GET_PARAMS',
+        payload: { names: TR143_RESULT_NAMES, purpose: 'DIAG_RESULT' },
+        status: 'PENDING',
+      },
+    });
+  }
+
+  /**
+   * Fecha as runs TR-143 REQUESTED do device com base nos resultados lidos.
+   * Correlaciona por kind (a última REQUESTED daquele tipo). Best-effort.
+   */
+  private async processDiagResult(deviceDbId: string, params: Record<string, string>): Promise<void> {
+    const { download, ping } = parseTr143Result(params);
+
+    if (download) {
+      const run = await this.prisma.tr069DiagnosticRun.findFirst({
+        where: { deviceId: deviceDbId, kind: Tr069DiagKind.DOWNLOAD, state: Tr069DiagState.REQUESTED },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      });
+      if (run) {
+        const ok = /^Completed$/i.test(download.state);
+        await this.prisma.tr069DiagnosticRun.update({
+          where: { id: run.id },
+          data: {
+            state: ok ? Tr069DiagState.COMPLETED : Tr069DiagState.ERROR,
+            throughputKbps: ok ? download.throughputKbps : null,
+            errorText: ok ? null : download.state,
+            raw: params as unknown as object,
+            completedAt: new Date(),
+          },
+        });
+        this.logger.log(`[CWMP] speed test device=${deviceDbId.slice(0, 8)} ${download.state} ${download.throughputKbps ?? '∅'}kbps`);
+      }
+    }
+
+    if (ping) {
+      const run = await this.prisma.tr069DiagnosticRun.findFirst({
+        where: { deviceId: deviceDbId, kind: Tr069DiagKind.PING, state: Tr069DiagState.REQUESTED },
+        orderBy: { createdAt: 'desc' },
+        select: { id: true },
+      });
+      if (run) {
+        const ok = /^Complete/i.test(ping.state); // "Complete" / "Completed"
+        await this.prisma.tr069DiagnosticRun.update({
+          where: { id: run.id },
+          data: {
+            state: ok ? Tr069DiagState.COMPLETED : Tr069DiagState.ERROR,
+            pingSuccess: ping.success,
+            pingFailure: ping.failure,
+            pingAvgMs: ping.avgMs,
+            pingMinMs: ping.minMs,
+            pingMaxMs: ping.maxMs,
+            errorText: ok ? null : ping.state,
+            raw: params as unknown as object,
+            completedAt: new Date(),
+          },
+        });
+        this.logger.log(`[CWMP] ping device=${deviceDbId.slice(0, 8)} ${ping.state} avg=${ping.avgMs ?? '∅'}ms`);
+      }
     }
   }
 
