@@ -57,6 +57,10 @@ const OFFLINE_AFTER_MIN = parseInt(process.env.TR069_OFFLINE_AFTER_MIN ?? '10', 
 const CRON_BATCH = 200;
 /** Dias de retenção da série temporal de diagnóstico (limpeza diária). */
 const RETENTION_DAYS = parseInt(process.env.TR069_DIAGNOSTIC_RETENTION_DAYS ?? '30', 10);
+/** Minutos após o arme até relaxar o PeriodicInformInterval (ZTP rápido → permanente). */
+const INFORM_RELAX_AFTER_MIN = parseInt(process.env.TR069_INFORM_RELAX_AFTER_MIN ?? '120', 10);
+/** Intervalo permanente de Inform (s) após o relaxamento. Default 6h. */
+const INFORM_RELAXED_INTERVAL = parseInt(process.env.TR069_INFORM_RELAXED_INTERVAL ?? '21600', 10);
 
 function dec(d: Prisma.Decimal | null): number | null {
   return d === null ? null : Number(d);
@@ -591,6 +595,61 @@ export class Tr069DiagnosticsService {
     }
   }
 
+  /**
+   * Relaxa o PeriodicInformInterval: o ZTP seta rápido (60s) pra ativação; após
+   * INFORM_RELAX_AFTER_MIN (default 2h) sobe pro intervalo permanente (default
+   * 6h). Reduz tráfego de Inform/carga do ACS no regime estável — as
+   * notificações ativas (GPON Status) ainda disparam Inform na hora se algo cair.
+   * Roda 1× por device (flag informIntervalRelaxedAt).
+   */
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async relaxInformInterval(): Promise<void> {
+    if (!this.enabled || INFORM_RELAXED_INTERVAL <= 0) return;
+    const cutoff = new Date(Date.now() - INFORM_RELAX_AFTER_MIN * 60_000);
+    const due = await this.prisma.tr069Device.findMany({
+      where: {
+        status: 'ONLINE',
+        notificationsArmedAt: { not: null, lt: cutoff },
+        informIntervalRelaxedAt: null,
+      },
+      select: { id: true, tenantId: true },
+      take: CRON_BATCH,
+    });
+    let relaxed = 0;
+    for (const d of due) {
+      try {
+        await this.prisma.tr069Task.create({
+          data: {
+            tenantId: d.tenantId,
+            deviceId: d.id,
+            action: 'SET_PARAMS',
+            payload: {
+              params: [
+                {
+                  name: HUAWEI_EG8145_PATHS.informInterval,
+                  value: String(INFORM_RELAXED_INTERVAL),
+                  type: 'xsd:unsignedInt',
+                },
+              ],
+              purpose: 'INFORM_RELAX',
+            },
+            status: 'PENDING',
+          },
+        });
+        await this.prisma.tr069Device.update({
+          where: { id: d.id },
+          data: { informIntervalRelaxedAt: new Date() },
+        });
+        relaxed += 1;
+      } catch (err) {
+        this.logger.error(`[TR-069] relaxar inform falhou device=${d.id}: ${String(err)}`);
+      }
+    }
+    if (relaxed > 0) {
+      this.logger.log(`[TR-069] inform interval relaxado p/ ${INFORM_RELAXED_INTERVAL}s em ${relaxed} device(s)`);
+    }
+  }
+
   /** Coleta proativa — enfileira diagnóstico pros devices ONLINE com leitura velha. */
   @Cron(CronExpression.EVERY_MINUTE)
   async collectProactively(): Promise<void> {
@@ -616,15 +675,29 @@ export class Tr069DiagnosticsService {
     if (enqueued > 0) this.logger.debug(`[TR-069] coleta proativa enfileirou ${enqueued} device(s)`);
   }
 
-  /** Detecção de offline — CPE que parou de fazer Inform. */
+  /**
+   * Detecção de offline — CPE que parou de fazer Inform. Dois limiares: device
+   * ainda no ZTP rápido cai rápido (OFFLINE_AFTER_MIN); device já relaxado (6h)
+   * só é offline após ~2.5× o intervalo permanente + folga, senão a frota
+   * inteira seria marcada offline 10 min depois de cada Inform de 6h.
+   */
   @Cron(CronExpression.EVERY_MINUTE)
   async detectOffline(): Promise<void> {
     if (!this.enabled) return;
-    const cutoff = new Date(Date.now() - OFFLINE_AFTER_MIN * 60_000);
+    const fastCutoff = new Date(Date.now() - OFFLINE_AFTER_MIN * 60_000);
+    const relaxedOfflineMin = Math.max(
+      OFFLINE_AFTER_MIN,
+      Math.ceil((INFORM_RELAXED_INTERVAL / 60) * 2.5) + 15,
+    );
+    const relaxedCutoff = new Date(Date.now() - relaxedOfflineMin * 60_000);
     const stale = await this.prisma.tr069Device.findMany({
       where: {
         status: 'ONLINE',
-        lastInformAt: { not: null, lt: cutoff },
+        lastInformAt: { not: null },
+        OR: [
+          { informIntervalRelaxedAt: null, lastInformAt: { lt: fastCutoff } },
+          { informIntervalRelaxedAt: { not: null }, lastInformAt: { lt: relaxedCutoff } },
+        ],
       },
       select: { id: true, tenantId: true, deviceId: true, lastInformAt: true },
       take: CRON_BATCH,

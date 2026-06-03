@@ -2796,6 +2796,9 @@ model Tr069Device {
   // Quando os SetParameterAttributes (notificações) foram armados no CPE —
   // null = ainda não armado. Permite armar uma vez por device.
   notificationsArmedAt     DateTime? @map("notifications_armed_at")
+  // Quando o PeriodicInformInterval foi relaxado (ZTP rápido → permanente).
+  // null = ainda no intervalo rápido do ZTP.
+  informIntervalRelaxedAt  DateTime? @map("inform_interval_relaxed_at")
                                     // "0 BOOTSTRAP"|"1 BOOT"|"2 PERIODIC"|...
 
   createdAt                DateTime  @default(now()) @map("created_at")
