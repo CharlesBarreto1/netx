@@ -160,6 +160,63 @@ export interface ServiceOrderPhotoResponse {
 }
 
 // =============================================================================
+// MENSAGENS — thread atendente ↔ técnico (histórico da O.S)
+// =============================================================================
+export const CreateServiceOrderMessageRequestSchema = z.object({
+  body: z.string().min(1).max(5000),
+});
+export type CreateServiceOrderMessageRequest = z.infer<
+  typeof CreateServiceOrderMessageRequestSchema
+>;
+
+export interface ServiceOrderMessageResponse {
+  id: string;
+  body: string;
+  createdAt: string;
+  author: { id: string; firstName: string; lastName: string } | null;
+}
+
+// =============================================================================
+// ANEXOS — arquivos avulsos (a qualquer momento), distintos das fotos de campo
+// =============================================================================
+/** Pede URL assinada de upload pro MinIO. */
+export const ServiceOrderAttachmentPresignRequestSchema = z.object({
+  fileName: z.string().min(1).max(200),
+  contentType: z.string().max(120).optional(),
+});
+export type ServiceOrderAttachmentPresignRequest = z.infer<
+  typeof ServiceOrderAttachmentPresignRequestSchema
+>;
+
+export interface ServiceOrderAttachmentPresignResponse {
+  uploadUrl: string;
+  storageKey: string;
+  expiresIn: number;
+}
+
+/** Registra o anexo já enviado ao bucket (key + metadados). */
+export const RegisterServiceOrderAttachmentRequestSchema = z.object({
+  storageKey: z.string().min(1).max(512),
+  fileName: z.string().min(1).max(255),
+  contentType: z.string().max(120).nullish(),
+  sizeBytes: z.coerce.number().int().nonnegative().nullish(),
+});
+export type RegisterServiceOrderAttachmentRequest = z.infer<
+  typeof RegisterServiceOrderAttachmentRequestSchema
+>;
+
+export interface ServiceOrderAttachmentResponse {
+  id: string;
+  fileName: string;
+  contentType: string | null;
+  sizeBytes: number | null;
+  createdAt: string;
+  createdBy: { id: string; firstName: string; lastName: string } | null;
+  /** URL assinada de download (preenchida on-demand pelo backend). */
+  url?: string;
+}
+
+// =============================================================================
 // ONE-TOUCH — finalizar instalação em campo numa tacada só
 // =============================================================================
 /** Material consumível usado na instalação (vai pro estoque via OS_CONSUMPTION). */

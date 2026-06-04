@@ -293,6 +293,30 @@ export interface CompleteInstallationResult {
   };
 }
 
+export interface ServiceOrderMessageResponse {
+  id: string;
+  body: string;
+  createdAt: string;
+  author: { id: string; firstName: string; lastName: string } | null;
+}
+
+export interface ServiceOrderAttachmentResponse {
+  id: string;
+  fileName: string;
+  contentType: string | null;
+  sizeBytes: number | null;
+  createdAt: string;
+  createdBy: { id: string; firstName: string; lastName: string } | null;
+  /** URL assinada de download (curto TTL). */
+  url?: string;
+}
+
+export interface AttachmentPresignResponse {
+  uploadUrl: string;
+  storageKey: string;
+  expiresIn: number;
+}
+
 export const serviceOrdersApi = {
   listPath: (params: ListServiceOrdersParams = {}) =>
     `/v1/service-orders${qs(params)}`,
@@ -360,6 +384,49 @@ export const serviceOrdersApi = {
   },
   remove(id: string) {
     return api.delete(`/v1/service-orders/${id}`);
+  },
+
+  // ── Mensagens (thread) ──────────────────────────────────────────────────
+  messagesPath: (id: string) => `/v1/service-orders/${id}/messages`,
+  listMessages(id: string) {
+    return api.get<ServiceOrderMessageResponse[]>(`/v1/service-orders/${id}/messages`);
+  },
+  addMessage(id: string, body: string) {
+    return api.post<ServiceOrderMessageResponse>(
+      `/v1/service-orders/${id}/messages`,
+      { body },
+    );
+  },
+
+  // ── Anexos avulsos ──────────────────────────────────────────────────────
+  attachmentsPath: (id: string) => `/v1/service-orders/${id}/attachments`,
+  listAttachments(id: string) {
+    return api.get<ServiceOrderAttachmentResponse[]>(
+      `/v1/service-orders/${id}/attachments`,
+    );
+  },
+  presignAttachment(id: string, fileName: string, contentType?: string) {
+    return api.post<AttachmentPresignResponse>(
+      `/v1/service-orders/${id}/attachments/presign`,
+      { fileName, ...(contentType ? { contentType } : {}) },
+    );
+  },
+  registerAttachment(
+    id: string,
+    input: {
+      storageKey: string;
+      fileName: string;
+      contentType?: string | null;
+      sizeBytes?: number | null;
+    },
+  ) {
+    return api.post<ServiceOrderAttachmentResponse>(
+      `/v1/service-orders/${id}/attachments`,
+      input,
+    );
+  },
+  removeAttachment(id: string, attachmentId: string) {
+    return api.delete(`/v1/service-orders/${id}/attachments/${attachmentId}`);
   },
 };
 

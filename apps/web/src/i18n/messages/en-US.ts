@@ -1223,6 +1223,8 @@ const messages = {
       confirmRetrieval: '✅ Confirm retrieval',
       confirmSupport: '✅ Finish support',
       confirmInstall: '✅ Confirm (one-touch)',
+      messagesTitle: 'Messages',
+      attachmentsTitle: 'Attachments',
       helpInstall:
         'Activates the contract, moves stock, provisions, links to TR-069 and closes the work order — all at once.',
       helpSwap:
@@ -3241,6 +3243,23 @@ const messages = {
   },
   soDetailExtra: {
     stockSectionTitle: 'Stock & loaned equipment',
+    messagesTitle: 'Messages',
+    attachmentsTitle: 'Attachments',
+  },
+  serviceOrderThread: {
+    empty: 'No messages yet.',
+    placeholder: 'Write a message to the team…',
+    send: 'Send',
+    systemAuthor: 'System',
+    sendFailed: 'Failed to send message',
+    attachAdd: 'Add attachment',
+    attachEmpty: 'No attachments.',
+    attachUploaded: 'Attachment uploaded',
+    attachFailed: 'Failed to upload attachment',
+    attachRemove: 'Remove',
+    attachRemoveTitle: 'Remove attachment',
+    attachRemoveMsg: 'The file will be permanently deleted. Confirm?',
+    uploadStatus: 'Upload failed (status {status})',
   },
   dealsExtra: {
     defaultSuffix: ' · default',

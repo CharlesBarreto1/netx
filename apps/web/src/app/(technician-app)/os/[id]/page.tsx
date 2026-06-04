@@ -36,6 +36,8 @@ import {
   type ServiceOrderPhotoInput,
   type ServiceOrderResponse,
 } from '@/lib/service-orders-api';
+import { ServiceOrderMessages } from '@/components/service-orders/ServiceOrderMessages';
+import { ServiceOrderAttachments } from '@/components/service-orders/ServiceOrderAttachments';
 
 type OltOption = {
   id: string;
@@ -691,6 +693,16 @@ export default function OsDetailPage() {
           </FieldHelp>
         </section>
       )}
+
+      {/* Mensagens + anexos — comunicação e documentos da O.S (sempre visível) */}
+      <section className="space-y-2 rounded-lg border border-border bg-surface p-3">
+        <h2 className="text-sm font-semibold text-text">{t('detail.messagesTitle')}</h2>
+        <ServiceOrderMessages serviceOrderId={so.id} canWrite />
+      </section>
+      <section className="space-y-2 rounded-lg border border-border bg-surface p-3">
+        <h2 className="text-sm font-semibold text-text">{t('detail.attachmentsTitle')}</h2>
+        <ServiceOrderAttachments serviceOrderId={so.id} canWrite />
+      </section>
     </div>
   );
 }

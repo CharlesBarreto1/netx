@@ -15,9 +15,15 @@ import {
   type CompleteServiceOrderRequest,
   type CreateServiceOrderRequest,
   type EnRouteServiceOrderRequest,
+  type CreateServiceOrderMessageRequest,
   type ListServiceOrdersQuery,
   type Paginated,
+  type RegisterServiceOrderAttachmentRequest,
+  type ServiceOrderAttachmentPresignRequest,
+  type ServiceOrderAttachmentPresignResponse,
+  type ServiceOrderAttachmentResponse,
   type ServiceOrderDisplayStatus,
+  type ServiceOrderMessageResponse,
   type ServiceOrderPhotoPresignRequest,
   type ServiceOrderPhotoPresignResponse,
   type ServiceOrderResponse,
@@ -519,6 +525,198 @@ export class ServiceOrdersService {
     );
     const { url, expiresIn } = await this.storage.presignUpload(key, input.contentType);
     return { uploadUrl: url, storageKey: key, expiresIn };
+  }
+
+  // ---------------------------------------------------------------------------
+  // MENSAGENS — thread atendente ↔ técnico
+  // ---------------------------------------------------------------------------
+  async listMessages(
+    tenantId: string,
+    serviceOrderId: string,
+  ): Promise<ServiceOrderMessageResponse[]> {
+    await this.assertExists(tenantId, serviceOrderId);
+    const rows = await this.prisma.serviceOrderMessage.findMany({
+      where: { tenantId, serviceOrderId },
+      orderBy: { createdAt: 'asc' },
+      include: { author: { select: { id: true, firstName: true, lastName: true } } },
+    });
+    return rows.map((m) => ({
+      id: m.id,
+      body: m.body,
+      createdAt: m.createdAt.toISOString(),
+      author: m.author
+        ? { id: m.author.id, firstName: m.author.firstName, lastName: m.author.lastName }
+        : null,
+    }));
+  }
+
+  async createMessage(
+    tenantId: string,
+    actorUserId: string,
+    serviceOrderId: string,
+    input: CreateServiceOrderMessageRequest,
+  ): Promise<ServiceOrderMessageResponse> {
+    await this.assertExists(tenantId, serviceOrderId);
+    const created = await this.prisma.serviceOrderMessage.create({
+      data: {
+        tenantId,
+        serviceOrderId,
+        authorId: actorUserId,
+        body: input.body.trim(),
+      },
+      include: { author: { select: { id: true, firstName: true, lastName: true } } },
+    });
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'service_order.message_added',
+      resource: 'service_orders',
+      resourceId: serviceOrderId,
+    });
+    return {
+      id: created.id,
+      body: created.body,
+      createdAt: created.createdAt.toISOString(),
+      author: created.author
+        ? {
+            id: created.author.id,
+            firstName: created.author.firstName,
+            lastName: created.author.lastName,
+          }
+        : null,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // ANEXOS — arquivos avulsos (MinIO presigned), distintos das fotos de campo
+  // ---------------------------------------------------------------------------
+  async presignAttachment(
+    tenantId: string,
+    serviceOrderId: string,
+    input: ServiceOrderAttachmentPresignRequest,
+  ): Promise<ServiceOrderAttachmentPresignResponse> {
+    await this.assertExists(tenantId, serviceOrderId);
+    if (!this.storage.isEnabled())
+      throw new BadRequestException('Storage (MinIO) não configurado');
+    const key = this.storage.buildKey(
+      tenantId,
+      `service-orders/${serviceOrderId}/attachments`,
+      input.fileName,
+    );
+    const { url, expiresIn } = await this.storage.presignUpload(key, input.contentType);
+    return { uploadUrl: url, storageKey: key, expiresIn };
+  }
+
+  async registerAttachment(
+    tenantId: string,
+    actorUserId: string,
+    serviceOrderId: string,
+    input: RegisterServiceOrderAttachmentRequest,
+  ): Promise<ServiceOrderAttachmentResponse> {
+    await this.assertExists(tenantId, serviceOrderId);
+    const created = await this.prisma.serviceOrderAttachment.create({
+      data: {
+        tenantId,
+        serviceOrderId,
+        storageKey: input.storageKey,
+        fileName: input.fileName,
+        contentType: input.contentType ?? null,
+        sizeBytes: input.sizeBytes ?? null,
+        createdById: actorUserId,
+      },
+      include: { createdBy: { select: { id: true, firstName: true, lastName: true } } },
+    });
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'service_order.attachment_added',
+      resource: 'service_orders',
+      resourceId: serviceOrderId,
+      afterState: { fileName: input.fileName },
+    });
+    return this.toAttachmentResponse(created);
+  }
+
+  async listAttachments(
+    tenantId: string,
+    serviceOrderId: string,
+  ): Promise<ServiceOrderAttachmentResponse[]> {
+    await this.assertExists(tenantId, serviceOrderId);
+    const rows = await this.prisma.serviceOrderAttachment.findMany({
+      where: { tenantId, serviceOrderId },
+      orderBy: { createdAt: 'desc' },
+      include: { createdBy: { select: { id: true, firstName: true, lastName: true } } },
+    });
+    return Promise.all(rows.map((r) => this.toAttachmentResponse(r, true)));
+  }
+
+  async deleteAttachment(
+    tenantId: string,
+    actorUserId: string,
+    serviceOrderId: string,
+    attachmentId: string,
+  ): Promise<void> {
+    const att = await this.prisma.serviceOrderAttachment.findFirst({
+      where: { id: attachmentId, serviceOrderId, tenantId },
+    });
+    if (!att) throw new NotFoundException('Anexo não encontrado');
+    if (this.storage.isEnabled()) {
+      try {
+        await this.storage.deleteObject(att.storageKey);
+      } catch {
+        // best-effort: se o objeto já não existe no bucket, segue removendo o registro
+      }
+    }
+    await this.prisma.serviceOrderAttachment.delete({ where: { id: attachmentId } });
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'service_order.attachment_removed',
+      resource: 'service_orders',
+      resourceId: serviceOrderId,
+      beforeState: { fileName: att.fileName },
+    });
+  }
+
+  private async toAttachmentResponse(
+    row: {
+      id: string;
+      fileName: string;
+      contentType: string | null;
+      sizeBytes: number | null;
+      createdAt: Date;
+      storageKey: string;
+      createdBy?: { id: string; firstName: string; lastName: string } | null;
+    },
+    withUrl = false,
+  ): Promise<ServiceOrderAttachmentResponse> {
+    let url: string | undefined;
+    if (withUrl && this.storage.isEnabled()) {
+      try {
+        const signed = await this.storage.presignDownload(row.storageKey, row.fileName);
+        url = signed.url;
+      } catch {
+        // deixa sem url — UI mostra o anexo sem link clicável
+      }
+    }
+    return {
+      id: row.id,
+      fileName: row.fileName,
+      contentType: row.contentType,
+      sizeBytes: row.sizeBytes,
+      createdAt: row.createdAt.toISOString(),
+      createdBy: row.createdBy ?? null,
+      url,
+    };
+  }
+
+  /** Garante que a O.S existe no tenant (lança 404 senão). */
+  private async assertExists(tenantId: string, serviceOrderId: string): Promise<void> {
+    const so = await this.prisma.serviceOrder.findFirst({
+      where: { id: serviceOrderId, tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!so) throw new NotFoundException('O.S não encontrada');
   }
 
   /**

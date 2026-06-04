@@ -1244,6 +1244,8 @@ const messages = {
       confirmRetrieval: '✅ Confirmar retiro',
       confirmSupport: '✅ Finalizar atención',
       confirmInstall: '✅ Confirmar (one-touch)',
+      messagesTitle: 'Mensajes',
+      attachmentsTitle: 'Adjuntos',
       helpInstall:
         'Activa el contrato, mueve el stock, aprovisiona, vincula al TR-069 y cierra la O.S — todo de una vez.',
       helpSwap:
@@ -3263,6 +3265,23 @@ const messages = {
   },
   soDetailExtra: {
     stockSectionTitle: 'Stock & comodato',
+    messagesTitle: 'Mensajes',
+    attachmentsTitle: 'Adjuntos',
+  },
+  serviceOrderThread: {
+    empty: 'Todavía no hay mensajes.',
+    placeholder: 'Escribí un mensaje para el equipo…',
+    send: 'Enviar',
+    systemAuthor: 'Sistema',
+    sendFailed: 'Error al enviar el mensaje',
+    attachAdd: 'Agregar adjunto',
+    attachEmpty: 'Ningún adjunto.',
+    attachUploaded: 'Adjunto enviado',
+    attachFailed: 'Error al enviar el adjunto',
+    attachRemove: 'Quitar',
+    attachRemoveTitle: 'Quitar adjunto',
+    attachRemoveMsg: 'El archivo se eliminará de forma permanente. ¿Confirmar?',
+    uploadStatus: 'Error en la subida (estado {status})',
   },
   dealsExtra: {
     defaultSuffix: ' · predeterminado',

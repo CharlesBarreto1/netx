@@ -17,9 +17,12 @@ import {
   CompleteFieldRequestSchema,
   CompleteInstallationRequestSchema,
   CompleteServiceOrderRequestSchema,
+  CreateServiceOrderMessageRequestSchema,
   CreateServiceOrderRequestSchema,
   EnRouteServiceOrderRequestSchema,
   ListServiceOrdersQuerySchema,
+  RegisterServiceOrderAttachmentRequestSchema,
+  ServiceOrderAttachmentPresignRequestSchema,
   ServiceOrderPhotoPresignRequestSchema,
   StartServiceOrderRequestSchema,
   UpdateServiceOrderRequestSchema,
@@ -29,9 +32,12 @@ import {
   type CompleteFieldRequest,
   type CompleteInstallationRequest,
   type CompleteServiceOrderRequest,
+  type CreateServiceOrderMessageRequest,
   type CreateServiceOrderRequest,
   type EnRouteServiceOrderRequest,
   type ListServiceOrdersQuery,
+  type RegisterServiceOrderAttachmentRequest,
+  type ServiceOrderAttachmentPresignRequest,
   type ServiceOrderPhotoPresignRequest,
   type StartServiceOrderRequest,
   type UpdateServiceOrderRequest,
@@ -145,6 +151,69 @@ export class ServiceOrdersController {
     @ZodBody(ServiceOrderPhotoPresignRequestSchema) body: ServiceOrderPhotoPresignRequest,
   ) {
     return this.orders.presignPhoto(user.tenantId, id, body);
+  }
+
+  // ── Mensagens (thread atendente ↔ técnico) ──────────────────────────────
+  @Get(':id/messages')
+  @RequirePermissions('service_orders.read')
+  listMessages(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.orders.listMessages(user.tenantId, id);
+  }
+
+  @Post(':id/messages')
+  @RequirePermissions('service_orders.write')
+  addMessage(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(CreateServiceOrderMessageRequestSchema) body: CreateServiceOrderMessageRequest,
+  ) {
+    return this.orders.createMessage(user.tenantId, user.sub, id, body);
+  }
+
+  // ── Anexos avulsos ───────────────────────────────────────────────────────
+  @Get(':id/attachments')
+  @RequirePermissions('service_orders.read')
+  listAttachments(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.orders.listAttachments(user.tenantId, id);
+  }
+
+  /** Pede URL assinada pra subir um anexo direto no MinIO. */
+  @Post(':id/attachments/presign')
+  @RequirePermissions('service_orders.write')
+  presignAttachment(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(ServiceOrderAttachmentPresignRequestSchema) body: ServiceOrderAttachmentPresignRequest,
+  ) {
+    return this.orders.presignAttachment(user.tenantId, id, body);
+  }
+
+  /** Registra o anexo já enviado ao bucket. */
+  @Post(':id/attachments')
+  @RequirePermissions('service_orders.write')
+  registerAttachment(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(RegisterServiceOrderAttachmentRequestSchema) body: RegisterServiceOrderAttachmentRequest,
+  ) {
+    return this.orders.registerAttachment(user.tenantId, user.sub, id, body);
+  }
+
+  @Delete(':id/attachments/:attachmentId')
+  @HttpCode(204)
+  @RequirePermissions('service_orders.write')
+  async removeAttachment(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('attachmentId', new ParseUUIDPipe()) attachmentId: string,
+  ): Promise<void> {
+    await this.orders.deleteAttachment(user.tenantId, user.sub, id, attachmentId);
   }
 
   /** ONE-TOUCH: provisiona + estoque + fotos + fecha a O.S numa tacada. */

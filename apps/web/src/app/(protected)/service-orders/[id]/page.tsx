@@ -8,6 +8,8 @@ import useSWR from 'swr';
 
 import { OsStockSection } from '@/components/service-orders/OsStockSection';
 import { ServiceOrderStatusBadge } from '@/components/service-orders/StatusBadge';
+import { ServiceOrderMessages } from '@/components/service-orders/ServiceOrderMessages';
+import { ServiceOrderAttachments } from '@/components/service-orders/ServiceOrderAttachments';
 import { Button } from '@/components/ui/Button';
 import { Input, Label, Select, Textarea } from '@/components/ui/Input';
 import { ConfirmDialog } from '@/components/ui/Modal';
@@ -341,6 +343,18 @@ export default function ServiceOrderDetailPage() {
           />
         </section>
       )}
+
+      {/* Mensagens (thread atendente ↔ técnico) */}
+      <section className="rounded-md border border-border bg-surface p-4">
+        <h2 className="mb-3 text-sm font-semibold text-text">{tx('messagesTitle')}</h2>
+        <ServiceOrderMessages serviceOrderId={os.id} canWrite={canWrite} />
+      </section>
+
+      {/* Anexos avulsos */}
+      <section className="rounded-md border border-border bg-surface p-4">
+        <h2 className="mb-3 text-sm font-semibold text-text">{tx('attachmentsTitle')}</h2>
+        <ServiceOrderAttachments serviceOrderId={os.id} canWrite={canWrite} />
+      </section>
 
       {/* Diálogo: Finalizar (exige closeDescription) */}
       {completeOpen && (

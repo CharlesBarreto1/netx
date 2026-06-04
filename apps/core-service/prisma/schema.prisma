@@ -88,6 +88,8 @@ model Tenant {
   serviceOrders        ServiceOrder[]
   serviceOrderReasons  ServiceOrderReason[]
   serviceOrderPhotos   ServiceOrderPhoto[]
+  serviceOrderMessages    ServiceOrderMessage[]
+  serviceOrderAttachments ServiceOrderAttachment[]
   cashRegisters        CashRegister[]
   oneTimeCharges       OneTimeCharge[]
   cashMovements        CashMovement[]
@@ -257,6 +259,8 @@ model User {
   serviceOrdersAssigned ServiceOrder[] @relation("ServiceOrderAssignedTo")
   serviceOrdersCreated  ServiceOrder[] @relation("ServiceOrderCreatedBy")
   serviceOrdersUpdated  ServiceOrder[] @relation("ServiceOrderUpdatedBy")
+  serviceOrderMessages    ServiceOrderMessage[]    @relation("ServiceOrderMessageAuthor")
+  serviceOrderAttachments ServiceOrderAttachment[] @relation("ServiceOrderAttachmentBy")
 
   // Finance — caixas que o user opera + cobranças avulsas que criou
   cashRegisterMemberships CashRegisterMembership[]
@@ -1489,6 +1493,9 @@ model ServiceOrder {
   stockMovements     StockMovement[]
   // Fotos de campo (comprovação da instalação) — keys no MinIO via StorageService.
   photos             ServiceOrderPhoto[]
+  // Thread de mensagens (atendente ↔ técnico) + anexos avulsos.
+  messages           ServiceOrderMessage[]
+  attachments        ServiceOrderAttachment[]
 
   @@unique([tenantId, code])
   @@index([tenantId, status])
@@ -1518,6 +1525,44 @@ model ServiceOrderPhoto {
 
   @@index([tenantId, serviceOrderId])
   @@map("service_order_photos")
+}
+
+// Thread de mensagens da O.S — comunicação atendente ↔ técnico (histórico).
+model ServiceOrderMessage {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  serviceOrderId String   @map("service_order_id") @db.Uuid
+  authorId       String?  @map("author_id") @db.Uuid
+  body           String   @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serviceOrder ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  author       User?        @relation("ServiceOrderMessageAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, serviceOrderId, createdAt], map: "so_messages_tenant_so_created_idx")
+  @@map("service_order_messages")
+}
+
+// Anexos avulsos da O.S (qualquer arquivo, a qualquer momento) — distintos das
+// fotos de fechamento. Bytes no MinIO via StorageService; aqui só key + metadados.
+model ServiceOrderAttachment {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  serviceOrderId String   @map("service_order_id") @db.Uuid
+  storageKey     String   @map("storage_key") @db.VarChar(512)
+  fileName       String   @map("file_name") @db.VarChar(255)
+  contentType    String?  @map("content_type") @db.VarChar(120)
+  sizeBytes      Int?     @map("size_bytes")
+  createdById    String?  @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  serviceOrder ServiceOrder @relation(fields: [serviceOrderId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("ServiceOrderAttachmentBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, serviceOrderId, createdAt], map: "so_attachments_tenant_so_created_idx")
+  @@map("service_order_attachments")
 }
 
 // =============================================================================
