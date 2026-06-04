@@ -127,9 +127,18 @@ export type CreateNetworkEquipmentRequest = z.infer<
 // =============================================================================
 // Update (PATCH /v1/network/equipment/:id)
 // =============================================================================
-/** Todos os campos opcionais — só atualiza o que vier. */
+/** Todos os campos opcionais — só atualiza o que vier.
+ *  Remove os defaults: no Zod 4 o `.partial()` ainda injeta o default em campos
+ *  ausentes, resetando vendor/disconnectStrategy/apiTlsEnabled/isActive num PATCH. */
 export const UpdateNetworkEquipmentRequestSchema =
-  CreateNetworkEquipmentRequestSchema.partial();
+  CreateNetworkEquipmentRequestSchema.partial().extend({
+    vendor: CreateNetworkEquipmentRequestSchema.shape.vendor.removeDefault().optional(),
+    disconnectStrategy:
+      CreateNetworkEquipmentRequestSchema.shape.disconnectStrategy.removeDefault().optional(),
+    apiTlsEnabled:
+      CreateNetworkEquipmentRequestSchema.shape.apiTlsEnabled.removeDefault().optional(),
+    isActive: CreateNetworkEquipmentRequestSchema.shape.isActive.removeDefault().optional(),
+  });
 export type UpdateNetworkEquipmentRequest = z.infer<
   typeof UpdateNetworkEquipmentRequestSchema
 >;

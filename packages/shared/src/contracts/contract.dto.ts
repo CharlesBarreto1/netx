@@ -187,6 +187,12 @@ export const UpdateContractRequestSchema = z
     framedIpAddress: ipoeFields.framedIpAddress,
     vlanId: ipoeFields.vlanId,
     ...commonContractFields,
+    // Sobrescreve o `paymentMode: ...default('POSTPAID')` de commonContractFields.
+    // Sem isso, o `.partial()` do Zod 4 AINDA aplica o default e injeta
+    // 'POSTPAID' em todo PATCH — o que dispara o bloqueio de troca PREPAID↔POSTPAID
+    // no service e quebra QUALQUER edição de contrato PREPAID. Aqui fica opcional
+    // sem default (o service ainda bloqueia uma troca real, se enviada de fato).
+    paymentMode: PaymentModeSchema.optional(),
   })
   .partial();
 export type UpdateContractRequest = z.infer<typeof UpdateContractRequestSchema>;

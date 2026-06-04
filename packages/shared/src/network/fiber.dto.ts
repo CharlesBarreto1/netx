@@ -76,8 +76,12 @@ export type CreateFiberCableRequest = z.infer<
 // =============================================================================
 // Update
 // =============================================================================
+// Remove o default de isActive: no Zod 4 o `.partial()` ainda o injeta em PATCH
+// sem o campo, reativando silenciosamente um cabo desativado.
 export const UpdateFiberCableRequestSchema =
-  CreateFiberCableRequestSchema.partial();
+  CreateFiberCableRequestSchema.partial().extend({
+    isActive: CreateFiberCableRequestSchema.shape.isActive.removeDefault().optional(),
+  });
 export type UpdateFiberCableRequest = z.infer<
   typeof UpdateFiberCableRequestSchema
 >;

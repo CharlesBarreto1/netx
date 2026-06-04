@@ -36,7 +36,14 @@ export const CreatePlanRequestSchema = z.object({
 });
 export type CreatePlanRequest = z.infer<typeof CreatePlanRequestSchema>;
 
-export const UpdatePlanRequestSchema = CreatePlanRequestSchema.partial();
+// .partial() sozinho NÃO basta: no Zod 4 o default ainda é injetado quando o
+// campo vem ausente, resetando silenciosamente isActive/order/blockAfterDays
+// num PATCH parcial. Removemos os defaults explicitamente.
+export const UpdatePlanRequestSchema = CreatePlanRequestSchema.partial().extend({
+  blockAfterDays: CreatePlanRequestSchema.shape.blockAfterDays.removeDefault().optional(),
+  isActive: CreatePlanRequestSchema.shape.isActive.removeDefault().optional(),
+  order: CreatePlanRequestSchema.shape.order.removeDefault().optional(),
+});
 export type UpdatePlanRequest = z.infer<typeof UpdatePlanRequestSchema>;
 
 export const ListPlansQuerySchema = z.object({

@@ -29,5 +29,9 @@ export const CreateNetworkPopRequestSchema = z.object({
 });
 export type CreateNetworkPopRequest = z.infer<typeof CreateNetworkPopRequestSchema>;
 
-export const UpdateNetworkPopRequestSchema = CreateNetworkPopRequestSchema.partial();
+// Remove o default de isActive: no Zod 4 o `.partial()` ainda o injeta em PATCH
+// sem o campo, reativando silenciosamente um POP desativado.
+export const UpdateNetworkPopRequestSchema = CreateNetworkPopRequestSchema.partial().extend({
+  isActive: CreateNetworkPopRequestSchema.shape.isActive.removeDefault().optional(),
+});
 export type UpdateNetworkPopRequest = z.infer<typeof UpdateNetworkPopRequestSchema>;

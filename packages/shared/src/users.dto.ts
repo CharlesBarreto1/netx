@@ -32,6 +32,12 @@ export type CreateUserRequest = z.infer<typeof CreateUserRequestSchema>;
 
 export const UpdateUserRequestSchema = CreateUserRequestSchema.partial().extend({
   status: UserStatusSchema.optional(),
+  // Remove os defaults: o `.partial()` do Zod 4 AINDA injeta o default quando o
+  // campo vem ausente. Sem isto, um PATCH sem roleIds injeta `[]` e ZERA todas
+  // as roles do usuário (o service faz deleteMany+create). sendInvite só faz
+  // sentido no create.
+  roleIds: CreateUserRequestSchema.shape.roleIds.removeDefault().optional(),
+  sendInvite: CreateUserRequestSchema.shape.sendInvite.removeDefault().optional(),
 });
 export type UpdateUserRequest = z.infer<typeof UpdateUserRequestSchema>;
 
