@@ -38,7 +38,23 @@ export default function KmlImportExportPage() {
   const [preview, setPreview] = useState<KmlImportPreview | null>(null);
   const [parsing, setParsing] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [undoing, setUndoing] = useState(false);
   const [result, setResult] = useState<KmlImportResult | null>(null);
+
+  async function handleUndo() {
+    if (!result?.importBatchId) return;
+    if (!confirm(t('undoConfirm'))) return;
+    setUndoing(true);
+    try {
+      await kmlApi.undo(result.importBatchId);
+      toast.success(t('undoneToast'));
+      setResult(null);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
+    } finally {
+      setUndoing(false);
+    }
+  }
 
   // Defaults aplicados a TODO o import — operador edita caso-a-caso depois.
   const [enclosureType, setEnclosureType] = useState<OpticalEnclosureType>('CTO');
@@ -317,6 +333,13 @@ export default function KmlImportExportPage() {
                     ))}
                   </ul>
                 </details>
+              )}
+              {result.importBatchId && (
+                <div className="mt-3">
+                  <Button variant="outline" size="sm" loading={undoing} onClick={handleUndo}>
+                    {t('undoImport')}
+                  </Button>
+                </div>
               )}
             </div>
           )}

@@ -3386,6 +3386,8 @@ model OpticalEnclosure {
   createdAt       DateTime              @default(now()) @map("created_at")
   updatedAt       DateTime              @updatedAt @map("updated_at")
   deletedAt       DateTime?             @map("deleted_at")
+  // Lote de import KMZ/KML que criou esta caixa (pra desfazer o import inteiro).
+  importBatchId   String?               @map("import_batch_id") @db.Uuid
 
   tenant          Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   parent          OpticalEnclosure?     @relation("EnclosureChildren", fields: [parentId], references: [id], onDelete: SetNull)
@@ -3416,6 +3418,7 @@ model OpticalEnclosure {
   @@index([tenantId, parentId])
   @@index([tenantId, folderId])
   @@index([tenantId, oltId])
+  @@index([tenantId, importBatchId])
   @@map("optical_enclosures")
 }
 
@@ -3499,6 +3502,8 @@ model FiberCable {
   createdAt       DateTime         @default(now()) @map("created_at")
   updatedAt       DateTime         @updatedAt @map("updated_at")
   deletedAt       DateTime?        @map("deleted_at")
+  // Lote de import KMZ/KML que criou este cabo (pra desfazer o import inteiro).
+  importBatchId   String?          @map("import_batch_id") @db.Uuid
 
   tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdBy       User?            @relation("FiberCableCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
@@ -3519,6 +3524,7 @@ model FiberCable {
   @@index([tenantId, endpointAId])
   @@index([tenantId, endpointBId])
   @@index([tenantId, folderId])
+  @@index([tenantId, importBatchId])
   @@map("fiber_cables")
 }
 

@@ -27,6 +27,7 @@ export interface KmlImportResult {
   enclosuresCreated: number;
   cablesCreated: number;
   errors: string[];
+  importBatchId: string | null;
 }
 
 export interface ConfirmKmlImportInput {
@@ -52,6 +53,12 @@ export const kmlApi = {
 
   confirm: (input: ConfirmKmlImportInput) =>
     api.post<KmlImportResult>('/v1/optical/import/kml/confirm', input),
+
+  /** Desfaz um import inteiro (soft-delete do lote). */
+  undo: (batchId: string) =>
+    api.delete<{ enclosuresRemoved: number; cablesRemoved: number }>(
+      `/v1/optical/import/${batchId}`,
+    ),
 
   /** Trigga download direto. */
   exportUrl: () => '/api/v1/optical/export/kml',

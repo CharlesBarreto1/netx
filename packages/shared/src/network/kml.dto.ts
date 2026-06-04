@@ -94,4 +94,6 @@ export interface KmlImportResult {
   enclosuresCreated: number;
   cablesCreated: number;
   errors: string[];
+  /** Lote do import — passe pra desfazer o import inteiro. Null se nada criado. */
+  importBatchId: string | null;
 }

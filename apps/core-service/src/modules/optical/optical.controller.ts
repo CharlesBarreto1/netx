@@ -378,6 +378,16 @@ export class OpticalController {
     return this.kml.commitImport(u.tenantId, u.sub, body);
   }
 
+  /** Desfaz um import KMZ/KML inteiro (soft-delete do lote, se nada foi usado). */
+  @Delete('import/:batchId')
+  @RequirePermissions('network.write')
+  undoImport(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('batchId', new ParseUUIDPipe()) batchId: string,
+  ) {
+    return this.kml.undoImport(u.tenantId, u.sub, batchId);
+  }
+
   /**
    * Export da planta inteira como KML 2.2. Abre direto no Google Earth/QGIS.
    * Content-Type: application/vnd.google-earth.kml+xml.

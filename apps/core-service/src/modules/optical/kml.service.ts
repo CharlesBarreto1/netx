@@ -16,7 +16,8 @@
  *   1. Lê todas OpticalEnclosure + FiberCable do tenant.
  *   2. Gera XML KML 2.2 (compatível com Google Earth/QGIS).
  */
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import { XMLBuilder, XMLParser } from 'fast-xml-parser';
 import JSZip from 'jszip';
 import type {
@@ -165,6 +166,8 @@ export class KmlService {
   ): Promise<KmlImportResult> {
     const { preview, defaults } = input;
     const errors: string[] = [];
+    // Agrupa tudo que este import criar, pra permitir desfazer o lote depois.
+    const importBatchId = randomUUID();
 
     let enclosuresCreated = 0;
     let cablesCreated = 0;
@@ -192,6 +195,7 @@ export class KmlService {
               longitude: e.longitude,
               capacity: defaults.enclosureCapacity,
               notes: e.description ?? null,
+              importBatchId,
               createdById: actorUserId,
               updatedById: actorUserId,
             },
@@ -228,6 +232,7 @@ export class KmlService {
             path: c.path.map((p) => [p.longitude, p.latitude]),
             lengthMeters: c.lengthMeters,
             notes: c.description ?? null,
+            importBatchId,
             createdById: actorUserId,
             updatedById: actorUserId,
           },
@@ -245,6 +250,7 @@ export class KmlService {
       userId: actorUserId,
       action: 'kml.imported',
       resource: 'optical',
+      resourceId: importBatchId,
       afterState: {
         enclosuresCreated,
         cablesCreated,
@@ -252,7 +258,87 @@ export class KmlService {
       },
     });
 
-    return { enclosuresCreated, cablesCreated, errors };
+    return {
+      enclosuresCreated,
+      cablesCreated,
+      errors,
+      // Só devolve o batch se algo foi criado (pra UI oferecer "desfazer").
+      importBatchId: enclosuresCreated + cablesCreated > 0 ? importBatchId : null,
+    };
+  }
+
+  /**
+   * Desfaz um import KMZ/KML inteiro — soft-delete de todas as caixas e cabos
+   * criados naquele lote. Bloqueia se algum item já está em uso (porta ocupada
+   * ou cabo conectado/com emenda) — nesse caso o operador remove item a item.
+   */
+  async undoImport(
+    tenantId: string,
+    actorUserId: string,
+    importBatchId: string,
+  ): Promise<{ enclosuresRemoved: number; cablesRemoved: number }> {
+    const [enclosures, cables] = await Promise.all([
+      this.prisma.opticalEnclosure.findMany({
+        where: { tenantId, importBatchId, deletedAt: null },
+        select: { id: true, code: true },
+      }),
+      this.prisma.fiberCable.findMany({
+        where: { tenantId, importBatchId, deletedAt: null },
+        select: { id: true, code: true },
+      }),
+    ]);
+    if (enclosures.length === 0 && cables.length === 0) {
+      throw new NotFoundException('Import não encontrado (ou já desfeito)');
+    }
+
+    // Trava: não desfazer se algo do lote já foi usado na planta.
+    const enclosureIds = enclosures.map((e) => e.id);
+    const cableIds = cables.map((c) => c.id);
+    if (enclosureIds.length > 0) {
+      const usedPort = await this.prisma.opticalPort.count({
+        where: { tenantId, enclosureId: { in: enclosureIds }, status: { not: 'FREE' } },
+      });
+      if (usedPort > 0) {
+        throw new BadRequestException(
+          'Não dá pra desfazer: alguma caixa do import já tem porta em uso. ' +
+            'Remova os itens manualmente.',
+        );
+      }
+    }
+    if (cableIds.length > 0) {
+      const splice = await this.prisma.fiberSplice.count({
+        where: { tenantId, deletedAt: null, OR: [{ cableAId: { in: cableIds } }, { cableBId: { in: cableIds } }] },
+      });
+      if (splice > 0) {
+        throw new BadRequestException(
+          'Não dá pra desfazer: algum cabo do import já tem emenda. Remova os itens manualmente.',
+        );
+      }
+    }
+
+    const now = new Date();
+    await this.prisma.$transaction([
+      this.prisma.opticalPort.deleteMany({ where: { tenantId, enclosureId: { in: enclosureIds } } }),
+      this.prisma.opticalEnclosure.updateMany({
+        where: { tenantId, importBatchId, deletedAt: null },
+        data: { deletedAt: now },
+      }),
+      this.prisma.fiberCable.updateMany({
+        where: { tenantId, importBatchId, deletedAt: null },
+        data: { deletedAt: now },
+      }),
+    ]);
+
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'kml.import_undone',
+      resource: 'optical',
+      resourceId: importBatchId,
+      beforeState: { enclosures: enclosures.length, cables: cables.length },
+    });
+
+    return { enclosuresRemoved: enclosures.length, cablesRemoved: cables.length };
   }
 
   // ───────────────────────────────────────────────────────────────────────────
