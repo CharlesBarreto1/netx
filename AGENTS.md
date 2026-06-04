@@ -101,7 +101,7 @@ src/modules/
   portal/                # portal do cliente final (público)
   prisma/                # PrismaService global (RLS infra-only)
   provisioning/          # OLT/ONT, drivers, install wizard
-    drivers/             # NoOpOlt (EXTERNAL), Mock, Ufinet (stub), Huawei SSH (stub)
+    drivers/             # NoOpOlt (EXTERNAL), Mock, Ufinet (produção), Huawei SSH (stub)
     tr069-paths.huawei.ts  # paths data model EG8145 (SSID, PPPoE, IPv6, VLAN)
     tr069-tasks.service.ts # enfileira Tr069Task (SET_PARAMS, REBOOT...)
   radius/                # applier (cron 30s), reconciler (cron 5min), CoA, accounting
@@ -287,9 +287,58 @@ npm run lint
   (BAND_STEERING pra EG8145X6/X10; DUAL_BAND pra V5).
 - `Tr069Device` + `Tr069Task` (SET_PARAMS, REBOOT, GET_PARAMS…).
 - Driver pattern: `NoOpOltDriver` (EXTERNAL, hoje o padrão), `MockOltDriver`,
-  `UfinetOrchestratorDriver` (stub, aguarda doc), `HuaweiSshDriver` (stub).
+  `UfinetDriver` (ORCHESTRATOR — **integração completa e em produção**, vide
+  seção "Integração Ufinet"), `HuaweiSshDriver` (stub).
 - `ProvisioningService.installCustomer()`: orquestra OLT authorize → Ont
   row → Tr069Task SET_PARAMS (Wi-Fi + PPPoE + VLAN + IPv6) → RADIUS sync.
+
+### Integração Ufinet (rede neutra PY) — `modules/ufinet/`
+**Status: produção (jun/2026).** API TMF do orquestrador da Ufinet (Azure APIM).
+Cada **polígono** Ufinet = uma `Olt` (vendor=UFINET, providerMode=ORCHESTRATOR).
+
+- **Auth (DUAS camadas, ambas obrigatórias):** OAuth2 (`clientId`+`clientSecret`
+  +`scope`+`tokenUrl` → Bearer token) **E** `accessKey` (header `Access:` do
+  APIM). Sem o accessKey → **404/401**. Tudo cifrado em `Olt.apiCredentialsEnc`;
+  config não-secreta (operator/region/contractId/polygonAlias/nms/bandwidth…) em
+  `Olt.apiConfig` (JSON). QA e PROD têm credenciais/URL/scope diferentes (PROD:
+  `apim.ufinet.com/multiop/`, `nmsId=3`; QA: `nmsId=2`).
+- **Máquina de estados** (`UfinetService.lifecycle`, processada pelo
+  `UfinetPollerService`, cron 30s): PENDING_PROVIDE → PROVIDING → RESERVED →
+  CONFIRMING_ONT → CONFIRMING_SERVICE → **ACTIVE**; + SUSPENDING/SUSPENDED,
+  REACTIVATING, SWAPPING_ONT, CEASING/CEASED, CANCELLING/CANCELLED, FAILED.
+- **Fluxo de alta:** `POST ServiceOrder/order` (provide) → confirmar ONT
+  (`PATCH ServiceInventory/service` com SerialNumber) → sync → confirmação final
+  (`PATCH ServiceOrder/order` com **CTO_PORT + LABEL_DROP**) → ACTIVE.
+- **`externalId` = `Contract.code`** (ex.: ZUX-234) = LABEL_DROP/Marquilla. O
+  sequencial vive no Contract, a Ufinet só herda.
+- **426 "Tareas pendientes" NÃO é erro** — é "aprovisionamento em processo"
+  (Ufinet trabalhando a infra/ONT real). O poller re-tenta calmo; teto de 1h →
+  FAILED. **Exige ONT física conectada** pra concluir (QA era "real", não
+  fictício). Erro `ont.error.not-found` = serial não corresponde a ONT plugada.
+- **Operações implementadas:** alta, confirmar ONT, **baja** (cease, p/ ativo) vs
+  **cancelación** (CancelServiceOrder, só p/ não-confirmado — `requestTeardown`
+  decide por "já provisionado", não pelo lifecycle), **troca de ONT**
+  (CHANGE_RESOURCE), suspender/reativar, e **ações de manutenção** REFRESH_ONT /
+  RESET_ONT / **STATUS_ONT** (níveis ópticos). Essas 3 são **assíncronas**
+  (dispatch + poll) — a cadeia orquestrador→NCS→OLT→ONT estoura timeout síncrono;
+  gateway tem 90s só nessas rotas.
+- **`apiConfig.minimalProvidePayload`** (bool, default false): alta enxuta — omite
+  PII (CONTACT_NAME/PHONE + geometria) do payload de provide; mantém só
+  externalId/region/operator/BANDWIDTH_PROFILE/polygonAlias/NMS + CTO_PORT/
+  LABEL_DROP. Pra operação que não quer compartilhar dados do cliente.
+- **Adoção** (`adoptExisting` / `POST /v1/ufinet/services/adopt`): vincula no NetX
+  um serviço **já ativo na Ufinet** (cadastrado manualmente lá) — consulta o
+  inventário pelo `Contract.code`, resolve bundle/serial/CTO e nasce ACTIVE, sem
+  refazer alta. Botão no `UfinetStatusPanel`.
+- **Sinal óptico persistido:** `UfinetService.lastSignalLevels`/`lastSignalAt` —
+  última leitura STATUS_ONT exibida sempre no contrato com timestamp.
+- **Trace/auditoria:** todo request/response NetX↔Ufinet grava em
+  `ufinet_request_logs` (via `AsyncLocalStorage` `ufinetTrace.run` — chamadas
+  fora do contexto NÃO gravam). Botão "Baixar trace" no painel +
+  `GET /v1/ufinet/services/:id/trace`. ⚠️ Tabela cresce infinito (sem purge) —
+  inclui inventário inteiro em cada GET; limpar via SQL periodicamente.
+- **CTO_PORT = código COMPLETO da CTO** (`JLMPY-PY13734`), não "porta". É a CAIXA.
+  Vide dívida das CTOs do KMZ em "Estado pendente".
 
 ### TR-069 ACS (apps/cwmp-server)
 - Servidor SOAP/XML standalone na porta **7547**.
@@ -506,9 +555,14 @@ SELECT migration_name, finished_at FROM _prisma_migrations ORDER BY finished_at 
 
 ## Estado pendente / decisões abertas
 
-- **Task #29** (bloqueante): aguardando doc API Ufinet pra implementar
-  `UfinetOrchestratorDriver`. Hoje OLTs estão em modo `EXTERNAL` (NetX
-  registra ONT sem chamar OLT real — admin provisiona via web da Ufinet).
+- **Integração Ufinet**: ✅ **CONCLUÍDA e em produção** (jun/2026). Antiga
+  "task #29 bloqueante" resolvida — vide seção dedicada abaixo.
+- **CTOs do KMZ (dívida)**: as caixas importadas do KMZ da Ufinet têm `code`
+  em formato inconsistente (`PY13734` sem prefixo, `FTTXPY13706` com prefixo
+  errado) em vez de `JLMPY-PY####`. O `CTO_PORT` correto é o código COMPLETO
+  (`JLMPY-PY13734`). Enquanto não normalizado, cada instalação Ufinet pode
+  travar no PATCH final de confirmação com 500 "Error no controlado" — corrige
+  via SQL no `ufinet_services.cto_port` + rearma (`current_order_id=NULL`).
 - **Driver BR** (Parks/Fiberhome/Nokia): planejado quando expandir pra BR.
   Modo EXTERNAL cobre por enquanto.
 - **TR-069 auth**: hoje sem auth no protocolo. TODO HTTP Digest per-device.
@@ -590,8 +644,9 @@ SELECT migration_name, finished_at FROM _prisma_migrations ORDER BY finished_at 
    "feito" — features só estão deployadas em prod depois disso.
 7. Os bugs do passado (timeout RADIUS, 500 no cancel, sync de MAC) **eram
    IPoE**. PPPoE remove essas arestas. Manter PPPoE como padrão.
-8. O modo EXTERNAL é o que **funciona em produção hoje**. UfinetDriver
-   é stub. Não tente "ativar" o Ufinet sem doc da task #29.
+8. Modos em produção: **EXTERNAL** (OLT própria, admin provisiona manual) e
+   **ORCHESTRATOR/Ufinet** (integração completa — vide seção "Integração
+   Ufinet"). O `HuaweiSshDriver` (DIRECT) segue stub.
 
 ---
 
