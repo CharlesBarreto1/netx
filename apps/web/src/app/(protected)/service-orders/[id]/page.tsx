@@ -10,6 +10,7 @@ import { OsStockSection } from '@/components/service-orders/OsStockSection';
 import { ServiceOrderStatusBadge } from '@/components/service-orders/StatusBadge';
 import { ServiceOrderMessages } from '@/components/service-orders/ServiceOrderMessages';
 import { ServiceOrderAttachments } from '@/components/service-orders/ServiceOrderAttachments';
+import { EditServiceOrderDialog } from '@/components/service-orders/EditServiceOrderDialog';
 import { Button } from '@/components/ui/Button';
 import { Input, Label, Select, Textarea } from '@/components/ui/Input';
 import { ConfirmDialog } from '@/components/ui/Modal';
@@ -62,6 +63,9 @@ export default function ServiceOrderDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [reassignOpen, setReassignOpen] = useState(false);
   const [reassignTo, setReassignTo] = useState('');
+  const [editOpen, setEditOpen] = useState(false);
+  const [returnOpen, setReturnOpen] = useState(false);
+  const [returnReason, setReturnReason] = useState('');
   const [busy, setBusy] = useState(false);
 
   if (isLoading || !os) return <PageLoader label={tCommon('loading')} />;
@@ -74,6 +78,8 @@ export default function ServiceOrderDetailPage() {
   const isOpenLike =
     os.status === 'OPEN' || os.status === 'SCHEDULED';
   const isInProgress = os.status === 'IN_PROGRESS';
+  const isFieldActive = os.status === 'EN_ROUTE' || os.status === 'IN_PROGRESS';
+  const isClosed = os.status === 'COMPLETED' || os.status === 'CANCELLED';
 
   // Os handlers podem ser chamados a qualquer momento; o TS não propaga o
   // narrowing do `if (!os) return` lá em cima porque closures podem rodar
@@ -124,6 +130,25 @@ export default function ServiceOrderDetailPage() {
       toast.success(tDetail('cancelledToast'));
       setCancelOpen(false);
       setCancelReason('');
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.friendlyMessage : tCommon('error');
+      toast.error(msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleReturnToQueue() {
+    if (!os) return;
+    const reason = returnReason.trim();
+    if (!reason) return;
+    setBusy(true);
+    try {
+      const updated = await serviceOrdersApi.returnToQueue(os.id, reason);
+      await mutate(updated, false);
+      toast.success(tDetail('returnedToQueueToast'));
+      setReturnOpen(false);
+      setReturnReason('');
     } catch (err) {
       const msg = err instanceof ApiError ? err.friendlyMessage : tCommon('error');
       toast.error(msg);
@@ -198,6 +223,22 @@ export default function ServiceOrderDetailPage() {
             >
               <Button variant="outline">{tDetail('actionPrint')}</Button>
             </Link>
+            {canWrite && !isClosed && (
+              <Button variant="outline" onClick={() => setEditOpen(true)}>
+                {tCommon('edit')}
+              </Button>
+            )}
+            {canWrite && isFieldActive && (
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setReturnReason('');
+                  setReturnOpen(true);
+                }}
+              >
+                {tDetail('actionReturnToQueue')}
+              </Button>
+            )}
             {canWrite && isOpenLike && (
               <Button onClick={handleStart} loading={busy}>
                 {tDetail('actionStart')}
@@ -471,6 +512,58 @@ export default function ServiceOrderDetailPage() {
               </Button>
               <Button onClick={handleReassign} loading={busy}>
                 {tCommon('save')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Editar a O.S (aberta errada) */}
+      {editOpen && (
+        <EditServiceOrderDialog
+          os={os}
+          onClose={() => setEditOpen(false)}
+          onUpdated={() => {
+            setEditOpen(false);
+            void mutate();
+          }}
+        />
+      )}
+
+      {/* Voltar pra fila (cancela deslocamento/execução, não a O.S) — exige motivo */}
+      {returnOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+          <div className="w-full max-w-lg rounded-md border border-border bg-surface p-5 shadow-lg">
+            <h3 className="text-base font-semibold text-text">
+              {tDetail('returnToQueueTitle')}
+            </h3>
+            <p className="mt-1 text-xs text-text-muted">{tDetail('returnToQueueHelp')}</p>
+            <div className="mt-3">
+              <Label htmlFor="so-return-reason" required>
+                {tDetail('returnReason')}
+              </Label>
+              <Textarea
+                id="so-return-reason"
+                rows={3}
+                value={returnReason}
+                onChange={(e) => setReturnReason(e.target.value)}
+              />
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                onClick={() => setReturnOpen(false)}
+                disabled={busy}
+              >
+                {tCommon('cancel')}
+              </Button>
+              <Button
+                variant="danger"
+                onClick={handleReturnToQueue}
+                loading={busy}
+                disabled={!returnReason.trim()}
+              >
+                {tDetail('actionReturnToQueue')}
               </Button>
             </div>
           </div>

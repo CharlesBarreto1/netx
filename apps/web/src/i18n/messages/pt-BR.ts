@@ -616,6 +616,7 @@ const messages = {
       openDescriptionPlaceholder:
         'Ex.: Cliente reportou queda intermitente desde ontem.',
       requiredFields: 'Preencha contrato, motivo e descrição.',
+      editTitle: 'Editar O.S',
     },
     detail: {
       cardData: 'Dados da O.S',
@@ -640,6 +641,11 @@ const messages = {
       actionStart: 'Iniciar execução',
       actionComplete: 'Finalizar',
       actionCancel: 'Cancelar O.S',
+      actionReturnToQueue: 'Voltar pra fila',
+      returnedToQueueToast: 'O.S voltou pra fila.',
+      returnToQueueTitle: 'Voltar a O.S pra fila',
+      returnToQueueHelp: 'Cancela o deslocamento/execução SEM cancelar a O.S — ela volta pra fila (agendada/aberta). Não fecha a ordem.',
+      returnReason: 'Motivo',
       actionPrint: 'Imprimir / PDF',
       startedToast: 'O.S iniciada',
       completedToast: 'O.S finalizada',
@@ -1254,6 +1260,16 @@ const messages = {
       confirmInstall: '✅ Confirmar (one-touch)',
       messagesTitle: 'Mensagens',
       attachmentsTitle: 'Anexos',
+      openNav: '🧭 Abrir navegação',
+      noLocation: 'Contrato sem localização cadastrada — não dá pra navegar.',
+      cancelEnRoute: 'Cancelar deslocamento',
+      cancelExecution: 'Cancelar execução',
+      returnHelp: 'A O.S volta pra fila (não é cancelada). Diga o motivo — fica no histórico.',
+      returnReasonLabel: 'Motivo',
+      returnReasonPlaceholder: 'Ex: cliente ausente, remarcar; emergência em outra O.S…',
+      keepGoing: 'Continuar',
+      confirmReturn: 'Voltar pra fila',
+      returnedToQueue: 'O.S voltou pra fila.',
       helpInstall:
         'Ativa o contrato, movimenta o estoque, provisiona, vincula ao TR-069 e fecha a O.S — tudo de uma vez.',
       helpSwap:

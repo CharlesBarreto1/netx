@@ -68,6 +68,11 @@ export interface ServiceOrderResponse {
     // null em contratos IPoE.
     pppoeUsername: string | null;
     customerId: string;
+    // Localização do contrato — pra navegação ("Iniciar deslocamento").
+    installationAddress: string | null;
+    installationMapsUrl: string | null;
+    latitude: number | null;
+    longitude: number | null;
   } | null;
   customer?: { id: string; displayName: string } | null;
   assignedTo?: {
@@ -361,6 +366,13 @@ export const serviceOrdersApi = {
     return api.post<ServiceOrderResponse>(
       `/v1/service-orders/${id}/checkin`,
       {},
+    );
+  },
+  /** Aborta deslocamento/execução e devolve a O.S pra fila (não cancela). */
+  returnToQueue(id: string, reason: string) {
+    return api.post<ServiceOrderResponse>(
+      `/v1/service-orders/${id}/return-to-queue`,
+      { reason },
     );
   },
   presignPhoto(id: string, fileName: string, contentType?: string) {

@@ -19,6 +19,7 @@ import {
   type ListServiceOrdersQuery,
   type Paginated,
   type RegisterServiceOrderAttachmentRequest,
+  type ReturnToQueueRequest,
   type ServiceOrderAttachmentPresignRequest,
   type ServiceOrderAttachmentPresignResponse,
   type ServiceOrderAttachmentResponse,
@@ -501,6 +502,72 @@ export class ServiceOrdersService {
       resourceId: id,
       beforeState: { status: before.status },
       afterState: { status: updated.status, checkinAt: updated.checkinAt },
+    });
+    return toResponse(updated);
+  }
+
+  /**
+   * Volta a O.S pra fila — aborta o deslocamento (EN_ROUTE) ou a execução
+   * (IN_PROGRESS) SEM cancelar/fechar. Status volta pra SCHEDULED (se tinha
+   * agendamento) ou OPEN; limpa os timestamps de campo. Mantém o técnico
+   * designado (o operador reatribui via "Trocar" se quiser). O motivo fica no
+   * histórico (thread de mensagens) + audit.
+   */
+  async returnToQueue(
+    tenantId: string,
+    actorUserId: string,
+    id: string,
+    input: ReturnToQueueRequest,
+  ): Promise<ServiceOrderResponse> {
+    const before = await this.prisma.serviceOrder.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!before) throw new NotFoundException('O.S não encontrada');
+    if (
+      before.status !== PrismaSOStatus.EN_ROUTE &&
+      before.status !== PrismaSOStatus.IN_PROGRESS
+    ) {
+      throw new ConflictException(
+        'Só dá pra voltar pra fila uma O.S em deslocamento ou em execução.',
+      );
+    }
+
+    const wasEnRoute = before.status === PrismaSOStatus.EN_ROUTE;
+    const nextStatus = before.scheduledAt
+      ? PrismaSOStatus.SCHEDULED
+      : PrismaSOStatus.OPEN;
+
+    const updated = await this.prisma.serviceOrder.update({
+      where: { id },
+      data: {
+        status: nextStatus,
+        // Reverte o progresso de campo — a O.S volta "limpa" pra fila.
+        enRouteAt: null,
+        checkinAt: null,
+        startedAt: null,
+        updatedById: actorUserId,
+      },
+      include: defaultInclude(),
+    });
+
+    // Registra o motivo no histórico (thread) — visível pra todos e auditável.
+    await this.prisma.serviceOrderMessage.create({
+      data: {
+        tenantId,
+        serviceOrderId: id,
+        authorId: actorUserId,
+        body: `↩️ ${wasEnRoute ? 'Deslocamento cancelado' : 'Execução cancelada'} — O.S voltou pra fila. Motivo: ${input.reason.trim()}`,
+      },
+    });
+
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'service_order.returned_to_queue',
+      resource: 'service_orders',
+      resourceId: id,
+      beforeState: { status: before.status },
+      afterState: { status: updated.status, reason: input.reason },
     });
     return toResponse(updated);
   }
@@ -1044,6 +1111,11 @@ function defaultInclude() {
         code: true,
         pppoeUsername: true,
         customerId: true,
+        // Localização pra navegação (botão "Iniciar deslocamento" abre o Maps).
+        installationAddress: true,
+        installationMapsUrl: true,
+        latitude: true,
+        longitude: true,
         customer: { select: { id: true, displayName: true } },
       },
     },
@@ -1097,6 +1169,10 @@ function toResponse(o: any): ServiceOrderResponse {
           code: o.contract.code,
           pppoeUsername: o.contract.pppoeUsername,
           customerId: o.contract.customerId,
+          installationAddress: o.contract.installationAddress ?? null,
+          installationMapsUrl: o.contract.installationMapsUrl ?? null,
+          latitude: o.contract.latitude != null ? Number(o.contract.latitude) : null,
+          longitude: o.contract.longitude != null ? Number(o.contract.longitude) : null,
         }
       : null,
     customer: o.contract?.customer

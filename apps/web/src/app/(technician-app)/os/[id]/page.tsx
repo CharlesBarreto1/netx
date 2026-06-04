@@ -29,6 +29,7 @@ import { toast } from '@/components/ui/sonner';
 import { ApiError, api } from '@/lib/api';
 import { opticalApi, type OpticalPort } from '@/lib/optical-api';
 import { stockApi } from '@/lib/stock-api';
+import { buildMapsNavUrl } from '@/lib/maps';
 import {
   serviceOrdersApi,
   type CompleteFieldInput,
@@ -103,6 +104,8 @@ export default function OsDetailPage() {
   const [materials, setMaterials] = useState<FieldMaterialInput[]>([]);
   const [photos, setPhotos] = useState<ServiceOrderPhotoInput[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  const [returnOpen, setReturnOpen] = useState(false);
+  const [returnReason, setReturnReason] = useState('');
 
   const selectedOlt = (olts ?? []).find((o) => o.id === oltId);
   const isUfinet =
@@ -137,6 +140,15 @@ export default function OsDetailPage() {
 
   // ── lifecycle ──
   async function doEnRoute() {
+    // Abre o Google Maps em navegação ANTES de qualquer await — preserva o
+    // user-gesture do clique (senão o mobile bloqueia o popup/app). No celular,
+    // a URL universal aciona o app nativo do Maps e mantém o NetX aberto atrás.
+    const navUrl = so?.contract ? buildMapsNavUrl(so.contract) : null;
+    if (navUrl) {
+      window.open(navUrl, '_blank', 'noopener,noreferrer');
+    } else {
+      toast.error(t('detail.noLocation'));
+    }
     setBusy(true);
     try {
       await serviceOrdersApi.enRoute(id);
@@ -152,6 +164,22 @@ export default function OsDetailPage() {
     try {
       await serviceOrdersApi.checkin(id);
       await mutate();
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.friendlyMessage : t('errors.generic'));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function doReturnToQueue() {
+    const reason = returnReason.trim();
+    if (!reason) return;
+    setBusy(true);
+    try {
+      await serviceOrdersApi.returnToQueue(id, reason);
+      await mutate();
+      setReturnOpen(false);
+      setReturnReason('');
+      toast.success(t('detail.returnedToQueue'));
     } catch (e) {
       toast.error(e instanceof ApiError ? e.friendlyMessage : t('errors.generic'));
     } finally {
@@ -352,9 +380,33 @@ export default function OsDetailPage() {
         </Button>
       )}
       {so.status === 'EN_ROUTE' && (
-        <Button onClick={doCheckin} loading={busy} className="w-full">
-          {t('detail.checkin')}
-        </Button>
+        <div className="space-y-2">
+          <Button onClick={doCheckin} loading={busy} className="w-full">
+            {t('detail.checkin')}
+          </Button>
+          {so.contract && buildMapsNavUrl(so.contract) && (
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => {
+                const u = so.contract ? buildMapsNavUrl(so.contract) : null;
+                if (u) window.open(u, '_blank', 'noopener,noreferrer');
+              }}
+            >
+              {t('detail.openNav')}
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            className="w-full text-red-600 dark:text-red-400"
+            onClick={() => {
+              setReturnReason('');
+              setReturnOpen(true);
+            }}
+          >
+            {t('detail.cancelEnRoute')}
+          </Button>
+        </div>
       )}
       {so.status === 'COMPLETED' && (
         <div className="rounded-md border border-green-300 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950/40 dark:text-green-200">
@@ -366,9 +418,21 @@ export default function OsDetailPage() {
       {/* ── Form de fechamento (em execução) ── */}
       {isInProgress && (
         <section className="space-y-4 rounded-lg border border-border bg-surface p-3">
-          <h2 className="text-sm font-bold">
-            {t('detail.closingTitle', { kind: KIND_LABEL })}
-          </h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-bold">
+              {t('detail.closingTitle', { kind: KIND_LABEL })}
+            </h2>
+            <button
+              type="button"
+              onClick={() => {
+                setReturnReason('');
+                setReturnOpen(true);
+              }}
+              className="shrink-0 text-xs text-red-600 hover:underline dark:text-red-400"
+            >
+              {t('detail.cancelExecution')}
+            </button>
+          </div>
 
           {/* Suporte: trocou ONT? */}
           {kind === 'SUPPORT' && (
@@ -703,6 +767,47 @@ export default function OsDetailPage() {
         <h2 className="text-sm font-semibold text-text">{t('detail.attachmentsTitle')}</h2>
         <ServiceOrderAttachments serviceOrderId={so.id} canWrite />
       </section>
+
+      {/* Modal: voltar pra fila (cancelar deslocamento/execução) — exige motivo */}
+      {returnOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+          <div className="w-full max-w-md rounded-lg border border-border bg-surface p-4">
+            <h3 className="text-base font-semibold text-text">
+              {so.status === 'EN_ROUTE'
+                ? t('detail.cancelEnRoute')
+                : t('detail.cancelExecution')}
+            </h3>
+            <p className="mt-1 text-xs text-text-muted">{t('detail.returnHelp')}</p>
+            <div className="mt-3">
+              <Label htmlFor="return-reason">{t('detail.returnReasonLabel')}</Label>
+              <Textarea
+                id="return-reason"
+                rows={3}
+                value={returnReason}
+                onChange={(e) => setReturnReason(e.target.value)}
+                placeholder={t('detail.returnReasonPlaceholder')}
+              />
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                onClick={() => setReturnOpen(false)}
+                disabled={busy}
+              >
+                {t('detail.keepGoing')}
+              </Button>
+              <Button
+                variant="danger"
+                onClick={doReturnToQueue}
+                loading={busy}
+                disabled={!returnReason.trim()}
+              >
+                {t('detail.confirmReturn')}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

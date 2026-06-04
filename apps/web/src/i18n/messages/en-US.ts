@@ -591,6 +591,7 @@ const messages = {
       openDescriptionPlaceholder:
         'E.g.: Customer reports intermittent drops since yesterday.',
       requiredFields: 'Fill contract, reason and description.',
+      editTitle: 'Edit service order',
     },
     detail: {
       cardData: 'Order data',
@@ -615,6 +616,11 @@ const messages = {
       actionStart: 'Start execution',
       actionComplete: 'Complete',
       actionCancel: 'Cancel order',
+      actionReturnToQueue: 'Return to queue',
+      returnedToQueueToast: 'Service order returned to the queue.',
+      returnToQueueTitle: 'Return order to queue',
+      returnToQueueHelp: 'Cancels the trip/execution WITHOUT cancelling the order — it goes back to the queue (scheduled/open). Does not close the order.',
+      returnReason: 'Reason',
       actionPrint: 'Print / PDF',
       startedToast: 'Order started',
       completedToast: 'Order completed',
@@ -1225,6 +1231,16 @@ const messages = {
       confirmInstall: '✅ Confirm (one-touch)',
       messagesTitle: 'Messages',
       attachmentsTitle: 'Attachments',
+      openNav: '🧭 Open navigation',
+      noLocation: 'Contract has no saved location — cannot navigate.',
+      cancelEnRoute: 'Cancel trip',
+      cancelExecution: 'Cancel execution',
+      returnHelp: 'The order goes back to the queue (it is not cancelled). Give a reason — it stays in the history.',
+      returnReasonLabel: 'Reason',
+      returnReasonPlaceholder: 'E.g.: customer not home, reschedule; emergency on another order…',
+      keepGoing: 'Keep going',
+      confirmReturn: 'Return to queue',
+      returnedToQueue: 'Service order returned to the queue.',
       helpInstall:
         'Activates the contract, moves stock, provisions, links to TR-069 and closes the work order — all at once.',
       helpSwap:

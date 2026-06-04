@@ -103,6 +103,16 @@ export type CancelServiceOrderRequest = z.infer<
   typeof CancelServiceOrderRequestSchema
 >;
 
+/**
+ * Volta a O.S pra fila — aborta o deslocamento (EN_ROUTE) ou a execução
+ * (IN_PROGRESS) SEM cancelar/fechar a O.S. Status volta pra SCHEDULED (se tinha
+ * agendamento) ou OPEN. Motivo é obrigatório e fica no histórico (thread).
+ */
+export const ReturnToQueueRequestSchema = z.object({
+  reason: z.string().min(1).max(1000),
+});
+export type ReturnToQueueRequest = z.infer<typeof ReturnToQueueRequestSchema>;
+
 /** Técnico inicia deslocamento → status EN_ROUTE (a caminho). */
 export const EnRouteServiceOrderRequestSchema = z.object({
   enRouteAt: z.string().datetime({ offset: true }).optional(),
@@ -399,6 +409,11 @@ export interface ServiceOrderResponse {
     // null em contratos IPoE — autenticam via circuit-id/MAC.
     pppoeUsername: string | null;
     customerId: string;
+    // Localização do contrato — usada pra navegação no app do técnico.
+    installationAddress: string | null;
+    installationMapsUrl: string | null;
+    latitude: number | null;
+    longitude: number | null;
   } | null;
   customer?: { id: string; displayName: string } | null;
   assignedTo?: { id: string; firstName: string; lastName: string } | null;

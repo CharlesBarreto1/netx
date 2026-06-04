@@ -22,6 +22,7 @@ import {
   EnRouteServiceOrderRequestSchema,
   ListServiceOrdersQuerySchema,
   RegisterServiceOrderAttachmentRequestSchema,
+  ReturnToQueueRequestSchema,
   ServiceOrderAttachmentPresignRequestSchema,
   ServiceOrderPhotoPresignRequestSchema,
   StartServiceOrderRequestSchema,
@@ -37,6 +38,7 @@ import {
   type EnRouteServiceOrderRequest,
   type ListServiceOrdersQuery,
   type RegisterServiceOrderAttachmentRequest,
+  type ReturnToQueueRequest,
   type ServiceOrderAttachmentPresignRequest,
   type ServiceOrderPhotoPresignRequest,
   type StartServiceOrderRequest,
@@ -140,6 +142,17 @@ export class ServiceOrdersController {
     @ZodBody(CheckinServiceOrderRequestSchema) body: CheckinServiceOrderRequest,
   ) {
     return this.orders.checkin(user.tenantId, user.sub, id, body);
+  }
+
+  /** Aborta deslocamento/execução e devolve a O.S pra fila (não cancela). */
+  @Post(':id/return-to-queue')
+  @RequirePermissions('service_orders.write')
+  returnToQueue(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(ReturnToQueueRequestSchema) body: ReturnToQueueRequest,
+  ) {
+    return this.orders.returnToQueue(user.tenantId, user.sub, id, body);
   }
 
   /** Pede URL assinada pra subir foto de campo direto no MinIO. */
