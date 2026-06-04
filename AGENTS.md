@@ -318,7 +318,12 @@ Cada **polígono** Ufinet = uma `Olt` (vendor=UFINET, providerMode=ORCHESTRATOR)
 - **Operações implementadas:** alta, confirmar ONT, **baja** (cease, p/ ativo) vs
   **cancelación** (CancelServiceOrder, só p/ não-confirmado — `requestTeardown`
   decide por "já provisionado", não pelo lifecycle), **troca de ONT**
-  (CHANGE_RESOURCE), suspender/reativar, e **ações de manutenção** REFRESH_ONT /
+  (`requestSwapOnt` DECIDE pelo estado: ACTIVE/SUSPENDED→CHANGE_RESOURCE real;
+  alta não-ativa com bundle reservado→re-confirma a alta com o serial novo, pois
+  a Ufinet recusa CHANGE_RESOURCE em serviço não-ativo; "Reprocessar" no painel
+  destrava estados presos via `deriveResume`), suspender/reativar, **adoção**
+  (`/v1/ufinet/services/adopt` — vincula serviço já ativo cadastrado manual na
+  Ufinet, pelo Contract.code), e **ações de manutenção** REFRESH_ONT /
   RESET_ONT / **STATUS_ONT** (níveis ópticos). Essas 3 são **assíncronas**
   (dispatch + poll) — a cadeia orquestrador→NCS→OLT→ONT estoura timeout síncrono;
   gateway tem 90s só nessas rotas.
