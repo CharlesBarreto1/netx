@@ -3425,6 +3425,7 @@ const messages = {
         SUSPENDING: 'Suspendendo…',
         SUSPENDED: 'Suspenso',
         REACTIVATING: 'Reativando…',
+        SWAPPING_ONT: 'Trocando ONT…',
         CEASING: 'Dando baixa…',
         CEASED: 'Baixado',
         CANCELLING: 'Cancelando…',

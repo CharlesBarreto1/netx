@@ -371,8 +371,22 @@ export class UfinetOrdersService {
   }
 
   /**
-   * Troca de ONT (Cambio de ONT). Grava o SN novo e transiciona pra
-   * SWAPPING_ONT; o poller envia o POST CHANGE_RESOURCE + faz poll até ACTIVE.
+   * Troca de ONT — DECIDE o caminho certo conforme o estado do serviço na Ufinet:
+   *
+   *  a) Serviço JÁ ativo (ACTIVE/SUSPENDED) → **Cambio de ONT real**
+   *     (CHANGE_RESOURCE): a Ufinet aceita trocar a ONT de um serviço no ar.
+   *
+   *  b) Alta em processo, NUNCA ativou (ex.: ficou em 426 porque o técnico
+   *     confirmou com o serial errado) mas já reservou o bundle
+   *     (resPonAccessServiceId presente) → **re-confirma a alta** com o serial
+   *     novo (volta a CONFIRMING_ONT). A Ufinet RECUSA CHANGE_RESOURCE em
+   *     serviço não-ativo ("rejected"); o certo é reenviar o serial na
+   *     confirmação da própria alta.
+   *
+   *  c) Ainda nem reservou a porta → só grava o serial; `providePoll` avança
+   *     pra CONFIRMING_ONT sozinho ao reservar.
+   *
+   * Isso evita o beco "cambio rejeitado" que travava o serviço em SWAPPING_ONT.
    */
   async requestSwapOnt(
     tenantId: string,
@@ -381,13 +395,32 @@ export class UfinetOrdersService {
     actorUserId?: string | null,
   ): Promise<UfinetService> {
     const svc = await this.getByContract(tenantId, contractId);
-    return this.transition(
-      svc,
-      'SWAPPING_ONT',
-      { ...this.resetStep(), serialNumber: newSerial },
-      actorUserId,
-      'ufinet.swap_ont.requested',
-    );
+
+    // a) Serviço já provisionado/ativo → cambio de ONT real.
+    if (svc.lifecycle === 'ACTIVE' || svc.lifecycle === 'SUSPENDED') {
+      return this.transition(
+        svc,
+        'SWAPPING_ONT',
+        { ...this.resetStep(), serialNumber: newSerial },
+        actorUserId,
+        'ufinet.swap_ont.requested',
+      );
+    }
+
+    // b) Alta não-ativa mas com bundle reservado → re-confirma a alta com o SN
+    //    novo (a Ufinet não aceita cambio aqui; reenviar serial na confirmação).
+    if (svc.resPonAccessServiceId && svc.parentServiceId) {
+      return this.transition(
+        svc,
+        'CONFIRMING_ONT',
+        { ...this.resetStep(), serialNumber: newSerial },
+        actorUserId,
+        'ufinet.reconfirm_ont.requested',
+      );
+    }
+
+    // c) Antes de reservar → só grava o serial; o providePoll segue o fluxo.
+    return this.save(svc.id, { serialNumber: newSerial });
   }
 
   /**

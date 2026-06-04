@@ -231,11 +231,15 @@ export function UfinetStatusPanel({ contractId }: { contractId: string }) {
         <Button size="sm" variant="outline" loading={downloading} onClick={handleDownloadTrace}>
           {t('ufinet.downloadTrace')}
         </Button>
-        {svc.lifecycle === 'FAILED' && canRetry && (
-          <Button size="sm" variant="secondary" onClick={handleRetry}>
-            {t('ufinet.reprocess')}
-          </Button>
-        )}
+        {canRetry &&
+          (svc.lifecycle === 'FAILED' ||
+            svc.lifecycle === 'SWAPPING_ONT' ||
+            svc.lifecycle === 'CONFIRMING_ONT' ||
+            svc.lifecycle === 'CONFIRMING_SERVICE') && (
+            <Button size="sm" variant="secondary" onClick={handleRetry}>
+              {t('ufinet.reprocess')}
+            </Button>
+          )}
       </div>
     </div>
   );

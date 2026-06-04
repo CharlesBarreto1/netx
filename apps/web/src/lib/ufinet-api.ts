@@ -14,6 +14,7 @@ export type UfinetLifecycle =
   | 'SUSPENDING'
   | 'SUSPENDED'
   | 'REACTIVATING'
+  | 'SWAPPING_ONT'
   | 'CEASING'
   | 'CEASED'
   | 'CANCELLING'
