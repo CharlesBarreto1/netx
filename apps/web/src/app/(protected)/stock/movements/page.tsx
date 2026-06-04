@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { FieldError, Input, Label, Textarea } from '@/components/ui/Input';
 import { PageLoader } from '@/components/ui/Spinner';
+import { toast } from '@/components/ui/sonner';
 import { ApiError } from '@/lib/api';
 import { hasPermission } from '@/lib/session';
 import {
@@ -44,6 +45,13 @@ const IN_TYPES = new Set<MovementType>([
   'TRANSFER_IN',
 ]);
 
+// Movimentos que dá pra reverter direto pelo kardex (lançamento manual errado).
+const REVERSIBLE_TYPES = new Set<MovementType>([
+  'ADJUSTMENT_IN',
+  'ADJUSTMENT_OUT',
+  'OS_CONSUMPTION',
+]);
+
 export default function StockMovementsPage() {
   const t = useTranslations('stock.movements');
   const [filters, setFilters] = useState<ListMovementsQuery>({ page: 1, pageSize: 50 });
@@ -55,6 +63,17 @@ export default function StockMovementsPage() {
 
   const canAdjust = hasPermission('stock.adjust');
   const canWrite = hasPermission('stock.write');
+
+  async function doReverse(m: StockMovement) {
+    if (!confirm(t('reverseConfirm'))) return;
+    try {
+      await stockApi.reverseMovement(m.id);
+      toast.success(t('reversedToast'));
+      await mutate();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
+    }
+  }
 
   const [adjusting, setAdjusting] = useState(false);
   const [transferring, setTransferring] = useState(false);
@@ -108,6 +127,7 @@ export default function StockMovementsPage() {
                   <th className="px-4 py-3 text-right">{t('colQty')}</th>
                   <th className="px-4 py-3 text-right">{t('colCost')}</th>
                   <th className="px-4 py-3">{t('colOperator')}</th>
+                  {canAdjust && <th className="px-4 py-3"></th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
@@ -153,6 +173,20 @@ export default function StockMovementsPage() {
                         {formatMoney(m.totalCost)}
                       </td>
                       <td className="px-4 py-3 text-xs text-slate-500">{m.createdByName ?? '—'}</td>
+                      {canAdjust && (
+                        <td className="px-4 py-3 text-right">
+                          {REVERSIBLE_TYPES.has(m.type) && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-red-600 dark:text-red-400"
+                              onClick={() => void doReverse(m)}
+                            >
+                              {t('reverse')}
+                            </Button>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

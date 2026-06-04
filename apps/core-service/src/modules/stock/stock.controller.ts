@@ -338,6 +338,17 @@ export class StockMovementsController {
   ) {
     return this.movements.transfer(u.tenantId, u.sub, body);
   }
+
+  /** Reverte um ajuste de inventário ou consumo em O.S lançado errado. */
+  @Delete('movements/:id')
+  @HttpCode(204)
+  @RequirePermissions('stock.adjust')
+  async reverseMovement(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<void> {
+    await this.movements.reverseMovement(u.tenantId, u.sub, id);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

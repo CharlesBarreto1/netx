@@ -316,6 +316,9 @@ export const stockApi = {
     api.post<StockMovement>('/v1/stock/adjustments', input),
   createTransfer: (input: CreateStockTransferInput) =>
     api.post<StockMovement[]>('/v1/stock/transfers', input),
+  /** Reverte um ajuste de inventário ou consumo em O.S lançado errado. */
+  reverseMovement: (movementId: string) =>
+    api.delete(`/v1/stock/movements/${movementId}`),
 
   // Comodato (Fase 2) --------------------------------------------------------
   comodatoByContractPath: (contractId: string) =>

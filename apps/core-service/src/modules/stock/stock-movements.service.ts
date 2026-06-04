@@ -529,4 +529,130 @@ export class StockMovementsService {
       return { ok: true };
     });
   }
+
+  /**
+   * Reverte um movimento de kardex lançado errado: ajuste de inventário
+   * (ADJUSTMENT_IN/OUT) ou consumo em O.S (OS_CONSUMPTION). Desfaz o efeito no
+   * saldo/serial, remove o movimento e recomputa o custo médio. Compra/comodato/
+   * transferência/venda são bloqueados — revertem pela origem (compra: excluir
+   * a compra; comodato: devolver no contrato; transferência: transferir de volta).
+   */
+  async reverseMovement(
+    tenantId: string,
+    actorUserId: string,
+    movementId: string,
+  ): Promise<void> {
+    const mov = await this.prisma.stockMovement.findFirst({
+      where: { id: movementId, tenantId },
+      include: { product: { select: { id: true, sku: true, type: true } } },
+    });
+    if (!mov) throw new NotFoundException('Movimento não encontrado');
+
+    const REVERSIBLE = ['ADJUSTMENT_IN', 'ADJUSTMENT_OUT', 'OS_CONSUMPTION'];
+    if (!REVERSIBLE.includes(mov.type)) {
+      const hint = mov.type.startsWith('PURCHASE')
+        ? 'Reverta pela tela de Compras (excluir a compra).'
+        : mov.type.startsWith('COMODATO')
+          ? 'Reverta pelo comodato do contrato (devolver/alocar).'
+          : mov.type.startsWith('TRANSFER')
+            ? 'Pra desfazer uma transferência, faça a transferência inversa (do destino pra origem).'
+            : 'Esse tipo de movimento não pode ser revertido aqui.';
+      throw new BadRequestException(hint);
+    }
+
+    const qty = Number(mov.quantity);
+
+    await this.prisma.$transaction(async (tx) => {
+      if (mov.type === 'ADJUSTMENT_IN') {
+        if (mov.product.type === 'PATRIMONIAL' && mov.serialItemId) {
+          // Reverter entrada patrimonial = deletar o serial criado (se intocado).
+          const sn = await tx.serialItem.findUnique({
+            where: { id: mov.serialItemId },
+            select: { id: true, serial: true, status: true, locationId: true, contractId: true },
+          });
+          if (
+            !sn ||
+            sn.status !== 'IN_STOCK' ||
+            sn.contractId ||
+            sn.locationId !== mov.toLocationId
+          ) {
+            throw new ConflictException(
+              `Não dá pra reverter: o item ${sn?.serial ?? ''} já foi movimentado.`,
+            );
+          }
+          const otherMov = await tx.stockMovement.count({
+            where: { tenantId, serialItemId: sn.id, NOT: { id: mov.id } },
+          });
+          if (otherMov > 0) {
+            throw new ConflictException(
+              'Não dá pra reverter: o item já teve movimentação posterior.',
+            );
+          }
+          await tx.serialItem.delete({ where: { id: sn.id } });
+        } else if (mov.toLocationId) {
+          await this.changeLevel(tx, tenantId, mov.productId, mov.toLocationId, -qty);
+        }
+      } else if (mov.type === 'ADJUSTMENT_OUT') {
+        if (mov.product.type === 'PATRIMONIAL' && mov.serialItemId) {
+          // Reverter saída patrimonial = ressuscitar o serial baixado.
+          const sn = await tx.serialItem.findUnique({
+            where: { id: mov.serialItemId },
+            select: { id: true, status: true },
+          });
+          if (!sn || sn.status !== 'WRITTEN_OFF') {
+            throw new ConflictException(
+              'Não dá pra reverter: o item não está mais como baixado.',
+            );
+          }
+          await tx.serialItem.update({
+            where: { id: sn.id },
+            data: { status: 'IN_STOCK', locationId: mov.fromLocationId, notes: null },
+          });
+        } else if (mov.fromLocationId) {
+          await this.changeLevel(tx, tenantId, mov.productId, mov.fromLocationId, qty);
+        }
+      } else if (mov.type === 'OS_CONSUMPTION' && mov.fromLocationId) {
+        // Reverter consumo = devolver a quantidade ao local.
+        await this.changeLevel(tx, tenantId, mov.productId, mov.fromLocationId, qty);
+      }
+
+      await tx.stockMovement.delete({ where: { id: mov.id } });
+      await this.products.recomputeAverageCost(tx, mov.productId);
+    });
+
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'stock.movement_reversed',
+      resource: 'stock_movements',
+      resourceId: movementId,
+      beforeState: { type: mov.type, productSku: mov.product.sku, quantity: qty },
+    });
+  }
+
+  /** Aplica um delta no StockLevel (cria se não existe; nunca deixa negativo). */
+  private async changeLevel(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    productId: string,
+    locationId: string,
+    delta: number,
+  ): Promise<void> {
+    const level = await tx.stockLevel.findUnique({
+      where: { productId_locationId: { productId, locationId } },
+      select: { quantity: true },
+    });
+    const current = Number(level?.quantity ?? 0);
+    const next = current + delta;
+    if (next < 0) {
+      throw new ConflictException(
+        `Não dá pra reverter: deixaria o saldo negativo (atual ${current}).`,
+      );
+    }
+    await tx.stockLevel.upsert({
+      where: { productId_locationId: { productId, locationId } },
+      create: { tenantId, productId, locationId, quantity: next },
+      update: { quantity: next },
+    });
+  }
 }
