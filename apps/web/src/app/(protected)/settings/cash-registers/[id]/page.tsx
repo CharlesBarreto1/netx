@@ -63,6 +63,7 @@ export default function CashRegisterDetailPage() {
   const tCommon = useTranslations('common');
   const formatMoney = useFormatMoney();
   const canWrite = hasPermission('finance.charges.write');
+  const canManage = hasPermission('cash_registers.manage');
 
   const detailKey = id ? cashRegistersApi.getPath(id) : null;
   const balanceKey = id ? cashRegistersApi.balancePath(id) : null;
@@ -87,6 +88,18 @@ export default function CashRegisterDetailPage() {
 
   async function refresh() {
     await Promise.all([mutateBalance(), mutateMovs()]);
+  }
+
+  async function doReverse(m: CashMovement) {
+    if (!id) return;
+    if (!confirm(tCR('movement.reverseConfirm'))) return;
+    try {
+      await cashRegistersApi.reverseMovement(id, m.id);
+      toast.success(tCR('movement.reversedToast'));
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : tCommon('error'));
+    }
   }
 
   return (
@@ -152,12 +165,13 @@ export default function CashRegisterDetailPage() {
               <th className="px-3 py-2">{tCR('movement.type')}</th>
               <th className="px-3 py-2">{tCR('movement.description')}</th>
               <th className="px-3 py-2 text-right">{tCR('movement.amount')}</th>
+              {canManage && <th className="px-3 py-2"></th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {movs.data.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-3 py-6 text-center text-text-muted">
+                <td colSpan={canManage ? 5 : 4} className="px-3 py-6 text-center text-text-muted">
                   {tCommon('nothingHere')}
                 </td>
               </tr>
@@ -190,6 +204,20 @@ export default function CashRegisterDetailPage() {
                     {TYPE_SIGN[m.type]}
                     {formatMoney(m.amount)}
                   </td>
+                  {canManage && (
+                    <td className="px-3 py-2 text-right">
+                      {(m.source === 'MANUAL' || m.source === 'TRANSFER') && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-600 dark:text-red-400"
+                          onClick={() => void doReverse(m)}
+                        >
+                          {tCR('movement.reverse')}
+                        </Button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               ))
             )}

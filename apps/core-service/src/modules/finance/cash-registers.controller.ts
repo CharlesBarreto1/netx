@@ -156,6 +156,21 @@ export class CashRegistersController {
     );
   }
 
+  /**
+   * Reverte um lançamento manual (sangria/ajuste/entrada) ou uma transferência
+   * lançada errada. Movimentos de fatura/cobrança/folha são bloqueados aqui —
+   * estorne pela origem. Exige gerente de caixa.
+   */
+  @Delete(':id/movements/:movementId')
+  @HttpCode(204)
+  @RequirePermissions('cash_registers.manage')
+  async reverseMovement(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('movementId', new ParseUUIDPipe()) movementId: string,
+  ): Promise<void> {
+    await this.movements.reverseManual(user.tenantId, user.sub, movementId);
+  }
+
   /** Transferência entre 2 caixas (atomic). Operador em ambos os caixas. */
   @Post(':id/transfer')
   @RequirePermissions('finance.charges.write')

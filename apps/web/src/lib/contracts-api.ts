@@ -377,6 +377,10 @@ export const contractInvoicesApi = {
   pay(id: string, input: PayInvoiceInput = {}) {
     return api.post<ContractInvoice>(`/v1/contract-invoices/${id}/pay`, input);
   },
+  /** Estorna a baixa de uma fatura paga errada. */
+  unpay(id: string) {
+    return api.post<ContractInvoice>(`/v1/contract-invoices/${id}/unpay`, {});
+  },
   cancel(id: string, note?: string) {
     return api.post<ContractInvoice>(`/v1/contract-invoices/${id}/cancel`, { note });
   },

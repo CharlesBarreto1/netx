@@ -302,6 +302,55 @@ export class OneTimeChargesService {
     return toResponse(updated);
   }
 
+  /** Estorna a baixa de uma cobrança paga errada — volta pra OPEN e desfaz o caixa. */
+  async unpay(
+    tenantId: string,
+    actorUserId: string,
+    id: string,
+  ): Promise<OneTimeChargeResponse> {
+    const before = await this.prisma.oneTimeCharge.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!before) throw new NotFoundException('Cobrança não encontrada');
+    if (before.status !== PrismaStatus.PAID)
+      throw new ConflictException('Só dá pra estornar uma cobrança paga');
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const ch = await tx.oneTimeCharge.update({
+        where: { id },
+        data: {
+          status: PrismaStatus.OPEN,
+          paidAt: null,
+          paidAmount: null,
+          discountAmount: null,
+          paidVia: null,
+          cashRegisterId: null,
+          paymentNote: null,
+          updatedById: actorUserId,
+        },
+        include: defaultInclude(),
+      });
+      // Estorna o movimento de caixa da baixa (reverte o saldo).
+      const mov = await tx.cashMovement.findFirst({
+        where: { tenantId, source: 'CHARGE', sourceId: id },
+        select: { id: true },
+      });
+      if (mov) await this.movements.removeMovement(tenantId, mov.id, tx);
+      return ch;
+    });
+
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'charge.payment_reversed',
+      resource: 'one_time_charges',
+      resourceId: id,
+      beforeState: { status: 'PAID', paidAmount: Number(before.paidAmount ?? 0) },
+      afterState: { status: 'OPEN' },
+    });
+    return toResponse(updated);
+  }
+
   async cancel(
     tenantId: string,
     actorUserId: string,

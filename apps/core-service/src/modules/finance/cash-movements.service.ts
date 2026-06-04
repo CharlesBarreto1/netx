@@ -125,6 +125,49 @@ export class CashMovementsService {
     });
   }
 
+  /**
+   * Reverte um lançamento MANUAL (sangria/entrada/ajuste) ou uma TRANSFERÊNCIA
+   * (remove os 2 lados de uma vez). Bloqueia movimentos que vêm de outra
+   * operação (fatura/cobrança/folha/frota): esses devem ser estornados PELA
+   * ORIGEM, pra não deixar a origem "paga" sem o dinheiro no caixa.
+   */
+  async reverseManual(
+    tenantId: string,
+    actorUserId: string,
+    movementId: string,
+  ): Promise<void> {
+    const mov = await this.prisma.cashMovement.findFirst({
+      where: { id: movementId, tenantId },
+      select: { id: true, source: true, transferGroupId: true, amount: true },
+    });
+    if (!mov) throw new NotFoundException('Movimento não encontrado');
+
+    if (mov.source === PrismaMovementSource.MANUAL) {
+      await this.prisma.cashMovement.delete({ where: { id: mov.id } });
+    } else if (
+      mov.source === PrismaMovementSource.TRANSFER &&
+      mov.transferGroupId
+    ) {
+      await this.prisma.cashMovement.deleteMany({
+        where: { tenantId, transferGroupId: mov.transferGroupId },
+      });
+    } else {
+      throw new BadRequestException(
+        'Esse movimento veio de uma fatura, cobrança, folha ou despesa — ' +
+          'estorne pela origem (não dá pra excluir direto no caixa).',
+      );
+    }
+
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'cash_movement.reversed',
+      resource: 'cash_movements',
+      resourceId: movementId,
+      beforeState: { source: mov.source, amount: Number(mov.amount) },
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // CREATE MANUAL (sangria, ajuste)
   // ---------------------------------------------------------------------------

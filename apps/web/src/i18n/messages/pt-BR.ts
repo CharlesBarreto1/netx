@@ -386,6 +386,9 @@ const messages = {
       chargeDescription: 'Descrição',
       cancelChargeTitle: 'Cancelar cobrança',
       cancelChargeMessage: 'Esta cobrança avulsa será cancelada. Não dá pra desfazer.',
+      reversePayment: 'Estornar',
+      unpayConfirm: 'Estornar a baixa de {amount}? Volta a aberta e o valor sai do caixa.',
+      unpaidToast: 'Baixa estornada.',
       newInvoice: {
         button: 'Gerar fatura',
         title: 'Gerar fatura manual',
@@ -517,6 +520,9 @@ const messages = {
       type: 'Tipo',
       description: 'Descrição',
       amount: 'Valor',
+      reverse: 'Reverter',
+      reverseConfirm: 'Reverter este lançamento? O saldo do caixa é ajustado. Não dá pra desfazer.',
+      reversedToast: 'Lançamento revertido.',
       manualTitle: 'Sangria / Ajuste',
     },
     balance: {
@@ -3321,6 +3327,9 @@ const messages = {
   chargesExtra: {
     seeContract: 'Ver contrato',
     cancelWarning: 'A cobrança ficará marcada como cancelada e não pode ser reaberta.',
+    reverse: 'Estornar',
+    reverseConfirm: 'Estornar a baixa? Volta a aberta e o valor sai do caixa. Não dá pra desfazer.',
+    reversedToast: 'Baixa estornada.',
   },
   chatExtra: {
     media: '(mídia)',

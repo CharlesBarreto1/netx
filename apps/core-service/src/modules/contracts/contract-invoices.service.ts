@@ -299,6 +299,89 @@ export class ContractInvoicesService {
   }
 
   // ---------------------------------------------------------------------------
+  // UNPAY (estorno da baixa) — desfaz o pagamento de uma fatura paga errada.
+  //  - Volta o status pra OVERDUE (se vencida) ou OPEN.
+  //  - Estorna o movimento de caixa criado na baixa (se houve).
+  //  - PREPAID: desfaz o avanço do prepaidUntil.
+  //  - NÃO re-suspende o contrato: se a fatura voltar a vencida, o OverdueScan
+  //    re-suspende na próxima varredura (re-suspender aqui poderia cortar o
+  //    cliente indevidamente).
+  // ---------------------------------------------------------------------------
+  async unpay(
+    tenantId: string,
+    actorUserId: string,
+    id: string,
+  ): Promise<ContractInvoiceResponse> {
+    const existing = await this.prisma.contractInvoice.findFirst({
+      where: { id, tenantId },
+      include: { contract: true },
+    });
+    if (!existing) throw new NotFoundException('Fatura não encontrada');
+    if (existing.status !== PrismaInvoiceStatus.PAID) {
+      throw new BadRequestException('Só dá pra estornar uma fatura paga');
+    }
+
+    const wasPrepaidCycle =
+      existing.contract.paymentMode === PrismaPaymentMode.PREPAID &&
+      (existing.kind === PrismaInvoiceKind.REGULAR ||
+        existing.kind === PrismaInvoiceKind.INITIAL);
+    const nextStatus =
+      existing.dueDate.getTime() < Date.now()
+        ? PrismaInvoiceStatus.OVERDUE
+        : PrismaInvoiceStatus.OPEN;
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const inv = await tx.contractInvoice.update({
+        where: { id },
+        data: {
+          status: nextStatus,
+          paidAt: null,
+          paidAmount: null,
+          discountAmount: null,
+          paidVia: null,
+          cashRegisterId: null,
+          paymentNote: null,
+        },
+        include: {
+          contract: {
+            select: { id: true, code: true, pppoeUsername: true, customerId: true, status: true },
+          },
+        },
+      });
+
+      // Estorna o movimento de caixa da baixa (hard-delete reverte o saldo).
+      const mov = await tx.cashMovement.findFirst({
+        where: { tenantId, source: 'INVOICE', sourceId: id },
+        select: { id: true },
+      });
+      if (mov) await this.movements.removeMovement(tenantId, mov.id, tx);
+
+      // PREPAID: desfaz o avanço do ciclo (volta pro fim do período da fatura).
+      if (wasPrepaidCycle && existing.contract.prepaidUntil) {
+        const revertTo =
+          existing.periodEnd ??
+          nextPrepaidDate(existing.contract.prepaidUntil, -1);
+        await tx.contract.update({
+          where: { id: existing.contractId },
+          data: { prepaidUntil: revertTo },
+        });
+      }
+      return inv;
+    });
+
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'contract_invoices.payment_reversed',
+      resource: 'contract_invoices',
+      resourceId: id,
+      beforeState: { status: 'PAID', paidAmount: Number(existing.paidAmount ?? 0) },
+      afterState: { status: nextStatus },
+    });
+    return toInvoiceResponse(updated);
+  }
+
+  // ---------------------------------------------------------------------------
   // BAIXA VIA GATEWAY (EFI — Pix/Bolix)
   //  - Chamado pelo webhook do EFI quando a cobrança é confirmada paga.
   //  - Não envolve caixa (cashRegister) — é recebimento digital direto.

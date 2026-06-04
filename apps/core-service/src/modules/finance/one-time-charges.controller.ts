@@ -92,6 +92,16 @@ export class OneTimeChargesController {
     );
   }
 
+  /** Estorna a baixa de uma cobrança paga errada. */
+  @Post(':id/unpay')
+  @RequirePermissions('cash_registers.manage')
+  unpay(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.charges.unpay(user.tenantId, user.sub, id);
+  }
+
   @Post(':id/cancel')
   @RequirePermissions('finance.charges.write')
   cancel(

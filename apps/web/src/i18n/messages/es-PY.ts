@@ -377,6 +377,9 @@ const messages = {
       chargeDescription: 'Descripción',
       cancelChargeTitle: 'Cancelar cobro',
       cancelChargeMessage: 'Este cobro suelto será cancelado. No se puede deshacer.',
+      reversePayment: 'Revertir',
+      unpayConfirm: '¿Revertir el pago de {amount}? Vuelve a abierta y el monto sale de la caja.',
+      unpaidToast: 'Pago revertido.',
       newInvoice: {
         button: 'Generar factura',
         title: 'Generar factura manual',
@@ -508,6 +511,9 @@ const messages = {
       type: 'Tipo',
       description: 'Descripción',
       amount: 'Valor',
+      reverse: 'Revertir',
+      reverseConfirm: '¿Revertir este movimiento? El saldo de la caja se ajusta. No se puede deshacer.',
+      reversedToast: 'Movimiento revertido.',
       manualTitle: 'Retiro / Ajuste',
     },
     balance: {
@@ -3313,6 +3319,9 @@ const messages = {
   chargesExtra: {
     seeContract: 'Ver contrato',
     cancelWarning: 'El cobro quedará marcado como cancelado y no se puede reabrir.',
+    reverse: 'Revertir',
+    reverseConfirm: '¿Revertir el pago? Vuelve a abierta y el monto sale de la caja. No se puede deshacer.',
+    reversedToast: 'Pago revertido.',
   },
   chatExtra: {
     media: '(multimedia)',

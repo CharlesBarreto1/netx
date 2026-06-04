@@ -106,6 +106,16 @@ export class ContractInvoicesController {
     );
   }
 
+  /** Estorna a baixa de uma fatura paga errada (desfaz status + caixa + ciclo). */
+  @Post('contract-invoices/:id/unpay')
+  @RequirePermissions('cash_registers.manage')
+  unpay(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.invoices.unpay(user.tenantId, user.sub, id);
+  }
+
   @Post('contract-invoices/:id/cancel')
   @RequirePermissions('contracts.write')
   cancel(

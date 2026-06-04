@@ -328,6 +328,9 @@ const messages = {
       chargeDescription: 'Description',
       cancelChargeTitle: 'Cancel charge',
       cancelChargeMessage: 'This one-time charge will be cancelled. This cannot be undone.',
+      reversePayment: 'Reverse',
+      unpayConfirm: 'Reverse the {amount} payment? It goes back to open and the amount leaves the cash register.',
+      unpaidToast: 'Payment reversed.',
       newInvoice: {
         button: 'Generate invoice',
         title: 'Generate manual invoice',
@@ -495,6 +498,9 @@ const messages = {
       type: 'Type',
       description: 'Description',
       amount: 'Amount',
+      reverse: 'Reverse',
+      reverseConfirm: 'Reverse this entry? The cash balance is adjusted. This cannot be undone.',
+      reversedToast: 'Entry reversed.',
       manualTitle: 'Withdraw / Adjustment',
     },
     balance: {
@@ -3291,6 +3297,9 @@ const messages = {
   chargesExtra: {
     seeContract: 'View contract',
     cancelWarning: 'The charge will be marked as cancelled and cannot be reopened.',
+    reverse: 'Reverse',
+    reverseConfirm: 'Reverse the payment? It goes back to open and the amount leaves the cash register. Cannot be undone.',
+    reversedToast: 'Payment reversed.',
   },
   chatExtra: {
     media: '(media)',

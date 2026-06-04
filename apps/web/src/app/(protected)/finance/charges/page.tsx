@@ -80,6 +80,19 @@ export default function ChargesListPage() {
   const tx = useTranslations('chargesExtra');
   const formatMoney = useFormatMoney();
   const canCreateCharge = hasPermission('finance.charges.write');
+  const canReverse = hasPermission('cash_registers.manage');
+
+  async function doReverse(r: UnifiedCharge) {
+    if (!confirm(tx('reverseConfirm'))) return;
+    try {
+      if (r.kind === 'INVOICE') await contractInvoicesApi.unpay(r.id);
+      else await chargesApi.unpay(r.id);
+      toast.success(tx('reversedToast'));
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : tCommon('error'));
+    }
+  }
 
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState<UnifiedStatus | ''>('');
@@ -313,10 +326,24 @@ export default function ChargesListPage() {
                         )}
                       </div>
                     )}
-                    {r.status === 'PAID' && r.paidAt && (
-                      <span className="text-2xs text-text-muted">
-                        {formatDateTime(r.paidAt)}
-                      </span>
+                    {r.status === 'PAID' && (
+                      <div className="flex items-center justify-end gap-2">
+                        {r.paidAt && (
+                          <span className="text-2xs text-text-muted">
+                            {formatDateTime(r.paidAt)}
+                          </span>
+                        )}
+                        {canReverse && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-red-600 dark:text-red-400"
+                            onClick={() => void doReverse(r)}
+                          >
+                            {tx('reverse')}
+                          </Button>
+                        )}
+                      </div>
                     )}
                   </td>
                 </tr>

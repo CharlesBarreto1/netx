@@ -57,6 +57,7 @@ export default function ContractDetailPage() {
   const canWrite = hasPermission('contracts.write');
   const canDelete = hasPermission('contracts.delete');
   const canProvision = hasPermission('provisioning.write');
+  const canReverse = hasPermission('cash_registers.manage');
   const canEmitSifen = hasPermission('sifen.emit');
   const tenantConfig = useTenantConfig();
   const tenantCountry = tenantConfig?.tenant?.country ?? null;
@@ -130,6 +131,28 @@ export default function ContractDetailPage() {
   // -------------------------------------------------------------------------
   // O pagamento real fica no <PaymentDialog />. Aqui só fechamos e refrescamos
   // ao final — o dialog cuida de mostrar e validar caixa, método, desconto.
+
+  async function doUnpayInvoice(inv: ContractInvoice) {
+    if (!confirm(tDetail('unpayConfirm', { amount: formatMoney(inv.amount) }))) return;
+    try {
+      await contractInvoicesApi.unpay(inv.id);
+      toast.success(tDetail('unpaidToast'));
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
+    }
+  }
+
+  async function doUnpayCharge(ch: OneTimeCharge) {
+    if (!confirm(tDetail('unpayConfirm', { amount: formatMoney(ch.amount) }))) return;
+    try {
+      await chargesApi.unpay(ch.id);
+      toast.success(tDetail('unpaidToast'));
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
+    }
+  }
 
   async function doCancelInvoice(inv: ContractInvoice) {
     if (!confirm(`Cancelar a fatura de ${formatMoney(inv.amount)}?`)) return;
@@ -627,6 +650,16 @@ export default function ContractDetailPage() {
                             </Button>
                           </>
                         )}
+                        {inv.status === 'PAID' && canReverse && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-red-600 dark:text-red-400"
+                            onClick={() => void doUnpayInvoice(inv)}
+                          >
+                            {tDetail('reversePayment')}
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -673,6 +706,16 @@ export default function ContractDetailPage() {
                       {ch.paidAt ? formatDate(ch.paidAt) : '—'}
                     </td>
                     <td className="px-3 py-2 text-right">
+                      {ch.status === 'PAID' && canReverse && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-600 dark:text-red-400"
+                          onClick={() => void doUnpayCharge(ch)}
+                        >
+                          {tDetail('reversePayment')}
+                        </Button>
+                      )}
                       {ch.status === 'OPEN' && canWrite && (
                         <div className="flex justify-end gap-1">
                           <Button

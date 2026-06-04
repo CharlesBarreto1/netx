@@ -164,6 +164,10 @@ export const cashRegistersApi = {
   ) {
     return api.post<CashMovement>(`/v1/cash-registers/${id}/movements`, input);
   },
+  /** Reverte um lançamento manual/transferência (não serve pra fatura/cobrança/folha). */
+  reverseMovement(registerId: string, movementId: string) {
+    return api.delete(`/v1/cash-registers/${registerId}/movements/${movementId}`);
+  },
   transfer(
     fromId: string,
     input: { toCashRegisterId: string; amount: number; description?: string; occurredAt?: string },
@@ -288,6 +292,10 @@ export const chargesApi = {
   },
   pay(id: string, input: PayPaymentInput) {
     return api.post<OneTimeCharge>(`/v1/charges/${id}/pay`, input);
+  },
+  /** Estorna a baixa de uma cobrança paga errada. */
+  unpay(id: string) {
+    return api.post<OneTimeCharge>(`/v1/charges/${id}/unpay`, {});
   },
   cancel(id: string, reason?: string) {
     return api.post<OneTimeCharge>(`/v1/charges/${id}/cancel`, { reason });
