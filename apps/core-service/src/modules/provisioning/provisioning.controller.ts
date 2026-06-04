@@ -57,8 +57,15 @@ import {
   type UpdateOltRequest,
 } from '@netx/shared';
 
+import { z } from 'zod';
+
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { ZodBody, ZodValidationPipe } from '../../common/zod.pipe';
+
+/** Corpo do "desfazer instalação": local onde o comodato volta. */
+const DeactivateInstallSchema = z.object({
+  returnLocationId: z.string().uuid(),
+});
 
 import { OltsService } from './olts.service';
 import { ProvisioningService } from './provisioning.service';
@@ -177,6 +184,22 @@ export class ProvisioningController {
     @ZodBody(OntSwapSchema) input: OntSwap,
   ) {
     return this.svc.swapOnt(user.tenantId, user.sub, contractId, input);
+  }
+
+  /**
+   * Desfaz uma instalação feita errada — volta o contrato pra PENDING_INSTALL
+   * (sem cancelar). Devolve o comodato, desautoriza na OLT/Ufinet, apaga a ONT
+   * e o device TR-069 e limpa o RADIUS.
+   */
+  @Post('contracts/:contractId/deactivate')
+  @HttpCode(200)
+  @RequirePermissions('provisioning.write')
+  deactivateInstall(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('contractId', new ParseUUIDPipe()) contractId: string,
+    @ZodBody(DeactivateInstallSchema) input: { returnLocationId: string },
+  ) {
+    return this.svc.deactivateInstall(user.tenantId, user.sub, contractId, input);
   }
 
   /** Poll do status da ONT pós-install. */

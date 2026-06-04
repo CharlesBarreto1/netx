@@ -666,6 +666,61 @@ export class ContractsService {
   }
 
   // ---------------------------------------------------------------------------
+  // REABRIR CONTRATO CANCELADO (cancelou por engano)
+  // ---------------------------------------------------------------------------
+  /**
+   * Reabre um contrato cancelado por engano. Volta pra ACTIVE (se já tinha
+   * ativação) ou PENDING_INSTALL (se nunca foi instalado). Re-sincroniza o
+   * RADIUS quando volta ACTIVE. NÃO descancela as faturas que o cancelamento
+   * cancelou — o operador re-gera as que precisar.
+   */
+  async reopen(
+    tenantId: string,
+    actorUserId: string,
+    id: string,
+  ): Promise<ContractResponse> {
+    const existing = await this.prisma.contract.findFirst({
+      where: { id, tenantId, deletedAt: null },
+    });
+    if (!existing) throw new NotFoundException('Contrato não encontrado');
+    if (existing.status !== PrismaContractStatus.CANCELLED) {
+      throw new BadRequestException('Só dá pra reabrir um contrato cancelado');
+    }
+
+    const nextStatus = existing.activatedAt
+      ? PrismaContractStatus.ACTIVE
+      : PrismaContractStatus.PENDING_INSTALL;
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const c = await tx.contract.update({
+        where: { id: existing.id },
+        data: {
+          status: nextStatus,
+          cancelledAt: null,
+          updatedById: actorUserId,
+        },
+        include: DEFAULT_INCLUDE,
+      });
+      if (nextStatus === PrismaContractStatus.ACTIVE) {
+        await this.radius.enqueueSync(c, 'reabertura de contrato', tx);
+      }
+      await recalcCustomerStatus(tx, tenantId, c.customerId);
+      return c;
+    });
+
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'contracts.reopened',
+      resource: 'contracts',
+      resourceId: updated.id,
+      beforeState: { status: 'CANCELLED' },
+      afterState: { status: nextStatus },
+    });
+    return toContractResponse(updated, { includePassword: true });
+  }
+
+  // ---------------------------------------------------------------------------
   // RELIGUE DE CONFIANÇA
   // ---------------------------------------------------------------------------
   /**

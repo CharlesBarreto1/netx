@@ -143,6 +143,16 @@ export class ContractsController {
     return this.contracts.cancel(user.tenantId, user.sub, id, body);
   }
 
+  /** Reabre um contrato cancelado por engano (volta pra ACTIVE/PENDING_INSTALL). */
+  @Post(':id/reopen')
+  @RequirePermissions('contracts.write')
+  reopen(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.contracts.reopen(user.tenantId, user.sub, id);
+  }
+
   /**
    * Calcula impacto financeiro de uma troca de plano (sem persistir nada).
    * UI usa pra mostrar preview do delta antes do operador confirmar.

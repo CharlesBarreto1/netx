@@ -260,6 +260,10 @@ export const contractsApi = {
   cancel(id: string, note?: string) {
     return api.post<Contract>(`/v1/contracts/${id}/cancel`, { note });
   },
+  /** Reabre um contrato cancelado por engano. */
+  reopen(id: string) {
+    return api.post<Contract>(`/v1/contracts/${id}/reopen`, {});
+  },
   /**
    * Preview de troca de plano. Não persiste — só calcula crédito/débito
    * pro operador confirmar antes de chamar changePlan().

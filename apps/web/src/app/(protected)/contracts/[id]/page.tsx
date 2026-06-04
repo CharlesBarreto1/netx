@@ -36,6 +36,7 @@ import { ContractDiagnosticsCard } from '@/components/contracts/ContractDiagnost
 import { UfinetStatusPanel } from '@/components/contracts/UfinetStatusPanel';
 import { EditContractDialog } from '@/components/contracts/EditContractDialog';
 import { SwapOntDialog } from '@/components/contracts/SwapOntDialog';
+import { DeactivateInstallDialog } from '@/components/contracts/DeactivateInstallDialog';
 import { NewInvoiceDialog } from '@/components/contracts/NewInvoiceDialog';
 import { PaymentDialog } from '@/components/finance/PaymentDialog';
 import { chargesApi, type OneTimeCharge } from '@/lib/finance-api';
@@ -100,6 +101,7 @@ export default function ContractDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [swapOpen, setSwapOpen] = useState(false);
+  const [deactivateOpen, setDeactivateOpen] = useState(false);
 
   const [noteValue, setNoteValue] = useState('');
   const [busy, setBusy] = useState(false);
@@ -140,6 +142,20 @@ export default function ContractDetailPage() {
       await refresh();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
+    }
+  }
+
+  async function doReopen() {
+    if (!confirm(tDetail('reopenConfirm'))) return;
+    setBusy(true);
+    try {
+      await contractsApi.reopen(id);
+      toast.success(tDetail('reopenedToast'));
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : tCommon('error'));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -284,6 +300,16 @@ export default function ContractDetailPage() {
               {tDetail('swapOnt')}
             </Button>
           )}
+          {canProvision && isActive && (
+            <Button variant="outline" size="sm" onClick={() => setDeactivateOpen(true)}>
+              {tDetail('undoInstall')}
+            </Button>
+          )}
+          {canWrite && isCancelled && (
+            <Button variant="primary" size="sm" onClick={doReopen} loading={busy}>
+              {tDetail('reopen')}
+            </Button>
+          )}
           {canWrite && isActive && (
             <Button variant="outline" size="sm" onClick={() => setSuspendOpen(true)}>
               {tDetail('suspendContract')}
@@ -347,6 +373,18 @@ export default function ContractDetailPage() {
           onDone={() => {
             setSwapOpen(false);
             toast.success(tDetail('swapOntDone'));
+            void refresh();
+          }}
+        />
+      )}
+
+      {/* Desfazer instalação — volta o contrato pra PENDING_INSTALL */}
+      {deactivateOpen && (
+        <DeactivateInstallDialog
+          contractId={contract.id}
+          onClose={() => setDeactivateOpen(false)}
+          onDone={() => {
+            setDeactivateOpen(false);
             void refresh();
           }}
         />

@@ -797,6 +797,74 @@ export class ProvisioningService {
     return { status: 'OK', returned: allocated.length };
   }
 
+  /**
+   * Desfaz uma instalação feita errada (ONT/cliente/SN errado) — volta o
+   * contrato pra PENDING_INSTALL pra reinstalar do zero, SEM cancelar o
+   * contrato. Reusa deprovision (devolve comodato + desautoriza OLT/Ufinet +
+   * apaga o device TR-069), apaga a Ont row e remove o identificador do RADIUS.
+   * Só funciona em contrato ACTIVE.
+   */
+  async deactivateInstall(
+    tenantId: string,
+    actorUserId: string,
+    contractId: string,
+    input: { returnLocationId: string },
+  ): Promise<{ status: 'OK' }> {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, tenantId, deletedAt: null },
+    });
+    if (!contract) throw new NotFoundException('Contrato não encontrado');
+    if (contract.status !== 'ACTIVE') {
+      throw new BadRequestException(
+        'Só dá pra desfazer a instalação de um contrato ATIVO. Pra outros casos use ' +
+          'a O.S de retirada ou o cancelamento.',
+      );
+    }
+
+    // 1. Desfaz a parte física (comodato + OLT/Ufinet + device TR-069).
+    await this.deprovision(tenantId, actorUserId, contractId, {
+      returnLocationId: input.returnLocationId,
+    });
+
+    // 2. Apaga a Ont row (a instalação vai ser refeita do zero).
+    const ont = await this.prisma.ont.findFirst({ where: { tenantId, contractId } });
+    if (ont) {
+      await this.prisma.ont.delete({ where: { id: ont.id } }).catch(() => undefined);
+    }
+
+    // 3. Contrato volta pra fila de instalação.
+    const updated = await this.prisma.contract.update({
+      where: { id: contractId },
+      data: {
+        status: 'PENDING_INSTALL',
+        activatedAt: null,
+        updatedById: actorUserId,
+      },
+    });
+
+    // 4. RADIUS: remove o identificador (contrato não está mais ACTIVE).
+    try {
+      await this.radius.enqueueDisconnect(updated, 'instalação desfeita');
+      await this.radius.enqueueSync(updated, 'instalação desfeita');
+    } catch (err) {
+      this.logger.warn(
+        `[deactivate] RADIUS cleanup falhou pra ${contractId} — reconciler corrige em ≤5min: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'provisioning.install_undone',
+      resource: 'contracts',
+      resourceId: contractId,
+      afterState: { status: 'PENDING_INSTALL' },
+    });
+    return { status: 'OK' };
+  }
+
   // ---------------------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------------------

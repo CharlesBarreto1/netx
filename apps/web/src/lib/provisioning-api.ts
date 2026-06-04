@@ -390,6 +390,12 @@ export const provisioningApi = {
     api.post<InstallCustomerResponse>(`/v1/provisioning/install/${contractId}`, body),
   swapOnt: (contractId: string, body: OntSwapRequest) =>
     api.post<OntSwapResponse>(`/v1/provisioning/contracts/${contractId}/swap-ont`, body),
+  /** Desfaz a instalação — volta o contrato pra PENDING_INSTALL. */
+  deactivateInstall: (contractId: string, returnLocationId: string) =>
+    api.post<{ status: string }>(
+      `/v1/provisioning/contracts/${contractId}/deactivate`,
+      { returnLocationId },
+    ),
   ontStatus: (ontId: string) => api.get<OntStatusResponse>(`/v1/provisioning/onts/${ontId}/status`),
 };
 
