@@ -25,6 +25,12 @@ const OntActionSchema = z.object({
 });
 type OntActionRequest = z.infer<typeof OntActionSchema>;
 
+const AdoptSchema = z.object({
+  contractId: z.string().uuid(),
+  oltId: z.string().uuid(),
+});
+type AdoptRequest = z.infer<typeof AdoptSchema>;
+
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { ZodBody, ZodValidationPipe } from '../../common/zod.pipe';
 
@@ -72,6 +78,25 @@ export class UfinetController {
     @ZodBody(RetryUfinetServiceRequestSchema) body: RetryUfinetServiceRequest,
   ) {
     return this.orders.retry(user.tenantId, id, body);
+  }
+
+  /**
+   * ADOÇÃO — vincula um serviço JÁ ativo na Ufinet (cadastrado manualmente lá)
+   * a um contrato do NetX. Consulta o inventário pelo externalId (Contract.code)
+   * e cria o UfinetService em ACTIVE, sem refazer a alta.
+   */
+  @Post('adopt')
+  @RequirePermissions('ufinet.orders.retry')
+  adopt(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @ZodBody(AdoptSchema) body: AdoptRequest,
+  ) {
+    return this.orders.adoptExisting({
+      tenantId: user.tenantId,
+      contractId: body.contractId,
+      oltId: body.oltId,
+      actorUserId: user.sub,
+    });
   }
 
   /**

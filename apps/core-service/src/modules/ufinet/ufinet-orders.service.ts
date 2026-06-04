@@ -13,7 +13,13 @@
  * Caso A: a Ufinet só provisiona a óptica; o RADIUS/PPPoE local autoriza o
  * tráfego. Todo cliente vai como "ZUX 1G" (banda real é do Mikrotik).
  */
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import type { Olt, Prisma, UfinetService } from '@prisma/client';
 import {
   paginationMeta,
@@ -195,6 +201,93 @@ export class UfinetOrdersService {
       }
       throw err;
     }
+  }
+
+  /**
+   * ADOÇÃO — vincula no NetX um serviço que JÁ está ativo na Ufinet (cadastrado
+   * manualmente lá). Consulta o inventário pelo externalId (= Contract.code) pra
+   * descobrir os IDs do bundle e nasce já ACTIVE (NÃO faz alta — o serviço já
+   * existe na Ufinet; o poller não vai reprovisionar).
+   */
+  async adoptExisting(input: {
+    tenantId: string;
+    contractId: string;
+    oltId: string;
+    actorUserId?: string | null;
+  }): Promise<UfinetService> {
+    const existing = await this.prisma.ufinetService.findUnique({
+      where: { contractId: input.contractId },
+    });
+    if (existing) {
+      throw new ConflictException('Contrato já tem serviço Ufinet vinculado');
+    }
+
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: input.contractId },
+      select: { code: true, tenantId: true },
+    });
+    const externalId = contract?.code?.trim();
+    if (!contract || contract.tenantId !== input.tenantId || !externalId) {
+      throw new BadRequestException(
+        'Contrato sem código (Contract.code) — não dá pra casar com o externalId na Ufinet',
+      );
+    }
+
+    const olt = await this.prisma.olt.findFirst({
+      where: { id: input.oltId, tenantId: input.tenantId, deletedAt: null },
+    });
+    if (!olt || olt.vendor !== 'UFINET' || olt.providerMode !== 'ORCHESTRATOR') {
+      throw new BadRequestException('OLT informada não é uma OLT Ufinet (ORCHESTRATOR)');
+    }
+    const conn = this.resolveConnection(olt);
+
+    // Descobre os IDs do bundle + serial + CTO consultando o inventário real.
+    const ids = await ufinetTrace.run(
+      { tenantId: input.tenantId, externalId },
+      () => this.resolveBundle(conn, externalId),
+    );
+    if (!ids) {
+      throw new BadRequestException(
+        `Serviço "${externalId}" não encontrado no inventário da Ufinet desta OLT ` +
+          '(confira o externalId e se a OLT é o polígono correto).',
+      );
+    }
+    const bundle = await this.fetchBundleServices(conn, externalId);
+    const datos = bundle.get(UFINET_SPEC.DATOS);
+    const ctoPort =
+      datos?.serviceCharacteristic?.find((c) => c.name?.toUpperCase() === 'CTO_PORT')?.value ?? null;
+    const serial =
+      datos?.serviceCharacteristic?.find((c) => c.name?.toUpperCase() === 'SERIAL_NUMBER')?.value ??
+      null;
+
+    const created = await this.prisma.ufinetService.create({
+      data: {
+        tenantId: input.tenantId,
+        contractId: input.contractId,
+        oltId: input.oltId,
+        externalId,
+        labelDrop: externalId,
+        lifecycle: 'ACTIVE',
+        ufinetState: 'completed',
+        parentServiceId: ids.parent,
+        fiberAccessServiceId: ids.fiberAccess,
+        hsdServiceId: ids.hsd,
+        resPonAccessServiceId: ids.resPonAccess,
+        ctoPort,
+        serialNumber: serial,
+        nextAttemptAt: null,
+      },
+    });
+    await this.audit.log({
+      tenantId: input.tenantId,
+      userId: input.actorUserId ?? null,
+      action: 'ufinet.service.adopted',
+      resource: 'ufinet_services',
+      resourceId: created.id,
+      metadata: { externalId, oltId: input.oltId, ctoPort, serial },
+    });
+    this.logger.log(`[ufinet] ${externalId} ADOTADO (serviço já ativo na Ufinet) → ACTIVE`);
+    return created;
   }
 
   /**
