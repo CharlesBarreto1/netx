@@ -1374,6 +1374,9 @@ const messages = {
       loadFailed: 'Failed to load purchases.',
       empty: 'No purchases registered yet.',
       view: 'View',
+      deletedToast: 'Purchase deleted and stock reverted.',
+      deleteTitle: 'Delete purchase',
+      deleteMessage: 'This reverses the entry: removes the items/serials that came in, reverts the balance and recomputes the average cost. Only works if nothing was moved (allocated, transferred or consumed). Cannot be undone.',
       serialsLabel: 'Serials: {serials}',
       th: {
         date: 'Date',

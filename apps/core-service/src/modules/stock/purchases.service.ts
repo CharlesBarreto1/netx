@@ -4,8 +4,6 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -345,5 +343,142 @@ export class PurchasesService {
     });
 
     return this.findById(tenantId, purchase.id);
+  }
+
+  /**
+   * Exclui (reverte) um lançamento de compra — pra corrigir erro de digitação
+   * (produto/serial/fornecedor errados). Só é permitido se NADA aconteceu com o
+   * que entrou: itens patrimoniais ainda IN_STOCK no mesmo local, sem contrato e
+   * sem movimentação posterior; consumíveis com saldo suficiente pra estornar.
+   * Desfaz tudo numa transação (serials, saldo, kardex, header) e recomputa o
+   * custo médio. Quem já movimentou o item deve usar ajuste manual, não excluir.
+   */
+  async delete(
+    tenantId: string,
+    actorUserId: string,
+    purchaseId: string,
+  ): Promise<void> {
+    const purchase = await this.prisma.purchase.findFirst({
+      where: { id: purchaseId, tenantId },
+      include: {
+        items: {
+          include: {
+            product: { select: { id: true, sku: true, name: true, type: true } },
+          },
+        },
+      },
+    });
+    if (!purchase) throw new NotFoundException('Compra não encontrada');
+
+    // ── TRAVAS: garante que dá pra reverter sem inconsistência ──────────────
+    const affectedProductIds = new Set<string>();
+    for (const item of purchase.items) {
+      affectedProductIds.add(item.productId);
+
+      if (item.product.type === 'PATRIMONIAL') {
+        const serials = item.serials.map((s) => s.trim());
+        const rows = await this.prisma.serialItem.findMany({
+          where: { tenantId, productId: item.productId, serial: { in: serials } },
+          select: { id: true, serial: true, status: true, locationId: true, contractId: true },
+        });
+        for (const sn of rows) {
+          if (
+            sn.status !== 'IN_STOCK' ||
+            sn.contractId ||
+            sn.locationId !== item.locationId
+          ) {
+            throw new ConflictException(
+              `Não dá pra excluir: o item ${sn.serial} (${item.product.sku}) já foi ` +
+                `movimentado (situação ${sn.status}${sn.contractId ? ', em contrato' : ''}). ` +
+                'Use um ajuste de estoque manual.',
+            );
+          }
+        }
+        // Movimentação posterior à compra (transferência/comodato/ajuste)?
+        if (rows.length > 0) {
+          const extraMovements = await this.prisma.stockMovement.count({
+            where: {
+              tenantId,
+              serialItemId: { in: rows.map((r) => r.id) },
+              OR: [{ purchaseId: null }, { purchaseId: { not: purchaseId } }],
+            },
+          });
+          if (extraMovements > 0) {
+            throw new ConflictException(
+              `Não dá pra excluir: algum item de ${item.product.sku} já teve ` +
+                'movimentação posterior. Use um ajuste de estoque manual.',
+            );
+          }
+        }
+      } else {
+        // CONSUMÍVEL: precisa haver saldo suficiente no local pra estornar.
+        const level = await this.prisma.stockLevel.findUnique({
+          where: {
+            productId_locationId: { productId: item.productId, locationId: item.locationId },
+          },
+          select: { quantity: true },
+        });
+        const have = Number(level?.quantity ?? 0);
+        if (have < Number(item.quantity)) {
+          throw new ConflictException(
+            `Não dá pra excluir: o consumível ${item.product.sku} já foi parcialmente ` +
+              `consumido (saldo ${have} < ${item.quantity} comprados). Use um ajuste manual.`,
+          );
+        }
+      }
+    }
+
+    // ── EXCLUSÃO atômica ────────────────────────────────────────────────────
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Remove os movimentos do kardex desta compra.
+      await tx.stockMovement.deleteMany({ where: { tenantId, purchaseId } });
+
+      for (const item of purchase.items) {
+        if (item.product.type === 'PATRIMONIAL') {
+          // 2. Deleta os SerialItems criados (todos IN_STOCK e intocados).
+          await tx.serialItem.deleteMany({
+            where: {
+              tenantId,
+              productId: item.productId,
+              serial: { in: item.serials.map((s) => s.trim()) },
+            },
+          });
+        } else {
+          // 3. Estorna o saldo do consumível.
+          await tx.stockLevel.update({
+            where: {
+              productId_locationId: {
+                productId: item.productId,
+                locationId: item.locationId,
+              },
+            },
+            data: { quantity: { decrement: item.quantity } },
+          });
+        }
+      }
+
+      // 4. Deleta itens + header.
+      await tx.purchaseItem.deleteMany({ where: { purchaseId } });
+      await tx.purchase.delete({ where: { id: purchaseId } });
+
+      // 5. Recomputa o custo médio dos produtos afetados (kardex já sem a compra).
+      for (const pid of affectedProductIds) {
+        await this.products.recomputeAverageCost(tx, pid);
+      }
+    });
+
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'purchase.deleted',
+      resource: 'purchases',
+      resourceId: purchaseId,
+      beforeState: {
+        supplierId: purchase.supplierId,
+        invoiceNumber: purchase.invoiceNumber,
+        totalCost: Number(purchase.totalCost),
+        items: purchase.items.length,
+      },
+    });
   }
 }

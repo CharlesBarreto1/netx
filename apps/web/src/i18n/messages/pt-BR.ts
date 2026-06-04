@@ -1404,6 +1404,9 @@ const messages = {
       loadFailed: 'Falha ao carregar compras.',
       empty: 'Nenhuma compra registrada ainda.',
       view: 'Ver',
+      deletedToast: 'Compra excluída e estoque revertido.',
+      deleteTitle: 'Excluir compra',
+      deleteMessage: 'Isso reverte a entrada: remove os itens/seriais que entraram, estorna o saldo e recalcula o custo médio. Só funciona se nada foi movimentado (alocado, transferido ou consumido). Não dá pra desfazer.',
       serialsLabel: 'Seriais: {serials}',
       th: {
         date: 'Data',

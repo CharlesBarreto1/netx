@@ -145,6 +145,8 @@ const stockPermissions = [
   { code: 'stock.delete',          module: 'stock', resource: 'stock', action: 'delete' },
   // stock.purchase.create: registrar entrada por compra
   { code: 'stock.purchase.create', module: 'stock', resource: 'purchases', action: 'create' },
+  // stock.purchase.delete: excluir/reverter compra lançada errada (só se nada movimentou)
+  { code: 'stock.purchase.delete', module: 'stock', resource: 'purchases', action: 'delete' },
   // stock.adjust: ajustes de inventário (contagem, perda, descarte, achado)
   { code: 'stock.adjust',          module: 'stock', resource: 'stock', action: 'adjust' },
   // stock.admin: gerenciar locais + ACL de usuário por local. Bypassa filtro de
@@ -339,6 +341,7 @@ const systemRoles = [
       'stock.write',
       'stock.delete',
       'stock.purchase.create',
+      'stock.purchase.delete',
       'stock.adjust',
       'stock.admin',
       // Frota (admin tem tudo)

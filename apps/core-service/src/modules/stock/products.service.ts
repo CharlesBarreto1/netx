@@ -269,4 +269,48 @@ export class ProductsService {
       data: { cost: rounded },
     });
   }
+
+  /**
+   * Recomputa o custo médio ponderado do ZERO, via replay do kardex em ordem
+   * cronológica. Usado após reverter/excluir uma compra (os movimentos dela já
+   * foram removidos). Entradas com custo recalculam a média; saídas só reduzem
+   * o saldo (não mexem no custo); transferências/comodato são neutras (não
+   * mudam o total nem o custo). Sem estoque restante → custo volta a 0.
+   */
+  async recomputeAverageCost(
+    tx: Prisma.TransactionClient,
+    productId: string,
+  ): Promise<void> {
+    const movements = await tx.stockMovement.findMany({
+      where: { productId },
+      orderBy: { createdAt: 'asc' },
+      select: { type: true, quantity: true, unitCost: true },
+    });
+    const INBOUND = new Set(['PURCHASE', 'ADJUSTMENT_IN', 'SALE_RETURN']);
+    const OUTBOUND = new Set([
+      'PURCHASE_RETURN',
+      'SALE',
+      'OS_CONSUMPTION',
+      'ADJUSTMENT_OUT',
+    ]);
+    let qty = 0;
+    let avg = 0;
+    for (const m of movements) {
+      const q = Number(m.quantity);
+      const c = Number(m.unitCost);
+      if (INBOUND.has(m.type)) {
+        const nq = qty + q;
+        avg = nq > 0 ? (qty * avg + q * c) / nq : avg;
+        qty = nq;
+      } else if (OUTBOUND.has(m.type)) {
+        qty = Math.max(0, qty - q);
+        // saída não muda o custo médio
+      }
+      // TRANSFER_IN/OUT e COMODATO_OUT/RETURN: neutros pro custo global
+    }
+    await tx.product.update({
+      where: { id: productId },
+      data: { cost: Math.round(avg * 10000) / 10000 },
+    });
+  }
 }

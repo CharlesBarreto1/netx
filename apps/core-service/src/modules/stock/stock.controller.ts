@@ -286,6 +286,17 @@ export class PurchasesController {
   ) {
     return this.purchases.create(u.tenantId, u.sub, body);
   }
+
+  /** Exclui (reverte) uma compra lançada errada — só se nada foi movimentado. */
+  @Delete(':id')
+  @HttpCode(204)
+  @RequirePermissions('stock.purchase.delete')
+  async remove(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<void> {
+    await this.purchases.delete(u.tenantId, u.sub, id);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

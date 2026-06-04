@@ -1396,6 +1396,9 @@ const messages = {
       loadFailed: 'Error al cargar las compras.',
       empty: 'Todavía no hay compras registradas.',
       view: 'Ver',
+      deletedToast: 'Compra eliminada y stock revertido.',
+      deleteTitle: 'Eliminar compra',
+      deleteMessage: 'Esto revierte la entrada: quita los ítems/seriales que ingresaron, estorna el saldo y recalcula el costo promedio. Solo funciona si nada fue movido (asignado, transferido o consumido). No se puede deshacer.',
       serialsLabel: 'Seriales: {serials}',
       th: {
         date: 'Fecha',

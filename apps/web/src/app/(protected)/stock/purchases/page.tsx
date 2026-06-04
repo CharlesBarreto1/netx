@@ -5,9 +5,10 @@ import { useMemo, useState } from 'react';
 import useSWR from 'swr';
 
 import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
+import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import { FieldError, Input, Label, Textarea } from '@/components/ui/Input';
 import { PageLoader } from '@/components/ui/Spinner';
+import { toast } from '@/components/ui/sonner';
 import { ApiError } from '@/lib/api';
 import { hasPermission } from '@/lib/session';
 import {
@@ -26,11 +27,29 @@ export default function PurchasesPage() {
     () => stockApi.listPurchases(),
   );
   const canCreate = hasPermission('stock.purchase.create');
+  const canDelete = hasPermission('stock.purchase.delete');
   const t = useTranslations('stock.purchases');
   const tc = useTranslations('common');
 
   const [creating, setCreating] = useState(false);
   const [viewing, setViewing] = useState<Purchase | null>(null);
+  const [deleting, setDeleting] = useState<Purchase | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function doDelete() {
+    if (!deleting) return;
+    setBusy(true);
+    try {
+      await stockApi.deletePurchase(deleting.id);
+      toast.success(t('deletedToast'));
+      setDeleting(null);
+      await mutate();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : tc('error'));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -84,9 +103,21 @@ export default function PurchasesPage() {
                     <td className="px-4 py-3 text-right">{formatMoney(p.totalCost)}</td>
                     <td className="px-4 py-3 text-xs text-slate-500">{p.createdByName ?? '—'}</td>
                     <td className="px-4 py-3 text-right">
-                      <Button variant="ghost" size="sm" onClick={() => setViewing(p)}>
-                        {t('view')}
-                      </Button>
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="sm" onClick={() => setViewing(p)}>
+                          {t('view')}
+                        </Button>
+                        {canDelete && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 dark:text-red-400"
+                            onClick={() => setDeleting(p)}
+                          >
+                            {tc('delete')}
+                          </Button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -107,6 +138,17 @@ export default function PurchasesPage() {
       )}
 
       {viewing && <PurchaseDetailsModal purchase={viewing} onClose={() => setViewing(null)} />}
+
+      <ConfirmDialog
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        onConfirm={doDelete}
+        title={t('deleteTitle')}
+        message={t('deleteMessage')}
+        confirmLabel={tc('delete')}
+        variant="danger"
+        loading={busy}
+      />
     </div>
   );
 }

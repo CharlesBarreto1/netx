@@ -304,6 +304,8 @@ export const stockApi = {
   getPurchase: (id: string) => api.get<Purchase>(`/v1/stock/purchases/${id}`),
   createPurchase: (input: CreatePurchaseInput) =>
     api.post<Purchase>('/v1/stock/purchases', input),
+  /** Exclui/reverte uma compra (só se nada foi movimentado). */
+  deletePurchase: (id: string) => api.delete(`/v1/stock/purchases/${id}`),
 
   // Movements (kardex) -------------------------------------------------------
   movementsPath: (params?: ListMovementsQuery) =>
