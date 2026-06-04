@@ -95,4 +95,7 @@ export const ufinetApi = {
     api.get<OntActionResult>(
       `/v1/ufinet/services/contract/${contractId}/ont-action/${orderId}`,
     ),
+  /** Adota um serviço já ativo na Ufinet (cadastrado manualmente lá). */
+  adopt: (contractId: string, oltId: string) =>
+    api.post<UfinetService>('/v1/ufinet/services/adopt', { contractId, oltId }),
 };

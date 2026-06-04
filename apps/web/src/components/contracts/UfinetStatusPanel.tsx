@@ -10,8 +10,9 @@ import { useState } from 'react';
 import useSWR from 'swr';
 
 import { Button } from '@/components/ui/Button';
+import { Label, Select } from '@/components/ui/Input';
 import { toast } from '@/components/ui/sonner';
-import { ApiError } from '@/lib/api';
+import { ApiError, api } from '@/lib/api';
 import { hasPermission } from '@/lib/session';
 import {
   ufinetApi,
@@ -50,7 +51,13 @@ export function UfinetStatusPanel({ contractId }: { contractId: string }) {
   const [downloading, setDownloading] = useState(false);
   const [ontBusy, setOntBusy] = useState<OntAction | null>(null);
 
-  if (isLoading || !data) return null;
+  if (isLoading) return null;
+  // Sem serviço Ufinet vinculado: oferece adoção (se houver OLT Ufinet e perm).
+  if (!data) {
+    return hasPermission('ufinet.orders.retry') ? (
+      <UfinetAdoptCard contractId={contractId} onAdopted={() => mutate()} />
+    ) : null;
+  }
   const svc = data;
   const canRetry = hasPermission('ufinet.orders.retry');
   // Ações de ONT só fazem sentido depois que o serviço foi provisionado.
@@ -229,6 +236,74 @@ export function UfinetStatusPanel({ contractId }: { contractId: string }) {
             {t('ufinet.reprocess')}
           </Button>
         )}
+      </div>
+    </div>
+  );
+}
+
+type OltOption = { id: string; name: string; vendor: string; providerMode: string };
+
+/**
+ * Card de adoção: aparece quando o contrato NÃO tem serviço Ufinet, mas existe
+ * OLT Ufinet cadastrada. Vincula um serviço já ativo na Ufinet (cadastro manual
+ * lá) — o backend consulta o inventário pelo código do contrato.
+ */
+function UfinetAdoptCard({
+  contractId,
+  onAdopted,
+}: {
+  contractId: string;
+  onAdopted: () => void;
+}) {
+  const t = useTranslations('contractCards');
+  const { data: olts } = useSWR<OltOption[]>('/v1/optical/olts', (k: string) =>
+    api.get<OltOption[]>(k),
+  );
+  const ufinetOlts = (olts ?? []).filter(
+    (o) => o.vendor === 'UFINET' && o.providerMode === 'ORCHESTRATOR',
+  );
+  const [oltId, setOltId] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  // Sem OLT Ufinet cadastrada → não há o que adotar; não renderiza.
+  if (ufinetOlts.length === 0) return null;
+
+  async function handleAdopt() {
+    if (!oltId) return;
+    setBusy(true);
+    try {
+      await ufinetApi.adopt(contractId, oltId);
+      toast.success(t('ufinet.adopt.ok'));
+      onAdopted();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
+      toast.error(t('ufinet.adopt.failed', { error: msg }));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-dashed border-slate-300 p-4 dark:border-slate-700">
+      <h3 className="text-sm font-semibold">{t('ufinet.title')}</h3>
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+        {t('ufinet.adopt.hint')}
+      </p>
+      <div className="mt-3 space-y-2">
+        <div>
+          <Label htmlFor="adopt-olt">{t('ufinet.adopt.oltLabel')}</Label>
+          <Select id="adopt-olt" value={oltId} onChange={(e) => setOltId(e.target.value)}>
+            <option value="">—</option>
+            {ufinetOlts.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <Button size="sm" loading={busy} disabled={!oltId} onClick={handleAdopt}>
+          {t('ufinet.adopt.button')}
+        </Button>
       </div>
     </div>
   );

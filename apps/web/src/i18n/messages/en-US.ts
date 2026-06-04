@@ -3317,6 +3317,13 @@ const messages = {
       waitingCode: 'waitingCode (field work)',
       downloadTrace: 'Download trace (evidence)',
       reprocess: 'Reprocess',
+      adopt: {
+        hint: 'Contract has no Ufinet service in NetX. If it was already provisioned manually in Ufinet (same code/External ID), link it here — NetX pulls the service from the inventory.',
+        oltLabel: 'Ufinet OLT (polygon)',
+        button: 'Link Ufinet service',
+        ok: 'Ufinet service linked',
+        failed: 'Failed to link: {error}',
+      },
       ont: {
         signal: 'Check signal',
         refresh: 'Refresh ONT',

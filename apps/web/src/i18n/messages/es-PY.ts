@@ -3339,6 +3339,13 @@ const messages = {
       waitingCode: 'waitingCode (trabajo de campo)',
       downloadTrace: 'Descargar trace (evidencia)',
       reprocess: 'Reprocesar',
+      adopt: {
+        hint: 'Contrato sin servicio Ufinet en NetX. Si ya fue dado de alta manualmente en Ufinet (con el mismo código/External ID), vinculalo acá — NetX trae el servicio desde el inventario.',
+        oltLabel: 'OLT Ufinet (polígono)',
+        button: 'Vincular servicio Ufinet',
+        ok: 'Servicio Ufinet vinculado',
+        failed: 'Error al vincular: {error}',
+      },
       ont: {
         signal: 'Ver señal',
         refresh: 'Actualizar ONT',
