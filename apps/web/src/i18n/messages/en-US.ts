@@ -1679,6 +1679,8 @@ const messages = {
       to: 'To',
       total: 'Total',
       noEntries: 'No entries in this period.',
+      deleteEntryConfirm: 'Delete this time entry? It affects the hours calculation.',
+      entryDeleted: 'Entry deleted.',
       noPayslips: 'No payslips. Create one in Payroll.',
     },
     payroll: {

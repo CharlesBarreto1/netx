@@ -188,7 +188,7 @@ export interface TimeCorrection {
 
 export interface TimesheetDay {
   date: string;
-  entries: { type: TimeEntryType; occurredAt: string; source: TimeEntrySource }[];
+  entries: { id: string; type: TimeEntryType; occurredAt: string; source: TimeEntrySource }[];
   workedMinutes: number;
   firstIn: string | null;
   lastOut: string | null;
@@ -348,6 +348,11 @@ export const hrApi = {
     api.get<Paginated<TimeEntry>>(`${B}/timeclock/entries${qs(q ?? {})}`),
   createEntry: (body: { employeeId: string; type: TimeEntryType; occurredAt: string; notes?: string | null }) =>
     api.post<TimeEntry>(`${B}/timeclock/entries`, body),
+  updateEntry: (
+    id: string,
+    body: { type?: TimeEntryType; occurredAt?: string; notes?: string | null },
+  ) => api.patch<TimeEntry>(`${B}/timeclock/entries/${id}`, body),
+  removeEntry: (id: string) => api.delete(`${B}/timeclock/entries/${id}`),
   timesheet: (employeeId: string, from: string, to: string) =>
     api.get<Timesheet>(`${B}/timeclock/timesheet/${employeeId}${qs({ from, to })}`),
   correctionsPath: (q?: object) => `${B}/timeclock/corrections${qs(q ?? {})}`,

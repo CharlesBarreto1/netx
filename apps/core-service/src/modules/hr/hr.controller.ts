@@ -21,6 +21,7 @@ import {
   CreatePayslipRequestSchema,
   CreateTimeCorrectionSchema,
   CreateTimeEntrySchema,
+  UpdateTimeEntrySchema,
   ListCompanyPostsQuerySchema,
   ListEmployeeDocumentsQuerySchema,
   ListEmployeesQuerySchema,
@@ -43,6 +44,7 @@ import {
   type CreatePayslipRequest,
   type CreateTimeCorrection,
   type CreateTimeEntry,
+  type UpdateTimeEntry,
   type PaySalaryRequest,
   type RequestUploadUrl,
   type ReviewTimeCorrection,
@@ -245,6 +247,28 @@ export class TimeclockController {
     @ZodBody(CreateTimeEntrySchema) body: CreateTimeEntry,
   ) {
     return this.timeclock.createManualEntry(u.tenantId, u.sub, body);
+  }
+
+  /** Edita uma marcação lançada errada (hora/tipo/observação). */
+  @Patch('entries/:id')
+  @RequirePermissions('hr.timeclock.manage')
+  updateEntry(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(UpdateTimeEntrySchema) body: UpdateTimeEntry,
+  ) {
+    return this.timeclock.updateEntry(u.tenantId, u.sub, id, body);
+  }
+
+  /** Exclui uma marcação lançada errada (soft-delete). */
+  @Delete('entries/:id')
+  @HttpCode(204)
+  @RequirePermissions('hr.timeclock.manage')
+  async removeEntry(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<void> {
+    await this.timeclock.removeEntry(u.tenantId, u.sub, id);
   }
 
   @Get('timesheet/:employeeId')

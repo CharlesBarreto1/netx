@@ -11,6 +11,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Input, Label, Textarea } from '@/components/ui/Input';
 import { PageLoader } from '@/components/ui/Spinner';
 import { Tabs } from '@/components/ui/Tabs';
+import { toast } from '@/components/ui/sonner';
 import { ApiError } from '@/lib/api';
 import { hasPermission } from '@/lib/session';
 import {
@@ -339,11 +340,24 @@ function monthRange(): { from: string; to: string } {
 function TimesheetTab({ employeeId }: { employeeId: string }) {
   const t = useTranslations('hr.employeeDetail');
   const te = useTranslations('hr.enums');
+  const tc = useTranslations('common');
+  const canManage = hasPermission('hr.timeclock.manage');
   const [range, setRange] = useState(monthRange());
-  const { data } = useSWR<Timesheet>(
+  const { data, mutate } = useSWR<Timesheet>(
     `/v1/hr/timeclock/timesheet/${employeeId}?from=${range.from}&to=${range.to}`,
     () => hrApi.timesheet(employeeId, range.from, range.to),
   );
+
+  async function deleteEntry(entryId: string) {
+    if (!confirm(t('deleteEntryConfirm'))) return;
+    try {
+      await hrApi.removeEntry(entryId);
+      toast.success(t('entryDeleted'));
+      await mutate();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : tc('error'));
+    }
+  }
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-2">
@@ -360,9 +374,19 @@ function TimesheetTab({ employeeId }: { employeeId: string }) {
               <span className="text-slate-500">{fmtMinutes(d.workedMinutes)}</span>
             </div>
             <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
-              {d.entries.map((e, i) => (
-                <span key={i} className="rounded bg-slate-100 px-1.5 py-0.5 dark:bg-slate-700">
+              {d.entries.map((e) => (
+                <span key={e.id} className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 dark:bg-slate-700">
                   {te(`entryType.${e.type}`)} {new Date(e.occurredAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                  {canManage && (
+                    <button
+                      type="button"
+                      onClick={() => void deleteEntry(e.id)}
+                      className="ml-0.5 text-red-500 hover:text-red-700"
+                      title={tc('delete')}
+                    >
+                      ×
+                    </button>
+                  )}
                 </span>
               ))}
             </div>

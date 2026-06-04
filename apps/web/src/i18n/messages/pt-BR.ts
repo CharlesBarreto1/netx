@@ -1709,6 +1709,8 @@ const messages = {
       to: 'Até',
       total: 'Total',
       noEntries: 'Sem marcações no período.',
+      deleteEntryConfirm: 'Excluir esta marcação de ponto? Afeta o cálculo de horas.',
+      entryDeleted: 'Marcação excluída.',
       noPayslips: 'Nenhum holerite. Crie em Folha de pagamento.',
     },
     payroll: {

@@ -40,6 +40,14 @@ export const CreateTimeEntrySchema = z.object({
 });
 export type CreateTimeEntry = z.infer<typeof CreateTimeEntrySchema>;
 
+/** Edição de uma marcação lançada errada (RH). */
+export const UpdateTimeEntrySchema = z.object({
+  type: TimeEntryTypeSchema.optional(),
+  occurredAt: z.string().datetime({ offset: true }).optional(),
+  notes: optionalString(500),
+});
+export type UpdateTimeEntry = z.infer<typeof UpdateTimeEntrySchema>;
+
 export const ListTimeEntriesQuerySchema = z.object({
   employeeId: z.string().uuid().optional(),
   from: z.string().datetime({ offset: true }).optional(),
@@ -155,7 +163,7 @@ export interface TimeCorrectionResponse {
 // ── Espelho de ponto (relatório por dia) ─────────────────────────────────────
 export interface TimesheetDay {
   date: string; // YYYY-MM-DD (timezone do tenant)
-  entries: { type: TimeEntryType; occurredAt: string; source: TimeEntrySource }[];
+  entries: { id: string; type: TimeEntryType; occurredAt: string; source: TimeEntrySource }[];
   workedMinutes: number; // soma dos pares IN→OUT menos intervalos
   firstIn: string | null;
   lastOut: string | null;

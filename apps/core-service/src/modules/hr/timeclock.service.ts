@@ -9,6 +9,7 @@ import {
   type ClockInOut,
   type CreateTimeCorrection,
   type CreateTimeEntry,
+  type UpdateTimeEntry,
   type ListTimeCorrectionsQuery,
   type ListTimeEntriesQuery,
   type Paginated,
@@ -80,6 +81,61 @@ export class TimeclockService {
       afterState: { employeeId: input.employeeId, type: input.type },
     });
     return toEntryResponse(entry);
+  }
+
+  /** Edita uma marcação lançada errada (hora/tipo/observação). */
+  async updateEntry(
+    tenantId: string,
+    actorUserId: string,
+    entryId: string,
+    input: UpdateTimeEntry,
+  ): Promise<TimeEntryResponse> {
+    const before = await this.prisma.timeEntry.findFirst({
+      where: { id: entryId, tenantId, deletedAt: null },
+    });
+    if (!before) throw new NotFoundException('Marcação não encontrada');
+    const entry = await this.prisma.timeEntry.update({
+      where: { id: entryId },
+      data: {
+        type: input.type ? (input.type as TimeEntryType) : undefined,
+        occurredAt: input.occurredAt ? new Date(input.occurredAt) : undefined,
+        notes: input.notes === undefined ? undefined : (input.notes ?? null),
+      },
+    });
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'time_entry.updated',
+      resource: 'time_entries',
+      resourceId: entryId,
+      beforeState: { occurredAt: before.occurredAt, type: before.type },
+      afterState: { occurredAt: entry.occurredAt, type: entry.type },
+    });
+    return toEntryResponse(entry);
+  }
+
+  /** Exclui (soft-delete) uma marcação lançada errada. */
+  async removeEntry(
+    tenantId: string,
+    actorUserId: string,
+    entryId: string,
+  ): Promise<void> {
+    const before = await this.prisma.timeEntry.findFirst({
+      where: { id: entryId, tenantId, deletedAt: null },
+    });
+    if (!before) throw new NotFoundException('Marcação não encontrada');
+    await this.prisma.timeEntry.update({
+      where: { id: entryId },
+      data: { deletedAt: new Date() },
+    });
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'time_entry.deleted',
+      resource: 'time_entries',
+      resourceId: entryId,
+      beforeState: { occurredAt: before.occurredAt, type: before.type, source: before.source },
+    });
   }
 
   async listEntries(
@@ -157,6 +213,7 @@ export class TimeclockService {
       days.push({
         date,
         entries: dayEntries.map((e) => ({
+          id: e.id,
           type: e.type,
           occurredAt: e.occurredAt.toISOString(),
           source: e.source,

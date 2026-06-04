@@ -1701,6 +1701,8 @@ const messages = {
       to: 'Hasta',
       total: 'Total',
       noEntries: 'Sin marcaciones en el período.',
+      deleteEntryConfirm: '¿Eliminar esta marcación? Afecta el cálculo de horas.',
+      entryDeleted: 'Marcación eliminada.',
       noPayslips: 'Ningún recibo de sueldo. Creá uno en Liquidación de sueldos.',
     },
     payroll: {
