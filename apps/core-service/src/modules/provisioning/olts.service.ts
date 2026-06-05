@@ -279,16 +279,27 @@ export class OltsService {
         `OLT tem ${existing._count.onts} ONT(s) vinculadas — desautorize antes de remover`,
       );
     }
-    await this.prisma.olt.update({
-      where: { id },
-      data: { deletedAt: new Date() },
-    });
+    // Soft-delete. Como o SetNull do schema só dispara em hard-delete, aqui
+    // desvinculamos as CTOs explicitamente (oltId+ponPortId → null) pra elas
+    // poderem ser reatribuídas a outra OLT em vez de ficarem presas a uma OLT
+    // que sumiu das listas.
+    const [detached] = await this.prisma.$transaction([
+      this.prisma.opticalEnclosure.updateMany({
+        where: { tenantId, oltId: id },
+        data: { oltId: null, ponPortId: null },
+      }),
+      this.prisma.olt.update({
+        where: { id },
+        data: { deletedAt: new Date() },
+      }),
+    ]);
     await this.audit.log({
       tenantId,
       userId: actorUserId,
       action: 'olts.deleted',
       resource: 'olts',
       resourceId: id,
+      metadata: { detachedEnclosures: detached.count },
     });
   }
 

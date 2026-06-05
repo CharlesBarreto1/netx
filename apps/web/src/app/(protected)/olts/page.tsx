@@ -13,9 +13,11 @@ import Link from 'next/link';
 import { useState } from 'react';
 import useSWR from 'swr';
 
+import { toast } from 'sonner';
+
 import type { LatLng } from '@/components/mapping/LocationPicker';
 import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
+import { ConfirmDialog, Modal } from '@/components/ui/Modal';
 import { FieldHelp, Input, Label, Select } from '@/components/ui/Input';
 import { PageLoader } from '@/components/ui/Spinner';
 import { ApiError } from '@/lib/api';
@@ -62,9 +64,27 @@ export default function OltsPage() {
   const [creating, setCreating] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<{ id: string; ok: boolean; msg: string } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Olt | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   if (isLoading) return <PageLoader />;
   const olts = data?.data ?? [];
+
+  async function handleDelete() {
+    if (!confirmDelete) return;
+    setDeleting(true);
+    try {
+      await oltsApi.remove(confirmDelete.id);
+      toast.success(t('deleteSuccess', { name: confirmDelete.name }));
+      setConfirmDelete(null);
+      await mutate();
+    } catch (err) {
+      // Backend bloqueia com 409 quando há ONTs vinculadas — mostra o motivo.
+      toast.error(err instanceof ApiError ? err.friendlyMessage : tc('error'));
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   async function handleTest(id: string) {
     setTesting(id);
@@ -162,6 +182,16 @@ export default function OltsPage() {
                           {tc('edit')}
                         </Button>
                       )}
+                      {canAdmin && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-600 dark:text-red-400"
+                          onClick={() => setConfirmDelete(o)}
+                        >
+                          {tc('delete')}
+                        </Button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -185,6 +215,17 @@ export default function OltsPage() {
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={!!confirmDelete}
+        onClose={() => setConfirmDelete(null)}
+        onConfirm={handleDelete}
+        title={t('deleteConfirmTitle')}
+        message={t('deleteConfirmMessage', { name: confirmDelete?.name ?? '' })}
+        confirmLabel={tc('delete')}
+        variant="danger"
+        loading={deleting}
+      />
     </div>
   );
 }

@@ -2697,6 +2697,10 @@ const messages = {
       manual: '— (manual)',
       test: 'Testar',
       ponPorts: 'Portas PON',
+      deleteConfirmTitle: 'Excluir OLT?',
+      deleteConfirmMessage:
+        'A OLT "{name}" será removida. Caixas (CTOs) vinculadas a ela ficam sem OLT. Não dá pra excluir se houver ONTs/clientes ativos nela.',
+      deleteSuccess: 'OLT "{name}" excluída.',
       fieldName: 'Nome *',
       fieldModel: 'Modelo *',
       fieldMode: 'Modo *',

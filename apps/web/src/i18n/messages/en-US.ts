@@ -2667,6 +2667,10 @@ const messages = {
       manual: '— (manual)',
       test: 'Test',
       ponPorts: 'PON Ports',
+      deleteConfirmTitle: 'Delete OLT?',
+      deleteConfirmMessage:
+        'OLT "{name}" will be removed. Boxes (CTOs) linked to it will be left without an OLT. It cannot be deleted if it has active ONTs/customers.',
+      deleteSuccess: 'OLT "{name}" deleted.',
       fieldName: 'Name *',
       fieldModel: 'Model *',
       fieldMode: 'Mode *',
