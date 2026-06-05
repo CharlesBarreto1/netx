@@ -62,3 +62,17 @@ export interface UpdateContractWifiResponse {
   /** ETA de aplicação em segundos (= PeriodicInformInterval atual ≈ 60s). */
   etaSeconds: number;
 }
+
+/**
+ * Resposta do "mostrar senha" — revela a senha Wi-Fi decifrada pro atendente
+ * quando o cliente esquece. Endpoint dedicado, protegido por permissão
+ * `contracts.wifi.reveal` e auditado (cada revelação grava quem/quando).
+ *
+ * A senha decifrada só trafega nesta resposta; NUNCA aparece em getWifiStatus,
+ * no audit log, nem em qualquer listagem.
+ */
+export interface RevealContractWifiResponse {
+  ssid: string | null;
+  /** Senha Wi-Fi em plaintext (decifrada do `wifiPasswordEnc`). */
+  wifiPassword: string;
+}

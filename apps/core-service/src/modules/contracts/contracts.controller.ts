@@ -241,6 +241,19 @@ export class ContractsController {
   }
 
   /**
+   * Revela a senha Wi-Fi decifrada (cliente esqueceu). Operação sensível:
+   * permissão dedicada + auditada (grava quem revelou, nunca a senha).
+   */
+  @Get(':id/wifi/reveal')
+  @RequirePermissions('contracts.wifi.reveal')
+  revealWifi(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.contracts.revealWifiPassword(user.tenantId, user.sub, id);
+  }
+
+  /**
    * Rodar manualmente a rotina de overdue/gerar faturas (útil para debug).
    * Protegido por permissão de admin de contratos.
    */

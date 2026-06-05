@@ -306,6 +306,9 @@ export const contractsApi = {
   updateWifi(id: string, input: UpdateContractWifiInput) {
     return api.patch<UpdateContractWifiResponse>(`/v1/contracts/${id}/wifi`, input);
   },
+  revealWifiPassword(id: string) {
+    return api.get<RevealContractWifiResponse>(`/v1/contracts/${id}/wifi/reveal`);
+  },
 };
 
 // -----------------------------------------------------------------------------
@@ -321,6 +324,11 @@ export interface UpdateContractWifiResponse {
   setParamsTaskId: string;
   rebootTaskId: string | null;
   etaSeconds: number;
+}
+
+export interface RevealContractWifiResponse {
+  ssid: string | null;
+  wifiPassword: string;
 }
 
 export interface ContractWifiStatus {

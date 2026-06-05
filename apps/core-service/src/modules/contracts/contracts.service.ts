@@ -33,6 +33,7 @@ import {
   type PaymentMode,
   type PreviewChangePlanRequest,
   type ReactivateContractRequest,
+  type RevealContractWifiResponse,
   type SuspendContractRequest,
   type UpdateContractRequest,
   type UpdateContractWifiRequest,
@@ -1600,6 +1601,43 @@ export class ContractsService {
       rebootTaskId,
       etaSeconds: 60, // PeriodicInformInterval esperado pós primeira sessão
     };
+  }
+
+  /**
+   * Revela a senha Wi-Fi decifrada pro atendente quando o cliente esquece.
+   *
+   * Operação SENSÍVEL: protegida por permissão `contracts.wifi.reveal` no
+   * controller e auditada aqui (grava quem/quando revelou — NUNCA a senha).
+   * A senha decifrada só sai nesta resposta; o `getWifiStatus` segue
+   * devolvendo apenas o boolean `hasWifiPassword`.
+   */
+  async revealWifiPassword(
+    tenantId: string,
+    actorUserId: string,
+    contractId: string,
+  ): Promise<RevealContractWifiResponse> {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, tenantId, deletedAt: null },
+      select: { ssid: true, wifiPasswordEnc: true },
+    });
+    if (!contract) throw new NotFoundException('Contrato não encontrado');
+    if (!contract.wifiPasswordEnc) {
+      throw new BadRequestException('Contrato não tem senha Wi-Fi configurada.');
+    }
+
+    const wifiPassword = this.crypto.decrypt(contract.wifiPasswordEnc);
+
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'contracts.wifi.revealed',
+      resource: 'contracts',
+      resourceId: contractId,
+      // Só registra QUE revelou. A senha em si nunca vai pro audit.
+      afterState: { ssid: contract.ssid },
+    });
+
+    return { ssid: contract.ssid, wifiPassword };
   }
 }
 

@@ -83,7 +83,28 @@ export function ContractWifiCard({ contractId }: Props) {
     },
   );
   const canEdit = hasPermission('contracts.write');
+  const canReveal = hasPermission('contracts.wifi.reveal');
   const [editing, setEditing] = useState(false);
+  const [revealedPwd, setRevealedPwd] = useState<string | null>(null);
+  const [revealing, setRevealing] = useState(false);
+  const [revealError, setRevealError] = useState<string | null>(null);
+
+  async function toggleReveal() {
+    if (revealedPwd !== null) {
+      setRevealedPwd(null);
+      return;
+    }
+    setRevealError(null);
+    setRevealing(true);
+    try {
+      const res = await contractsApi.revealWifiPassword(contractId);
+      setRevealedPwd(res.wifiPassword);
+    } catch (err) {
+      setRevealError(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
+    } finally {
+      setRevealing(false);
+    }
+  }
 
   if (isLoading || !data) {
     return (
@@ -114,14 +135,35 @@ export function ContractWifiCard({ contractId }: Props) {
                   (5&nbsp;GHz)
                 </span>
               </div>
-              <p className="text-xs text-text-muted">
+              <p className="flex flex-wrap items-center gap-1.5 text-xs text-text-muted">
                 {t('wifi.password')}:{' '}
                 {data.hasWifiPassword ? (
-                  <span className="font-mono">••••••••••</span>
+                  <>
+                    <span className="font-mono">
+                      {revealedPwd !== null ? revealedPwd : '••••••••••'}
+                    </span>
+                    {canReveal && (
+                      <button
+                        type="button"
+                        onClick={toggleReveal}
+                        disabled={revealing}
+                        className="font-medium text-primary hover:underline disabled:opacity-50"
+                      >
+                        {revealing
+                          ? t('wifi.revealing')
+                          : revealedPwd !== null
+                            ? `🙈 ${t('wifi.hide')}`
+                            : `👁 ${t('wifi.reveal')}`}
+                      </button>
+                    )}
+                  </>
                 ) : (
                   <span className="italic">{t('wifi.notConfigured')}</span>
                 )}
               </p>
+              {revealError && (
+                <p className="text-xs text-red-600 dark:text-red-400">{revealError}</p>
+              )}
             </>
           ) : (
             <p className="text-sm text-text-muted italic">

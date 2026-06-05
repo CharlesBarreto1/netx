@@ -81,6 +81,9 @@ const contractsPermissions = [
   { code: 'contracts.write', module: 'contracts', resource: 'contracts', action: 'write' },
   { code: 'contracts.delete', module: 'contracts', resource: 'contracts', action: 'delete' },
   { code: 'contracts.admin', module: 'contracts', resource: 'contracts', action: 'admin' },
+  // contracts.wifi.reveal: revelar a senha Wi-Fi decifrada (cliente esqueceu).
+  // Sensível — decifra PII e é auditado por revelação.
+  { code: 'contracts.wifi.reveal', module: 'contracts', resource: 'contracts', action: 'wifi.reveal' },
   // plans.manage: CRUD do catálogo de planos de internet (configuração).
   { code: 'plans.manage', module: 'contracts', resource: 'plans', action: 'manage' },
 ];
@@ -313,6 +316,7 @@ const systemRoles = [
       'contracts.write',
       'contracts.delete',
       'contracts.admin',
+      'contracts.wifi.reveal',
       'plans.manage',
       // Ordens de Serviço
       'service_orders.read',
@@ -410,6 +414,7 @@ const systemRoles = [
       // Contratos (operação)
       'contracts.read',
       'contracts.write',
+      'contracts.wifi.reveal',
       // Ordens de Serviço (operação — sem deletar nem mexer em motivos)
       'service_orders.read',
       'service_orders.write',

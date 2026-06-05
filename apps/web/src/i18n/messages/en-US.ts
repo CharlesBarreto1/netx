@@ -3419,6 +3419,9 @@ const messages = {
     wifi: {
       loading: 'Loading Wi-Fi…',
       password: 'Password',
+      reveal: 'Show',
+      hide: 'Hide',
+      revealing: 'Showing…',
       notConfigured: 'not configured',
       notConfiguredYet: 'Wi-Fi not yet configured on this contract.',
       editWifi: 'Edit Wi-Fi',
