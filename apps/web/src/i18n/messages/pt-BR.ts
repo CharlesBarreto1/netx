@@ -2808,9 +2808,10 @@ const messages = {
         heading: 'Ufinet — caixa & porta (rede neutra)',
         help: 'Escolha a <strong>caixa (CTO) REAL</strong> onde você conectou o drop — ela vai pra Ufinet na confirmação e sobrescreve a caixa que eles sugerem. A <strong>porta</strong> é só controle interno do NetX (não vai pra Ufinet). Sem caixa = usa a sugerida pela Ufinet.',
         empty: 'Nenhuma CTO vinculada a esta OLT. Cadastre/atribua caixas a esta OLT em Rede → Óptico pra elas aparecerem aqui.',
-        searchBox: 'Buscar caixa (código)',
+        searchBox: 'Buscar caixa por código ou local…',
+        searchEmpty: 'Nenhuma caixa encontrada pra essa busca.',
         box: 'Caixa (CTO) *',
-        boxCount: '{shown} de {total} caixa(s)',
+        boxHelp: 'Digite o código (ex.: FTTXPY13695) ou o local pra filtrar.',
         port: 'Porta (1–16, uso interno)',
       },
       notes: {

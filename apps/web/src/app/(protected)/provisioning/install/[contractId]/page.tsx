@@ -13,10 +13,11 @@
  */
 import { useTranslations } from 'next-intl';
 import { useParams, useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import useSWR from 'swr';
 
 import { Button } from '@/components/ui/Button';
+import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { Input, Label, Select, Textarea } from '@/components/ui/Input';
 import { PageLoader } from '@/components/ui/Spinner';
 import { ApiError } from '@/lib/api';
@@ -90,7 +91,7 @@ export default function InstallPage() {
   // Ufinet (rede neutra PY): o técnico ESCOLHE a caixa (CTO) de uma lista
   // filtrada pela OLT (não digita) + informa a porta (controle interno).
   const [ufinetEnclosureId, setUfinetEnclosureId] = useState('');
-  const [ctoSearch, setCtoSearch] = useState('');
+  const [selectedCto, setSelectedCto] = useState<ComboboxOption | null>(null);
   const [ufinetPort, setUfinetPort] = useState('');
 
   // Result state
@@ -103,20 +104,32 @@ export default function InstallPage() {
   const isUfinet =
     selectedOlt?.vendor === 'UFINET' && selectedOlt?.providerMode === 'ORCHESTRATOR';
 
-  // CTOs atendidas pela OLT escolhida (o técnico escolhe, não digita).
-  const { data: ctoResp } = useSWR(
-    isUfinet && oltId ? ['olt-enclosures', oltId] : null,
-    () => opticalApi.list({ oltId, pageSize: 500 }),
+  // Conta as CTOs da OLT só pra exibir o aviso de "OLT sem CTO cadastrada".
+  const { data: ctoCountResp } = useSWR(
+    isUfinet && oltId ? ['olt-enclosures-count', oltId] : null,
+    () => opticalApi.list({ oltId, pageSize: 1 }),
   );
-  const ctos = ctoResp?.data ?? [];
-  const filteredCtos = ctoSearch.trim()
-    ? ctos.filter((c) =>
-        `${c.code} ${c.locationLabel ?? ''}`
-          .toLowerCase()
-          .includes(ctoSearch.trim().toLowerCase()),
-      )
-    : ctos;
-  const selectedCto = ctos.find((c) => c.id === ufinetEnclosureId);
+  const ctoCount = ctoCountResp?.pagination.total ?? null;
+
+  // CTOs atendidas pela OLT escolhida — busca server-side (suporta milhares,
+  // o filtro `search` casa em code + locationLabel no backend). O técnico
+  // escolhe via Combobox, não digita o id.
+  const loadCtoOptions = useCallback(
+    async (query: string): Promise<ComboboxOption[]> => {
+      if (!oltId) return [];
+      const resp = await opticalApi.list({
+        oltId,
+        search: query.trim() || undefined,
+        pageSize: 50,
+      });
+      return resp.data.map((c) => ({
+        value: c.id,
+        label: c.code,
+        sublabel: c.locationLabel ?? undefined,
+      }));
+    },
+    [oltId],
+  );
 
   if (oltsLoading) return <PageLoader />;
 
@@ -139,7 +152,7 @@ export default function InstallPage() {
         pppoeVlan: Number(pppoeVlan) || 1010,
         wifiBandMode,
         notes: notes.trim() || null,
-        ufinetCto: selectedCto?.code ?? null,
+        ufinetCto: selectedCto?.label ?? null,
         ufinetPort: ufinetPort.trim() || null,
       });
       setResult(res);
@@ -241,7 +254,12 @@ export default function InstallPage() {
             <select
               id="oltId"
               value={oltId}
-              onChange={(e) => setOltId(e.target.value)}
+              onChange={(e) => {
+                setOltId(e.target.value);
+                // Troca de OLT invalida a CTO escolhida (CTOs são por OLT).
+                setUfinetEnclosureId('');
+                setSelectedCto(null);
+              }}
               required
               className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800"
             >
@@ -476,42 +494,29 @@ export default function InstallPage() {
                 strong: (chunks) => <strong>{chunks}</strong>,
               })}
             </p>
-            {ctos.length === 0 ? (
+            {ctoCount === 0 ? (
               <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
                 {t('ufinet.empty')}
               </p>
             ) : (
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="sm:col-span-2">
-                  <Label htmlFor="ctoSearch">{t('ufinet.searchBox')}</Label>
-                  <Input
-                    id="ctoSearch"
-                    value={ctoSearch}
-                    onChange={(e) => setCtoSearch(e.target.value)}
-                    placeholder="ex.: FTTXPY13695"
-                  />
-                </div>
-                <div>
                   <Label htmlFor="ufinetEnclosure">{t('ufinet.box')}</Label>
-                  <Select
+                  <Combobox
                     id="ufinetEnclosure"
                     value={ufinetEnclosureId}
-                    onChange={(e) => setUfinetEnclosureId(e.target.value)}
-                  >
-                    <option value="">{tc('select')}</option>
-                    {filteredCtos.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.code}
-                        {c.locationLabel ? ` · ${c.locationLabel}` : ''}
-                      </option>
-                    ))}
-                  </Select>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {t('ufinet.boxCount', {
-                      shown: filteredCtos.length,
-                      total: ctos.length,
-                    })}
-                  </p>
+                    selectedOption={selectedCto}
+                    onChange={(id, opt) => {
+                      setUfinetEnclosureId(id);
+                      setSelectedCto(opt);
+                    }}
+                    loadOptions={loadCtoOptions}
+                    resetKey={oltId}
+                    placeholder={tc('select')}
+                    searchPlaceholder={t('ufinet.searchBox')}
+                    emptyText={t('ufinet.searchEmpty')}
+                  />
+                  <p className="mt-1 text-xs text-slate-500">{t('ufinet.boxHelp')}</p>
                 </div>
                 <div>
                   <Label htmlFor="ufinetPort">{t('ufinet.port')}</Label>

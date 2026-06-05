@@ -2800,9 +2800,10 @@ const messages = {
         heading: 'Ufinet — caja y puerto (red neutra)',
         help: 'Elegí la <strong>caja (CTO) REAL</strong> donde conectaste el drop — va a Ufinet en la confirmación y sobrescribe la caja que ellos sugieren. El <strong>puerto</strong> es solo control interno de NetX (no va a Ufinet). Sin caja = usa la sugerida por Ufinet.',
         empty: 'Ninguna CTO vinculada a esta OLT. Registrá/asigná cajas a esta OLT en Red → Óptico para que aparezcan acá.',
-        searchBox: 'Buscar caja (código)',
+        searchBox: 'Buscar caja por código o ubicación…',
+        searchEmpty: 'Ninguna caja encontrada para esa búsqueda.',
         box: 'Caja (CTO) *',
-        boxCount: '{shown} de {total} caja(s)',
+        boxHelp: 'Escribí el código (ej.: FTTXPY13695) o la ubicación para filtrar.',
         port: 'Puerto (1–16, uso interno)',
       },
       notes: {

@@ -2778,9 +2778,10 @@ const messages = {
         heading: 'Ufinet — box & port (neutral network)',
         help: 'Choose the <strong>REAL box (CTO)</strong> where you connected the drop — it goes to Ufinet on confirmation and overrides the box they suggest. The <strong>port</strong> is just NetX internal control (does not go to Ufinet). No box = uses the one suggested by Ufinet.',
         empty: 'No CTO linked to this OLT. Register/assign boxes to this OLT under Network → Optical so they show up here.',
-        searchBox: 'Search box (code)',
+        searchBox: 'Search box by code or location…',
+        searchEmpty: 'No box found for this search.',
         box: 'Box (CTO) *',
-        boxCount: '{shown} of {total} box(es)',
+        boxHelp: 'Type the code (e.g. FTTXPY13695) or location to filter.',
         port: 'Port (1–16, internal use)',
       },
       notes: {
