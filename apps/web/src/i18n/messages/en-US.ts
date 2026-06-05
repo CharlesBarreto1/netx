@@ -1222,6 +1222,8 @@ const messages = {
       ontBypass: 'ONT outside stock (enter serial manually)',
       boxCto: 'Box (CTO)',
       noCtoInOlt: 'no CTO on this OLT',
+      ctoSearch: 'Search box by code or location…',
+      ctoSearchEmpty: 'No box found for this search.',
       portUsed: 'Port used',
       portSelect: '— port —',
       chooseCto: 'choose the CTO',

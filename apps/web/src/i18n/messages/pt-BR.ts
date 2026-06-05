@@ -1251,6 +1251,8 @@ const messages = {
       ontBypass: 'ONT fora do estoque (digitar serial manualmente)',
       boxCto: 'Caixa (CTO)',
       noCtoInOlt: 'nenhuma CTO nesta OLT',
+      ctoSearch: 'Buscar caixa por código ou local…',
+      ctoSearchEmpty: 'Nenhuma caixa encontrada pra essa busca.',
       portUsed: 'Porta usada',
       portSelect: '— porta —',
       chooseCto: 'escolha a CTO',

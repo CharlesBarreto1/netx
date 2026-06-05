@@ -13,10 +13,11 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import useSWR from 'swr';
 
 import { Button } from '@/components/ui/Button';
+import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import {
   FieldHelp,
   Input,
@@ -95,6 +96,7 @@ export default function OsDetailPage() {
   const [bypass, setBypass] = useState(false);
   const [snGpon, setSnGpon] = useState('');
   const [enclosureId, setEnclosureId] = useState(''); // CTO importada (Ufinet/própria)
+  const [selectedCto, setSelectedCto] = useState<ComboboxOption | null>(null);
   const [portNumber, setPortNumber] = useState(''); // porta da CTO escolhida
   const [ssid, setSsid] = useState('');
   const [wifiPassword, setWifiPassword] = useState('');
@@ -113,16 +115,33 @@ export default function OsDetailPage() {
     selectedOlt?.providerMode === 'ORCHESTRATOR';
 
   // CTOs importadas (OpticalEnclosure) da OLT escolhida — fonte de verdade da
-  // caixa/porta real (Ufinet importou todas no NetX). Evita campo livre.
-  const { data: enclosuresResp } = useSWR(
-    oltId ? opticalApi.listPath({ oltId, pageSize: 500 }) : null,
+  // caixa/porta real (Ufinet importou todas no NetX). Busca server-side (são
+  // milhares; rolar <select> é inviável). Contagem leve só pro empty-state.
+  const { data: ctoCountResp } = useSWR(
+    oltId ? ['os-cto-count', oltId] : null,
+    () => opticalApi.list({ oltId, pageSize: 1 }),
   );
-  const enclosures = (enclosuresResp as { data?: { id: string; code: string }[] } | undefined)?.data ?? [];
+  const ctoCount = ctoCountResp?.pagination.total ?? null;
+  const loadCtoOptions = useCallback(
+    async (query: string): Promise<ComboboxOption[]> => {
+      if (!oltId) return [];
+      const resp = await opticalApi.list({
+        oltId,
+        search: query.trim() || undefined,
+        pageSize: 50,
+      });
+      return resp.data.map((c) => ({
+        value: c.id,
+        label: c.code,
+        sublabel: c.locationLabel ?? undefined,
+      }));
+    },
+    [oltId],
+  );
   // Portas da CTO escolhida (status livre/usada) — valida a porta.
   const { data: ports } = useSWR<OpticalPort[]>(
     enclosureId ? opticalApi.portsPath(enclosureId) : null,
   );
-  const selectedEnclosure = enclosures.find((c) => c.id === enclosureId);
 
   // SUPPORT vira SUPPORT_SWAP quando o técnico marca "trocou ONT".
   const effectiveMode: CompleteFieldInput['mode'] =
@@ -250,7 +269,7 @@ export default function OsDetailPage() {
       if (e) return { error: e };
       if (isUfinet && !enclosureId)
         return { error: t('errors.ctoRequired') };
-      const ctoCode = selectedEnclosure?.code ?? null;
+      const ctoCode = selectedCto?.label ?? null;
       return {
         payload: {
           mode: 'INSTALLATION',
@@ -463,7 +482,17 @@ export default function OsDetailPage() {
               <Label htmlFor="olt" required>
                 {t('detail.olt')}
               </Label>
-              <Select id="olt" value={oltId} onChange={(e) => setOltId(e.target.value)}>
+              <Select
+                id="olt"
+                value={oltId}
+                onChange={(e) => {
+                  setOltId(e.target.value);
+                  // Troca de OLT invalida a CTO/porta escolhidas (são por OLT).
+                  setEnclosureId('');
+                  setSelectedCto(null);
+                  setPortNumber('');
+                }}
+              >
                 <option value="">{t('detail.select')}</option>
                 {(olts ?? []).map((o) => (
                   <option key={o.id} value={o.id}>
@@ -521,24 +550,26 @@ export default function OsDetailPage() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label required={isUfinet}>{t('detail.boxCto')}</Label>
-                <Select
-                  value={enclosureId}
-                  onChange={(e) => {
-                    setEnclosureId(e.target.value);
-                    setPortNumber('');
-                  }}
-                >
-                  <option value="">
-                    {enclosures.length
-                      ? t('detail.select')
-                      : t('detail.noCtoInOlt')}
-                  </option>
-                  {enclosures.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.code}
-                    </option>
-                  ))}
-                </Select>
+                {ctoCount === 0 ? (
+                  <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                    {t('detail.noCtoInOlt')}
+                  </p>
+                ) : (
+                  <Combobox
+                    value={enclosureId}
+                    selectedOption={selectedCto}
+                    onChange={(id, opt) => {
+                      setEnclosureId(id);
+                      setSelectedCto(opt);
+                      setPortNumber('');
+                    }}
+                    loadOptions={loadCtoOptions}
+                    resetKey={oltId}
+                    placeholder={t('detail.select')}
+                    searchPlaceholder={t('detail.ctoSearch')}
+                    emptyText={t('detail.ctoSearchEmpty')}
+                  />
+                )}
               </div>
               <div>
                 <Label>{t('detail.portUsed')}</Label>
