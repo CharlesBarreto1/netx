@@ -3375,6 +3375,7 @@ const messages = {
       offline: 'OFFLINE',
       disconnect: 'Desconectar',
       kickTooltip: 'Forçar desconexão (CoA Disconnect-Request)',
+      openDeviceTooltip: 'Abrir o equipamento do cliente neste IP (http)',
       kickConfirmTitle: 'Desconectar cliente?',
       kickConfirmMessage: 'Manda Disconnect-Request pro concentrador. O cliente reconecta automaticamente se RADIUS aceitar.',
       kickedToast: 'Cliente desconectado em {count} NAS(es).',

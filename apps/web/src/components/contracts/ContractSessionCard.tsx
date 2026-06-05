@@ -1,6 +1,6 @@
 'use client';
 
-import { Wifi, WifiOff, Power } from 'lucide-react';
+import { Wifi, WifiOff, Power, ExternalLink } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -104,7 +104,20 @@ export function ContractSessionCard({ contractId }: { contractId: string }) {
           )}
         </div>
         <div className="flex items-center gap-2">
-          {data.framedIp && <Badge tone="info">{data.framedIp}</Badge>}
+          {data.framedIp && (
+            <a
+              href={`http://${data.framedIp}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              title={t('session.openDeviceTooltip')}
+              className="inline-flex"
+            >
+              <Badge tone="info" className="cursor-pointer hover:opacity-80">
+                {data.framedIp}
+                <ExternalLink className="h-3 w-3" />
+              </Badge>
+            </a>
+          )}
           {data.online && canKick && (
             <Button
               size="sm"
