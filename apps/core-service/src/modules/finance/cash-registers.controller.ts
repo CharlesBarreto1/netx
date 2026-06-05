@@ -13,6 +13,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
 import {
   AddCashRegisterMemberRequestSchema,
+  CashMovementAttachmentPresignRequestSchema,
   CreateCashRegisterRequestSchema,
   CreateMovementRequestSchema,
   CreateTransferRequestSchema,
@@ -21,6 +22,7 @@ import {
   UpdateCashRegisterRequestSchema,
   type AddCashRegisterMemberRequest,
   type AuthenticatedPrincipal,
+  type CashMovementAttachmentPresignRequest,
   type CreateCashRegisterRequest,
   type CreateMovementRequest,
   type CreateTransferRequest,
@@ -148,6 +150,28 @@ export class CashRegistersController {
   ) {
     const isManager = user.permissions.includes('cash_registers.manage');
     return this.movements.createManual(
+      user.tenantId,
+      user.sub,
+      isManager,
+      id,
+      body,
+    );
+  }
+
+  /**
+   * Pede URL presigned pra subir a NF/recibo de uma sangria ANTES de lançar.
+   * O client sobe direto no MinIO e manda a storageKey no createMovement.
+   */
+  @Post(':id/movements/attachment-presign')
+  @RequirePermissions('finance.charges.write')
+  presignMovementAttachment(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(CashMovementAttachmentPresignRequestSchema)
+    body: CashMovementAttachmentPresignRequest,
+  ) {
+    const isManager = user.permissions.includes('cash_registers.manage');
+    return this.movements.presignAttachment(
       user.tenantId,
       user.sub,
       isManager,

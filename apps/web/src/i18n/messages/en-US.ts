@@ -510,6 +510,9 @@ const messages = {
       reverseConfirm: 'Reverse this entry? The cash balance is adjusted. This cannot be undone.',
       reversedToast: 'Entry reversed.',
       manualTitle: 'Withdraw / Adjustment',
+      attachment: 'Attachment (invoice/receipt)',
+      attachmentHelp: 'Optional. Image or PDF of the invoice/receipt.',
+      attachmentUploadFailed: 'Failed to upload attachment. Try again.',
     },
     balance: {
       opening: 'Opening',

@@ -13,6 +13,9 @@ import { randomUUID } from 'crypto';
 
 import {
   paginationMeta,
+  type CashMovementAttachmentPresignRequest,
+  type CashMovementAttachmentPresignResponse,
+  type CashMovementAttachmentResponse,
   type CashMovementResponse,
   type CashMovementSource,
   type CashMovementType,
@@ -25,6 +28,7 @@ import {
 
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { StorageService } from '../storage/storage.service';
 import { CashRegistersService } from './cash-registers.service';
 
 /**
@@ -44,6 +48,7 @@ export class CashMovementsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly registers: CashRegistersService,
+    private readonly storage: StorageService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -184,27 +189,107 @@ export class CashMovementsService {
       actorUserId,
       isManager,
     );
-    const m = await this.prisma.cashMovement.create({
-      data: {
-        tenantId,
-        cashRegisterId,
-        type: input.type as PrismaMovementType,
-        source: PrismaMovementSource.MANUAL,
-        amount: new Prisma.Decimal(input.amount),
-        description: input.description ?? null,
-        occurredAt: input.occurredAt ? new Date(input.occurredAt) : new Date(),
-        createdById: actorUserId,
-      },
+
+    // Se veio anexo (NF), confere que o upload realmente chegou no storage
+    // antes de persistir — pega o tamanho/mime reais.
+    let attachmentData: {
+      storageKey: string;
+      fileName: string;
+      contentType: string | null;
+      sizeBytes: number | null;
+    } | null = null;
+    if (input.attachment) {
+      const head = await this.storage.headObject(input.attachment.storageKey);
+      if (!head) {
+        throw new BadRequestException(
+          'Anexo não encontrado no storage. Refaça o upload antes de lançar.',
+        );
+      }
+      attachmentData = {
+        storageKey: input.attachment.storageKey,
+        fileName: input.attachment.fileName,
+        contentType: input.attachment.contentType ?? head.contentType ?? null,
+        sizeBytes: input.attachment.sizeBytes ?? head.size ?? null,
+      };
+    }
+
+    const m = await this.prisma.$transaction(async (tx) => {
+      const mov = await tx.cashMovement.create({
+        data: {
+          tenantId,
+          cashRegisterId,
+          type: input.type as PrismaMovementType,
+          source: PrismaMovementSource.MANUAL,
+          amount: new Prisma.Decimal(input.amount),
+          description: input.description ?? null,
+          occurredAt: input.occurredAt ? new Date(input.occurredAt) : new Date(),
+          createdById: actorUserId,
+        },
+        include: { attachments: true },
+      });
+      if (attachmentData) {
+        await tx.cashMovementAttachment.create({
+          data: {
+            tenantId,
+            cashMovementId: mov.id,
+            storageKey: attachmentData.storageKey,
+            fileName: attachmentData.fileName,
+            contentType: attachmentData.contentType,
+            sizeBytes: attachmentData.sizeBytes,
+            createdById: actorUserId,
+          },
+        });
+      }
+      return tx.cashMovement.findUniqueOrThrow({
+        where: { id: mov.id },
+        include: { attachments: true },
+      });
     });
+
     await this.audit.log({
       tenantId,
       userId: actorUserId,
       action: 'cash_movement.manual',
       resource: 'cash_movements',
       resourceId: m.id,
-      afterState: { type: input.type, amount: input.amount },
+      afterState: {
+        type: input.type,
+        amount: input.amount,
+        hasAttachment: !!attachmentData,
+      },
     });
     return toResponse(m);
+  }
+
+  // ---------------------------------------------------------------------------
+  // ANEXO — URL presigned pra subir a NF/recibo da sangria antes de lançar.
+  // ---------------------------------------------------------------------------
+  async presignAttachment(
+    tenantId: string,
+    actorUserId: string,
+    isManager: boolean,
+    cashRegisterId: string,
+    input: CashMovementAttachmentPresignRequest,
+  ): Promise<CashMovementAttachmentPresignResponse> {
+    await this.registers.assertOperator(
+      tenantId,
+      cashRegisterId,
+      actorUserId,
+      isManager,
+    );
+    if (!this.storage.isEnabled()) {
+      throw new BadRequestException('Storage (MinIO) não configurado');
+    }
+    const key = this.storage.buildKey(
+      tenantId,
+      `cash-registers/${cashRegisterId}/attachments`,
+      input.fileName,
+    );
+    const { url, expiresIn } = await this.storage.presignUpload(
+      key,
+      input.contentType,
+    );
+    return { uploadUrl: url, storageKey: key, expiresIn };
   }
 
   // ---------------------------------------------------------------------------
@@ -333,6 +418,7 @@ export class CashMovementsService {
         orderBy: { occurredAt: 'desc' },
         skip: (q.page - 1) * q.pageSize,
         take: q.pageSize,
+        include: { attachments: true },
       }),
       this.prisma.cashMovement.count({ where }),
     ]);
@@ -354,12 +440,12 @@ export class CashMovementsService {
 
     const peerByGroup = new Map(peers.map((p) => [p.transferGroupId!, p]));
 
-    return {
-      data: rows.map((r) => {
+    const data = await Promise.all(
+      rows.map(async (r) => {
         const peer = r.transferGroupId
           ? peerByGroup.get(r.transferGroupId)
           : undefined;
-        return toResponse(
+        const resp = toResponse(
           r,
           peer
             ? {
@@ -368,9 +454,51 @@ export class CashMovementsService {
               }
             : null,
         );
+        resp.attachments = await this.attachmentsWithUrls(
+          (r as any).attachments ?? [],
+        );
+        return resp;
       }),
+    );
+
+    return {
+      data,
       pagination: paginationMeta(total, q.page, q.pageSize),
     };
+  }
+
+  /** Mapeia anexos pra resposta, gerando URL presigned de download em cada. */
+  private async attachmentsWithUrls(
+    atts: Array<{
+      id: string;
+      fileName: string;
+      contentType: string | null;
+      sizeBytes: number | null;
+      createdAt: Date;
+      storageKey: string;
+    }>,
+  ): Promise<CashMovementAttachmentResponse[]> {
+    return Promise.all(
+      atts.map(async (a) => {
+        let url: string | undefined;
+        if (this.storage.isEnabled()) {
+          try {
+            const signed = await this.storage.presignDownload(a.storageKey, a.fileName);
+            url = signed.url;
+          } catch {
+            // sem url — UI mostra o anexo sem link clicável
+          }
+        }
+        return {
+          id: a.id,
+          fileName: a.fileName,
+          contentType: a.contentType,
+          sizeBytes: a.sizeBytes,
+          createdAt: a.createdAt.toISOString(),
+          url,
+        };
+      }),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -466,5 +594,12 @@ function toResponse(
     createdById: m.createdById,
     createdAt: m.createdAt.toISOString(),
     counterpart: counterpart ?? null,
+    attachments: (m.attachments ?? []).map((a: any) => ({
+      id: a.id,
+      fileName: a.fileName,
+      contentType: a.contentType,
+      sizeBytes: a.sizeBytes,
+      createdAt: a.createdAt.toISOString(),
+    })),
   };
 }

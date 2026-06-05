@@ -160,9 +160,25 @@ export const cashRegistersApi = {
   },
   createMovement(
     id: string,
-    input: { type: 'INCOME' | 'OUTCOME' | 'ADJUSTMENT'; amount: number; description?: string; occurredAt?: string },
+    input: {
+      type: 'INCOME' | 'OUTCOME' | 'ADJUSTMENT';
+      amount: number;
+      description?: string;
+      occurredAt?: string;
+      attachment?: CashMovementAttachmentInput;
+    },
   ) {
     return api.post<CashMovement>(`/v1/cash-registers/${id}/movements`, input);
+  },
+  /** Passo 1 do anexo: pede URL presigned pra subir a NF antes de lançar. */
+  presignMovementAttachment(
+    id: string,
+    input: { fileName: string; contentType?: string },
+  ) {
+    return api.post<{ uploadUrl: string; storageKey: string; expiresIn: number }>(
+      `/v1/cash-registers/${id}/movements/attachment-presign`,
+      input,
+    );
   },
   /** Reverte um lançamento manual/transferência (não serve pra fatura/cobrança/folha). */
   reverseMovement(registerId: string, movementId: string) {
@@ -191,6 +207,22 @@ export type CashMovementType =
 
 export type CashMovementSource = 'INVOICE' | 'CHARGE' | 'TRANSFER' | 'MANUAL';
 
+export interface CashMovementAttachmentInput {
+  storageKey: string;
+  fileName: string;
+  contentType?: string;
+  sizeBytes?: number;
+}
+
+export interface CashMovementAttachment {
+  id: string;
+  fileName: string;
+  contentType: string | null;
+  sizeBytes: number | null;
+  createdAt: string;
+  url?: string;
+}
+
 export interface CashMovement {
   id: string;
   tenantId: string;
@@ -208,6 +240,7 @@ export interface CashMovement {
     cashRegisterId: string;
     cashRegisterName: string;
   } | null;
+  attachments?: CashMovementAttachment[];
 }
 
 export interface CashRegisterBalance {

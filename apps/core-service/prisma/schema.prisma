@@ -93,6 +93,7 @@ model Tenant {
   cashRegisters        CashRegister[]
   oneTimeCharges       OneTimeCharge[]
   cashMovements        CashMovement[]
+  cashMovementAttachments CashMovementAttachment[]
   backups              Backup[]
   networkPops          NetworkPop[]
   networkEquipment     NetworkEquipment[]
@@ -267,6 +268,7 @@ model User {
   chargesCreated   OneTimeCharge[] @relation("ChargeCreatedBy")
   chargesUpdated   OneTimeCharge[] @relation("ChargeUpdatedBy")
   cashMovementsCreated CashMovement[] @relation("CashMovementCreatedBy")
+  cashMovementAttachmentsCreated CashMovementAttachment[] @relation("CashMovementAttachmentBy")
   backupsCreated       Backup[]       @relation("BackupCreatedBy")
   networkPopsCreated   NetworkPop[]   @relation("NetworkPopCreatedBy")
   networkPopsUpdated   NetworkPop[]   @relation("NetworkPopUpdatedBy")
@@ -1751,11 +1753,34 @@ model CashMovement {
   tenant          Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   cashRegister    CashRegister @relation(fields: [cashRegisterId], references: [id], onDelete: Cascade)
   createdBy       User?        @relation("CashMovementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  attachments     CashMovementAttachment[]
 
   @@index([tenantId, cashRegisterId, occurredAt])
   @@index([transferGroupId])
   @@index([source, sourceId])
   @@map("cash_movements")
+}
+
+// Anexo de um movimento de caixa (ex.: NF/recibo de uma sangria/despesa).
+// Mesmo padrao presigned (MinIO) dos anexos de O.S. Opcional: a maioria dos
+// movimentos nao tem anexo. Cascade ao apagar o movimento.
+model CashMovementAttachment {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  cashMovementId String   @map("cash_movement_id") @db.Uuid
+  storageKey     String   @map("storage_key") @db.VarChar(512)
+  fileName       String   @map("file_name") @db.VarChar(255)
+  contentType    String?  @map("content_type") @db.VarChar(120)
+  sizeBytes      Int?     @map("size_bytes")
+  createdById    String?  @map("created_by_id") @db.Uuid
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cashMovement CashMovement @relation(fields: [cashMovementId], references: [id], onDelete: Cascade)
+  createdBy    User?        @relation("CashMovementAttachmentBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, cashMovementId, createdAt], map: "cash_mov_attachments_tenant_mov_created_idx")
+  @@map("cash_movement_attachments")
 }
 
 // =============================================================================

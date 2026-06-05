@@ -532,6 +532,9 @@ const messages = {
       reverseConfirm: 'Reverter este lançamento? O saldo do caixa é ajustado. Não dá pra desfazer.',
       reversedToast: 'Lançamento revertido.',
       manualTitle: 'Sangria / Ajuste',
+      attachment: 'Anexo (NF/recibo)',
+      attachmentHelp: 'Opcional. Imagem ou PDF da nota fiscal/comprovante.',
+      attachmentUploadFailed: 'Falha ao enviar o anexo. Tente novamente.',
     },
     balance: {
       opening: 'Saldo inicial',

@@ -192,6 +192,23 @@ export default function CashRegisterDetailPage() {
                         {m.counterpart.cashRegisterName}
                       </div>
                     )}
+                    {m.attachments?.map((a) =>
+                      a.url ? (
+                        <a
+                          key={a.id}
+                          href={a.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mt-0.5 flex items-center gap-1 text-xs text-primary hover:underline"
+                        >
+                          📎 {a.fileName}
+                        </a>
+                      ) : (
+                        <div key={a.id} className="mt-0.5 text-xs text-text-subtle">
+                          📎 {a.fileName}
+                        </div>
+                      ),
+                    )}
                   </td>
                   <td
                     className={
@@ -430,6 +447,7 @@ function ManualMovementDialog({
   );
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
+  const [file, setFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -439,15 +457,39 @@ function ManualMovementDialog({
     setSubmitting(true);
     setError(null);
     try {
+      // Anexo opcional (NF/recibo): sobe direto no MinIO via URL presigned e
+      // manda só a storageKey junto do lançamento.
+      let attachment:
+        | { storageKey: string; fileName: string; contentType?: string; sizeBytes?: number }
+        | undefined;
+      if (file) {
+        const presign = await cashRegistersApi.presignMovementAttachment(
+          cashRegisterId,
+          { fileName: file.name, contentType: file.type || undefined },
+        );
+        const put = await fetch(presign.uploadUrl, {
+          method: 'PUT',
+          body: file,
+          headers: file.type ? { 'content-type': file.type } : undefined,
+        });
+        if (!put.ok) throw new Error(tCR('movement.attachmentUploadFailed'));
+        attachment = {
+          storageKey: presign.storageKey,
+          fileName: file.name,
+          contentType: file.type || undefined,
+          sizeBytes: file.size,
+        };
+      }
       await cashRegistersApi.createMovement(cashRegisterId, {
         type,
         amount: Number(amount.replace(',', '.')),
         description: description.trim() || undefined,
+        attachment,
       });
       toast.success(tCommon('success'));
       onClose(true);
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      setError(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
     } finally {
       setSubmitting(false);
     }
@@ -490,6 +532,18 @@ function ManualMovementDialog({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
+            </div>
+            <div>
+              <Label>{tCR('movement.attachment')}</Label>
+              <input
+                type="file"
+                accept="image/*,application/pdf"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+                className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-md file:border-0 file:bg-slate-100 file:px-3 file:py-1.5 file:text-sm file:font-medium hover:file:bg-slate-200 dark:text-slate-300 dark:file:bg-slate-700 dark:hover:file:bg-slate-600"
+              />
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                {tCR('movement.attachmentHelp')}
+              </p>
             </div>
             {error && (
               <p className="text-xs text-red-600 dark:text-red-400">{error}</p>

@@ -523,6 +523,9 @@ const messages = {
       reverseConfirm: '¿Revertir este movimiento? El saldo de la caja se ajusta. No se puede deshacer.',
       reversedToast: 'Movimiento revertido.',
       manualTitle: 'Retiro / Ajuste',
+      attachment: 'Adjunto (factura/recibo)',
+      attachmentHelp: 'Opcional. Imagen o PDF de la factura/comprobante.',
+      attachmentUploadFailed: 'No se pudo subir el adjunto. Intentá de nuevo.',
     },
     balance: {
       opening: 'Saldo inicial',
