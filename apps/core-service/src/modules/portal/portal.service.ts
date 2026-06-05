@@ -4,12 +4,46 @@
  * essas duas dimensões; aqui é defesa em profundidade.
  */
 import { Injectable, NotFoundException } from '@nestjs/common';
+import type { UpdateContractWifiRequest } from '@netx/shared';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { ContractsService } from '../contracts/contracts.service';
 
 @Injectable()
 export class PortalService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly contracts: ContractsService,
+  ) {}
+
+  /** Garante que o contrato é do customer logado antes de qualquer ação. */
+  private async assertOwnsContract(
+    tenantId: string,
+    customerId: string,
+    contractId: string,
+  ): Promise<void> {
+    const owns = await this.prisma.contract.findFirst({
+      where: { id: contractId, tenantId, customerId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!owns) throw new NotFoundException();
+  }
+
+  /** Status do Wi-Fi do próprio contrato (sem expor a senha). */
+  async getContractWifi(tenantId: string, customerId: string, contractId: string) {
+    await this.assertOwnsContract(tenantId, customerId, contractId);
+    return this.contracts.getWifiStatus(tenantId, contractId);
+  }
+
+  /** O assinante troca o próprio SSID/senha (dispara SET_PARAMS via TR-069). */
+  async updateContractWifi(
+    tenantId: string,
+    customerId: string,
+    contractId: string,
+    input: UpdateContractWifiRequest,
+  ) {
+    return this.contracts.updateWifiFromPortal(tenantId, customerId, contractId, input);
+  }
 
   async getMe(tenantId: string, customerId: string) {
     const c = await this.prisma.customer.findFirst({

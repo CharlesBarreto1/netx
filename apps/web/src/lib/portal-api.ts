@@ -93,6 +93,27 @@ export interface PortalBilling {
   charges: PortalBillingItem[];
 }
 
+export interface PortalWifiStatus {
+  ssid: string | null;
+  hasWifiPassword: boolean;
+  hasTr069Device: boolean;
+  lastTask: {
+    id: string;
+    action: string;
+    status: 'PENDING' | 'RUNNING' | 'DONE' | 'FAILED' | 'CANCELLED';
+    createdAt: string;
+    completedAt: string | null;
+    error: string | null;
+  } | null;
+  lastInformAt: string | null;
+}
+
+export interface PortalUpdateWifiResponse {
+  setParamsTaskId: string;
+  rebootTaskId: string | null;
+  etaSeconds: number;
+}
+
 export class PortalApiError extends Error {
   constructor(
     public readonly status: number,
@@ -194,4 +215,15 @@ export const portalApi = {
   me: () => request<PortalMe>('GET', '/v1/portal/me'),
   contracts: () => request<PortalContract[]>('GET', '/v1/portal/contracts'),
   invoices: () => request<PortalBilling>('GET', '/v1/portal/invoices'),
+  contractWifi: (contractId: string) =>
+    request<PortalWifiStatus>('GET', `/v1/portal/contracts/${contractId}/wifi`),
+  updateContractWifi: (
+    contractId: string,
+    input: { ssid: string; wifiPassword: string },
+  ) =>
+    request<PortalUpdateWifiResponse>(
+      'PATCH',
+      `/v1/portal/contracts/${contractId}/wifi`,
+      input,
+    ),
 };

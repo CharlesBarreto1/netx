@@ -1,13 +1,15 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import {
   type PortalBilling,
   type PortalContract,
   type PortalMe,
   type PortalSession,
+  type PortalWifiStatus,
+  PortalApiError,
   getPortalSession,
   portalApi,
 } from '@/lib/portal-api';
@@ -151,6 +153,7 @@ export default function PortalDashboardPage() {
                 <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                   {c.installationAddress}
                 </p>
+                <ContractWifiManager contractId={c.id} />
               </div>
             ))}
           </div>
@@ -202,9 +205,228 @@ export default function PortalDashboardPage() {
       </section>
 
       <footer className="text-center text-xs text-slate-400 pt-4">
-        Portal NetX — sólo lectura. Para cambios contactá a {session.tenant.name}.
+        Portal NetX. Para otros cambios contactá a {session.tenant.name}.
       </footer>
     </main>
+  );
+}
+
+/**
+ * Self-service de Wi-Fi no card do contrato. O assinante vê o SSID atual e
+ * troca nome/contraseña — dispara SET_PARAMS via TR-069 no backend. Some quando
+ * o contrato não tem ONT TR-069 vinculada (nada pra aplicar).
+ */
+function ContractWifiManager({ contractId }: { contractId: string }) {
+  const [wifi, setWifi] = useState<PortalWifiStatus | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [applying, setApplying] = useState(false);
+  // Só sinaliza resultado (aplicado/falhou) de uma troca feita nesta sessão —
+  // o status traz a última task TR-069 de qualquer origem, não só do Wi-Fi.
+  const [touched, setTouched] = useState(false);
+
+  const refresh = useCallback(
+    () => portalApi.contractWifi(contractId).then(setWifi).catch(() => {}),
+    [contractId],
+  );
+
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  // Enquanto a última troca aplica, faz polling até DONE/FAILED (teto 2 min).
+  useEffect(() => {
+    if (!applying) return;
+    const startedAt = Date.now();
+    const h = setInterval(async () => {
+      try {
+        const w = await portalApi.contractWifi(contractId);
+        setWifi(w);
+        const s = w.lastTask?.status;
+        if (s === 'DONE' || s === 'FAILED' || Date.now() - startedAt > 120_000) {
+          setApplying(false);
+        }
+      } catch {
+        /* mantém o polling; erro transitório */
+      }
+    }, 5000);
+    return () => clearInterval(h);
+  }, [applying, contractId]);
+
+  if (!wifi || !wifi.hasTr069Device) return null;
+
+  return (
+    <div className="mt-3 border-t border-slate-100 dark:border-slate-700 pt-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[11px] uppercase tracking-wider text-slate-400">Wi-Fi</p>
+          <p className="truncate text-sm font-medium">{wifi.ssid ?? '—'}</p>
+        </div>
+        <button
+          type="button"
+          disabled={applying}
+          onClick={() => setModalOpen(true)}
+          className="shrink-0 rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-700"
+        >
+          Cambiar
+        </button>
+      </div>
+
+      {applying && (
+        <p className="mt-2 text-xs text-blue-600 dark:text-blue-400">
+          Aplicando cambios en tu router… puede tardar ~1 minuto.
+        </p>
+      )}
+      {touched && !applying && wifi.lastTask?.status === 'DONE' && (
+        <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
+          Wi-Fi actualizado.
+        </p>
+      )}
+      {touched && !applying && wifi.lastTask?.status === 'FAILED' && (
+        <p className="mt-2 text-xs text-red-600 dark:text-red-400">
+          No se pudo aplicar el cambio. Intentá de nuevo o contactá a tu proveedor.
+        </p>
+      )}
+
+      {modalOpen && (
+        <WifiChangeModal
+          contractId={contractId}
+          initialSsid={wifi.ssid ?? ''}
+          onClose={() => setModalOpen(false)}
+          onSaved={() => {
+            setModalOpen(false);
+            setTouched(true);
+            setApplying(true);
+            refresh();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function generateWifiPassword(): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let out = '';
+  const arr = new Uint8Array(10);
+  crypto.getRandomValues(arr);
+  for (let i = 0; i < arr.length; i++) out += alphabet[arr[i] % alphabet.length];
+  return out;
+}
+
+function WifiChangeModal({
+  contractId,
+  initialSsid,
+  onClose,
+  onSaved,
+}: {
+  contractId: string;
+  initialSsid: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [ssid, setSsid] = useState(initialSsid);
+  const [pwd, setPwd] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (ssid.trim().length < 1 || ssid.length > 32) {
+      setError('El nombre de la red debe tener entre 1 y 32 caracteres.');
+      return;
+    }
+    if (pwd.length < 8 || pwd.length > 63) {
+      setError('La contraseña debe tener entre 8 y 63 caracteres.');
+      return;
+    }
+    setSaving(true);
+    try {
+      await portalApi.updateContractWifi(contractId, { ssid: ssid.trim(), wifiPassword: pwd });
+      onSaved();
+    } catch (err) {
+      const msg =
+        err instanceof PortalApiError ? err.detail : (err as Error).message;
+      setError(msg);
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4"
+      onMouseDown={onClose}
+    >
+      <div
+        className="w-full max-w-md rounded-t-xl bg-white p-5 shadow-xl dark:bg-slate-800 sm:rounded-xl"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-lg font-semibold">Cambiar mi Wi-Fi</h3>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          El cambio se aplica a las redes 2.4&nbsp;GHz y 5&nbsp;GHz. Tus
+          dispositivos se desconectarán y deberás reconectarlos con la nueva
+          contraseña.
+        </p>
+        <form onSubmit={handleSubmit} className="mt-4 space-y-3">
+          <div>
+            <label className="mb-1 block text-sm font-medium" htmlFor="portal-ssid">
+              Nombre de la red (SSID)
+            </label>
+            <input
+              id="portal-ssid"
+              value={ssid}
+              onChange={(e) => setSsid(e.target.value)}
+              maxLength={32}
+              required
+              className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium" htmlFor="portal-pwd">
+              Contraseña
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="portal-pwd"
+                value={pwd}
+                onChange={(e) => setPwd(e.target.value)}
+                minLength={8}
+                maxLength={63}
+                required
+                placeholder="Mínimo 8 caracteres"
+                className="block w-full flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900"
+              />
+              <button
+                type="button"
+                onClick={() => setPwd(generateWifiPassword())}
+                className="shrink-0 rounded-md border border-slate-300 px-2.5 text-xs font-medium hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
+              >
+                Generar
+              </button>
+            </div>
+          </div>
+
+          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {saving ? 'Guardando…' : 'Guardar'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 

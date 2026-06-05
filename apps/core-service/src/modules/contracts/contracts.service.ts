@@ -1491,6 +1491,40 @@ export class ContractsService {
     contractId: string,
     input: UpdateContractWifiRequest,
   ): Promise<UpdateContractWifiResponse> {
+    return this.applyWifiUpdate(tenantId, contractId, input, { userId: actorUserId });
+  }
+
+  /**
+   * Troca de Wi-Fi disparada pelo PRÓPRIO assinante no portal self-service.
+   * Mesma mecânica do operador (persiste cifrado + SET_PARAMS via TR-069), mas
+   * valida que o contrato pertence ao customer logado e audita como ação do
+   * portal (sem userId de operador). Reboot nunca é exposto no portal.
+   */
+  async updateWifiFromPortal(
+    tenantId: string,
+    customerId: string,
+    contractId: string,
+    input: UpdateContractWifiRequest,
+  ): Promise<UpdateContractWifiResponse> {
+    const owns = await this.prisma.contract.findFirst({
+      where: { id: contractId, tenantId, customerId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!owns) throw new NotFoundException('Contrato não encontrado');
+    return this.applyWifiUpdate(tenantId, contractId, input, { portalCustomerId: customerId });
+  }
+
+  /**
+   * Núcleo do update de Wi-Fi, compartilhado entre operador e portal. O `actor`
+   * distingue a origem: operador grava `updatedById` + audit padrão; portal não
+   * tem User (grava audit como `portal:<customerId>`).
+   */
+  private async applyWifiUpdate(
+    tenantId: string,
+    contractId: string,
+    input: UpdateContractWifiRequest,
+    actor: { userId?: string; portalCustomerId?: string },
+  ): Promise<UpdateContractWifiResponse> {
     const contract = await this.prisma.contract.findFirst({
       where: { id: contractId, tenantId, deletedAt: null },
       include: {
@@ -1529,13 +1563,14 @@ export class ContractsService {
       deviceDbId = created.id;
     }
 
-    // Persiste SSID em plaintext + senha encrypted no Contract.
+    // Persiste SSID em plaintext + senha encrypted no Contract. `updatedById`
+    // só quando o ator é um User (operador) — no portal não há User pra FK.
     await this.prisma.contract.update({
       where: { id: contract.id },
       data: {
         ssid: input.ssid,
         wifiPasswordEnc: this.crypto.encrypt(input.wifiPassword),
-        updatedById: actorUserId,
+        ...(actor.userId ? { updatedById: actor.userId } : {}),
       },
     });
 
@@ -1581,18 +1616,25 @@ export class ContractsService {
       rebootTaskId = reboot.id;
     }
 
+    const origin = actor.portalCustomerId ? 'portal' : 'operator';
     this.logger.log(
-      `[contracts.updateWifi] contract=${contractId} ssid="${input.ssid}" ` +
+      `[contracts.updateWifi:${origin}] contract=${contractId} ssid="${input.ssid}" ` +
         `setParamsTask=${setParams.id.slice(0, 8)} reboot=${input.reboot}`,
     );
 
     await this.audit.log({
       tenantId,
-      userId: actorUserId,
-      action: 'contracts.wifi.updated',
+      // Senha NUNCA vai no audit. SSID OK (não é PII).
+      ...(actor.portalCustomerId
+        ? {
+            userId: null,
+            actor: `portal:${actor.portalCustomerId}`,
+            action: 'portal.wifi.updated',
+            metadata: { customerId: actor.portalCustomerId },
+          }
+        : { userId: actor.userId, action: 'contracts.wifi.updated' }),
       resource: 'contracts',
       resourceId: contractId,
-      // Senha NUNCA vai no audit. SSID OK (não é PII).
       afterState: { ssid: input.ssid, reboot: input.reboot },
     });
 

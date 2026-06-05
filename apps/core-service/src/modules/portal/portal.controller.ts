@@ -11,6 +11,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Req,
   UseGuards,
@@ -24,7 +25,9 @@ import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { ZodBody } from '../../common/zod.pipe';
 import {
   PortalLoginRequestSchema,
+  UpdateContractWifiRequestSchema,
   type PortalLoginRequest,
+  type UpdateContractWifiRequest,
   type AuthenticatedPrincipal,
 } from '@netx/shared';
 import { PortalAuthService } from './portal-auth.service';
@@ -128,5 +131,35 @@ export class PortalController {
   async invoices(@Req() req: Request) {
     const p = req.portal as PortalPrincipal;
     return this.portal.getInvoices(p.tenantId, p.customerId);
+  }
+
+  /** Status do Wi-Fi do próprio contrato (SSID + se aplicou a última troca). */
+  @Public()
+  @UseGuards(PortalJwtGuard)
+  @Get('contracts/:id/wifi')
+  async contractWifi(@Req() req: Request, @Param('id') id: string) {
+    const p = req.portal as PortalPrincipal;
+    return this.portal.getContractWifi(p.tenantId, p.customerId, id);
+  }
+
+  /**
+   * O assinante troca o próprio Wi-Fi (SSID + senha). Rate-limit agressivo
+   * (5/min/IP) — evita spam de SET_PARAMS na ONT. Reboot nunca é exposto aqui.
+   */
+  @Public()
+  @UseGuards(PortalJwtGuard)
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  @Patch('contracts/:id/wifi')
+  async updateContractWifi(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @ZodBody(UpdateContractWifiRequestSchema) input: UpdateContractWifiRequest,
+  ) {
+    const p = req.portal as PortalPrincipal;
+    // Força reboot=false: o cliente não deve derrubar a própria ONT.
+    return this.portal.updateContractWifi(p.tenantId, p.customerId, id, {
+      ...input,
+      reboot: false,
+    });
   }
 }
