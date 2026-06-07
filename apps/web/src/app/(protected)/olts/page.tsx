@@ -273,11 +273,9 @@ function MigrateOntsModal({ olt, olts, onClose, onMigrated }: MigrateOntsModalPr
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Destinos: outras OLTs da rede própria (Ufinet/ORCHESTRATOR é bloqueada no
-  // backend — migrar polígono exige a API deles).
-  const targets = olts.filter(
-    (o) => o.id !== olt.id && o.providerMode !== 'ORCHESTRATOR',
-  );
+  // Destinos: qualquer outra OLT (inclui Ufinet — útil quando o serviço já foi
+  // adotado no polígono e só falta realinhar a ONT). Migração é só vínculo local.
+  const targets = olts.filter((o) => o.id !== olt.id);
 
   async function handleMigrate() {
     if (!target) return;
@@ -306,7 +304,7 @@ function MigrateOntsModal({ olt, olts, onClose, onMigrated }: MigrateOntsModalPr
             <option value="">{tc('select')}</option>
             {targets.map((o) => (
               <option key={o.id} value={o.id}>
-                {o.name}
+                {o.name} · {o.vendor === 'UFINET' ? 'Ufinet' : o.providerMode}
               </option>
             ))}
           </Select>

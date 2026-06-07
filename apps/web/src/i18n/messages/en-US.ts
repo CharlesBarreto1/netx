@@ -2675,10 +2675,11 @@ const messages = {
       migrate: 'Migrate ONTs',
       migrateTitle: 'Migrate customers to another OLT',
       migrateDesc:
-        'Move the {count} ONT(s) from OLT "{name}" to another OLT. It is just a link change (own network) — it does not drop customers.',
+        'Move the {count} ONT(s) from OLT "{name}" to another OLT. It is just a local link change — it does not drop customers.',
       migrateTarget: 'Target OLT',
-      migrateHelp: 'After migrating, this OLT has no ONTs and can be deleted.',
-      migrateNoTarget: 'No other own-network OLT available as target.',
+      migrateHelp:
+        'Only fixes the local link (which OLT serves it). It does not provision/deprovision on the neutral network — for a Ufinet target, the service must already be adopted/active on the polygon. Afterwards the source OLT has no ONTs and can be deleted.',
+      migrateNoTarget: 'No other OLT available as target.',
       migrateSuccess: '{count} ONT(s) migrated.',
       fieldName: 'Name *',
       fieldModel: 'Model *',

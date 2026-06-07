@@ -314,10 +314,16 @@ export class OltsService {
   }
 
   /**
-   * Migra TODAS as ONTs de uma OLT pra outra (mesma operação). Pra rede própria
-   * (DIRECT/EXTERNAL) é só troca de vínculo lógico — não toca RADIUS (por
-   * pppoeUsername), nem TR-069 (por SN), nem nada físico. Usado pra esvaziar uma
-   * OLT cadastrada errada e então poder excluí-la sem derrubar os clientes.
+   * Migra TODAS as ONTs de uma OLT pra outra (mesma operação). É só troca de
+   * vínculo LOCAL (Ont.oltId) — NUNCA chama a API da Ufinet nem toca RADIUS
+   * (por pppoeUsername) ou TR-069 (por SN). Casos de uso:
+   *   - rede própria (DIRECT/EXTERNAL): OLT cadastrada errada → reaponta os
+   *     clientes pra OLT correta;
+   *   - destino Ufinet (ORCHESTRATOR): a adoção cria o UfinetService no
+   *     polígono mas deixa a Ont na OLT antiga; isto realinha a Ont com o
+   *     serviço já adotado/ativo na rede neutra (não dá alta — assume que o
+   *     serviço já existe lá).
+   * Depois a OLT de origem fica vazia e pode ser excluída.
    */
   async migrateOnts(
     tenantId: string,
@@ -341,15 +347,6 @@ export class OltsService {
     if (!source) throw new NotFoundException('OLT de origem não encontrada');
     if (!target) throw new NotFoundException('OLT de destino não encontrada');
 
-    // Migração lógica só vale pra rede própria. Ufinet (ORCHESTRATOR) tem o
-    // serviço atrelado ao polígono na API deles — mover por aqui divergiria.
-    if (source.providerMode === 'ORCHESTRATOR' || target.providerMode === 'ORCHESTRATOR') {
-      throw new BadRequestException(
-        'Migração automática só pra OLTs de rede própria (DIRECT/EXTERNAL). ' +
-          'OLT Ufinet (ORCHESTRATOR) precisa de tratamento via API da operadora.',
-      );
-    }
-
     const res = await this.prisma.ont.updateMany({
       where: { tenantId, oltId: sourceOltId },
       data: { oltId: targetOltId },
@@ -361,7 +358,12 @@ export class OltsService {
       action: 'olts.onts_migrated',
       resource: 'olts',
       resourceId: sourceOltId,
-      metadata: { targetOltId, targetName: target.name, migrated: res.count },
+      metadata: {
+        targetOltId,
+        targetName: target.name,
+        targetMode: target.providerMode,
+        migrated: res.count,
+      },
     });
     return { migrated: res.count };
   }

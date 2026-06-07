@@ -2697,11 +2697,11 @@ const messages = {
       migrate: 'Migrar ONTs',
       migrateTitle: 'Migrar clientes a otra OLT',
       migrateDesc:
-        'Mover las {count} ONT(s) de la OLT "{name}" a otra OLT. Es solo cambio de vínculo (red propia) — no corta a los clientes.',
+        'Mover las {count} ONT(s) de la OLT "{name}" a otra OLT. Es solo cambio de vínculo local — no corta a los clientes.',
       migrateTarget: 'OLT de destino',
       migrateHelp:
-        'Después de migrar, esta OLT queda sin ONTs y puede eliminarse.',
-      migrateNoTarget: 'No hay otra OLT de red propia disponible como destino.',
+        'Solo corrige el vínculo local (qué OLT atiende). No hace alta/baja en la red neutra — para destino Ufinet, el servicio ya debe estar adoptado/activo en el polígono. Luego la OLT de origen queda sin ONTs y puede eliminarse.',
+      migrateNoTarget: 'No hay otra OLT disponible como destino.',
       migrateSuccess: '{count} ONT(s) migrada(s).',
       fieldName: 'Nombre *',
       fieldModel: 'Modelo *',
