@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
 import { ApiError, apiLogin } from '@/lib/api';
 import { AuthI18nProvider } from '@/lib/auth-i18n-provider';
+import { getSession } from '@/lib/session';
 
 /**
  * Tela de login. Quando o user tem 2FA ativo, o backend devolve 401 com
@@ -35,6 +36,19 @@ function LoginForm() {
   const [needsMfa, setNeedsMfa] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // Login persistente: quem já tem sessão não deve ver a tela de login.
+  // Enquanto checamos (e possivelmente redirecionamos), não pintamos o form
+  // pra evitar flash. Se o token estiver expirado, o interceptor de API faz
+  // refresh ao entrar no app; se o refresh falhar, cai de volta aqui.
+  const [checkingSession, setCheckingSession] = useState(true);
+
+  useEffect(() => {
+    if (getSession()) {
+      router.replace('/dashboard');
+    } else {
+      setCheckingSession(false);
+    }
+  }, [router]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -84,6 +98,11 @@ function LoginForm() {
     } finally {
       setLoading(false);
     }
+  }
+
+  // Sessão ativa → redirecionando pro app; não pinta o form.
+  if (checkingSession) {
+    return <main className="min-h-screen bg-slate-50 dark:bg-slate-900" />;
   }
 
   return (
