@@ -66,6 +66,7 @@ export default function OltsPage() {
   const [testResult, setTestResult] = useState<{ id: string; ok: boolean; msg: string } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Olt | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [migrating, setMigrating] = useState<Olt | null>(null);
 
   if (isLoading) return <PageLoader />;
   const olts = data?.data ?? [];
@@ -135,7 +136,14 @@ export default function OltsPage() {
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
               {olts.map((o) => (
                 <tr key={o.id} className="hover:bg-slate-50 dark:hover:bg-slate-900">
-                  <td className="px-3 py-2 font-medium">{o.name}</td>
+                  <td className="px-3 py-2 font-medium">
+                    {o.name}
+                    {(o.ontsCount ?? 0) > 0 && (
+                      <span className="ml-2 text-xs font-normal text-slate-500">
+                        {t('ontsCount', { count: o.ontsCount ?? 0 })}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2">
                     <span className="text-xs text-slate-500">{o.vendor}</span>{' '}
                     {o.model}
@@ -182,6 +190,15 @@ export default function OltsPage() {
                           {tc('edit')}
                         </Button>
                       )}
+                      {canAdmin && (o.ontsCount ?? 0) > 0 && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setMigrating(o)}
+                        >
+                          {t('migrate')}
+                        </Button>
+                      )}
                       {canAdmin && (
                         <Button
                           size="sm"
@@ -226,7 +243,89 @@ export default function OltsPage() {
         variant="danger"
         loading={deleting}
       />
+
+      {migrating && (
+        <MigrateOntsModal
+          olt={migrating}
+          olts={olts}
+          onClose={() => setMigrating(null)}
+          onMigrated={async () => {
+            setMigrating(null);
+            await mutate();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+interface MigrateOntsModalProps {
+  olt: Olt;
+  olts: Olt[];
+  onClose: () => void;
+  onMigrated: () => void | Promise<void>;
+}
+
+function MigrateOntsModal({ olt, olts, onClose, onMigrated }: MigrateOntsModalProps) {
+  const t = useTranslations('olts.list');
+  const tc = useTranslations('common');
+  const [target, setTarget] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Destinos: outras OLTs da rede própria (Ufinet/ORCHESTRATOR é bloqueada no
+  // backend — migrar polígono exige a API deles).
+  const targets = olts.filter(
+    (o) => o.id !== olt.id && o.providerMode !== 'ORCHESTRATOR',
+  );
+
+  async function handleMigrate() {
+    if (!target) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await oltsApi.migrateOnts(olt.id, target);
+      toast.success(t('migrateSuccess', { count: res.migrated }));
+      await onMigrated();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.friendlyMessage : tc('error'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title={t('migrateTitle')}>
+      <div className="space-y-3">
+        <p className="text-sm text-slate-600 dark:text-slate-300">
+          {t('migrateDesc', { name: olt.name, count: olt.ontsCount ?? 0 })}
+        </p>
+        <div>
+          <Label required>{t('migrateTarget')}</Label>
+          <Select value={target} onChange={(e) => setTarget(e.target.value)}>
+            <option value="">{tc('select')}</option>
+            {targets.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+          </Select>
+          {targets.length === 0 && (
+            <FieldHelp>{t('migrateNoTarget')}</FieldHelp>
+          )}
+        </div>
+        <FieldHelp>{t('migrateHelp')}</FieldHelp>
+        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+        <div className="flex justify-end gap-2 border-t border-slate-200 pt-3 dark:border-slate-700">
+          <Button variant="ghost" onClick={onClose} disabled={busy}>
+            {tc('cancel')}
+          </Button>
+          <Button onClick={handleMigrate} loading={busy} disabled={!target}>
+            {t('migrate')}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

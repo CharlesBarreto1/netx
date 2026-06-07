@@ -38,8 +38,17 @@ import { OltDriverFactory } from './drivers/olt-driver.factory';
 import { buildConnectionContext } from './olt-context.util';
 
 type OltRow = Prisma.OltGetPayload<{
-  include: { pop: { select: { id: true; name: true; code: true } } };
+  include: {
+    pop: { select: { id: true; name: true; code: true } };
+    _count: { select: { onts: true } };
+  };
 }>;
+
+// Include padrão pra todas as leituras de OLT — pop + contagem de ONTs.
+const OLT_INCLUDE = {
+  pop: { select: { id: true, name: true, code: true } },
+  _count: { select: { onts: true } },
+} as const;
 
 function toResponse(o: OltRow): OltResponse {
   return {
@@ -69,6 +78,7 @@ function toResponse(o: OltRow): OltResponse {
     longitude: o.longitude != null ? Number(o.longitude) : null,
     popId: o.popId,
     pop: o.pop,
+    ontsCount: o._count?.onts ?? 0,
     createdAt: o.createdAt.toISOString(),
     updatedAt: o.updatedAt.toISOString(),
   };
@@ -121,7 +131,7 @@ export class OltsService {
           longitude: input.longitude ?? null,
           popId: input.popId ?? null,
         },
-        include: { pop: { select: { id: true, name: true, code: true } } },
+        include: OLT_INCLUDE,
       });
       await this.audit.log({
         tenantId,
@@ -165,7 +175,7 @@ export class OltsService {
         orderBy: { name: 'asc' },
         skip,
         take: q.pageSize,
-        include: { pop: { select: { id: true, name: true, code: true } } },
+        include: OLT_INCLUDE,
       }),
       this.prisma.olt.count({ where }),
     ]);
@@ -178,7 +188,7 @@ export class OltsService {
   async findById(tenantId: string, id: string): Promise<OltResponse> {
     const row = await this.prisma.olt.findFirst({
       where: { id, tenantId, deletedAt: null },
-      include: { pop: { select: { id: true, name: true, code: true } } },
+      include: OLT_INCLUDE,
     });
     if (!row) throw new NotFoundException('OLT não encontrada');
     return toResponse(row);
@@ -256,7 +266,7 @@ export class OltsService {
     const updated = await this.prisma.olt.update({
       where: { id },
       data,
-      include: { pop: { select: { id: true, name: true, code: true } } },
+      include: OLT_INCLUDE,
     });
     await this.audit.log({
       tenantId,
@@ -301,6 +311,59 @@ export class OltsService {
       resourceId: id,
       metadata: { detachedEnclosures: detached.count },
     });
+  }
+
+  /**
+   * Migra TODAS as ONTs de uma OLT pra outra (mesma operação). Pra rede própria
+   * (DIRECT/EXTERNAL) é só troca de vínculo lógico — não toca RADIUS (por
+   * pppoeUsername), nem TR-069 (por SN), nem nada físico. Usado pra esvaziar uma
+   * OLT cadastrada errada e então poder excluí-la sem derrubar os clientes.
+   */
+  async migrateOnts(
+    tenantId: string,
+    actorUserId: string,
+    sourceOltId: string,
+    targetOltId: string,
+  ): Promise<{ migrated: number }> {
+    if (sourceOltId === targetOltId) {
+      throw new BadRequestException('OLT de origem e destino não podem ser a mesma.');
+    }
+    const [source, target] = await Promise.all([
+      this.prisma.olt.findFirst({
+        where: { id: sourceOltId, tenantId, deletedAt: null },
+        select: { id: true, name: true, providerMode: true },
+      }),
+      this.prisma.olt.findFirst({
+        where: { id: targetOltId, tenantId, deletedAt: null },
+        select: { id: true, name: true, providerMode: true },
+      }),
+    ]);
+    if (!source) throw new NotFoundException('OLT de origem não encontrada');
+    if (!target) throw new NotFoundException('OLT de destino não encontrada');
+
+    // Migração lógica só vale pra rede própria. Ufinet (ORCHESTRATOR) tem o
+    // serviço atrelado ao polígono na API deles — mover por aqui divergiria.
+    if (source.providerMode === 'ORCHESTRATOR' || target.providerMode === 'ORCHESTRATOR') {
+      throw new BadRequestException(
+        'Migração automática só pra OLTs de rede própria (DIRECT/EXTERNAL). ' +
+          'OLT Ufinet (ORCHESTRATOR) precisa de tratamento via API da operadora.',
+      );
+    }
+
+    const res = await this.prisma.ont.updateMany({
+      where: { tenantId, oltId: sourceOltId },
+      data: { oltId: targetOltId },
+    });
+
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'olts.onts_migrated',
+      resource: 'olts',
+      resourceId: sourceOltId,
+      metadata: { targetOltId, targetName: target.name, migrated: res.count },
+    });
+    return { migrated: res.count };
   }
 
   /**

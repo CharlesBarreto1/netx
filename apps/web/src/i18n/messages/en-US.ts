@@ -2671,6 +2671,15 @@ const messages = {
       deleteConfirmMessage:
         'OLT "{name}" will be removed. Boxes (CTOs) linked to it will be left without an OLT. It cannot be deleted if it has active ONTs/customers.',
       deleteSuccess: 'OLT "{name}" deleted.',
+      ontsCount: '{count} ONT(s)',
+      migrate: 'Migrate ONTs',
+      migrateTitle: 'Migrate customers to another OLT',
+      migrateDesc:
+        'Move the {count} ONT(s) from OLT "{name}" to another OLT. It is just a link change (own network) — it does not drop customers.',
+      migrateTarget: 'Target OLT',
+      migrateHelp: 'After migrating, this OLT has no ONTs and can be deleted.',
+      migrateNoTarget: 'No other own-network OLT available as target.',
+      migrateSuccess: '{count} ONT(s) migrated.',
       fieldName: 'Name *',
       fieldModel: 'Model *',
       fieldMode: 'Mode *',

@@ -67,6 +67,7 @@ export interface Olt {
   lastError: string | null;
   latitude: number | null;
   longitude: number | null;
+  ontsCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -378,6 +379,9 @@ export const oltsApi = {
       `/v1/olts/${id}/test-connection`,
       {},
     ),
+  /** Migra todas as ONTs desta OLT pra outra (rede própria). */
+  migrateOnts: (id: string, targetOltId: string) =>
+    api.post<{ migrated: number }>(`/v1/olts/${id}/migrate-onts`, { targetOltId }),
 };
 
 // =============================================================================

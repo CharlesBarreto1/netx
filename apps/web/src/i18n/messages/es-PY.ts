@@ -2693,6 +2693,16 @@ const messages = {
       deleteConfirmMessage:
         'La OLT "{name}" será eliminada. Las cajas (CTOs) vinculadas quedan sin OLT. No se puede eliminar si tiene ONTs/clientes activos.',
       deleteSuccess: 'OLT "{name}" eliminada.',
+      ontsCount: '{count} ONT(s)',
+      migrate: 'Migrar ONTs',
+      migrateTitle: 'Migrar clientes a otra OLT',
+      migrateDesc:
+        'Mover las {count} ONT(s) de la OLT "{name}" a otra OLT. Es solo cambio de vínculo (red propia) — no corta a los clientes.',
+      migrateTarget: 'OLT de destino',
+      migrateHelp:
+        'Después de migrar, esta OLT queda sin ONTs y puede eliminarse.',
+      migrateNoTarget: 'No hay otra OLT de red propia disponible como destino.',
+      migrateSuccess: '{count} ONT(s) migrada(s).',
       fieldName: 'Nombre *',
       fieldModel: 'Modelo *',
       fieldMode: 'Modo *',

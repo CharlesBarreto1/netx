@@ -38,6 +38,7 @@ import {
   ListTr069AlertsQuerySchema,
   ListTr069DiagnosticsQuerySchema,
   ListWifiCoverageQuerySchema,
+  MigrateOltOntsRequestSchema,
   OntSwapSchema,
   PingRequestSchema,
   SpeedTestRequestSchema,
@@ -47,6 +48,7 @@ import {
   type FirmwareUpgradeRequest,
   type InstallCustomerRequest,
   type ListOltsQuery,
+  type MigrateOltOntsRequest,
   type ListPendingInstallsQuery,
   type ListTr069AlertsQuery,
   type ListTr069DiagnosticsQuery,
@@ -136,6 +138,21 @@ export class OltsController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     return this.svc.testConnection(user.tenantId, user.sub, id);
+  }
+
+  /**
+   * Migra todas as ONTs desta OLT pra outra (rede própria). Usado pra esvaziar
+   * uma OLT cadastrada errada antes de excluí-la, sem derrubar os clientes.
+   */
+  @Post(':id/migrate-onts')
+  @HttpCode(200)
+  @RequirePermissions('olts.admin')
+  migrateOnts(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(MigrateOltOntsRequestSchema) body: MigrateOltOntsRequest,
+  ) {
+    return this.svc.migrateOnts(user.tenantId, user.sub, id, body.targetOltId);
   }
 }
 

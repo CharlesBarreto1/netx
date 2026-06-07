@@ -128,6 +128,16 @@ export const ListOltsQuerySchema = z.object({
 export type ListOltsQuery = z.infer<typeof ListOltsQuerySchema>;
 
 /**
+ * Migração em massa de ONTs entre OLTs (mesma operação). Usado pra esvaziar
+ * uma OLT cadastrada errada movendo os clientes pra OLT correta — em rede
+ * própria/EXTERNAL é só troca de vínculo lógico (não toca RADIUS/TR-069).
+ */
+export const MigrateOltOntsRequestSchema = z.object({
+  targetOltId: z.string().uuid(),
+});
+export type MigrateOltOntsRequest = z.infer<typeof MigrateOltOntsRequestSchema>;
+
+/**
  * Response — campos sensíveis NUNCA aqui. Em vez de senha, expõe boolean
  * `hasSshPassword` / `hasApiCredentials` pra UI mostrar "configurada / não
  * configurada".
@@ -160,6 +170,8 @@ export interface OltResponse {
   longitude: number | null;
   popId: string | null;
   pop?: { id: string; name: string; code: string | null } | null;
+  /** Nº de ONTs (clientes instalados) vinculadas. Bloqueia exclusão se > 0. */
+  ontsCount?: number;
   createdAt: string;
   updatedAt: string;
 }
