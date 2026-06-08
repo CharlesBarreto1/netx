@@ -48,6 +48,8 @@ export default function StockReportPage() {
   const [city, setCity] = useState('');
   const [onlyComodato, setOnlyComodato] = useState(false);
   const [serial, setSerial] = useState('');
+  const [acquiredFrom, setAcquiredFrom] = useState('');
+  const [acquiredTo, setAcquiredTo] = useState('');
 
   const params: StockReportParams = useMemo(
     () => ({
@@ -57,8 +59,10 @@ export default function StockReportPage() {
       ...(city.trim() ? { city: city.trim() } : {}),
       ...(onlyComodato ? { onlyComodato: true } : {}),
       ...(serial.trim() ? { search: serial.trim() } : {}),
+      ...(acquiredFrom ? { acquiredFrom } : {}),
+      ...(acquiredTo ? { acquiredTo } : {}),
     }),
-    [locationId, productId, status, city, onlyComodato, serial],
+    [locationId, productId, status, city, onlyComodato, serial, acquiredFrom, acquiredTo],
   );
 
   const { data: locations } = useSWR<StockLocation[]>(stockApi.locationsPath(), () =>
@@ -176,6 +180,24 @@ export default function StockReportPage() {
           <Label htmlFor="f-serial">{t('filterSerial')}</Label>
           <Input id="f-serial" value={serial} onChange={(e) => setSerial(e.target.value)} />
         </div>
+        <div>
+          <Label htmlFor="f-from">{t('acquiredFrom')}</Label>
+          <Input
+            id="f-from"
+            type="date"
+            value={acquiredFrom}
+            onChange={(e) => setAcquiredFrom(e.target.value)}
+          />
+        </div>
+        <div>
+          <Label htmlFor="f-to">{t('acquiredTo')}</Label>
+          <Input
+            id="f-to"
+            type="date"
+            value={acquiredTo}
+            onChange={(e) => setAcquiredTo(e.target.value)}
+          />
+        </div>
         <label className="flex items-center gap-2 self-end pb-2 text-sm">
           <input
             type="checkbox"
@@ -228,6 +250,33 @@ export default function StockReportPage() {
                   <span className="ml-2 text-text-muted">{fmtMoney(s.purchaseValue)}</span>
                 </div>
               ))}
+            </div>
+          </section>
+
+          {/* Resumo por cidade */}
+          <section className="space-y-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-text-muted">
+              {t('byCity')}
+            </h2>
+            <div className="overflow-x-auto rounded-md border border-border bg-surface">
+              <table className="min-w-full text-sm">
+                <thead className="bg-surface-muted text-left text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                  <tr>
+                    <th className="px-3 py-2">{t('colCity')}</th>
+                    <th className="px-3 py-2 text-right">{t('colUnits')}</th>
+                    <th className="px-3 py-2 text-right">{t('colValue')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {(report?.byCity ?? []).map((c) => (
+                    <tr key={c.city ?? '__none__'}>
+                      <td className="px-3 py-2">{c.city ?? t('noCity')}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{c.units}</td>
+                      <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(c.purchaseValue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </section>
 

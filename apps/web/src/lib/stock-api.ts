@@ -364,6 +364,8 @@ export interface StockReportParams {
   city?: string;
   onlyComodato?: boolean;
   search?: string;
+  acquiredFrom?: string;
+  acquiredTo?: string;
 }
 
 export interface StockReportItem {
@@ -389,6 +391,7 @@ export interface StockReport {
     purchaseValue: number;
   }>;
   byStatus: Array<{ status: SerialStatus; units: number; purchaseValue: number }>;
+  byCity: Array<{ city: string | null; units: number; purchaseValue: number }>;
   items: StockReportItem[];
   truncated: boolean;
 }

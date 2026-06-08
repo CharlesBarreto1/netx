@@ -93,6 +93,14 @@ export class SerialItemsService {
             },
           }
         : {}),
+      ...(q.acquiredFrom || q.acquiredTo
+        ? {
+            acquisitionDate: {
+              ...(q.acquiredFrom ? { gte: parseDayStart(q.acquiredFrom) } : {}),
+              ...(q.acquiredTo ? { lte: parseDayEnd(q.acquiredTo) } : {}),
+            },
+          }
+        : {}),
     };
 
     const rows = await this.prisma.serialItem.findMany({
@@ -146,13 +154,25 @@ export class SerialItemsService {
       string,
       { status: StockReportItem['status']; units: number; purchaseValue: number }
     >();
+    const byCityMap = new Map<
+      string,
+      { city: string | null; units: number; purchaseValue: number }
+    >();
     let totalUnits = 0;
     let totalPurchaseValue = 0;
 
-    for (const r of data) {
+    for (let idx = 0; idx < data.length; idx++) {
+      const r = data[idx];
       const value = Number(r.acquisitionCost ?? r.product.cost ?? 0);
       totalUnits += 1;
       totalPurchaseValue += value;
+
+      const city = items[idx].city;
+      const cityKey = city ?? '__none__';
+      const c = byCityMap.get(cityKey) ?? { city, units: 0, purchaseValue: 0 };
+      c.units += 1;
+      c.purchaseValue += value;
+      byCityMap.set(cityKey, c);
 
       const p = byProductMap.get(r.productId) ?? {
         productId: r.productId,
@@ -186,6 +206,9 @@ export class SerialItemsService {
         ...s,
         purchaseValue: round2(s.purchaseValue),
       })),
+      byCity: [...byCityMap.values()]
+        .map((c) => ({ ...c, purchaseValue: round2(c.purchaseValue) }))
+        .sort((a, b) => b.units - a.units),
       items: items.map((i) => ({ ...i, purchaseValue: round2(i.purchaseValue) })),
       truncated,
     };
@@ -287,6 +310,15 @@ export class SerialItemsService {
 
     return toResponse(updated);
   }
+}
+
+/** Início do dia pra um YYYY-MM-DD (ou Date completa pra ISO). */
+function parseDayStart(s: string): Date {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T00:00:00.000`) : new Date(s);
+}
+/** Fim do dia pra um YYYY-MM-DD (inclui o dia inteiro no lte). */
+function parseDayEnd(s: string): Date {
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T23:59:59.999`) : new Date(s);
 }
 
 /** Cidade do cliente: prioriza endereço de serviço, depois primário, depois 1º. */

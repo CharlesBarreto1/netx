@@ -72,6 +72,9 @@ export const StockReportQuerySchema = z.object({
   onlyComodato: z.coerce.boolean().optional(),
   /** Busca por serial. */
   search: z.string().max(120).optional(),
+  /** Período de aquisição (data de compra). Aceita YYYY-MM-DD ou ISO. */
+  acquiredFrom: z.string().max(30).optional(),
+  acquiredTo: z.string().max(30).optional(),
 });
 export type StockReportQuery = z.infer<typeof StockReportQuerySchema>;
 
@@ -99,6 +102,8 @@ export interface StockReportResponse {
     purchaseValue: number;
   }>;
   byStatus: Array<{ status: SerialStatus; units: number; purchaseValue: number }>;
+  /** Total por cidade do cliente (null = sem cidade / parado em depósito). */
+  byCity: Array<{ city: string | null; units: number; purchaseValue: number }>;
   items: StockReportItem[];
   /** true se atingiu o teto de linhas (refine os filtros). */
   truncated: boolean;
