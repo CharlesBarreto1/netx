@@ -93,6 +93,7 @@ export default function OsDetailPage() {
   const [busy, setBusy] = useState(false);
   const [oltId, setOltId] = useState('');
   const [serialItemId, setSerialItemId] = useState('');
+  const [selectedOnt, setSelectedOnt] = useState<ComboboxOption | null>(null);
   const [bypass, setBypass] = useState(false);
   const [snGpon, setSnGpon] = useState('');
   const [enclosureId, setEnclosureId] = useState(''); // CTO importada (Ufinet/própria)
@@ -138,6 +139,25 @@ export default function OsDetailPage() {
     },
     [oltId],
   );
+  // ONTs disponíveis em estoque — busca por serial (últimos números) no
+  // Combobox; lista já vem carregada, então filtra client-side.
+  const loadOntOptions = useCallback(
+    async (query: string): Promise<ComboboxOption[]> => {
+      const q = query.trim().toLowerCase();
+      return (serials ?? [])
+        .filter(
+          (s) => !q || `${s.serial} ${s.product.name}`.toLowerCase().includes(q),
+        )
+        .slice(0, 50)
+        .map((s) => ({
+          value: s.id,
+          label: s.serial,
+          sublabel: `${s.product.name} (${s.location.code})`,
+        }));
+    },
+    [serials],
+  );
+
   // Portas da CTO escolhida (status livre/usada) — valida a porta.
   const { data: ports } = useSWR<OpticalPort[]>(
     enclosureId ? opticalApi.portsPath(enclosureId) : null,
@@ -515,17 +535,18 @@ export default function OsDetailPage() {
                 })}
               </Label>
               {!bypass ? (
-                <Select
+                <Combobox
                   value={serialItemId}
-                  onChange={(e) => setSerialItemId(e.target.value)}
-                >
-                  <option value="">{t('detail.ontStockSelect')}</option>
-                  {(serials ?? []).map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.serial} · {s.product.name} ({s.location.code})
-                    </option>
-                  ))}
-                </Select>
+                  selectedOption={selectedOnt}
+                  onChange={(id, opt) => {
+                    setSerialItemId(id);
+                    setSelectedOnt(opt);
+                  }}
+                  loadOptions={loadOntOptions}
+                  placeholder={t('detail.ontStockSelect')}
+                  searchPlaceholder={t('detail.ontSearch')}
+                  emptyText={t('detail.ontSearchEmpty')}
+                />
               ) : (
                 <Input
                   value={snGpon}

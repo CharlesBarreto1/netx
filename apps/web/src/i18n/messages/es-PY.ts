@@ -1241,6 +1241,8 @@ const messages = {
       ont: 'ONT',
       ontSerialLabel: '{label} (serial GPON)',
       ontStockSelect: '— elegí del stock (comodato) —',
+      ontSearch: 'Escribí los últimos números del serial…',
+      ontSearchEmpty: 'Ninguna ONT encontrada en el stock.',
       snGponPlaceholder: 'Serial GPON (ej.: 48575443...)',
       ontBypass: 'ONT fuera del stock (ingresar serial manualmente)',
       boxCto: 'Caja (CTO)',
@@ -2886,6 +2888,8 @@ const messages = {
       ont: {
         heading: 'ONT (stock)',
         stockItem: 'Equipo del stock *',
+        stockSearch: 'Escribí los últimos números del serial…',
+        stockSearchEmpty: 'Ninguna ONT encontrada en el stock.',
         stockEmpty: 'Ningún equipo disponible en stock. Registrá una compra en <code>/stock/purchases</code> o activá el bypass de abajo (debug).',
         stockHelp: 'Solo aparecen productos PATRIMONIALES (ej.: ONT) con estado <code>IN_STOCK</code>. El SN GPON se leerá del serial seleccionado.',
         snGpon: 'SN GPON *',

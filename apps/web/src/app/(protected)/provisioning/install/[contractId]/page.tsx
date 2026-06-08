@@ -73,6 +73,7 @@ export default function InstallPage() {
   // Form state
   const [oltId, setOltId] = useState('');
   const [serialItemId, setSerialItemId] = useState('');
+  const [selectedOnt, setSelectedOnt] = useState<ComboboxOption | null>(null);
   const [allowStockBypass, setAllowStockBypass] = useState(false);
   const [snGpon, setSnGpon] = useState('');
   const [ponFrame, setPonFrame] = useState('0');
@@ -114,6 +115,24 @@ export default function InstallPage() {
   // CTOs atendidas pela OLT escolhida — busca server-side (suporta milhares,
   // o filtro `search` casa em code + locationLabel no backend). O técnico
   // escolhe via Combobox, não digita o id.
+  // ONTs disponíveis em estoque — busca por serial (últimos números) client-side.
+  const loadOntOptions = useCallback(
+    async (query: string): Promise<ComboboxOption[]> => {
+      const q = query.trim().toLowerCase();
+      return (availableSerials ?? [])
+        .filter(
+          (s) => !q || `${s.serial} ${s.product.name}`.toLowerCase().includes(q),
+        )
+        .slice(0, 50)
+        .map((s) => ({
+          value: s.id,
+          label: s.serial,
+          sublabel: `${s.product.name}${s.location?.name ? ` @ ${s.location.name}` : ''}`,
+        }));
+    },
+    [availableSerials],
+  );
+
   const loadCtoOptions = useCallback(
     async (query: string): Promise<ComboboxOption[]> => {
       if (!oltId) return [];
@@ -309,20 +328,19 @@ export default function InstallPage() {
           {!allowStockBypass ? (
             <div>
               <Label htmlFor="serialItemId">{t('ont.stockItem')}</Label>
-              <Select
+              <Combobox
                 id="serialItemId"
-                required
                 value={serialItemId}
-                onChange={(e) => setSerialItemId(e.target.value)}
-              >
-                <option value="">{tc('select')}</option>
-                {(availableSerials ?? []).map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.serial} — {s.product.name}
-                    {s.location?.name ? ` @ ${s.location.name}` : ''}
-                  </option>
-                ))}
-              </Select>
+                selectedOption={selectedOnt}
+                onChange={(id, opt) => {
+                  setSerialItemId(id);
+                  setSelectedOnt(opt);
+                }}
+                loadOptions={loadOntOptions}
+                placeholder={tc('select')}
+                searchPlaceholder={t('ont.stockSearch')}
+                emptyText={t('ont.stockSearchEmpty')}
+              />
               {(availableSerials ?? []).length === 0 && (
                 <p className="mt-1 text-xs text-orange-600 dark:text-orange-400">
                   ⚠️ {t.rich('ont.stockEmpty', {
