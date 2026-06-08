@@ -2292,6 +2292,8 @@ enum SerialStatus {
   IN_TRANSIT   // entre locais
   DEFECTIVE    // com defeito, aguardando RMA/descarte
   WRITTEN_OFF  // baixado contábil
+  SOLD         // vendido (saída por venda)
+  DISCARDED    // inutilizado/sucateado/perda
 }
 
 enum MovementType {

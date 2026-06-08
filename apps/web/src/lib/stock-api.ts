@@ -341,7 +341,70 @@ export const stockApi = {
     api.get<OsConsumptionMovement[]>(`/v1/service-orders/${serviceOrderId}/consumption`),
   addOsConsumption: (serviceOrderId: string, input: AddOsConsumptionInput) =>
     api.post<StockMovement[]>(`/v1/service-orders/${serviceOrderId}/consumption`, input),
+
+  // Serial items (patrimônios) ----------------------------------------------
+  serialItemsPath: (params?: ListSerialItemsParams) =>
+    `/v1/stock/serial-items${qs(params ?? {})}`,
+  listSerialItems: (params?: ListSerialItemsParams) =>
+    api.get<PaginatedData<SerialItem>>(`/v1/stock/serial-items${qs(params ?? {})}`),
+  changeSerialStatus: (id: string, input: ChangeSerialStatusInput) =>
+    api.patch<SerialItem>(`/v1/stock/serial-items/${id}/status`, input),
 };
+
+// =============================================================================
+// SERIAL ITEMS (patrimônios)
+// =============================================================================
+/** Paginação no formato `data` + `pagination` (igual aos demais módulos). */
+export interface PaginatedData<T> {
+  data: T[];
+  pagination: { page: number; pageSize: number; total: number; totalPages: number };
+}
+
+export type SerialStatus =
+  | 'IN_STOCK'
+  | 'ALLOCATED'
+  | 'IN_TRANSIT'
+  | 'DEFECTIVE'
+  | 'WRITTEN_OFF'
+  | 'SOLD'
+  | 'DISCARDED';
+
+/** Status que o operador pode aplicar pela tela de patrimônios. */
+export type SerialStatusTarget =
+  | 'IN_STOCK'
+  | 'DEFECTIVE'
+  | 'WRITTEN_OFF'
+  | 'SOLD'
+  | 'DISCARDED';
+
+export interface SerialItem {
+  id: string;
+  serial: string;
+  status: SerialStatus;
+  product: { id: string; sku: string; name: string; brand: string | null; model: string | null };
+  location: { id: string; name: string } | null;
+  contract: { id: string; code: string | null } | null;
+  acquisitionCost: string | null;
+  acquisitionDate: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ListSerialItemsParams {
+  page?: number;
+  pageSize?: number;
+  search?: string;
+  status?: SerialStatus;
+  productId?: string;
+  locationId?: string;
+}
+
+export interface ChangeSerialStatusInput {
+  status: SerialStatusTarget;
+  reason?: string;
+  locationId?: string;
+}
 
 // =============================================================================
 // FASE 2 — COMODATO + OS CONSUMPTION

@@ -8,12 +8,14 @@ import { ProductsService } from './products.service';
 import { PurchasesService } from './purchases.service';
 import { StockLocationsService } from './stock-locations.service';
 import { StockMovementsService } from './stock-movements.service';
+import { SerialItemsService } from './serial-items.service';
 import { SuppliersService } from './suppliers.service';
 import {
   ComodatoController,
   OsConsumptionController,
   ProductsController,
   PurchasesController,
+  SerialItemsController,
   StockLocationsController,
   StockMovementsController,
   SuppliersController,
@@ -27,6 +29,7 @@ import {
     StockLocationsController,
     PurchasesController,
     StockMovementsController,
+    SerialItemsController,
     ComodatoController,
     OsConsumptionController,
   ],
@@ -36,6 +39,7 @@ import {
     StockLocationsService,
     PurchasesService,
     StockMovementsService,
+    SerialItemsService,
     ComodatoService,
     OsConsumptionService,
   ],

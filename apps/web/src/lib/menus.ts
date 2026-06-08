@@ -185,6 +185,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     labelKey: 'group.stock',
     items: [
       { key: 'stockProducts', href: '/stock/products', labelKey: 'stockProducts', permission: 'stock.read' },
+      { key: 'stockAssets', href: '/stock/assets', labelKey: 'stockAssets', permission: 'stock.read' },
       { key: 'stockSuppliers', href: '/stock/suppliers', labelKey: 'stockSuppliers', permission: 'stock.read' },
       { key: 'stockLocations', href: '/stock/locations', labelKey: 'stockLocations', permission: 'stock.read' },
       { key: 'stockPurchases', href: '/stock/purchases', labelKey: 'stockPurchases', permission: 'stock.purchase.create' },

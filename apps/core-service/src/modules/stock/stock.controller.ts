@@ -14,12 +14,14 @@ import { ProductType } from '@prisma/client';
 import {
   AddOsConsumptionRequestSchema,
   AllocateComodatoRequestSchema,
+  ChangeSerialStatusRequestSchema,
   CreateAdjustmentRequestSchema,
   CreatePurchaseRequestSchema,
   CreateProductRequestSchema,
   CreateStockLocationRequestSchema,
   CreateSupplierRequestSchema,
   CreateStockTransferRequestSchema,
+  ListSerialItemsQuerySchema,
   ListStockMovementsQuerySchema,
   ReturnComodatoRequestSchema,
   SetLocationAccessRequestSchema,
@@ -29,12 +31,14 @@ import {
   type AddOsConsumptionRequest,
   type AllocateComodatoRequest,
   type AuthenticatedPrincipal,
+  type ChangeSerialStatusRequest,
   type CreateAdjustmentRequest,
   type CreatePurchaseRequest,
   type CreateProductRequest,
   type CreateStockLocationRequest,
   type CreateSupplierRequest,
   type CreateStockTransferRequest,
+  type ListSerialItemsQuery,
   type ListStockMovementsQuery,
   type ReturnComodatoRequest,
   type SetLocationAccessRequest,
@@ -52,6 +56,7 @@ import { ProductsService } from './products.service';
 import { PurchasesService } from './purchases.service';
 import { StockLocationsService } from './stock-locations.service';
 import { StockMovementsService } from './stock-movements.service';
+import { SerialItemsService } from './serial-items.service';
 import { SuppliersService } from './suppliers.service';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -348,6 +353,41 @@ export class StockMovementsController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ): Promise<void> {
     await this.movements.reverseMovement(u.tenantId, u.sub, id);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SERIAL ITEMS (patrimônios) — /v1/stock/serial-items
+// ─────────────────────────────────────────────────────────────────────────────
+@ApiTags('stock')
+@ApiBearerAuth()
+@Controller('stock/serial-items')
+export class SerialItemsController {
+  constructor(private readonly serials: SerialItemsService) {}
+
+  /** Lista patrimônios com busca por serial + filtro de status/local/produto. */
+  @Get()
+  @RequirePermissions('stock.read')
+  list(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Query() query: Record<string, string>,
+  ) {
+    const parsed = ListSerialItemsQuerySchema.parse(query) as ListSerialItemsQuery;
+    return this.serials.list(u.tenantId, parsed);
+  }
+
+  /**
+   * Muda o status de um patrimônio: defeito/baixa/venda/inutilização
+   * (descontabiliza) ou reativação (volta ao estoque). Permissão de ajuste.
+   */
+  @Patch(':id/status')
+  @RequirePermissions('stock.adjust')
+  changeStatus(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(ChangeSerialStatusRequestSchema) body: ChangeSerialStatusRequest,
+  ) {
+    return this.serials.changeStatus(u.tenantId, u.sub, id, body);
   }
 }
 
