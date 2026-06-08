@@ -7,6 +7,9 @@ import {
   type ListSerialItemsQuery,
   type Paginated,
   type SerialItemResponse,
+  type StockReportItem,
+  type StockReportQuery,
+  type StockReportResponse,
 } from '@netx/shared';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -59,6 +62,132 @@ export class SerialItemsService {
     return {
       data: rows.map(toResponse),
       pagination: paginationMeta(total, q.page, q.pageSize),
+    };
+  }
+
+  /**
+   * Relatório de estoque/patrimônio: agregados (total de unidades + valor de
+   * compra, por produto e por status) + detalhe item a item, com a cidade do
+   * cliente quando em comodato. Filtros: depósito, produto, status, cidade,
+   * só-comodato, serial. Teto de linhas pra proteger memória.
+   */
+  async report(tenantId: string, q: StockReportQuery): Promise<StockReportResponse> {
+    const CAP = 10_000;
+    const where: Prisma.SerialItemWhereInput = {
+      tenantId,
+      ...(q.locationId ? { locationId: q.locationId } : {}),
+      ...(q.productId ? { productId: q.productId } : {}),
+      ...(q.onlyComodato ? { status: 'ALLOCATED' as PrismaSerialStatus } : {}),
+      ...(q.status ? { status: q.status as PrismaSerialStatus } : {}),
+      ...(q.search?.trim()
+        ? { serial: { contains: q.search.trim(), mode: 'insensitive' } }
+        : {}),
+      ...(q.city?.trim()
+        ? {
+            contract: {
+              customer: {
+                addresses: {
+                  some: { city: { contains: q.city.trim(), mode: 'insensitive' } },
+                },
+              },
+            },
+          }
+        : {}),
+    };
+
+    const rows = await this.prisma.serialItem.findMany({
+      where,
+      take: CAP + 1,
+      orderBy: [{ productId: 'asc' }, { serial: 'asc' }],
+      include: {
+        product: { select: { id: true, sku: true, name: true, cost: true } },
+        location: { select: { name: true } },
+        contract: {
+          select: {
+            code: true,
+            customer: {
+              select: {
+                displayName: true,
+                addresses: {
+                  select: { city: true, type: true, isPrimary: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const truncated = rows.length > CAP;
+    const data = truncated ? rows.slice(0, CAP) : rows;
+
+    const items: StockReportItem[] = data.map((r) => {
+      const purchaseValue = Number(r.acquisitionCost ?? r.product.cost ?? 0);
+      return {
+        id: r.id,
+        serial: r.serial,
+        status: r.status,
+        productSku: r.product.sku,
+        productName: r.product.name,
+        locationName: r.location?.name ?? null,
+        contractCode: r.contract?.code ?? null,
+        customerName: r.contract?.customer?.displayName ?? null,
+        city: pickCity(r.contract?.customer?.addresses ?? []),
+        purchaseValue,
+      };
+    });
+
+    // Agregados.
+    const byProductMap = new Map<
+      string,
+      { productId: string; sku: string; name: string; units: number; purchaseValue: number }
+    >();
+    const byStatusMap = new Map<
+      string,
+      { status: StockReportItem['status']; units: number; purchaseValue: number }
+    >();
+    let totalUnits = 0;
+    let totalPurchaseValue = 0;
+
+    for (const r of data) {
+      const value = Number(r.acquisitionCost ?? r.product.cost ?? 0);
+      totalUnits += 1;
+      totalPurchaseValue += value;
+
+      const p = byProductMap.get(r.productId) ?? {
+        productId: r.productId,
+        sku: r.product.sku,
+        name: r.product.name,
+        units: 0,
+        purchaseValue: 0,
+      };
+      p.units += 1;
+      p.purchaseValue += value;
+      byProductMap.set(r.productId, p);
+
+      const s = byStatusMap.get(r.status) ?? {
+        status: r.status,
+        units: 0,
+        purchaseValue: 0,
+      };
+      s.units += 1;
+      s.purchaseValue += value;
+      byStatusMap.set(r.status, s);
+    }
+
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+
+    return {
+      summary: { totalUnits, totalPurchaseValue: round2(totalPurchaseValue) },
+      byProduct: [...byProductMap.values()]
+        .map((p) => ({ ...p, purchaseValue: round2(p.purchaseValue) }))
+        .sort((a, b) => b.units - a.units),
+      byStatus: [...byStatusMap.values()].map((s) => ({
+        ...s,
+        purchaseValue: round2(s.purchaseValue),
+      })),
+      items: items.map((i) => ({ ...i, purchaseValue: round2(i.purchaseValue) })),
+      truncated,
     };
   }
 
@@ -158,6 +287,17 @@ export class SerialItemsService {
 
     return toResponse(updated);
   }
+}
+
+/** Cidade do cliente: prioriza endereço de serviço, depois primário, depois 1º. */
+function pickCity(
+  addresses: Array<{ city: string; type: string; isPrimary: boolean }>,
+): string | null {
+  if (addresses.length === 0) return null;
+  const service = addresses.find((a) => a.type === 'SERVICE');
+  if (service) return service.city;
+  const primary = addresses.find((a) => a.isPrimary);
+  return (primary ?? addresses[0]).city;
 }
 
 function toResponse(r: SerialRow): SerialItemResponse {

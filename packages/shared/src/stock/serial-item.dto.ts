@@ -59,6 +59,51 @@ export const ChangeSerialStatusRequestSchema = z
   });
 export type ChangeSerialStatusRequest = z.infer<typeof ChangeSerialStatusRequestSchema>;
 
+// ---------------------------------------------------------------------------
+// RELATÓRIO de estoque/patrimônio (agregados + detalhe + export)
+// ---------------------------------------------------------------------------
+export const StockReportQuerySchema = z.object({
+  locationId: z.string().uuid().optional(),
+  productId: z.string().uuid().optional(),
+  status: SerialStatusSchema.optional(),
+  /** Cidade do cliente (comodato), contains case-insensitive. */
+  city: z.string().max(120).optional(),
+  /** Só itens em comodato (ALLOCATED). */
+  onlyComodato: z.coerce.boolean().optional(),
+  /** Busca por serial. */
+  search: z.string().max(120).optional(),
+});
+export type StockReportQuery = z.infer<typeof StockReportQuerySchema>;
+
+export interface StockReportItem {
+  id: string;
+  serial: string;
+  status: SerialStatus;
+  productSku: string;
+  productName: string;
+  locationName: string | null;
+  contractCode: string | null;
+  customerName: string | null;
+  city: string | null;
+  /** Valor de compra unitário (acquisitionCost, fallback custo do produto). */
+  purchaseValue: number;
+}
+
+export interface StockReportResponse {
+  summary: { totalUnits: number; totalPurchaseValue: number };
+  byProduct: Array<{
+    productId: string;
+    sku: string;
+    name: string;
+    units: number;
+    purchaseValue: number;
+  }>;
+  byStatus: Array<{ status: SerialStatus; units: number; purchaseValue: number }>;
+  items: StockReportItem[];
+  /** true se atingiu o teto de linhas (refine os filtros). */
+  truncated: boolean;
+}
+
 export interface SerialItemResponse {
   id: string;
   serial: string;

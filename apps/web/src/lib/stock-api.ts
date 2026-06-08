@@ -349,7 +349,49 @@ export const stockApi = {
     api.get<PaginatedData<SerialItem>>(`/v1/stock/serial-items${qs(params ?? {})}`),
   changeSerialStatus: (id: string, input: ChangeSerialStatusInput) =>
     api.patch<SerialItem>(`/v1/stock/serial-items/${id}/status`, input),
+
+  // Relatório de estoque/patrimônio -----------------------------------------
+  stockReportPath: (params?: StockReportParams) =>
+    `/v1/stock/serial-items/report${qs(params ?? {})}`,
+  stockReport: (params?: StockReportParams) =>
+    api.get<StockReport>(`/v1/stock/serial-items/report${qs(params ?? {})}`),
 };
+
+export interface StockReportParams {
+  locationId?: string;
+  productId?: string;
+  status?: SerialStatus;
+  city?: string;
+  onlyComodato?: boolean;
+  search?: string;
+}
+
+export interface StockReportItem {
+  id: string;
+  serial: string;
+  status: SerialStatus;
+  productSku: string;
+  productName: string;
+  locationName: string | null;
+  contractCode: string | null;
+  customerName: string | null;
+  city: string | null;
+  purchaseValue: number;
+}
+
+export interface StockReport {
+  summary: { totalUnits: number; totalPurchaseValue: number };
+  byProduct: Array<{
+    productId: string;
+    sku: string;
+    name: string;
+    units: number;
+    purchaseValue: number;
+  }>;
+  byStatus: Array<{ status: SerialStatus; units: number; purchaseValue: number }>;
+  items: StockReportItem[];
+  truncated: boolean;
+}
 
 // =============================================================================
 // SERIAL ITEMS (patrimônios)

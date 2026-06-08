@@ -23,6 +23,7 @@ import {
   CreateStockTransferRequestSchema,
   ListSerialItemsQuerySchema,
   ListStockMovementsQuerySchema,
+  StockReportQuerySchema,
   ReturnComodatoRequestSchema,
   SetLocationAccessRequestSchema,
   UpdateProductRequestSchema,
@@ -40,6 +41,7 @@ import {
   type CreateStockTransferRequest,
   type ListSerialItemsQuery,
   type ListStockMovementsQuery,
+  type StockReportQuery,
   type ReturnComodatoRequest,
   type SetLocationAccessRequest,
   type UpdateProductRequest,
@@ -374,6 +376,17 @@ export class SerialItemsController {
   ) {
     const parsed = ListSerialItemsQuerySchema.parse(query) as ListSerialItemsQuery;
     return this.serials.list(u.tenantId, parsed);
+  }
+
+  /** Relatório agregado (totais + por produto/status) + detalhe pra export. */
+  @Get('report')
+  @RequirePermissions('stock.read')
+  report(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Query() query: Record<string, string>,
+  ) {
+    const parsed = StockReportQuerySchema.parse(query) as StockReportQuery;
+    return this.serials.report(u.tenantId, parsed);
   }
 
   /**
