@@ -15,6 +15,7 @@ import {
   type CompleteServiceOrderRequest,
   type CreateServiceOrderRequest,
   type EnRouteServiceOrderRequest,
+  type InstallCustomerResponse,
   type CreateServiceOrderMessageRequest,
   type ListServiceOrdersQuery,
   type Paginated,
@@ -968,6 +969,64 @@ export class ServiceOrdersService {
     return { serviceOrder };
   }
 
+  /**
+   * Etapa 1 do one-touch de INSTALAÇÃO (fluxo de 2 etapas). Provisiona +
+   * consome materiais + salva fotos e MARCA `fieldProvisionedAt`, mas NÃO fecha
+   * a O.S. Mesmo se o provisionamento falhar, não lança — o técnico vê o
+   * resultado e decide trocar/re-tentar a ONT antes de finalizar (etapa 2).
+   */
+  async provisionField(
+    tenantId: string,
+    actorUserId: string,
+    id: string,
+    input: CompleteFieldRequest,
+    opts: { isAdmin?: boolean } = {},
+  ): Promise<{ serviceOrder: ServiceOrderResponse; install: InstallCustomerResponse }> {
+    if (input.mode !== 'INSTALLATION') {
+      throw new ConflictException('Provisionamento em campo é só para O.S de instalação.');
+    }
+    const so = await this.prisma.serviceOrder.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true, contractId: true, status: true, fieldProvisionedAt: true },
+    });
+    if (!so) throw new NotFoundException('O.S não encontrada');
+    if (so.status === PrismaSOStatus.COMPLETED)
+      throw new ConflictException('O.S já finalizada');
+    if (so.status === PrismaSOStatus.CANCELLED)
+      throw new ConflictException('O.S cancelada — reabra antes.');
+    if (so.fieldProvisionedAt) {
+      throw new ConflictException(
+        'Esta O.S já foi provisionada — finalize ou troque a ONT na tela de confirmação.',
+      );
+    }
+
+    const install = await this.provisioning.installCustomer(
+      tenantId,
+      actorUserId,
+      so.contractId,
+      input.install,
+    );
+    // NÃO lança em FAILED — materiais já foram usados em campo e o técnico
+    // precisa cair na confirmação pra trocar/re-tentar a ONT.
+    await this.consumeMaterials(tenantId, actorUserId, id, input.materials, opts.isAdmin);
+    await this.savePhotos(tenantId, actorUserId, id, input.photos);
+    await this.prisma.serviceOrder.update({
+      where: { id },
+      data: { fieldProvisionedAt: new Date() },
+    });
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'service_order.field_provisioned',
+      resource: 'service_orders',
+      resourceId: id,
+      metadata: { contractId: so.contractId, installStatus: install.status },
+    });
+
+    const serviceOrder = await this.findById(tenantId, id);
+    return { serviceOrder, install };
+  }
+
   private async consumeMaterials(
     tenantId: string,
     actorUserId: string,
@@ -1153,6 +1212,7 @@ function toResponse(o: any): ServiceOrderResponse {
     startedAt: o.startedAt?.toISOString() ?? null,
     completedAt: o.completedAt?.toISOString() ?? null,
     cancelledAt: o.cancelledAt?.toISOString() ?? null,
+    fieldProvisionedAt: o.fieldProvisionedAt?.toISOString() ?? null,
     openDescription: o.openDescription,
     closeDescription: o.closeDescription,
     city: o.city,

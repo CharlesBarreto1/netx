@@ -1464,6 +1464,9 @@ model ServiceOrder {
   checkinAt          DateTime?           @map("checkin_at")
   startedAt          DateTime?           @map("started_at")
   completedAt        DateTime?           @map("completed_at")
+  // Etapa 1 do one-touch de instalacao: provisionado em campo, aguardando
+  // o tecnico confirmar online e fechar a O.S (etapa 2). Trava a navegacao.
+  fieldProvisionedAt DateTime?           @map("field_provisioned_at")
   cancelledAt        DateTime?           @map("cancelled_at")
 
   // Descrições

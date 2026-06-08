@@ -394,6 +394,9 @@ export const provisioningApi = {
     api.post<InstallCustomerResponse>(`/v1/provisioning/install/${contractId}`, body),
   swapOnt: (contractId: string, body: OntSwapRequest) =>
     api.post<OntSwapResponse>(`/v1/provisioning/contracts/${contractId}/swap-ont`, body),
+  /** Re-tenta o provisionamento da mesma ONT (re-sync RADIUS + TR-069). */
+  reprovision: (contractId: string) =>
+    api.post<InstallCustomerResponse>(`/v1/provisioning/contracts/${contractId}/reprovision`, {}),
   /** Desfaz a instalação — volta o contrato pra PENDING_INSTALL. */
   deactivateInstall: (contractId: string, returnLocationId: string) =>
     api.post<{ status: string }>(

@@ -1272,10 +1272,31 @@ const messages = {
         'Logs the support visit (materials/photos) and closes the work order, without touching provisioning.',
       helpRetrieval:
         'Collects the equipment back to stock, deprovisions and ends the contract.',
+      provision: 'Provision',
+      swapDone: 'ONT swapped',
+      cancel: 'Cancel',
+    },
+    confirm: {
+      title: 'Confirm the customer is online',
+      subtitle:
+        'Provisioned! Wait for the customer to come online. If the ONT does not connect, swap or retry. Only finalize when everything is OK.',
+      swap: 'Swap ONT',
+      retry: 'Retry',
+      finalize: 'Finalize work order',
+      help: 'Finalizing closes the work order and releases you back to the queue.',
+      swapTitle: 'Swap ONT',
+      swapDesc:
+        'Pick the new ONT from stock and where to return the faulty one. Wi-Fi is reapplied to the new ONT.',
+      swapNewOnt: 'New ONT (stock)',
+      swapReturnLocation: 'Return the old one to',
+      swapWifiPlaceholder: 'At least 8 characters',
     },
     toast: {
       photoSent: 'Photo uploaded',
       completed: 'Work order completed! 🎉',
+      provisioned: 'Provisioned! Confirm the customer is online.',
+      retried: 'Provisioning re-sent.',
+      swapped: 'ONT swapped.',
     },
     errors: {
       generic: 'Error',

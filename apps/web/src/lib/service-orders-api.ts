@@ -5,6 +5,7 @@
  */
 import { api } from './api';
 import type { Paginated } from './crm-types';
+import type { InstallCustomerResponse } from './provisioning-api';
 
 // =============================================================================
 // TYPES
@@ -54,6 +55,7 @@ export interface ServiceOrderResponse {
   startedAt: string | null;
   completedAt: string | null;
   cancelledAt: string | null;
+  fieldProvisionedAt: string | null;
   openDescription: string;
   closeDescription: string | null;
   city: string | null;
@@ -391,6 +393,13 @@ export const serviceOrdersApi = {
   completeField(id: string, input: CompleteFieldInput) {
     return api.post<{ serviceOrder: ServiceOrderResponse }>(
       `/v1/service-orders/${id}/complete-field`,
+      input,
+    );
+  },
+  /** Etapa 1 do one-touch de instalação: provisiona sem fechar a O.S. */
+  provisionField(id: string, input: CompleteFieldInput) {
+    return api.post<{ serviceOrder: ServiceOrderResponse; install: InstallCustomerResponse }>(
+      `/v1/service-orders/${id}/provision-field`,
       input,
     );
   },

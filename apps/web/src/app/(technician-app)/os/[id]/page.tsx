@@ -13,8 +13,8 @@
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { useCallback, useState } from 'react';
-import useSWR from 'swr';
+import { useCallback, useEffect, useState } from 'react';
+import useSWR, { mutate as globalMutate } from 'swr';
 
 import { Button } from '@/components/ui/Button';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
@@ -25,12 +25,18 @@ import {
   Select,
   Textarea,
 } from '@/components/ui/Input';
+import { Modal } from '@/components/ui/Modal';
 import { PageLoader } from '@/components/ui/Spinner';
 import { toast } from '@/components/ui/sonner';
 import { ApiError, api } from '@/lib/api';
 import { opticalApi, type OpticalPort } from '@/lib/optical-api';
-import { stockApi } from '@/lib/stock-api';
+import { stockApi, type StockLocation } from '@/lib/stock-api';
 import { buildMapsNavUrl } from '@/lib/maps';
+import {
+  provisioningApi,
+  type InstallTimelineEvent,
+} from '@/lib/provisioning-api';
+import { radacctApi } from '@/lib/radacct-api';
 import {
   serviceOrdersApi,
   type CompleteFieldInput,
@@ -40,6 +46,7 @@ import {
 } from '@/lib/service-orders-api';
 import { ServiceOrderMessages } from '@/components/service-orders/ServiceOrderMessages';
 import { ServiceOrderAttachments } from '@/components/service-orders/ServiceOrderAttachments';
+import { ContractSessionCard } from '@/components/contracts/ContractSessionCard';
 
 type OltOption = {
   id: string;
@@ -109,6 +116,14 @@ export default function OsDetailPage() {
   const [err, setErr] = useState<string | null>(null);
   const [returnOpen, setReturnOpen] = useState(false);
   const [returnReason, setReturnReason] = useState('');
+  // Fluxo de 2 etapas (instalação): resultado do provisionamento + modais.
+  const [installResult, setInstallResult] = useState<InstallTimelineEvent[] | null>(null);
+  const [swapOpen, setSwapOpen] = useState(false);
+
+  // Modo confirmação: provisionou em campo (etapa 1) e a O.S ainda não fechou.
+  // Trava a tela aqui até o técnico finalizar (etapa 2).
+  const inConfirmation =
+    !!so?.fieldProvisionedAt && so?.status !== 'COMPLETED' && kind === 'INSTALLATION';
 
   const selectedOlt = (olts ?? []).find((o) => o.id === oltId);
   const isUfinet =
@@ -269,8 +284,11 @@ export default function OsDetailPage() {
   }
 
   // ── validação + payload por modo ──
-  function buildPayload(): { payload: CompleteFieldInput } | { error: string } {
-    if (!closeDescription.trim()) return { error: t('errors.closeRequired') };
+  function buildPayload(
+    opts: { requireClose?: boolean } = {},
+  ): { payload: CompleteFieldInput } | { error: string } {
+    const requireClose = opts.requireClose ?? true;
+    if (requireClose && !closeDescription.trim()) return { error: t('errors.closeRequired') };
     for (const m of materials) {
       if (!m.productId || !m.locationId)
         return { error: t('errors.materialsRequired') };
@@ -363,7 +381,10 @@ export default function OsDetailPage() {
   }
 
   async function confirm() {
-    const r = buildPayload();
+    // Instalação = fluxo de 2 etapas: PROVISIONA (sem fechar) e cai na
+    // confirmação. Demais modos seguem one-touch (fecha direto).
+    const isInstall = effectiveMode === 'INSTALLATION';
+    const r = buildPayload({ requireClose: !isInstall });
     if ('error' in r) {
       setErr(r.error);
       return;
@@ -371,7 +392,33 @@ export default function OsDetailPage() {
     setErr(null);
     setBusy(true);
     try {
-      await serviceOrdersApi.completeField(id, r.payload);
+      if (isInstall) {
+        const res = await serviceOrdersApi.provisionField(id, r.payload);
+        setInstallResult(res.install.timeline);
+        toast.success(t('toast.provisioned'));
+        await mutate(); // so.fieldProvisionedAt agora setado → entra na confirmação
+      } else {
+        await serviceOrdersApi.completeField(id, r.payload);
+        toast.success(t('toast.completed'));
+        router.replace('/os');
+      }
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.friendlyMessage : t('errors.finishFailed'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Etapa 2: fecha a O.S e libera o técnico de volta pra fila.
+  async function finalize() {
+    if (!closeDescription.trim()) {
+      setErr(t('errors.closeRequired'));
+      return;
+    }
+    setErr(null);
+    setBusy(true);
+    try {
+      await serviceOrdersApi.complete(id, { closeDescription: closeDescription.trim() });
       toast.success(t('toast.completed'));
       router.replace('/os');
     } catch (e) {
@@ -381,15 +428,45 @@ export default function OsDetailPage() {
     }
   }
 
+  // Re-tentar a MESMA ONT (re-sync RADIUS + TR-069), sem trocar equipamento.
+  async function retry() {
+    if (!so) return;
+    setErr(null);
+    setBusy(true);
+    try {
+      const res = await provisioningApi.reprovision(so.contractId);
+      setInstallResult(res.timeline);
+      toast.success(t('toast.retried'));
+      await globalMutate(radacctApi.sessionPath(so.contractId));
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.friendlyMessage : t('errors.finishFailed'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Bloqueio: enquanto não finalizar a confirmação, avisa antes de sair/fechar.
+  useEffect(() => {
+    if (!inConfirmation) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [inConfirmation]);
+
   if (isLoading || !so) return <PageLoader label={t('loadingOrder')} />;
 
   const KIND_LABEL = t(`kind.${kind}`);
 
   return (
     <div className="space-y-4">
-      <Link href="/os" className="text-sm text-text-subtle hover:text-text">
-        {t('detail.back')}
-      </Link>
+      {!inConfirmation && (
+        <Link href="/os" className="text-sm text-text-subtle hover:text-text">
+          {t('detail.back')}
+        </Link>
+      )}
 
       <header className="rounded-lg border border-border bg-surface p-3">
         <div className="flex items-center justify-between">
@@ -454,8 +531,50 @@ export default function OsDetailPage() {
         </div>
       )}
 
+      {/* ── Confirmação (instalação provisionada, aguardando fechar) ── */}
+      {inConfirmation && (
+        <ProvisionConfirmation
+          contractId={so.contractId}
+          timeline={installResult}
+          closeDescription={closeDescription}
+          setCloseDescription={setCloseDescription}
+          busy={busy}
+          err={err}
+          onRetry={retry}
+          onSwap={() => setSwapOpen(true)}
+          onFinalize={finalize}
+          t={t}
+        />
+      )}
+
+      {swapOpen && (
+        <SwapOntModal
+          loadOntOptions={loadOntOptions}
+          locations={locations ?? []}
+          initialSsid={ssid}
+          onClose={() => setSwapOpen(false)}
+          onSwap={async (payload) => {
+            const res = await provisioningApi.swapOnt(so.contractId, payload);
+            setInstallResult([
+              {
+                action: 'OLT_AUTHORIZE',
+                status: res.status === 'OK' ? 'SUCCESS' : 'FAILED',
+                message: t('detail.swapDone'),
+                durationMs: null,
+                at: new Date().toISOString(),
+                error: null,
+              },
+            ]);
+            setSwapOpen(false);
+            await globalMutate(radacctApi.sessionPath(so.contractId));
+            toast.success(t('toast.swapped'));
+          }}
+          t={t}
+        />
+      )}
+
       {/* ── Form de fechamento (em execução) ── */}
-      {isInProgress && (
+      {isInProgress && !inConfirmation && (
         <section className="space-y-4 rounded-lg border border-border bg-surface p-3">
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm font-bold">
@@ -799,7 +918,9 @@ export default function OsDetailPage() {
               ? t('detail.confirmRetrieval')
               : effectiveMode === 'SUPPORT'
                 ? t('detail.confirmSupport')
-                : t('detail.confirmInstall')}
+                : effectiveMode === 'INSTALLATION'
+                  ? t('detail.provision')
+                  : t('detail.confirmInstall')}
           </Button>
           <FieldHelp>
             {effectiveMode === 'INSTALLATION' && t('detail.helpInstall')}
@@ -861,5 +982,216 @@ export default function OsDetailPage() {
         </div>
       )}
     </div>
+  );
+}
+
+type TFn = ReturnType<typeof useTranslations>;
+
+function eventTone(status: InstallTimelineEvent['status']): string {
+  switch (status) {
+    case 'SUCCESS':
+      return 'text-emerald-600 dark:text-emerald-400';
+    case 'FAILED':
+    case 'TIMEOUT':
+      return 'text-red-600 dark:text-red-400';
+    default:
+      return 'text-amber-600 dark:text-amber-400';
+  }
+}
+
+/**
+ * Tela de confirmação da instalação (etapa 2 do one-touch). O técnico fica
+ * "preso" aqui: vê o cliente subir online, pode trocar/re-tentar a ONT, e só
+ * sai ao Finalizar (que fecha a O.S).
+ */
+function ProvisionConfirmation({
+  contractId,
+  timeline,
+  closeDescription,
+  setCloseDescription,
+  busy,
+  err,
+  onRetry,
+  onSwap,
+  onFinalize,
+  t,
+}: {
+  contractId: string;
+  timeline: InstallTimelineEvent[] | null;
+  closeDescription: string;
+  setCloseDescription: (v: string) => void;
+  busy: boolean;
+  err: string | null;
+  onRetry: () => void;
+  onSwap: () => void;
+  onFinalize: () => void;
+  t: TFn;
+}) {
+  return (
+    <section className="space-y-4 rounded-lg border-2 border-accent bg-surface p-3">
+      <div>
+        <h2 className="text-sm font-bold">{t('confirm.title')}</h2>
+        <p className="mt-1 text-xs text-text-muted">{t('confirm.subtitle')}</p>
+      </div>
+
+      {/* Status online do cliente (atualiza sozinho). */}
+      <ContractSessionCard contractId={contractId} />
+
+      {/* Resultado do provisionamento. */}
+      {timeline && timeline.length > 0 && (
+        <ol className="space-y-1 rounded-md border border-border bg-surface-muted p-2 text-xs">
+          {timeline.map((ev, i) => (
+            <li key={i} className={eventTone(ev.status)}>
+              <span className="font-medium">{ev.status}</span> · {ev.message}
+              {ev.error ? ` — ${ev.error}` : ''}
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {/* Ações de recuperação. */}
+      <div className="grid grid-cols-2 gap-2">
+        <Button variant="outline" onClick={onSwap} disabled={busy}>
+          {t('confirm.swap')}
+        </Button>
+        <Button variant="outline" onClick={onRetry} loading={busy}>
+          {t('confirm.retry')}
+        </Button>
+      </div>
+
+      <div>
+        <Label htmlFor="close-confirm" required>
+          {t('detail.closeDescription')}
+        </Label>
+        <Textarea
+          id="close-confirm"
+          rows={3}
+          value={closeDescription}
+          onChange={(e) => setCloseDescription(e.target.value)}
+        />
+      </div>
+
+      {err && (
+        <div className="rounded-md border border-red-300 bg-red-50 p-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+          {err}
+        </div>
+      )}
+
+      <Button onClick={onFinalize} loading={busy} className="w-full">
+        {t('confirm.finalize')}
+      </Button>
+      <FieldHelp>{t('confirm.help')}</FieldHelp>
+    </section>
+  );
+}
+
+interface SwapPayload {
+  newSerialItemId: string;
+  returnLocationId: string;
+  ssid: string;
+  wifiPassword: string;
+}
+
+/** Modal de troca de ONT na confirmação: nova ONT (busca) + devolução + Wi-Fi. */
+function SwapOntModal({
+  loadOntOptions,
+  locations,
+  initialSsid,
+  onClose,
+  onSwap,
+  t,
+}: {
+  loadOntOptions: (q: string) => Promise<ComboboxOption[]>;
+  locations: StockLocation[];
+  initialSsid: string;
+  onClose: () => void;
+  onSwap: (payload: SwapPayload) => Promise<void>;
+  t: TFn;
+}) {
+  const [serialItemId, setSerialItemId] = useState('');
+  const [selected, setSelected] = useState<ComboboxOption | null>(null);
+  const [returnLocationId, setReturnLocationId] = useState('');
+  const [ssid, setSsid] = useState(initialSsid);
+  const [wifiPassword, setWifiPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const valid =
+    !!serialItemId && !!returnLocationId && ssid.trim().length >= 1 && wifiPassword.length >= 8;
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!valid) return;
+    setError(null);
+    setBusy(true);
+    try {
+      await onSwap({
+        newSerialItemId: serialItemId,
+        returnLocationId,
+        ssid: ssid.trim(),
+        wifiPassword,
+      });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title={t('confirm.swapTitle')}>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <p className="text-xs text-text-muted">{t('confirm.swapDesc')}</p>
+        <div>
+          <Label required>{t('confirm.swapNewOnt')}</Label>
+          <Combobox
+            value={serialItemId}
+            selectedOption={selected}
+            onChange={(idv, opt) => {
+              setSerialItemId(idv);
+              setSelected(opt);
+            }}
+            loadOptions={loadOntOptions}
+            placeholder={t('detail.ontStockSelect')}
+            searchPlaceholder={t('detail.ontSearch')}
+            emptyText={t('detail.ontSearchEmpty')}
+          />
+        </div>
+        <div>
+          <Label required>{t('confirm.swapReturnLocation')}</Label>
+          <Select value={returnLocationId} onChange={(e) => setReturnLocationId(e.target.value)} required>
+            <option value="">{t('detail.ontStockSelect')}</option>
+            {locations.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div>
+          <Label required>SSID</Label>
+          <Input value={ssid} onChange={(e) => setSsid(e.target.value)} maxLength={32} required />
+        </div>
+        <div>
+          <Label required>{t('detail.wifiPassword')}</Label>
+          <Input
+            value={wifiPassword}
+            onChange={(e) => setWifiPassword(e.target.value)}
+            minLength={8}
+            maxLength={63}
+            required
+            placeholder={t('confirm.swapWifiPlaceholder')}
+          />
+        </div>
+        {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+        <div className="flex justify-end gap-2 border-t border-border pt-3">
+          <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>
+            {t('detail.cancel')}
+          </Button>
+          <Button type="submit" loading={busy} disabled={!valid}>
+            {t('confirm.swap')}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

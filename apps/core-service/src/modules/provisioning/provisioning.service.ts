@@ -597,6 +597,108 @@ export class ProvisioningService {
   }
 
   /**
+   * Re-tentar o provisionamento da MESMA ONT (sem trocar equipamento): re-sync
+   * RADIUS (AUTHORIZE) + re-enfileira o Wi-Fi via TR-069, usando o estado atual
+   * do contrato/ONT. Usado na confirmação da O.S quando o cliente não subiu mas
+   * a ONT é a certa (ex.: ainda não fez Inform / RADIUS não aplicou).
+   */
+  async reprovisionContract(
+    tenantId: string,
+    actorUserId: string,
+    contractId: string,
+  ): Promise<InstallCustomerResponse> {
+    const contract = await this.prisma.contract.findFirst({
+      where: { id: contractId, tenantId, deletedAt: null },
+      include: { ont: { include: { olt: true } } },
+    });
+    if (!contract) throw new NotFoundException('Contrato não encontrado');
+    if (!contract.ont) {
+      throw new BadRequestException('Contrato sem ONT — provisione primeiro.');
+    }
+
+    const timeline: InstallTimelineEvent[] = [];
+    const at = (): string => new Date().toISOString();
+    const errMsg = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
+    // RADIUS — re-enfileira AUTHORIZE pro identificador atual.
+    try {
+      await this.radius.enqueueSync(contract, 'Re-tentar provisionamento (O.S)');
+      timeline.push({
+        action: 'RADIUS_ENQUEUE',
+        status: 'SUCCESS',
+        message: 'RADIUS re-enfileirado (AUTHORIZE)',
+        durationMs: null,
+        at: at(),
+        error: null,
+      });
+    } catch (err) {
+      timeline.push({
+        action: 'RADIUS_ENQUEUE',
+        status: 'FAILED',
+        message: 'RADIUS não re-enfileirado',
+        durationMs: null,
+        at: at(),
+        error: errMsg(err),
+      });
+    }
+
+    // TR-069 — re-aplica Wi-Fi (SSID + senha) nas 2 bandas.
+    try {
+      const password = contract.wifiPasswordEnc
+        ? this.crypto.decrypt(contract.wifiPasswordEnc)
+        : null;
+      if (contract.ssid && password) {
+        const { taskId } = await this.tr069.enqueueSetWifi(
+          tenantId,
+          contract.ont.id,
+          contractId,
+          contract.ont.snGpon,
+          {
+            ssid: contract.ssid,
+            password,
+            bothBands: true,
+            wifiBandMode: contract.ont.wifiBandMode,
+          },
+        );
+        timeline.push({
+          action: 'TR069_TASK_ENQUEUE',
+          status: 'SUCCESS',
+          message: `Wi-Fi re-enfileirado pro ACS — task ${taskId.slice(0, 8)}`,
+          durationMs: null,
+          at: at(),
+          error: null,
+        });
+      }
+    } catch (err) {
+      timeline.push({
+        action: 'TR069_TASK_ENQUEUE',
+        status: 'FAILED',
+        message: 'Wi-Fi não re-enfileirado',
+        durationMs: null,
+        at: at(),
+        error: errMsg(err),
+      });
+    }
+
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'provisioning.reprovisioned',
+      resource: 'contracts',
+      resourceId: contractId,
+      metadata: { ontId: contract.ont.id },
+    });
+
+    return {
+      contractId,
+      ontId: contract.ont.id,
+      status: 'OK',
+      timeline,
+      pollUrl: `/v1/provisioning/onts/${contract.ont.id}/status`,
+    };
+  }
+
+  /**
    * Troca de ONT (O.S de suporte). Devolve a ONT antiga ao estoque e provisiona
    * a nova: Ufinet via "Cambio de ONT" (CHANGE_RESOURCE, assíncrono); rede
    * própria via deauthorize + re-install. TR-069 sempre re-cadastra device+Wi-Fi.

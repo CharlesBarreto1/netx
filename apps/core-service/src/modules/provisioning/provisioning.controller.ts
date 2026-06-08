@@ -204,6 +204,21 @@ export class ProvisioningController {
   }
 
   /**
+   * Re-tenta o provisionamento da MESMA ONT (re-sync RADIUS + re-enfileira Wi-Fi
+   * via TR-069), sem trocar equipamento. Usado na confirmação da O.S quando o
+   * cliente ainda não subiu mas a ONT é a certa.
+   */
+  @Post('contracts/:contractId/reprovision')
+  @HttpCode(200)
+  @RequirePermissions('provisioning.write')
+  reprovision(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('contractId', new ParseUUIDPipe()) contractId: string,
+  ) {
+    return this.svc.reprovisionContract(user.tenantId, user.sub, contractId);
+  }
+
+  /**
    * Desfaz uma instalação feita errada — volta o contrato pra PENDING_INSTALL
    * (sem cancelar). Devolve o comodato, desautoriza na OLT/Ufinet, apaga a ONT
    * e o device TR-069 e limpa o RADIUS.

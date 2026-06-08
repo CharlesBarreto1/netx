@@ -258,6 +258,23 @@ export class ServiceOrdersController {
     });
   }
 
+  /**
+   * Etapa 1 do one-touch de instalação (fluxo de 2 etapas): provisiona +
+   * materiais + fotos, mas NÃO fecha a O.S. O técnico cai na confirmação pra
+   * conferir o cliente online (e trocar/re-tentar a ONT) antes de finalizar.
+   */
+  @Post(':id/provision-field')
+  @RequirePermissions('service_orders.write')
+  provisionField(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(CompleteFieldRequestSchema) body: CompleteFieldRequest,
+  ) {
+    return this.orders.provisionField(user.tenantId, user.sub, id, body, {
+      isAdmin: user.permissions.includes('stock.admin'),
+    });
+  }
+
   @Delete(':id')
   @HttpCode(204)
   @RequirePermissions('service_orders.delete')

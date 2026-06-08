@@ -389,6 +389,12 @@ export interface ServiceOrderResponse {
   startedAt: string | null;
   completedAt: string | null;
   cancelledAt: string | null;
+  /**
+   * Etapa 1 do one-touch de instalação concluída: provisionado em campo,
+   * aguardando o técnico confirmar online e fechar a O.S. Quando preenchido e
+   * status != COMPLETED, a tela do técnico abre direto na confirmação.
+   */
+  fieldProvisionedAt: string | null;
 
   openDescription: string;
   closeDescription: string | null;

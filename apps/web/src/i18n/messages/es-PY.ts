@@ -1293,10 +1293,31 @@ const messages = {
         'Registra la atención (materiales/fotos) y cierra la O.S, sin tocar el aprovisionamiento.',
       helpRetrieval:
         'Recoge el equipo al stock, desaprovisiona y cierra el contrato.',
+      provision: 'Aprovisionar',
+      swapDone: 'ONT cambiada',
+      cancel: 'Cancelar',
+    },
+    confirm: {
+      title: 'Confirmá el cliente en línea',
+      subtitle:
+        '¡Aprovisionado! Esperá que el cliente suba en línea. Si la ONT no conecta, cambiala o reintentá. Finalizá solo cuando esté todo bien.',
+      swap: 'Cambiar ONT',
+      retry: 'Reintentar',
+      finalize: 'Finalizar O.S',
+      help: 'Finalizar cierra la O.S y te libera de vuelta a la cola.',
+      swapTitle: 'Cambiar ONT',
+      swapDesc:
+        'Elegí la nueva ONT del stock y dónde devolver la defectuosa. El Wi-Fi se reaplica en la nueva ONT.',
+      swapNewOnt: 'Nueva ONT (stock)',
+      swapReturnLocation: 'Devolver la anterior en',
+      swapWifiPlaceholder: 'Mínimo 8 caracteres',
     },
     toast: {
       photoSent: 'Foto enviada',
       completed: '¡O.S finalizada! 🎉',
+      provisioned: '¡Aprovisionado! Confirmá el cliente en línea.',
+      retried: 'Aprovisionamiento reenviado.',
+      swapped: 'ONT cambiada.',
     },
     errors: {
       generic: 'Error',
