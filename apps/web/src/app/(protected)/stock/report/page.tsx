@@ -15,6 +15,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Input, Label, Select } from '@/components/ui/Input';
 import { PageLoader } from '@/components/ui/Spinner';
+import { SerialHistoryModal } from '@/components/stock/SerialHistoryModal';
 import { useFormatMoney } from '@/lib/use-money';
 import {
   stockApi,
@@ -50,6 +51,7 @@ export default function StockReportPage() {
   const [serial, setSerial] = useState('');
   const [acquiredFrom, setAcquiredFrom] = useState('');
   const [acquiredTo, setAcquiredTo] = useState('');
+  const [historyId, setHistoryId] = useState<string | null>(null);
 
   const params: StockReportParams = useMemo(
     () => ({
@@ -338,7 +340,15 @@ export default function StockReportPage() {
                   ) : (
                     (report?.items ?? []).map((i) => (
                       <tr key={i.id}>
-                        <td className="px-3 py-2 font-mono">{i.serial}</td>
+                        <td className="px-3 py-2 font-mono">
+                          <button
+                            type="button"
+                            onClick={() => setHistoryId(i.id)}
+                            className="text-primary hover:underline"
+                          >
+                            {i.serial}
+                          </button>
+                        </td>
                         <td className="px-3 py-2">{i.productName}</td>
                         <td className="px-3 py-2">
                           <Badge tone={STATUS_TONE[i.status]}>{statusLabel(i.status)}</Badge>
@@ -362,6 +372,10 @@ export default function StockReportPage() {
             </div>
           </section>
         </>
+      )}
+
+      {historyId && (
+        <SerialHistoryModal serialItemId={historyId} onClose={() => setHistoryId(null)} />
       )}
     </div>
   );

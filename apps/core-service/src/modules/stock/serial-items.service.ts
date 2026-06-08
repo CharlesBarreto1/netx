@@ -6,6 +6,8 @@ import {
   type ChangeSerialStatusRequest,
   type ListSerialItemsQuery,
   type Paginated,
+  type SerialHistoryEvent,
+  type SerialHistoryResponse,
   type SerialItemResponse,
   type StockReportItem,
   type StockReportQuery,
@@ -214,6 +216,76 @@ export class SerialItemsService {
     };
   }
 
+  /**
+   * Histórico (timeline) do equipamento a partir do kardex (StockMovement):
+   * compra/NF, transferências, comodato, retorno, ajustes, baixa — com data e
+   * usuário. Os pares TRANSFER_OUT+TRANSFER_IN viram um único evento "de X p/ Y".
+   */
+  async history(tenantId: string, serialId: string): Promise<SerialHistoryResponse> {
+    const item = await this.prisma.serialItem.findFirst({
+      where: { id: serialId, tenantId },
+      select: { serial: true, status: true, product: { select: { sku: true, name: true } } },
+    });
+    if (!item) throw new NotFoundException('Patrimônio não encontrado');
+
+    const movs = await this.prisma.stockMovement.findMany({
+      where: { tenantId, serialItemId: serialId },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        createdBy: { select: { firstName: true, lastName: true, email: true } },
+        fromLocation: { select: { name: true } },
+        toLocation: { select: { name: true } },
+        purchase: { select: { invoiceNumber: true, supplier: { select: { name: true } } } },
+        contract: { select: { code: true, customer: { select: { displayName: true } } } },
+      },
+    });
+
+    type MovRow = (typeof movs)[number];
+    const toEvent = (
+      m: MovRow,
+      type: SerialHistoryEvent['type'],
+      override?: { toLocation?: string | null },
+    ): SerialHistoryEvent => ({
+      id: m.id,
+      type,
+      date: m.createdAt.toISOString(),
+      user: userName(m.createdBy),
+      fromLocation: m.fromLocation?.name ?? null,
+      toLocation: override?.toLocation ?? m.toLocation?.name ?? null,
+      supplier: m.purchase?.supplier?.name ?? null,
+      invoiceNumber: m.purchase?.invoiceNumber ?? null,
+      contractCode: m.contract?.code ?? null,
+      customerName: m.contract?.customer?.displayName ?? null,
+      notes: m.notes ?? null,
+    });
+
+    const events: SerialHistoryEvent[] = [];
+    let pendingOut: MovRow | null = null;
+    for (const m of movs) {
+      if (m.type === 'TRANSFER_OUT') {
+        pendingOut = m;
+        continue;
+      }
+      if (m.type === 'TRANSFER_IN' && pendingOut) {
+        events.push(toEvent(pendingOut, 'TRANSFER', { toLocation: m.toLocation?.name ?? null }));
+        pendingOut = null;
+        continue;
+      }
+      events.push(toEvent(m, m.type as SerialHistoryEvent['type']));
+    }
+    if (pendingOut) events.push(toEvent(pendingOut, 'TRANSFER'));
+
+    // Reordena por data (o pareamento pode ter deslocado a transferência).
+    events.sort((a, b) => a.date.localeCompare(b.date));
+
+    return {
+      serial: item.serial,
+      status: item.status,
+      product: { sku: item.product.sku, name: item.product.name },
+      events,
+    };
+  }
+
   async changeStatus(
     tenantId: string,
     actorUserId: string,
@@ -310,6 +382,15 @@ export class SerialItemsService {
 
     return toResponse(updated);
   }
+}
+
+/** Nome legível do usuário (nome completo, fallback email). */
+function userName(
+  u: { firstName: string | null; lastName: string | null; email: string } | null,
+): string | null {
+  if (!u) return null;
+  const full = `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim();
+  return full || u.email;
 }
 
 /** Início do dia pra um YYYY-MM-DD (ou Date completa pra ISO). */

@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Input, Label, Select, Textarea } from '@/components/ui/Input';
 import { PageLoader } from '@/components/ui/Spinner';
+import { SerialHistoryModal } from '@/components/stock/SerialHistoryModal';
 import { ApiError } from '@/lib/api';
 import { hasPermission } from '@/lib/session';
 import {
@@ -67,6 +68,7 @@ export default function StockAssetsPage() {
   );
   const canAdjust = hasPermission('stock.adjust');
   const [editing, setEditing] = useState<SerialItem | null>(null);
+  const [historyId, setHistoryId] = useState<string | null>(null);
 
   const statusLabel = (s: SerialStatus) => t(`status.${s}`);
 
@@ -135,7 +137,16 @@ export default function StockAssetsPage() {
               ) : (
                 (data?.data ?? []).map((it) => (
                   <tr key={it.id}>
-                    <td className="px-3 py-2 font-mono">{it.serial}</td>
+                    <td className="px-3 py-2 font-mono">
+                      <button
+                        type="button"
+                        onClick={() => setHistoryId(it.id)}
+                        className="text-primary hover:underline"
+                        title={t('viewHistory')}
+                      >
+                        {it.serial}
+                      </button>
+                    </td>
                     <td className="px-3 py-2">
                       <div className="font-medium">{it.product.name}</div>
                       <div className="text-xs text-text-muted">{it.product.sku}</div>
@@ -188,6 +199,10 @@ export default function StockAssetsPage() {
             await mutate();
           }}
         />
+      )}
+
+      {historyId && (
+        <SerialHistoryModal serialItemId={historyId} onClose={() => setHistoryId(null)} />
       )}
     </div>
   );

@@ -389,6 +389,16 @@ export class SerialItemsController {
     return this.serials.report(u.tenantId, parsed);
   }
 
+  /** Histórico (timeline) do equipamento: compra, transferências, comodato… */
+  @Get(':id/history')
+  @RequirePermissions('stock.read')
+  history(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.serials.history(u.tenantId, id);
+  }
+
   /**
    * Muda o status de um patrimônio: defeito/baixa/venda/inutilização
    * (descontabiliza) ou reativação (volta ao estoque). Permissão de ajuste.

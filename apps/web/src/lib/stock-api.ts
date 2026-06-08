@@ -355,7 +355,45 @@ export const stockApi = {
     `/v1/stock/serial-items/report${qs(params ?? {})}`,
   stockReport: (params?: StockReportParams) =>
     api.get<StockReport>(`/v1/stock/serial-items/report${qs(params ?? {})}`),
+
+  // Histórico (timeline) de um patrimônio -----------------------------------
+  serialHistoryPath: (id: string) => `/v1/stock/serial-items/${id}/history`,
+  serialHistory: (id: string) =>
+    api.get<SerialHistory>(`/v1/stock/serial-items/${id}/history`),
 };
+
+export type SerialHistoryEventType =
+  | 'PURCHASE'
+  | 'PURCHASE_RETURN'
+  | 'TRANSFER'
+  | 'COMODATO_OUT'
+  | 'COMODATO_RETURN'
+  | 'OS_CONSUMPTION'
+  | 'ADJUSTMENT_IN'
+  | 'ADJUSTMENT_OUT'
+  | 'SALE'
+  | 'SALE_RETURN';
+
+export interface SerialHistoryEvent {
+  id: string;
+  type: SerialHistoryEventType;
+  date: string;
+  user: string | null;
+  fromLocation: string | null;
+  toLocation: string | null;
+  supplier: string | null;
+  invoiceNumber: string | null;
+  contractCode: string | null;
+  customerName: string | null;
+  notes: string | null;
+}
+
+export interface SerialHistory {
+  serial: string;
+  product: { sku: string; name: string };
+  status: SerialStatus;
+  events: SerialHistoryEvent[];
+}
 
 export interface StockReportParams {
   locationId?: string;

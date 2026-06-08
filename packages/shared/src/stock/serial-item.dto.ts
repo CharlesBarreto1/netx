@@ -109,6 +109,44 @@ export interface StockReportResponse {
   truncated: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// HISTÓRICO do equipamento (timeline a partir do kardex)
+// ---------------------------------------------------------------------------
+export type SerialHistoryEventType =
+  | 'PURCHASE'
+  | 'PURCHASE_RETURN'
+  | 'TRANSFER'
+  | 'COMODATO_OUT'
+  | 'COMODATO_RETURN'
+  | 'OS_CONSUMPTION'
+  | 'ADJUSTMENT_IN'
+  | 'ADJUSTMENT_OUT'
+  | 'SALE'
+  | 'SALE_RETURN';
+
+export interface SerialHistoryEvent {
+  id: string;
+  type: SerialHistoryEventType;
+  date: string;
+  /** Nome do usuário que fez a operação. */
+  user: string | null;
+  fromLocation: string | null;
+  toLocation: string | null;
+  supplier: string | null;
+  /** Número da NF/fatura (compra). */
+  invoiceNumber: string | null;
+  contractCode: string | null;
+  customerName: string | null;
+  notes: string | null;
+}
+
+export interface SerialHistoryResponse {
+  serial: string;
+  product: { sku: string; name: string };
+  status: SerialStatus;
+  events: SerialHistoryEvent[];
+}
+
 export interface SerialItemResponse {
   id: string;
   serial: string;
