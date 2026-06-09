@@ -236,9 +236,21 @@ export class UfinetClientService {
     return this.request<UfinetInventoryService>(conn, 'GET', `ServiceInventory/service/${serviceId}`);
   }
 
-  /** GET ServiceInventory/service — lista. */
-  listServices(conn: UfinetConnection): Promise<UfinetInventoryService[]> {
-    return this.request<UfinetInventoryService[]>(conn, 'GET', 'ServiceInventory/service');
+  /**
+   * GET ServiceInventory/service — lista. Quando a OLT tem `inventoryFilterParam`
+   * configurado e passamos `externalServiceId`, filtra no SERVIDOR
+   * (`?<param>=<id>`) e a Ufinet devolve só aquele bundle — em vez do inventário
+   * inteiro do operador (inviável com milhares de clientes).
+   */
+  listServices(
+    conn: UfinetConnection,
+    externalServiceId?: string,
+  ): Promise<UfinetInventoryService[]> {
+    let path = 'ServiceInventory/service';
+    if (conn.inventoryFilterParam && externalServiceId) {
+      path += `?${encodeURIComponent(conn.inventoryFilterParam)}=${encodeURIComponent(externalServiceId)}`;
+    }
+    return this.request<UfinetInventoryService[]>(conn, 'GET', path);
   }
 
   /** PATCH ServiceInventory/service/{id} — confirmar ONT / sincronizar. */

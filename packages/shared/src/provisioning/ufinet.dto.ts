@@ -104,6 +104,16 @@ export const UfinetOltConfigSchema = z.object({
    * confirmação. Por-OLT, pra atender operação que não quer compartilhar PII.
    */
   minimalProvidePayload: z.boolean().default(false),
+  /**
+   * Nome do query param que a Ufinet aceita pra FILTRAR o ServiceInventory por
+   * externalServiceId (ex.: "externalServiceId"). Sem isso, o NetX baixa o
+   * inventário INTEIRO do operador em cada GET e filtra no cliente — inviável
+   * em escala (20k+ clientes). Quando setado, o GET vira
+   * `ServiceInventory/service?<param>=<externalId>` e a Ufinet devolve só o
+   * bundle daquele contrato. Opt-in por-OLT: validar antes que a Ufinet honra
+   * o filtro (o NetX mantém o filtro client-side como rede de segurança).
+   */
+  inventoryFilterParam: z.string().max(64).nullish(),
 });
 export type UfinetOltConfig = z.infer<typeof UfinetOltConfigSchema>;
 

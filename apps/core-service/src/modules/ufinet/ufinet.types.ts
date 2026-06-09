@@ -32,6 +32,12 @@ export interface UfinetConnection {
   bandwidthProfileId: string;
   /** Alta enxuta: omite PII (contato + geometria) do payload de provide. */
   minimalProvidePayload: boolean;
+  /**
+   * Query param pra filtrar o ServiceInventory por externalServiceId no servidor
+   * (ex.: "externalServiceId"). Null = baixa o inventário inteiro e filtra no
+   * cliente (default; inviável em escala). Ver UfinetOltConfig.
+   */
+  inventoryFilterParam: string | null;
 }
 
 export interface UfinetErrorMessage {

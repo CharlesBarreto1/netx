@@ -124,6 +124,7 @@ export class UfinetOrdersService {
       bandwidthProfile: config.bandwidthProfile,
       bandwidthProfileId: config.bandwidthProfileId,
       minimalProvidePayload: config.minimalProvidePayload,
+      inventoryFilterParam: config.inventoryFilterParam ?? null,
     };
   }
 
@@ -1275,9 +1276,13 @@ export class UfinetOrdersService {
     conn: UfinetConnection,
     externalId: string,
   ): Promise<Map<string, UfinetInventoryService>> {
-    const all = await this.client.listServices(conn);
+    // Filtra no SERVIDOR quando a OLT tem inventoryFilterParam configurado —
+    // a Ufinet devolve só este bundle (essencial em escala). Senão, baixa tudo.
+    const all = await this.client.listServices(conn, externalId);
     const map = new Map<string, UfinetInventoryService>();
     for (const s of all) {
+      // Rede de segurança: mesmo com filtro no servidor, confirma o externalId
+      // (caso a Ufinet ignore o param e devolva o inventário inteiro).
       if (s.externalServiceId !== externalId) continue;
       const spec = s.serviceSpecification?.id;
       if (spec) map.set(String(spec), s);
