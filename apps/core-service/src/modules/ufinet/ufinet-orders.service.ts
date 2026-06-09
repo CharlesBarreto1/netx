@@ -906,6 +906,14 @@ export class UfinetOrdersService {
     if (state === UFINET_STATE.FAILED) {
       return this.fail(svc, this.errText(order) ?? 'alta falhou (state=Failed)');
     }
+    // O bundle (Datos/Fiber/HSD/Res Pon Access) só aparece no inventário quando
+    // a Ufinet COMEÇA a aprovisionar (state=inprogress). Enquanto 'initial', NÃO
+    // varremos o ServiceInventory inteiro — a Ufinet não filtra por externalId,
+    // então cada varredura baixa o inventário do operador todo (caríssimo em
+    // escala). Só a consulta barata da ordem (getOrder) roda no 'initial'.
+    if (state === UFINET_STATE.INITIAL) {
+      return this.keepPolling(svc, order);
+    }
     const ids = await this.resolveBundle(conn, svc.externalId);
     if (ids) {
       // Se o técnico já mandou o SN (confirm-ONT antes de reservar), avança
@@ -960,10 +968,23 @@ export class UfinetOrdersService {
       return;
     }
 
-    // Poll: HSD e Res Pon Access devem ficar Active
-    const bundle = await this.fetchBundleServices(conn, svc.externalId);
-    const hsd = normalizeUfinetState(bundle.get(UFINET_SPEC.HSD)?.state);
-    const access = normalizeUfinetState(bundle.get(UFINET_SPEC.RES_PON_ACCESS)?.state);
+    // Poll: HSD e Res Pon Access devem ficar Active. Lê por id (barato) usando
+    // os ids já salvos na reserva — evita varrer o inventário inteiro do operador
+    // (a Ufinet não filtra a lista por externalId).
+    let hsd: string;
+    let access: string;
+    if (svc.hsdServiceId && svc.resPonAccessServiceId) {
+      const [h, a] = await Promise.all([
+        this.client.getService(conn, svc.hsdServiceId),
+        this.client.getService(conn, svc.resPonAccessServiceId),
+      ]);
+      hsd = normalizeUfinetState(h?.state);
+      access = normalizeUfinetState(a?.state);
+    } else {
+      const bundle = await this.fetchBundleServices(conn, svc.externalId);
+      hsd = normalizeUfinetState(bundle.get(UFINET_SPEC.HSD)?.state);
+      access = normalizeUfinetState(bundle.get(UFINET_SPEC.RES_PON_ACCESS)?.state);
+    }
     if (hsd === 'active' && access === 'active') {
       await this.save(svc.id, {
         lifecycle: 'CONFIRMING_SERVICE',
@@ -983,7 +1004,7 @@ export class UfinetOrdersService {
     if (!svc.serviceOrderId) return this.fail(svc, 'confirmação sem serviceOrderId');
 
     if (!svc.currentOrderId) {
-      const ctoPort = svc.ctoPort ?? (await this.readCtoPort(conn, svc.externalId));
+      const ctoPort = svc.ctoPort ?? (await this.readCtoPort(conn, svc.externalId, svc.parentServiceId));
       if (!ctoPort) return this.keepPolling(svc, null, 'CTO_PORT ainda indisponível');
       await this.client.patchOrder(conn, svc.serviceOrderId, {
         region: conn.region,
@@ -1310,7 +1331,22 @@ export class UfinetOrdersService {
   }
 
   /** Procura o CTO_PORT nas characteristics dos sub-serviços do bundle. */
-  private async readCtoPort(conn: UfinetConnection, externalId: string): Promise<string | null> {
+  private async readCtoPort(
+    conn: UfinetConnection,
+    externalId: string,
+    parentServiceId?: string | null,
+  ): Promise<string | null> {
+    // Pós-reserva: o CTO_PORT vive no Datos (serviço pai) — lê por id (barato).
+    if (parentServiceId) {
+      try {
+        const datos = await this.client.getService(conn, parentServiceId);
+        const ch = datos.serviceCharacteristic?.find((c) => c.name?.toUpperCase() === 'CTO_PORT');
+        if (ch?.value) return ch.value;
+      } catch {
+        /* cai pro fallback (varredura) */
+      }
+    }
+    // Fallback (ex.: adoção, sem ids salvos): varre o inventário.
     const map = await this.fetchBundleServices(conn, externalId);
     for (const s of map.values()) {
       const ch = s.serviceCharacteristic?.find((c) => c.name?.toUpperCase() === 'CTO_PORT');
