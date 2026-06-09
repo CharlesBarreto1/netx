@@ -63,6 +63,9 @@ const PENDING_MAX_MS = 60 * 60_000;
 // Backoff por serviço quando a Ufinet está INDISPONÍVEL (infra). Não conta pro
 // limite de FAILED — só espaça a re-tentativa enquanto não recupera.
 const INFRA_RETRY_MS = 2 * 60_000;
+// Teto de 5xx/timeout persistente num ÚNICO serviço com a Ufinet NO AR (pedido
+// envenenado, ex.: ordem travada que dá 500 no cancel) antes de virar FAILED.
+const INFRA_FAIL_LIMIT = 8;
 
 /**
  * Erro de INFRA (Ufinet inalcançável/instável) vs erro de negócio. Transporte
@@ -808,20 +811,43 @@ export class UfinetOrdersService {
         return;
       }
 
-      // Ufinet INDISPONÍVEL (transporte/5xx/429): NÃO conta pro FAILED e NÃO
-      // mexe no lifecycle. Só faz backoff e marca o estado — quando a Ufinet
-      // voltar, o serviço retoma exatamente de onde parou. Abre o circuit
-      // breaker pra o poller parar de martelar (modo sonda).
+      // Erro de INFRA (transporte/5xx/429).
       if (isUfinetUnavailable(err)) {
-        this.health.recordInfraFailure(msg(err));
+        this.health.recordInfraFailure(service.externalId, msg(err));
+        // Ufinet GERAL fora (≥2 serviços falhando): NÃO conta pro FAILED, NÃO
+        // mexe no lifecycle. Só backoff — retoma sozinho quando voltar.
+        if (this.health.isDegraded()) {
+          this.logger.warn(
+            `[ufinet] ${service.externalId} Ufinet indisponível (${msg(err)}) — ` +
+              'aguardando recuperar (não conta pro FAILED)',
+          );
+          await this.save(service.id, {
+            ufinetState: 'ufinet-indisponivel',
+            error: `Ufinet indisponível — retoma sozinho ao recuperar: ${msg(err)}`.slice(0, 2000),
+            nextAttemptAt: new Date(Date.now() + INFRA_RETRY_MS),
+            ...(err instanceof UfinetApiError ? { lastResponse: toJson(err.body) } : {}),
+          });
+          return;
+        }
+        // Ufinet NO AR, mas ESTE pedido dá 5xx/timeout persistente (ex.: ZUX-28
+        // com 500 "Error no controlado" numa ordem travada) → é problema dele.
+        // Conta pro FAILED com teto curto pra parar de martelar e surgir pro
+        // operador (em vez de loop infinito).
+        const infraAttempts = service.attempts + 1;
+        const fatal = infraAttempts >= INFRA_FAIL_LIMIT;
         this.logger.warn(
-          `[ufinet] ${service.externalId} Ufinet indisponível (${msg(err)}) — ` +
-            'não conta pro FAILED, retoma ao recuperar',
+          `[ufinet] ${service.externalId} erro persistente (${msg(err)}) com Ufinet no ar ` +
+            `(${infraAttempts}/${INFRA_FAIL_LIMIT})`,
         );
         await this.save(service.id, {
-          ufinetState: 'ufinet-indisponivel',
-          error: `Ufinet indisponível — retoma sozinho ao recuperar: ${msg(err)}`.slice(0, 2000),
-          nextAttemptAt: new Date(Date.now() + INFRA_RETRY_MS),
+          attempts: infraAttempts,
+          error: fatal
+            ? `Ufinet retorna erro persistente nesta operação (${msg(err)}). ` +
+              'Provável ordem travada do lado deles — tratar manualmente (chamado Ufinet) e reprocessar.'
+            : msg(err).slice(0, 2000),
+          ...(fatal
+            ? { lifecycle: 'FAILED' as const }
+            : { nextAttemptAt: new Date(Date.now() + INFRA_RETRY_MS) }),
           ...(err instanceof UfinetApiError ? { lastResponse: toJson(err.body) } : {}),
         });
         return;
