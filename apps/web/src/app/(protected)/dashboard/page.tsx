@@ -3,6 +3,7 @@
 import {
   ArrowRight,
   FileText,
+  HardHat,
   Heart,
   Plus,
   Sparkles,
@@ -212,6 +213,13 @@ export default function DashboardPage() {
           title={t('shortcutServiceOrderTitle')}
           description={t('shortcutServiceOrderDesc')}
           href="/service-orders"
+          show={session?.user.permissions.includes('service_orders.read') ?? false}
+        />
+        <ShortcutCard
+          icon={HardHat}
+          title={t('shortcutFieldOsTitle')}
+          description={t('shortcutFieldOsDesc')}
+          href="/os"
           show={session?.user.permissions.includes('service_orders.read') ?? false}
         />
       </section>

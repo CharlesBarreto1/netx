@@ -100,7 +100,15 @@ export default function OsListPage() {
 
   return (
     <div className="space-y-5">
-      <h1 className="text-lg font-bold">{t('list.title')}</h1>
+      <div className="flex items-center justify-between gap-2">
+        <h1 className="text-lg font-bold">{t('list.title')}</h1>
+        <Link
+          href="/dashboard"
+          className="shrink-0 rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text-muted hover:bg-surface-hover"
+        >
+          {t('list.backToSystem')}
+        </Link>
+      </div>
 
       {active.length === 0 && done.length === 0 && (
         <div className="rounded-md border border-border bg-surface p-4 text-sm text-text-muted">

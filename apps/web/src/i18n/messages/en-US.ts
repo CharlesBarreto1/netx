@@ -1203,6 +1203,7 @@ const messages = {
     },
     list: {
       title: 'My work orders',
+      backToSystem: '← Back to system',
       empty: 'No work orders assigned to you right now.',
       activeSection: 'Open ({n})',
       doneSection: 'Completed ({n})',
@@ -3149,6 +3150,8 @@ const messages = {
     shortcutContractDesc: 'Plan, IPoE/PPPoE and billing cycle — in <30s.',
     shortcutServiceOrderTitle: 'Open work order',
     shortcutServiceOrderDesc: 'Technical visit, address change or installation.',
+    shortcutFieldOsTitle: 'Field execution',
+    shortcutFieldOsDesc: "Field technician panel — run and finalize work orders.",
     tipOfTheDay: 'Tip of the day',
     tipShortcut: 'Press <cmd></cmd> <k></k> anywhere to open global search and navigate customers, contracts, invoices or jump to any page in the operation.',
     thoughtOfTheDay: 'Thought of the day',

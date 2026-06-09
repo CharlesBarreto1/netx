@@ -1232,6 +1232,7 @@ const messages = {
     },
     list: {
       title: 'Minhas ordens de serviço',
+      backToSystem: '← Voltar ao sistema',
       empty: 'Nenhuma O.S designada a você no momento.',
       activeSection: 'Em aberto ({n})',
       doneSection: 'Concluídas ({n})',
@@ -3179,6 +3180,8 @@ const messages = {
     shortcutContractDesc: 'Plano, IPoE/PPPoE e ciclo de faturamento — em <30s.',
     shortcutServiceOrderTitle: 'Abrir O.S',
     shortcutServiceOrderDesc: 'Visita técnica, mudança de endereço ou instalação.',
+    shortcutFieldOsTitle: 'Execução de O.S',
+    shortcutFieldOsDesc: 'Painel do técnico em campo — executar e finalizar O.S.',
     tipOfTheDay: 'Dica do dia',
     tipShortcut: 'Pressione <cmd></cmd> <k></k> em qualquer lugar pra abrir a busca global e navegar por clientes, contratos, faturas ou pular pra qualquer página da operação.',
     thoughtOfTheDay: 'Pensamento do dia',
