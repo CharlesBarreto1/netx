@@ -1538,6 +1538,8 @@ const messages = {
       title: 'Compras',
       subtitle: 'Entradas por compra de fornecedor. Atualiza saldo e recalcula o custo médio ponderado de cada produto automaticamente.',
       new: 'Nova compra',
+      editTitle: 'Editar compra',
+      editWarning: 'Editar reverte a entrada original (itens/seriais e saldo) e reaplica os itens abaixo. Só funciona se nada da compra foi movimentado (alocado, transferido ou consumido). O custo médio é recalculado e a alteração fica registrada na auditoria.',
       loadFailed: 'Falha ao carregar compras.',
       empty: 'Nenhuma compra registrada ainda.',
       view: 'Ver',
@@ -1560,6 +1562,11 @@ const messages = {
       details: {
         title: 'Compra de {date}',
         registeredBy: 'Registrado por',
+        editedBy: 'Última edição por',
+        auditHeading: 'Histórico de alterações',
+        auditCreated: 'Compra registrada',
+        auditUpdated: 'Compra editada',
+        auditDeleted: 'Compra excluída',
       },
       items: {
         heading: 'Itens ({count})',
@@ -1575,6 +1582,7 @@ const messages = {
         serialPlaceholder: 'Serial #{n}',
         subtotal: 'Subtotal: {value}',
         submit: 'Registrar compra',
+        submitEdit: 'Salvar alterações',
       },
       errors: {
         selectSupplier: 'Selecione um fornecedor',

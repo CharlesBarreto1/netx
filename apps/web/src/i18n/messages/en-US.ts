@@ -1508,6 +1508,8 @@ const messages = {
       title: 'Purchases',
       subtitle: 'Entries from supplier purchases. Updates the balance and recalculates each product\'s weighted average cost automatically.',
       new: 'New purchase',
+      editTitle: 'Edit purchase',
+      editWarning: 'Editing reverses the original entry (items/serials and balance) and reapplies the items below. Only works if nothing from the purchase was moved (allocated, transferred or consumed). The average cost is recomputed and the change is recorded in the audit trail.',
       loadFailed: 'Failed to load purchases.',
       empty: 'No purchases registered yet.',
       view: 'View',
@@ -1530,6 +1532,11 @@ const messages = {
       details: {
         title: 'Purchase of {date}',
         registeredBy: 'Registered by',
+        editedBy: 'Last edited by',
+        auditHeading: 'Change history',
+        auditCreated: 'Purchase registered',
+        auditUpdated: 'Purchase edited',
+        auditDeleted: 'Purchase deleted',
       },
       items: {
         heading: 'Items ({count})',
@@ -1545,6 +1552,7 @@ const messages = {
         serialPlaceholder: 'Serial #{n}',
         subtotal: 'Subtotal: {value}',
         submit: 'Register purchase',
+        submitEdit: 'Save changes',
       },
       errors: {
         selectSupplier: 'Select a supplier',

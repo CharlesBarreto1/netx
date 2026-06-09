@@ -157,10 +157,15 @@ export interface Purchase {
   createdById: string;
   createdByName?: string;
   createdAt: string;
+  // Última edição (null = nunca editada). Trilha completa via getPurchaseAudit.
+  updatedById?: string | null;
+  updatedByName?: string | null;
+  updatedAt?: string;
   items: Array<{
     id: string;
     productId: string;
     productName?: string;
+    productSku?: string;
     productType?: ProductType;
     locationId: string;
     locationName?: string;
@@ -170,6 +175,19 @@ export interface Purchase {
     serials: string[];
     notes: string | null;
   }>;
+}
+
+// Mesma forma do create — edição é um REPLACE total (reverte + reaplica).
+export type UpdatePurchaseInput = CreatePurchaseInput;
+
+export interface PurchaseAuditEntry {
+  id: string;
+  action: string; // purchase.created | purchase.updated | purchase.deleted
+  createdAt: string;
+  userId: string | null;
+  userName: string | null;
+  beforeState: unknown;
+  afterState: unknown;
 }
 
 // =============================================================================
@@ -304,8 +322,15 @@ export const stockApi = {
   getPurchase: (id: string) => api.get<Purchase>(`/v1/stock/purchases/${id}`),
   createPurchase: (input: CreatePurchaseInput) =>
     api.post<Purchase>('/v1/stock/purchases', input),
+  /** Edita/corrige uma compra — reverte e reaplica (só se nada foi movimentado). */
+  updatePurchase: (id: string, input: UpdatePurchaseInput) =>
+    api.patch<Purchase>(`/v1/stock/purchases/${id}`, input),
   /** Exclui/reverte uma compra (só se nada foi movimentado). */
   deletePurchase: (id: string) => api.delete(`/v1/stock/purchases/${id}`),
+  purchaseAuditPath: (id: string) => `/v1/stock/purchases/${id}/audit`,
+  /** Trilha de auditoria da compra (criação + edições, com before/after). */
+  getPurchaseAudit: (id: string) =>
+    api.get<PurchaseAuditEntry[]>(`/v1/stock/purchases/${id}/audit`),
 
   // Movements (kardex) -------------------------------------------------------
   movementsPath: (params?: ListMovementsQuery) =>

@@ -27,6 +27,7 @@ import {
   ReturnComodatoRequestSchema,
   SetLocationAccessRequestSchema,
   UpdateProductRequestSchema,
+  UpdatePurchaseRequestSchema,
   UpdateStockLocationRequestSchema,
   UpdateSupplierRequestSchema,
   type AddOsConsumptionRequest,
@@ -45,6 +46,7 @@ import {
   type ReturnComodatoRequest,
   type SetLocationAccessRequest,
   type UpdateProductRequest,
+  type UpdatePurchaseRequest,
   type UpdateStockLocationRequest,
   type UpdateSupplierRequest,
 } from '@netx/shared';
@@ -285,6 +287,16 @@ export class PurchasesController {
     return this.purchases.findById(u.tenantId, id);
   }
 
+  /** Trilha de auditoria da compra (criação, edições, com before/after). */
+  @Get(':id/audit')
+  @RequirePermissions('stock.read')
+  auditTrail(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.purchases.auditTrail(u.tenantId, id);
+  }
+
   @Post()
   @RequirePermissions('stock.purchase.create')
   create(
@@ -292,6 +304,21 @@ export class PurchasesController {
     @ZodBody(CreatePurchaseRequestSchema) body: CreatePurchaseRequest,
   ) {
     return this.purchases.create(u.tenantId, u.sub, body);
+  }
+
+  /**
+   * Edita (substitui) uma compra lançada errada — reverte a versão antiga e
+   * reaplica os itens novos numa transação. Só funciona se nada da compra
+   * original foi movimentado (mesmas travas do delete).
+   */
+  @Patch(':id')
+  @RequirePermissions('stock.purchase.update')
+  update(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(UpdatePurchaseRequestSchema) body: UpdatePurchaseRequest,
+  ) {
+    return this.purchases.update(u.tenantId, u.sub, id, body);
   }
 
   /** Exclui (reverte) uma compra lançada errada — só se nada foi movimentado. */

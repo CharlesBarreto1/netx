@@ -148,6 +148,9 @@ const stockPermissions = [
   { code: 'stock.delete',          module: 'stock', resource: 'stock', action: 'delete' },
   // stock.purchase.create: registrar entrada por compra
   { code: 'stock.purchase.create', module: 'stock', resource: 'purchases', action: 'create' },
+  // stock.purchase.update: editar/corrigir compra lançada errada — reverte e
+  // reaplica (mesmas travas do delete), então é tão administrativo quanto ele
+  { code: 'stock.purchase.update', module: 'stock', resource: 'purchases', action: 'update' },
   // stock.purchase.delete: excluir/reverter compra lançada errada (só se nada movimentou)
   { code: 'stock.purchase.delete', module: 'stock', resource: 'purchases', action: 'delete' },
   // stock.adjust: ajustes de inventário (contagem, perda, descarte, achado)
@@ -345,6 +348,7 @@ const systemRoles = [
       'stock.write',
       'stock.delete',
       'stock.purchase.create',
+      'stock.purchase.update',
       'stock.purchase.delete',
       'stock.adjust',
       'stock.admin',

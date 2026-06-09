@@ -294,6 +294,7 @@ model User {
   stockLocationAccess  StockLocationUser[]
   stockMovementsCreated StockMovement[] @relation("StockMovementCreatedBy")
   purchasesCreated      Purchase[]      @relation("PurchaseCreatedBy")
+  purchasesUpdated      Purchase[]      @relation("PurchaseUpdatedBy")
 
   // Mobile (app do técnico em campo)
   mobileDevices       MobileDevice[]
@@ -2540,12 +2541,15 @@ model Purchase {
   totalCost     Decimal        @map("total_cost") @db.Decimal(14, 4)
   notes         String?        @db.Text
   createdById   String         @map("created_by_id") @db.Uuid
+  // Quem fez a ÚLTIMA edição (null = nunca editada). Trilha completa fica no AuditLog.
+  updatedById   String?        @map("updated_by_id") @db.Uuid
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @updatedAt @map("updated_at")
 
   tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   supplier  Supplier        @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   createdBy User            @relation("PurchaseCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  updatedBy User?           @relation("PurchaseUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
   items     PurchaseItem[]
   movements StockMovement[]
 

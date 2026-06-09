@@ -41,6 +41,15 @@ export const CreatePurchaseRequestSchema = z.object({
 });
 export type CreatePurchaseRequest = z.infer<typeof CreatePurchaseRequestSchema>;
 
+/**
+ * Edição de compra — semântica de REPLACE total: o service reverte os efeitos
+ * da compra original (mesmas travas do delete: nada pode ter sido movimentado)
+ * e reaplica os itens novos numa única transação. Por isso o payload é igual
+ * ao de criação.
+ */
+export const UpdatePurchaseRequestSchema = CreatePurchaseRequestSchema;
+export type UpdatePurchaseRequest = z.infer<typeof UpdatePurchaseRequestSchema>;
+
 export interface PurchaseResponse {
   id: string;
   tenantId: string;
@@ -53,10 +62,15 @@ export interface PurchaseResponse {
   createdById: string;
   createdByName?: string;
   createdAt: string;
+  // Última edição (null/undefined = nunca editada). Trilha completa no AuditLog.
+  updatedById?: string | null;
+  updatedByName?: string | null;
+  updatedAt?: string;
   items: Array<{
     id: string;
     productId: string;
     productName?: string;
+    productSku?: string;
     productType?: 'PATRIMONIAL' | 'CONSUMIVEL';
     locationId: string;
     locationName?: string;

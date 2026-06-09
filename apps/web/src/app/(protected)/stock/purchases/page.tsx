@@ -16,6 +16,7 @@ import {
   type CreatePurchaseInput,
   type Product,
   type Purchase,
+  type PurchaseAuditEntry,
   type PurchaseItemInput,
   type StockLocation,
   type Supplier,
@@ -27,11 +28,13 @@ export default function PurchasesPage() {
     () => stockApi.listPurchases(),
   );
   const canCreate = hasPermission('stock.purchase.create');
+  const canUpdate = hasPermission('stock.purchase.update');
   const canDelete = hasPermission('stock.purchase.delete');
   const t = useTranslations('stock.purchases');
   const tc = useTranslations('common');
 
   const [creating, setCreating] = useState(false);
+  const [editing, setEditing] = useState<Purchase | null>(null);
   const [viewing, setViewing] = useState<Purchase | null>(null);
   const [deleting, setDeleting] = useState<Purchase | null>(null);
   const [busy, setBusy] = useState(false);
@@ -107,6 +110,11 @@ export default function PurchasesPage() {
                         <Button variant="ghost" size="sm" onClick={() => setViewing(p)}>
                           {t('view')}
                         </Button>
+                        {canUpdate && (
+                          <Button variant="ghost" size="sm" onClick={() => setEditing(p)}>
+                            {tc('edit')}
+                          </Button>
+                        )}
                         {canDelete && (
                           <Button
                             variant="ghost"
@@ -132,6 +140,17 @@ export default function PurchasesPage() {
           onClose={() => setCreating(false)}
           onSaved={async () => {
             setCreating(false);
+            await mutate();
+          }}
+        />
+      )}
+
+      {editing && (
+        <PurchaseFormModal
+          initial={editing}
+          onClose={() => setEditing(null)}
+          onSaved={async () => {
+            setEditing(null);
             await mutate();
           }}
         />
@@ -172,6 +191,10 @@ function PurchaseDetailsModal({
 }) {
   const t = useTranslations('stock.purchases');
   const tc = useTranslations('common');
+  const { data: auditTrail } = useSWR<PurchaseAuditEntry[]>(
+    stockApi.purchaseAuditPath(purchase.id),
+    () => stockApi.getPurchaseAudit(purchase.id),
+  );
   return (
     <Modal open onClose={onClose} title={t('details.title', { date: new Date(purchase.date).toLocaleDateString() })}>
       <div className="space-y-4">
@@ -190,8 +213,26 @@ function PurchaseDetailsModal({
           </div>
           <div>
             <dt className="text-xs text-slate-500">{t('details.registeredBy')}</dt>
-            <dd>{purchase.createdByName ?? '—'}</dd>
+            <dd>
+              {purchase.createdByName ?? '—'}
+              <span className="block text-xs text-slate-500">
+                {new Date(purchase.createdAt).toLocaleString()}
+              </span>
+            </dd>
           </div>
+          {purchase.updatedById && (
+            <div>
+              <dt className="text-xs text-slate-500">{t('details.editedBy')}</dt>
+              <dd>
+                {purchase.updatedByName ?? '—'}
+                {purchase.updatedAt && (
+                  <span className="block text-xs text-slate-500">
+                    {new Date(purchase.updatedAt).toLocaleString()}
+                  </span>
+                )}
+              </dd>
+            </div>
+          )}
         </dl>
 
         {purchase.notes && (
@@ -240,6 +281,28 @@ function PurchaseDetailsModal({
           </div>
         </div>
 
+        {auditTrail && auditTrail.length > 0 && (
+          <div>
+            <h3 className="text-sm font-semibold mb-2">{t('details.auditHeading')}</h3>
+            <ul className="space-y-1 rounded-md border border-slate-200 p-3 text-xs dark:border-slate-700">
+              {auditTrail.map((entry) => (
+                <li key={entry.id} className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="font-mono text-slate-500">
+                    {new Date(entry.createdAt).toLocaleString()}
+                  </span>
+                  <span className="font-medium">
+                    {entry.action === 'purchase.created' && t('details.auditCreated')}
+                    {entry.action === 'purchase.updated' && t('details.auditUpdated')}
+                    {entry.action === 'purchase.deleted' && t('details.auditDeleted')}
+                    {!['purchase.created', 'purchase.updated', 'purchase.deleted'].includes(entry.action) && entry.action}
+                  </span>
+                  <span className="text-slate-500">{entry.userName ?? '—'}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         <div className="flex justify-end pt-2">
           <Button variant="ghost" onClick={onClose}>{tc('close')}</Button>
         </div>
@@ -252,9 +315,12 @@ function PurchaseDetailsModal({
 // FORM — multi-item com seriais condicionais (PATRIMONIAL)
 // =============================================================================
 function PurchaseFormModal({
+  initial,
   onClose,
   onSaved,
 }: {
+  /** Compra existente → modo edição (REPLACE: reverte e reaplica o estoque). */
+  initial?: Purchase;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -276,13 +342,24 @@ function PurchaseFormModal({
     return m;
   }, [products]);
 
-  const [supplierId, setSupplierId] = useState('');
-  const [invoiceNumber, setInvoiceNumber] = useState('');
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [notes, setNotes] = useState('');
-  const [items, setItems] = useState<PurchaseItemInput[]>([
-    { productId: '', locationId: '', quantity: 1, unitCost: 0, serials: [] },
-  ]);
+  const [supplierId, setSupplierId] = useState(initial?.supplierId ?? '');
+  const [invoiceNumber, setInvoiceNumber] = useState(initial?.invoiceNumber ?? '');
+  const [date, setDate] = useState(() =>
+    (initial?.date ?? new Date().toISOString()).slice(0, 10),
+  );
+  const [notes, setNotes] = useState(initial?.notes ?? '');
+  const [items, setItems] = useState<PurchaseItemInput[]>(() =>
+    initial
+      ? initial.items.map((it) => ({
+          productId: it.productId,
+          locationId: it.locationId,
+          quantity: Number(it.quantity),
+          unitCost: Number(it.unitCost),
+          serials: [...it.serials],
+          notes: it.notes,
+        }))
+      : [{ productId: '', locationId: '', quantity: 1, unitCost: 0, serials: [] }],
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -356,7 +433,11 @@ function PurchaseFormModal({
           serials: it.serials ?? [],
         })),
       };
-      await stockApi.createPurchase(payload);
+      if (initial) {
+        await stockApi.updatePurchase(initial.id, payload);
+      } else {
+        await stockApi.createPurchase(payload);
+      }
       onSaved();
     } catch (err) {
       setError(err instanceof ApiError ? err.friendlyMessage : t('errors.saveFailed'));
@@ -366,8 +447,13 @@ function PurchaseFormModal({
   }
 
   return (
-    <Modal open onClose={onClose} title={t('new')} size="xl">
+    <Modal open onClose={onClose} title={initial ? t('editTitle') : t('new')} size="xl">
       <form onSubmit={handleSubmit} className="space-y-4">
+        {initial && (
+          <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+            {t('editWarning')}
+          </p>
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           <div>
             <Label>{t('form.supplierRequired')}</Label>
@@ -548,7 +634,7 @@ function PurchaseFormModal({
             {tc('cancel')}
           </Button>
           <Button type="submit" loading={submitting}>
-            {t('form.submit')}
+            {initial ? t('form.submitEdit') : t('form.submit')}
           </Button>
         </div>
       </form>
