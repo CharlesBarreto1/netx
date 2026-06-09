@@ -37,6 +37,7 @@ import { CryptoService } from '../crypto/crypto.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { UfinetClientService, UfinetApiError } from './ufinet-client.service';
+import { UfinetHealthService } from './ufinet-health.service';
 import { ufinetTrace } from './ufinet-trace';
 import {
   extractOrder,
@@ -59,6 +60,19 @@ const PENDING_RETRY_MS = 60_000;
 // Teto de espera em "aprovisionando": se a Ufinet não concluir em 1h, vira
 // FAILED em vez de repollar pra sempre (ex.: serial errado / ONT inexistente).
 const PENDING_MAX_MS = 60 * 60_000;
+// Backoff por serviço quando a Ufinet está INDISPONÍVEL (infra). Não conta pro
+// limite de FAILED — só espaça a re-tentativa enquanto não recupera.
+const INFRA_RETRY_MS = 2 * 60_000;
+
+/**
+ * Erro de INFRA (Ufinet inalcançável/instável) vs erro de negócio. Transporte
+ * (status 0), 5xx e 429 = Ufinet fora; 4xx/426 = Ufinet respondeu (no ar).
+ */
+function isUfinetUnavailable(err: unknown): boolean {
+  if (!(err instanceof UfinetApiError)) return true; // erro não-HTTP = transporte
+  const s = err.status;
+  return s === 0 || s === 429 || s >= 500;
+}
 
 @Injectable()
 export class UfinetOrdersService {
@@ -69,7 +83,13 @@ export class UfinetOrdersService {
     private readonly crypto: CryptoService,
     private readonly client: UfinetClientService,
     private readonly audit: AuditService,
+    private readonly health: UfinetHealthService,
   ) {}
+
+  /** Estado do circuit breaker da Ufinet (pra UI/diagnóstico). */
+  healthSnapshot() {
+    return this.health.snapshot();
+  }
 
   // ===========================================================================
   // Conexão a partir da OLT (vendor=UFINET, providerMode=ORCHESTRATOR)
@@ -725,31 +745,43 @@ export class UfinetOrdersService {
     try {
       switch (service.lifecycle) {
         case 'PENDING_PROVIDE':
-          return await this.provideSend(service, conn);
+          await this.provideSend(service, conn);
+          break;
         case 'PROVIDING':
-          return await this.providePoll(service, conn);
+          await this.providePoll(service, conn);
+          break;
         case 'CONFIRMING_ONT':
-          return await this.confirmOnt(service, conn);
+          await this.confirmOnt(service, conn);
+          break;
         case 'CONFIRMING_SERVICE':
-          return await this.confirmService(service, conn);
+          await this.confirmService(service, conn);
+          break;
         case 'SUSPENDING':
-          return await this.orderStep(service, conn, 'SUSPEND');
+          await this.orderStep(service, conn, 'SUSPEND');
+          break;
         case 'REACTIVATING':
-          return await this.orderStep(service, conn, 'REACTIVATE');
+          await this.orderStep(service, conn, 'REACTIVATE');
+          break;
         case 'SWAPPING_ONT':
-          return await this.swapStep(service, conn);
+          await this.swapStep(service, conn);
+          break;
         case 'CEASING':
-          return await this.orderStep(service, conn, 'CEASE');
+          await this.orderStep(service, conn, 'CEASE');
+          break;
         case 'CANCELLING':
-          return await this.cancelStep(service, conn);
+          await this.cancelStep(service, conn);
+          break;
         default:
           return; // estado de repouso
       }
+      // Passo concluiu sem throw → a Ufinet respondeu (está no ar).
+      this.health.recordSuccess();
     } catch (err) {
       // 426 "Tareas pendientes / Aprovisionamiento en proceso": a Ufinet ainda
       // executa trabalho de campo/infra. É ESPERA, não erro — re-tenta calmo,
       // sem marcar erro nem contar pro limite de FAILED.
       if (this.isProvisioningPending(err)) {
+        this.health.recordSuccess(); // 426 = Ufinet respondeu, está no ar
         const now = Date.now();
         const pendingSince = service.pendingSince ?? new Date(now);
         const waitedMs = now - pendingSince.getTime();
@@ -775,7 +807,28 @@ export class UfinetOrdersService {
         });
         return;
       }
-      // Erro de transporte/HTTP: backoff e tenta de novo; só FAILED no limite.
+
+      // Ufinet INDISPONÍVEL (transporte/5xx/429): NÃO conta pro FAILED e NÃO
+      // mexe no lifecycle. Só faz backoff e marca o estado — quando a Ufinet
+      // voltar, o serviço retoma exatamente de onde parou. Abre o circuit
+      // breaker pra o poller parar de martelar (modo sonda).
+      if (isUfinetUnavailable(err)) {
+        this.health.recordInfraFailure(msg(err));
+        this.logger.warn(
+          `[ufinet] ${service.externalId} Ufinet indisponível (${msg(err)}) — ` +
+            'não conta pro FAILED, retoma ao recuperar',
+        );
+        await this.save(service.id, {
+          ufinetState: 'ufinet-indisponivel',
+          error: `Ufinet indisponível — retoma sozinho ao recuperar: ${msg(err)}`.slice(0, 2000),
+          nextAttemptAt: new Date(Date.now() + INFRA_RETRY_MS),
+          ...(err instanceof UfinetApiError ? { lastResponse: toJson(err.body) } : {}),
+        });
+        return;
+      }
+
+      // Erro de NEGÓCIO (4xx): a Ufinet respondeu. Backoff + FAILED no limite.
+      this.health.recordSuccess();
       const attempts = service.attempts + 1;
       const fatal = attempts >= MAX_ATTEMPTS;
       this.logger.warn(`[ufinet] ${service.id} ${service.lifecycle} erro: ${msg(err)}`);

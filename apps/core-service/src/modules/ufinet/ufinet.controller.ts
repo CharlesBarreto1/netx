@@ -51,6 +51,16 @@ export class UfinetController {
     return this.orders.list(user.tenantId, q);
   }
 
+  /**
+   * Saúde da integração Ufinet (circuit breaker). `degraded=true` = Ufinet
+   * indisponível e o poller em modo sonda; as O.S retomam sozinhas ao voltar.
+   */
+  @Get('health')
+  @RequirePermissions('ufinet.orders.read')
+  health() {
+    return this.orders.healthSnapshot();
+  }
+
   @Get('contract/:contractId')
   @RequirePermissions('ufinet.orders.read')
   byContract(

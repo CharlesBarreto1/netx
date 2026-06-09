@@ -13,13 +13,19 @@ import { AuditModule } from '../audit/audit.module';
 
 import { UfinetClientService } from './ufinet-client.service';
 import { UfinetController } from './ufinet.controller';
+import { UfinetHealthService } from './ufinet-health.service';
 import { UfinetOrdersService } from './ufinet-orders.service';
 import { UfinetPollerService } from './ufinet-poller.service';
 
 @Module({
   imports: [AuditModule],
   controllers: [UfinetController],
-  providers: [UfinetClientService, UfinetOrdersService, UfinetPollerService],
+  providers: [
+    UfinetClientService,
+    UfinetHealthService,
+    UfinetOrdersService,
+    UfinetPollerService,
+  ],
   exports: [UfinetOrdersService, UfinetClientService],
 })
 export class UfinetModule {}
