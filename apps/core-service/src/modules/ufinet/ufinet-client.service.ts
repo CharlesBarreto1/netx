@@ -74,7 +74,12 @@ export class UfinetClientService {
           status: entry.status ?? null,
           durationMs: entry.durationMs,
           requestBody: toJsonInput(entry.requestBody),
-          responseBody: toJsonInput(entry.responseBody),
+          // ServiceInventory devolve o inventário INTEIRO (todos os clientes).
+          // Guarda só o bundle deste externalId — evita vazar PII de terceiros
+          // no trace e impede a tabela de inchar com o inventário em cada GET.
+          responseBody: toJsonInput(
+            trimInventoryResponse(entry.responseBody, ctx.externalId),
+          ),
           error: entry.error?.slice(0, 2000) ?? null,
         },
       });
@@ -273,4 +278,35 @@ function toJsonInput(v: unknown): Prisma.InputJsonValue | undefined {
   } catch {
     return String(v);
   }
+}
+
+/**
+ * Quando a resposta é uma lista do ServiceInventory (a Ufinet devolve TODO o
+ * inventário do operador em cada GET), mantém só os itens cujo
+ * `externalServiceId` é o deste serviço — individualiza o trace, não vaza PII
+ * de outros clientes e impede a `ufinet_request_logs` de inchar.
+ *
+ * Aceita a lista crua (array) ou embrulhada em `{ service: [...] }` /
+ * `{ data: [...] }`. Qualquer outra forma (ordem, erro, etc) passa intacta.
+ */
+function trimInventoryResponse(body: unknown, externalId: string): unknown {
+  const isBundle = (x: unknown): boolean =>
+    !!x && typeof x === 'object' && 'externalServiceId' in (x as object);
+  const mine = (arr: unknown[]): unknown[] => {
+    // Se nenhum item tem externalServiceId, não é inventário — devolve igual.
+    if (!arr.some(isBundle)) return arr;
+    return arr.filter(
+      (x) => (x as { externalServiceId?: string })?.externalServiceId === externalId,
+    );
+  };
+  if (Array.isArray(body)) return mine(body);
+  if (body && typeof body === 'object') {
+    const obj = body as Record<string, unknown>;
+    for (const key of ['service', 'data', 'result'] as const) {
+      if (Array.isArray(obj[key]) && (obj[key] as unknown[]).some(isBundle)) {
+        return { ...obj, [key]: mine(obj[key] as unknown[]) };
+      }
+    }
+  }
+  return body;
 }
