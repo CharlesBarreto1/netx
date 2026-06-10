@@ -17,6 +17,7 @@ import { FinanceModule } from './modules/finance/finance.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { BackupsModule } from './modules/backups/backups.module';
 import { HealthModule } from './modules/health/health.module';
+import { LicensingModule } from './modules/licensing/licensing.module';
 import { NetworkModule } from './modules/network/network.module';
 import { OpticalModule } from './modules/optical/optical.module';
 import { PortalModule } from './modules/portal/portal.module';
@@ -75,6 +76,8 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
     HealthModule,
     CryptoModule,
     DisconnectModule,
+    // Licenciamento — registra o LicenseGuard global (fail-open quando off).
+    LicensingModule,
 
     // Feature modules
     TenantsModule,

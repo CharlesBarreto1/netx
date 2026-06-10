@@ -81,6 +81,13 @@ const baseSchema = z.object({
   STORAGE_SECRET_KEY: z.string().optional(),
   STORAGE_FORCE_PATH_STYLE: booleanFromString.optional(), // MinIO exige; default true no mapeamento
   STORAGE_PUBLIC_URL: z.string().url().optional(),     // base pública (nginx /minio/*)
+
+  // Licenciamento (valida licença desta instalação com o Hub da NetX).
+  // OPCIONAL e FAIL-OPEN: sem NETX_HUB_URL + NETX_LICENSE_KEY o módulo é no-op
+  // (libera tudo). Instalações antigas e dev não quebram. Ver docs/licensing.md.
+  NETX_HUB_URL: z.string().url().optional(),           // ex.: https://hub.netx.com.br
+  NETX_LICENSE_KEY: z.string().min(8).optional(),      // segredo da instância (auth no heartbeat)
+  NETX_INSTANCE_ID: z.string().uuid().optional(),      // uuid da instalação (enrollment)
 });
 
 export type RawEnv = z.infer<typeof baseSchema>;
@@ -134,6 +141,13 @@ export interface Config {
     secretKey?: string;
     forcePathStyle: boolean;
     publicUrl?: string;
+  };
+  licensing: {
+    /** Ligado só quando hubUrl + key + instanceId estão presentes. */
+    enabled: boolean;
+    hubUrl?: string;
+    licenseKey?: string;
+    instanceId?: string;
   };
 }
 
@@ -193,6 +207,12 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
       secretKey: e.STORAGE_SECRET_KEY,
       forcePathStyle: e.STORAGE_FORCE_PATH_STYLE ?? true,
       publicUrl: e.STORAGE_PUBLIC_URL,
+    },
+    licensing: {
+      enabled: Boolean(e.NETX_HUB_URL && e.NETX_LICENSE_KEY && e.NETX_INSTANCE_ID),
+      hubUrl: e.NETX_HUB_URL,
+      licenseKey: e.NETX_LICENSE_KEY,
+      instanceId: e.NETX_INSTANCE_ID,
     },
   };
 }

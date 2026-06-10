@@ -161,6 +161,26 @@ model Tenant {
   @@map("tenants")
 }
 
+// =============================================================================
+// LICENCIAMENTO — estado local da licença desta INSTALAÇÃO com a NetX (nós).
+// Singleton: 1 linha (id fixo "singleton"). Não tem tenantId — é sobre a
+// instalação inteira, não sobre um tenant. O token é renovado pelo heartbeat
+// diário; o guard valida a assinatura localmente. Ver docs/licensing.md.
+// =============================================================================
+model LicenseState {
+  id              String    @id @default("singleton")
+  // Token JWS Ed25519 atual (assinado pelo Hub). Null = nunca recebeu.
+  token           String?   @db.Text
+  // Espelho desnormalizado das claims pra consulta rápida / painel.
+  status          String?   @db.VarChar(16) // ACTIVE | BLOCKED | SUSPENDED
+  expiresAt       DateTime? @map("expires_at")
+  lastHeartbeatAt DateTime? @map("last_heartbeat_at")
+  lastError       String?   @map("last_error") @db.VarChar(500)
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  @@map("license_state")
+}
+
 model TenantSetting {
   id        String   @id @default(uuid()) @db.Uuid
   tenantId  String   @map("tenant_id") @db.Uuid

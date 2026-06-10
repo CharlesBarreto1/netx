@@ -10,18 +10,48 @@ wizard_run() {
     return
   fi
 
-  if [[ ! -t 0 ]]; then
-    log_warn "stdin não é TTY — pulando wizard, usando defaults/env"
+  # Terminal de controle. Em `curl | sudo bash` o stdin é o pipe do curl (não
+  # é TTY) e o install.sh redireciona stdout/stderr pro tee do log — então o
+  # wizard NUNCA pode confiar nos fds herdados. A saída é falar direto com
+  # /dev/tty (o terminal real da sessão), que existe mesmo em modo pipe.
+  # Sem /dev/tty utilizável (cron, CI, provisionamento sem terminal) não tem
+  # como perguntar nada → defaults/env, como antes.
+  local wizard_tty=""
+  if [[ -r /dev/tty && -w /dev/tty ]]; then
+    wizard_tty="/dev/tty"
+  elif [[ ! -t 0 ]]; then
+    log_warn "sem terminal interativo (stdin não é TTY e /dev/tty indisponível) — pulando wizard, usando defaults/env"
     wizard_apply_defaults
     return
   fi
 
+  # whiptail é instalado no step `packages`, que roda DEPOIS do wizard — numa
+  # imagem mínima ele pode não existir ainda. Garante aqui (somos root).
   if ! command -v whiptail >/dev/null 2>&1; then
-    log_warn "whiptail ausente — usando defaults/env"
+    log_info "whiptail ausente — instalando pro wizard..."
+    apt-get update -qq || true
+    apt-get install -y -qq whiptail || true
+  fi
+  if ! command -v whiptail >/dev/null 2>&1; then
+    log_warn "whiptail indisponível — usando defaults/env"
     wizard_apply_defaults
     return
   fi
 
+  # Redireção na CHAMADA da função (não cria subshell): os exports feitos
+  # dentro de wizard_prompts continuam valendo aqui fora.
+  if [[ -n "${wizard_tty}" ]]; then
+    wizard_prompts < "${wizard_tty}" > "${wizard_tty}" 2> "${wizard_tty}"
+  else
+    wizard_prompts
+  fi
+
+  log_ok "Wizard concluído"
+}
+
+# Prompts interativos (whiptail). Chamado por wizard_run com os 3 fds ligados
+# no /dev/tty — não usar log_* aqui esperando que caia no arquivo de log.
+wizard_prompts() {
   log_banner "Configuração inicial"
 
   # Domínio
@@ -101,14 +131,17 @@ wizard_run() {
   NETX_TENANT_COUNTRY="${country}"
   export NETX_TENANT_COUNTRY NETX_TENANT_LOCALE NETX_TENANT_CURRENCY
 
-  # Confirmação
-  whiptail --yesno "Configuração:
+  # Confirmação — "Não" aborta limpo (sem stack trace do errexit).
+  if ! whiptail --yesno "Configuração:
 
 Domínio:    ${NETX_DOMAIN:-(IP do servidor)}
 Admin:      ${NETX_ADMIN_EMAIL}
 Empresa:    ${NETX_TENANT_NAME} (${NETX_TENANT_COUNTRY}/${NETX_TENANT_LOCALE}/${NETX_TENANT_CURRENCY})
 
-Confirma e inicia instalação?" 14 70 --title "Confirmar"
+Confirma e inicia instalação?" 14 70 --title "Confirmar"; then
+    log_warn "Instalação cancelada no wizard. Rode o installer de novo quando quiser."
+    exit 1
+  fi
 
   # Persiste config em .secrets pra re-runs idempotentes
   mkdir -p "${NETX_ETC}"
@@ -117,8 +150,6 @@ Confirma e inicia instalação?" 14 70 --title "Confirmar"
   sed -i '/^NETX_ADMIN_EMAIL=/d;/^NETX_ADMIN_PASSWORD=/d;/^NETX_DOMAIN=/d;/^NETX_LETSENCRYPT_EMAIL=/d' "${NETX_ETC}/.secrets" 2>/dev/null || true
   printf 'NETX_ADMIN_EMAIL=%s\nNETX_ADMIN_PASSWORD=%s\nNETX_DOMAIN=%s\nNETX_LETSENCRYPT_EMAIL=%s\n' \
     "${NETX_ADMIN_EMAIL}" "${NETX_ADMIN_PASSWORD}" "${NETX_DOMAIN}" "${NETX_LETSENCRYPT_EMAIL}" >> "${NETX_ETC}/.secrets"
-
-  log_ok "Wizard concluído"
 }
 
 wizard_apply_defaults() {
