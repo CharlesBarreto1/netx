@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
@@ -21,10 +22,19 @@ import { StatusBadge } from './_components/StatusBadge';
  *
  * Escopo do MVP:
  *   - Tabela com cliente, PPPoE, velocidade, mensalidade, vencimento, status.
- *   - Filtro por status + busca textual (código / pppoe / endereço).
+ *   - Filtro por status + conexão RADIUS + busca textual (código / pppoe / endereço).
+ *   - Filtros iniciais via query string (?status=ACTIVE&connection=online,
+ *     ?invoiceStatus=OVERDUE) — usados pelos cards do dashboard.
  *   - Botão "Novo contrato" (vai para /contracts/new).
  *   - Clique na linha abre o detalhe.
  */
+const CONTRACT_STATUSES: ContractStatus[] = [
+  'PENDING_INSTALL',
+  'ACTIVE',
+  'SUSPENDED',
+  'CANCELLED',
+];
+
 export default function ContractsPage() {
   const canWrite = hasPermission('contracts.write');
   const formatMoney = useFormatMoney();
@@ -32,8 +42,21 @@ export default function ContractsPage() {
   const tList = useTranslations('contracts.list');
   const tStatus = useTranslations('contracts.status');
   const tCommon = useTranslations('common');
+  const sp = useSearchParams();
 
-  const [status, setStatus] = useState<ContractStatus | ''>('');
+  const [status, setStatus] = useState<ContractStatus | ''>(() => {
+    const s = sp.get('status') as ContractStatus | null;
+    return s && CONTRACT_STATUSES.includes(s) ? s : '';
+  });
+  const [connection, setConnection] = useState<'online' | 'offline' | ''>(() => {
+    const c = sp.get('connection');
+    return c === 'online' || c === 'offline' ? c : '';
+  });
+  // Vem do card "Faturas vencidas" do dashboard; sem UI própria (por ora).
+  const [invoiceStatus] = useState<'OPEN' | 'OVERDUE' | ''>(() => {
+    const v = sp.get('invoiceStatus');
+    return v === 'OPEN' || v === 'OVERDUE' ? v : '';
+  });
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const pageSize = 50;
@@ -43,11 +66,13 @@ export default function ContractsPage() {
       page,
       pageSize,
       status: status || undefined,
+      connection: connection || undefined,
+      invoiceStatus: invoiceStatus || undefined,
       search: search || undefined,
       sortBy: 'createdAt',
       sortDir: 'desc',
     }),
-    [page, pageSize, status, search],
+    [page, pageSize, status, connection, invoiceStatus, search],
   );
 
   const { data, isLoading } = useSWR<Paginated<Contract>>(key);
@@ -94,6 +119,18 @@ export default function ContractsPage() {
           <option value="ACTIVE">{tStatus('active')}</option>
           <option value="SUSPENDED">{tStatus('suspended')}</option>
           <option value="CANCELLED">{tStatus('cancelled')}</option>
+        </Select>
+        <Select
+          value={connection}
+          onChange={(e) => {
+            setPage(1);
+            setConnection(e.target.value as 'online' | 'offline' | '');
+          }}
+          className="w-40"
+        >
+          <option value="">{tList('allConnections')}</option>
+          <option value="online">{tList('connectionOnline')}</option>
+          <option value="offline">{tList('connectionOffline')}</option>
         </Select>
         <span className="ml-auto text-xs text-text-muted">
           {data?.pagination ? `${data.pagination.total} ${tList('countSuffix')}` : ''}

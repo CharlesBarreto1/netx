@@ -56,6 +56,7 @@ import {
 } from './billing-period.util';
 import { recalcCustomerStatus } from './customer-status';
 import { InvoiceGeneratorService } from './invoice-generator.service';
+import { RadacctService } from '../radius/radacct.service';
 import { RadiusSyncService } from './radius-sync.service';
 
 /**
@@ -100,6 +101,7 @@ export class ContractsService {
     private readonly disconnect: DisconnectService,
     private readonly crypto: CryptoService,
     private readonly ufinet: UfinetOrdersService,
+    private readonly radacct: RadacctService,
   ) {}
 
   /** Dispara baja/cancelación Ufinet no cancelamento do contrato (best-effort). */
@@ -331,12 +333,29 @@ export class ContractsService {
   }
 
   async list(tenantId: string, q: ListContractsQuery): Promise<Paginated<ContractResponse>> {
+    // Filtro por conexão RADIUS: resolve os ids com sessão ativa no radacct
+    // e filtra por inclusão/exclusão. Card "Clientes Online/Offline" do
+    // dashboard chega aqui com status=ACTIVE + connection=online|offline.
+    let connectionFilter: Prisma.ContractWhereInput | undefined;
+    if (q.connection) {
+      const onlineIds = await this.radacct.getOnlineContractIds(tenantId);
+      connectionFilter =
+        q.connection === 'online'
+          ? { id: { in: onlineIds } }
+          : { id: { notIn: onlineIds } };
+    }
+
     const where: Prisma.ContractWhereInput = {
       tenantId,
       deletedAt: null,
       ...(q.customerId && { customerId: q.customerId }),
       ...(q.status && { status: q.status }),
       ...(q.pppoeUsername && { pppoeUsername: q.pppoeUsername }),
+      ...connectionFilter,
+      // Card "Faturas vencidas" do dashboard: contratos com fatura na situação.
+      ...(q.invoiceStatus && {
+        invoices: { some: { status: q.invoiceStatus } },
+      }),
       ...(q.search && {
         OR: [
           { code: { contains: q.search, mode: 'insensitive' } },

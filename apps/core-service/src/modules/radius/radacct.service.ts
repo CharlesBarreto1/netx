@@ -230,6 +230,42 @@ export class RadacctService {
     };
   }
 
+  /**
+   * IDs dos contratos do tenant com sessão RADIUS ativa (`acctstoptime IS
+   * NULL`). Mesmo match do snapshot (pppoe/circuit-id/MAC normalizado), mas
+   * sem restringir por status — quem consome compõe com os próprios filtros
+   * (a listagem de contratos usa pra filtrar online/offline). Mesma ressalva
+   * de custo do snapshot: não usar em polling agressivo.
+   */
+  async getOnlineContractIds(tenantId: string): Promise<string[]> {
+    const rows = await this.prisma.$queryRawUnsafe<Array<{ id: string }>>(
+      `SELECT DISTINCT c.id
+         FROM contracts c
+         JOIN radius.radacct r ON (
+              (c.pppoe_username IS NOT NULL AND r.username = c.pppoe_username)
+           OR (c.circuit_id IS NOT NULL AND (
+                 r.username = c.circuit_id
+              OR r.callingstationid = c.circuit_id
+              ))
+           OR (c.mac_address IS NOT NULL AND (
+                 LOWER(REGEXP_REPLACE(
+                   REGEXP_REPLACE(r.callingstationid, '^[0-9]+:', ''),
+                   '[:\\-.]', '', 'g'
+                 )) = LOWER(REPLACE(REPLACE(REPLACE(c.mac_address, ':', ''), '-', ''), '.', ''))
+              OR LOWER(REGEXP_REPLACE(
+                   REGEXP_REPLACE(r.username, '^[0-9]+:', ''),
+                   '[:\\-.]', '', 'g'
+                 )) = LOWER(REPLACE(REPLACE(REPLACE(c.mac_address, ':', ''), '-', ''), '.', ''))
+              ))
+         )
+        WHERE c.tenant_id = $1::uuid
+          AND c.deleted_at IS NULL
+          AND r.acctstoptime IS NULL`,
+      tenantId,
+    );
+    return rows.map((r) => r.id);
+  }
+
   // ───────────────────────────────────────────────────────────────────────
   // Consumo agregado por dia
   // ───────────────────────────────────────────────────────────────────────

@@ -163,7 +163,7 @@ export default function DashboardPage() {
           value={snapshot?.online}
           loading={lSnapshot && canReadContracts}
           disabled={!canReadContracts}
-          href="/network/radius-log"
+          href="/contracts?status=ACTIVE&connection=online"
           tone="success"
           delay={180}
           footer={
@@ -181,7 +181,7 @@ export default function DashboardPage() {
           value={snapshot?.offline}
           loading={lSnapshot && canReadContracts}
           disabled={!canReadContracts}
-          href="/network/radius-log"
+          href="/contracts?status=ACTIVE&connection=offline"
           tone={(snapshot?.offline ?? 0) > (snapshot?.online ?? 0) ? 'warning' : 'info'}
           delay={240}
           footer={

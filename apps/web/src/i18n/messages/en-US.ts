@@ -279,6 +279,9 @@ const messages = {
     list: {
       searchPlaceholder: 'Search by code, PPPoE, or address…',
       allStatuses: 'All statuses',
+      allConnections: 'Connection (all)',
+      connectionOnline: 'Online',
+      connectionOffline: 'Offline',
       countSuffix: 'contract(s)',
       cols: {
         customer: 'Customer',

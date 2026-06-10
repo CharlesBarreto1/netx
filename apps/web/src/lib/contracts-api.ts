@@ -125,6 +125,10 @@ export interface ListContractsParams {
   status?: ContractStatus;
   pppoeUsername?: string;
   search?: string;
+  /** Estado da conexão RADIUS (sessão ativa no radacct). */
+  connection?: 'online' | 'offline';
+  /** Só contratos com fatura nessa situação (card "Faturas vencidas"). */
+  invoiceStatus?: 'OPEN' | 'OVERDUE';
   sortBy?: 'createdAt' | 'updatedAt' | 'dueDay' | 'monthlyValue';
   sortDir?: 'asc' | 'desc';
 }

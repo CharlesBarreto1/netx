@@ -272,6 +272,16 @@ export const ListContractsQuerySchema = z.object({
   pppoeUsername: z.string().max(64).optional(),
   search: z.string().max(255).optional(), // código / endereço / pppoe
 
+  /**
+   * Filtro por estado de conexão RADIUS (sessão ativa em radius.radacct).
+   * online = tem sessão sem acctstoptime; offline = não tem. Usado pelos
+   * cards do dashboard. Caro pra DB (cruza contracts × radacct) — evitar
+   * polling agressivo.
+   */
+  connection: z.enum(['online', 'offline']).optional(),
+  /** Só contratos com fatura nessa situação (ex.: OVERDUE — card do dashboard). */
+  invoiceStatus: z.enum(['OPEN', 'OVERDUE']).optional(),
+
   sortBy: z.enum(['createdAt', 'updatedAt', 'dueDay', 'monthlyValue']).default('createdAt'),
   sortDir: z.enum(['asc', 'desc']).default('desc'),
 });
