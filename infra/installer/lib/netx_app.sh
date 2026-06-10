@@ -181,6 +181,15 @@ netx_app_render_env() {
   export NETX_MINIO_ENDPOINT NETX_MINIO_PUBLIC_URL NETX_MINIO_BUCKET \
          NETX_MINIO_ACCESS_KEY NETX_MINIO_SECRET_KEY
 
+  # Licenciamento (Hub NetX) — OPCIONAL. Vazio por padrão: enrollment é feito
+  # depois (Fase 2). Defaults vazios garantem que envsubst escreve linhas
+  # limpas (NETX_HUB_URL=) em vez de deixar o literal ${NETX_HUB_URL} no .env
+  # — literal que faz o dotenv-expand recursar (auto-referência) e explodir.
+  : "${NETX_HUB_URL:=}"
+  : "${NETX_LICENSE_KEY:=}"
+  : "${NETX_INSTANCE_ID:=}"
+  export NETX_HUB_URL NETX_LICENSE_KEY NETX_INSTANCE_ID
+
   log_info "Renderizando ${env}"
   # CRÍTICO: TODA `${VAR}` que aparece no env.tmpl precisa estar listada aqui.
   # envsubst deixa o literal `${VAR}` no output se a var não for passada — e
@@ -197,6 +206,7 @@ netx_app_render_env() {
     NETX_MINIO_ENDPOINT NETX_MINIO_PUBLIC_URL NETX_MINIO_BUCKET \
     NETX_MINIO_ACCESS_KEY NETX_MINIO_SECRET_KEY \
     NETX_TRACCAR_URL \
+    NETX_HUB_URL NETX_LICENSE_KEY NETX_INSTANCE_ID \
     EVOLUTION_API_KEY
 
   chown root:"${NETX_USER}" "${env}"

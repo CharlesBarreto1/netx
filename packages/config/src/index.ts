@@ -14,6 +14,13 @@ const booleanFromString = z
   .enum(['true', 'false', '1', '0'])
   .transform((v) => v === 'true' || v === '1');
 
+// Trata string vazia como "não definido". O .env renderizado pelo installer
+// escreve vars opcionais como `VAR=` (vazio); sem isso, schemas como
+// z.string().uuid().optional() recebem "" (≠ undefined) e FALHAM a validação,
+// derrubando o boot. Use envolvendo o schema opcional: emptyAsUndefined(z....().optional()).
+const emptyAsUndefined = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess((v) => (v === '' ? undefined : v), schema);
+
 const baseSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
@@ -85,9 +92,9 @@ const baseSchema = z.object({
   // Licenciamento (valida licença desta instalação com o Hub da NetX).
   // OPCIONAL e FAIL-OPEN: sem NETX_HUB_URL + NETX_LICENSE_KEY o módulo é no-op
   // (libera tudo). Instalações antigas e dev não quebram. Ver docs/licensing.md.
-  NETX_HUB_URL: z.string().url().optional(),           // ex.: https://hub.netx.com.br
-  NETX_LICENSE_KEY: z.string().min(8).optional(),      // segredo da instância (auth no heartbeat)
-  NETX_INSTANCE_ID: z.string().uuid().optional(),      // uuid da instalação (enrollment)
+  NETX_HUB_URL: emptyAsUndefined(z.string().url().optional()),       // ex.: https://hub.netx.com.br
+  NETX_LICENSE_KEY: emptyAsUndefined(z.string().min(8).optional()),  // segredo da instância (auth no heartbeat)
+  NETX_INSTANCE_ID: emptyAsUndefined(z.string().uuid().optional()),  // uuid da instalação (enrollment)
 });
 
 export type RawEnv = z.infer<typeof baseSchema>;
