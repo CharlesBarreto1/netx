@@ -10,138 +10,160 @@ wizard_run() {
     return
   fi
 
-  # Terminal de controle. Em `curl | sudo bash` o stdin é o pipe do curl (não
-  # é TTY) e o install.sh redireciona stdout/stderr pro tee do log — então o
-  # wizard NUNCA pode confiar nos fds herdados. A saída é falar direto com
-  # /dev/tty (o terminal real da sessão), que existe mesmo em modo pipe.
-  # Sem /dev/tty utilizável (cron, CI, provisionamento sem terminal) não tem
-  # como perguntar nada → defaults/env, como antes.
-  local wizard_tty=""
-  if [[ -r /dev/tty && -w /dev/tty ]]; then
-    wizard_tty="/dev/tty"
-  elif [[ ! -t 0 ]]; then
-    log_warn "sem terminal interativo (stdin não é TTY e /dev/tty indisponível) — pulando wizard, usando defaults/env"
+  # Precisamos do terminal real. Em `curl | sudo bash` o stdin é o pipe do curl
+  # (não é TTY) e o install.sh redireciona stdout/stderr pro tee do log — então
+  # falamos DIRETO com /dev/tty (o terminal da sessão), que existe mesmo em modo
+  # pipe. Sem /dev/tty (cron/CI/provisionamento headless) → defaults/env.
+  if [[ ! -r /dev/tty || ! -w /dev/tty ]]; then
+    log_warn "sem terminal interativo (/dev/tty indisponível) — pulando wizard, usando defaults/env"
     wizard_apply_defaults
     return
   fi
 
-  # whiptail é instalado no step `packages`, que roda DEPOIS do wizard — numa
-  # imagem mínima ele pode não existir ainda. Garante aqui (somos root).
-  if ! command -v whiptail >/dev/null 2>&1; then
-    log_info "whiptail ausente — instalando pro wizard..."
-    apt-get update -qq || true
-    apt-get install -y -qq whiptail || true
-  fi
-  if ! command -v whiptail >/dev/null 2>&1; then
-    log_warn "whiptail indisponível — usando defaults/env"
-    wizard_apply_defaults
-    return
-  fi
-
-  # Redireção na CHAMADA da função (não cria subshell): os exports feitos
-  # dentro de wizard_prompts continuam valendo aqui fora.
-  if [[ -n "${wizard_tty}" ]]; then
-    wizard_prompts < "${wizard_tty}" > "${wizard_tty}" 2> "${wizard_tty}"
-  else
-    wizard_prompts
-  fi
-
+  wizard_prompts
   log_ok "Wizard concluído"
 }
 
-# Prompts interativos (whiptail). Chamado por wizard_run com os 3 fds ligados
-# no /dev/tty — não usar log_* aqui esperando que caia no arquivo de log.
-wizard_prompts() {
-  log_banner "Configuração inicial"
+# ── Helpers de prompt (texto puro via /dev/tty, fd 3) ────────────────────────
+# Trocamos o whiptail por prompts de texto: whiptail quebra ao COLAR (terminais
+# modernos usam "bracketed paste" e envolvem o texto em escapes que ele não
+# entende, corrompendo a tela). Texto puro é robusto em qualquer terminal/SSH e
+# não depende de pacote nenhum. Tudo lê/escreve no fd 3 (=/dev/tty).
 
-  # Domínio
+# Pergunta de texto: _ask VARNAME "Pergunta" "default"
+_wz_ask() {
+  local __var=$1 __prompt=$2 __def=${3:-} __ans=""
+  if [[ -n "${__def}" ]]; then
+    printf '%s [%s]: ' "${__prompt}" "${__def}" >&3
+  else
+    printf '%s: ' "${__prompt}" >&3
+  fi
+  # read com IFS default já apara espaços nas pontas; -r preserva backslashes.
+  read -r __ans <&3 || __ans=""
+  __ans="${__ans%$'\r'}"                 # remove CR (PuTTY/Windows paste)
+  [[ -z "${__ans}" ]] && __ans="${__def}"
+  printf -v "${__var}" '%s' "${__ans}"
+}
+
+# Senha sem eco, com confirmação e tamanho mínimo: _ask_password VARNAME
+_wz_ask_password() {
+  local __var=$1 __p1="" __p2=""
+  while true; do
+    printf 'Senha do admin (mín. 8 caracteres): ' >&3
+    read -rs __p1 <&3 || __p1=""; printf '\n' >&3
+    printf 'Confirme a senha: ' >&3
+    read -rs __p2 <&3 || __p2=""; printf '\n' >&3
+    if [[ "${__p1}" != "${__p2}" ]]; then
+      printf '  → as senhas não conferem, tente de novo.\n' >&3; continue
+    fi
+    if [[ ${#__p1} -lt 8 ]]; then
+      printf '  → mínimo 8 caracteres, tente de novo.\n' >&3; continue
+    fi
+    printf -v "${__var}" '%s' "${__p1}"
+    return
+  done
+}
+
+# Prompts interativos do wizard. Abre fd 3 no terminal real e desliga o
+# bracketed-paste mode (a causa do "bug ao colar"). NÃO usa log_* aqui (essas
+# vão pro tee/arquivo) — escreve direto no fd 3 pra aparecer na tela.
+wizard_prompts() {
+  exec 3<>/dev/tty
+  printf '\033[?2004l' >&3   # desliga bracketed paste — colar vira texto limpo
+
+  {
+    printf '\n'
+    printf '═══════════════════════════════════════════════════════════\n'
+    printf '  NetX — Configuração inicial\n'
+    printf '  (Enter aceita o valor entre [colchetes])\n'
+    printf '═══════════════════════════════════════════════════════════\n\n'
+  } >&3
+
+  # Domínio (opcional)
   if [[ -z "${NETX_DOMAIN}" ]]; then
-    NETX_DOMAIN=$(whiptail --inputbox \
-      "Domínio onde o NetX vai responder (ex: netx.suaempresa.com).\nDeixe vazio pra usar IP.\nO instalador configura HTTPS via Let's Encrypt automaticamente." \
-      11 70 "" --title "Domínio" 3>&1 1>&2 2>&3) || NETX_DOMAIN=""
+    printf 'Domínio onde o NetX vai responder (ex: netx.suaempresa.com).\n' >&3
+    printf 'Deixe vazio pra usar o IP do servidor (sem HTTPS automático).\n' >&3
+    _wz_ask NETX_DOMAIN "Domínio" ""
   fi
   export NETX_DOMAIN
 
-  # Email pra Let's Encrypt — só pergunta se domínio foi setado
+  # E-mail Let's Encrypt — só se houver domínio
   if [[ -n "${NETX_DOMAIN}" && -z "${NETX_LETSENCRYPT_EMAIL}" ]]; then
-    NETX_LETSENCRYPT_EMAIL=$(whiptail --inputbox \
-      "E-mail pra notificações do certificado SSL (Let's Encrypt):\n(Use o mesmo do admin se preferir)" \
-      10 70 "${NETX_ADMIN_EMAIL:-admin@${NETX_DOMAIN}}" --title "Let's Encrypt" 3>&1 1>&2 2>&3) || NETX_LETSENCRYPT_EMAIL=""
+    _wz_ask NETX_LETSENCRYPT_EMAIL "E-mail pro certificado SSL (Let's Encrypt)" \
+      "${NETX_ADMIN_EMAIL:-admin@${NETX_DOMAIN}}"
   fi
   export NETX_LETSENCRYPT_EMAIL
 
-  # Admin email
+  # E-mail do admin (valida formato básico)
   if [[ -z "${NETX_ADMIN_EMAIL}" ]]; then
-    NETX_ADMIN_EMAIL=$(whiptail --inputbox \
-      "E-mail do admin inicial:" \
-      10 70 "admin@netx.local" --title "Admin" 3>&1 1>&2 2>&3) || NETX_ADMIN_EMAIL="admin@netx.local"
+    while true; do
+      _wz_ask NETX_ADMIN_EMAIL "E-mail do admin inicial" "admin@netx.local"
+      [[ "${NETX_ADMIN_EMAIL}" == *@*.* || "${NETX_ADMIN_EMAIL}" == *@* ]] && break
+      printf '  → e-mail inválido, tente de novo.\n' >&3
+    done
   fi
   export NETX_ADMIN_EMAIL
 
-  # Admin senha
+  # Senha do admin
   if [[ -z "${NETX_ADMIN_PASSWORD}" ]]; then
-    local choice
-    choice=$(whiptail --menu "Senha do admin:" 12 60 2 \
-      "auto" "Gerar aleatória (recomendado)" \
-      "manual" "Definir agora" \
-      --title "Senha admin" 3>&1 1>&2 2>&3) || choice="auto"
-
-    if [[ "${choice}" == "manual" ]]; then
-      while true; do
-        local p1 p2
-        p1=$(whiptail --passwordbox "Digite a senha (mínimo 8 chars, com maiúscula, minúscula, número e símbolo):" \
-          10 70 --title "Senha admin" 3>&1 1>&2 2>&3) || p1=""
-        p2=$(whiptail --passwordbox "Confirme a senha:" \
-          10 70 --title "Senha admin" 3>&1 1>&2 2>&3) || p2=""
-        if [[ "${p1}" == "${p2}" && ${#p1} -ge 8 ]]; then
-          NETX_ADMIN_PASSWORD="${p1}"
-          break
-        fi
-        whiptail --msgbox "Senhas não conferem ou muito curtas. Tenta de novo." 8 60
-      done
+    local pwchoice=""
+    printf '\nSenha do admin:\n' >&3
+    printf '  1) Gerar aleatória (recomendado)\n' >&3
+    printf '  2) Definir agora\n' >&3
+    _wz_ask pwchoice "Escolha" "1"
+    if [[ "${pwchoice}" == "2" ]]; then
+      _wz_ask_password NETX_ADMIN_PASSWORD
     else
       NETX_ADMIN_PASSWORD="$(gen_secret 16)Aa1!"
+      printf '  → senha aleatória gerada (aparece no resumo final).\n' >&3
     fi
   fi
   export NETX_ADMIN_PASSWORD
 
-  # Operação (= empresa/ISP). Cada instância NetX atende UMA empresa.
+  # Empresa (ISP)
   if [[ "${NETX_TENANT_NAME}" == "NetX Default" ]]; then
-    NETX_TENANT_NAME=$(whiptail --inputbox \
-      "Nome da sua empresa (ISP) — ex: 'NET Telecom Asunción':" \
-      10 70 "Minha ISP" --title "Operação" 3>&1 1>&2 2>&3) || NETX_TENANT_NAME="Minha ISP"
+    _wz_ask NETX_TENANT_NAME "Nome da sua empresa (ISP)" "Minha ISP"
   fi
   export NETX_TENANT_NAME
 
-  # País / locale / moeda
-  local country
-  country=$(whiptail --menu "País do tenant:" 14 60 4 \
-    "PY" "Paraguai (es-PY, PYG)" \
-    "BR" "Brasil (pt-BR, BRL)" \
-    "AR" "Argentina (es-AR, ARS)" \
-    "OTHER" "Outro (preenche depois)" \
-    --title "País" 3>&1 1>&2 2>&3) || country="${NETX_TENANT_COUNTRY}"
-
+  # País → locale/moeda
+  local country=""
+  printf '\nPaís da operação:\n' >&3
+  printf '  1) Paraguai  (es-PY, PYG)\n' >&3
+  printf '  2) Brasil    (pt-BR, BRL)\n' >&3
+  printf '  3) Argentina (es-AR, ARS)\n' >&3
+  printf '  4) Outro     (preenche depois)\n' >&3
+  _wz_ask country "Escolha" "1"
   case "${country}" in
-    PY) NETX_TENANT_LOCALE="es-PY"; NETX_TENANT_CURRENCY="PYG" ;;
-    BR) NETX_TENANT_LOCALE="pt-BR"; NETX_TENANT_CURRENCY="BRL" ;;
-    AR) NETX_TENANT_LOCALE="es-AR"; NETX_TENANT_CURRENCY="ARS" ;;
-    *)  NETX_TENANT_LOCALE="es-PY"; NETX_TENANT_CURRENCY="PYG" ;;
+    1|PY|py) NETX_TENANT_COUNTRY="PY"; NETX_TENANT_LOCALE="es-PY"; NETX_TENANT_CURRENCY="PYG" ;;
+    2|BR|br) NETX_TENANT_COUNTRY="BR"; NETX_TENANT_LOCALE="pt-BR"; NETX_TENANT_CURRENCY="BRL" ;;
+    3|AR|ar) NETX_TENANT_COUNTRY="AR"; NETX_TENANT_LOCALE="es-AR"; NETX_TENANT_CURRENCY="ARS" ;;
+    *)       NETX_TENANT_COUNTRY="PY"; NETX_TENANT_LOCALE="es-PY"; NETX_TENANT_CURRENCY="PYG" ;;
   esac
-  NETX_TENANT_COUNTRY="${country}"
   export NETX_TENANT_COUNTRY NETX_TENANT_LOCALE NETX_TENANT_CURRENCY
 
-  # Confirmação — "Não" aborta limpo (sem stack trace do errexit).
-  if ! whiptail --yesno "Configuração:
+  # Confirmação
+  {
+    printf '\n───────────────────────────────────────────────────────────\n'
+    printf '  Domínio:  %s\n' "${NETX_DOMAIN:-(IP do servidor)}"
+    printf '  Admin:    %s\n' "${NETX_ADMIN_EMAIL}"
+    printf '  Empresa:  %s (%s/%s/%s)\n' \
+      "${NETX_TENANT_NAME}" "${NETX_TENANT_COUNTRY}" "${NETX_TENANT_LOCALE}" "${NETX_TENANT_CURRENCY}"
+    printf '───────────────────────────────────────────────────────────\n'
+  } >&3
+  local confirm=""
+  _wz_ask confirm "Confirma e inicia a instalação? (s/N)" "s"
+  case "${confirm}" in
+    s|S|sim|y|Y|yes) : ;;
+    *)
+      printf '  Instalação cancelada. Rode o installer de novo quando quiser.\n' >&3
+      exec 3<&- 3>&-
+      log_warn "Instalação cancelada no wizard."
+      exit 1
+      ;;
+  esac
 
-Domínio:    ${NETX_DOMAIN:-(IP do servidor)}
-Admin:      ${NETX_ADMIN_EMAIL}
-Empresa:    ${NETX_TENANT_NAME} (${NETX_TENANT_COUNTRY}/${NETX_TENANT_LOCALE}/${NETX_TENANT_CURRENCY})
-
-Confirma e inicia instalação?" 14 70 --title "Confirmar"; then
-    log_warn "Instalação cancelada no wizard. Rode o installer de novo quando quiser."
-    exit 1
-  fi
+  exec 3<&- 3>&-
 
   # Persiste config em .secrets pra re-runs idempotentes
   mkdir -p "${NETX_ETC}"
