@@ -10,6 +10,7 @@ import { FieldError, Input, Label, Textarea } from '@/components/ui/Input';
 import { PageLoader } from '@/components/ui/Spinner';
 import { toast } from '@/components/ui/sonner';
 import { ApiError } from '@/lib/api';
+import { cashRegistersApi, type CashRegister, type PaymentMethod } from '@/lib/finance-api';
 import { hasPermission } from '@/lib/session';
 import {
   stockApi,
@@ -18,9 +19,34 @@ import {
   type Purchase,
   type PurchaseAuditEntry,
   type PurchaseItemInput,
+  type PurchasePaymentInput,
   type StockLocation,
   type Supplier,
 } from '@/lib/stock-api';
+
+const PAYMENT_METHODS: PaymentMethod[] = [
+  'CASH',
+  'PIX',
+  'CARD',
+  'BANK_TRANSFER',
+  'BOLETO',
+  'OTHER',
+];
+
+type PayCondition = 'NONE' | 'CASH' | 'INSTALLMENTS';
+
+function derivePayCondition(p?: Purchase): PayCondition {
+  const payables = p?.payables ?? [];
+  if (payables.length === 0) return 'NONE';
+  if (
+    payables.length === 1 &&
+    payables[0].installmentCount === 1 &&
+    payables[0].status === 'PAID'
+  ) {
+    return 'CASH';
+  }
+  return 'INSTALLMENTS';
+}
 
 export default function PurchasesPage() {
   const { data, isLoading, error, mutate } = useSWR<Purchase[]>(
@@ -90,6 +116,7 @@ export default function PurchasesPage() {
                   <th className="px-4 py-3">{t('th.invoice')}</th>
                   <th className="px-4 py-3 text-right">{t('th.items')}</th>
                   <th className="px-4 py-3 text-right">{t('th.total')}</th>
+                  <th className="px-4 py-3">{t('th.payment')}</th>
                   <th className="px-4 py-3">{t('th.operator')}</th>
                   <th className="px-4 py-3 text-right">{tc('actions')}</th>
                 </tr>
@@ -104,6 +131,7 @@ export default function PurchasesPage() {
                     <td className="px-4 py-3 font-mono text-xs">{p.invoiceNumber ?? '—'}</td>
                     <td className="px-4 py-3 text-right">{p.items.length}</td>
                     <td className="px-4 py-3 text-right">{formatMoney(p.totalCost)}</td>
+                    <td className="px-4 py-3"><PaymentBadge purchase={p} /></td>
                     <td className="px-4 py-3 text-xs text-slate-500">{p.createdByName ?? '—'}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-1">
@@ -177,6 +205,43 @@ function formatMoney(v: string | number | null): string {
   const n = typeof v === 'string' ? Number(v) : v;
   if (!Number.isFinite(n)) return '—';
   return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Situação do financeiro da compra: — (sem parcelas), À vista, ou x/y pagas
+// (vermelho se tem parcela vencida).
+function PaymentBadge({ purchase }: { purchase: Purchase }) {
+  const t = useTranslations('stock.purchases');
+  const payables = purchase.payables ?? [];
+  if (payables.length === 0) {
+    return <span className="text-xs text-slate-400">—</span>;
+  }
+  if (
+    payables.length === 1 &&
+    payables[0].installmentCount === 1 &&
+    payables[0].status === 'PAID'
+  ) {
+    return (
+      <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+        {t('payment.cashBadge')}
+      </span>
+    );
+  }
+  const paid = payables.filter((p) => p.status === 'PAID').length;
+  const today = new Date().toISOString().slice(0, 10);
+  const hasOverdue = payables.some(
+    (p) => p.status === 'OPEN' && p.dueDate.slice(0, 10) < today,
+  );
+  const allPaid = paid === payables.length;
+  const cls = allPaid
+    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+    : hasOverdue
+      ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+      : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300';
+  return (
+    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${cls}`}>
+      {t('payment.installmentsBadge', { paid, total: payables.length })}
+    </span>
+  );
 }
 
 // =============================================================================
@@ -281,6 +346,49 @@ function PurchaseDetailsModal({
           </div>
         </div>
 
+        {(purchase.payables ?? []).length > 0 && (
+          <div>
+            <h3 className="text-sm font-semibold mb-2">{t('payment.heading')}</h3>
+            <div className="rounded-md border border-slate-200 dark:border-slate-700 overflow-hidden">
+              <table className="min-w-full divide-y divide-slate-200 text-xs dark:divide-slate-700">
+                <thead className="bg-slate-50 dark:bg-slate-900/40">
+                  <tr className="text-left">
+                    <th className="px-3 py-2">{t('payment.installment')}</th>
+                    <th className="px-3 py-2">{t('payment.dueDate')}</th>
+                    <th className="px-3 py-2 text-right">{t('payment.amount')}</th>
+                    <th className="px-3 py-2">{t('payment.status')}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                  {(purchase.payables ?? []).map((pay) => (
+                    <tr key={pay.id}>
+                      <td className="px-3 py-2">
+                        {pay.installmentNumber}/{pay.installmentCount}
+                      </td>
+                      <td className="px-3 py-2">
+                        {new Date(pay.dueDate).toLocaleDateString()}
+                      </td>
+                      <td className="px-3 py-2 text-right">{formatMoney(pay.amount)}</td>
+                      <td className="px-3 py-2">
+                        {pay.status === 'PAID'
+                          ? t('payment.statusPaid')
+                          : pay.status === 'OPEN'
+                            ? t('payment.statusOpen')
+                            : t('payment.statusCancelled')}
+                        {pay.paidAt && (
+                          <span className="block text-slate-500">
+                            {new Date(pay.paidAt).toLocaleDateString()}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {auditTrail && auditTrail.length > 0 && (
           <div>
             <h3 className="text-sm font-semibold mb-2">{t('details.auditHeading')}</h3>
@@ -326,6 +434,7 @@ function PurchaseFormModal({
 }) {
   const t = useTranslations('stock.purchases');
   const tc = useTranslations('common');
+  const tpm = useTranslations('finance.paymentMethod');
   const { data: suppliers } = useSWR<Supplier[]>(stockApi.suppliersPath({ isActive: true }), () =>
     stockApi.listSuppliers({ isActive: true }),
   );
@@ -362,6 +471,68 @@ function PurchaseFormModal({
   );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // ── Pagamento (contas a pagar) ─────────────────────────────────────────────
+  const initialPayables = initial?.payables ?? [];
+  const [payCondition, setPayCondition] = useState<PayCondition>(() =>
+    derivePayCondition(initial),
+  );
+  const [payCashRegisterId, setPayCashRegisterId] = useState(
+    initialPayables[0]?.cashRegisterId ?? '',
+  );
+  const [payVia, setPayVia] = useState(initialPayables[0]?.paidVia ?? '');
+  const [installments, setInstallments] = useState<
+    Array<{ dueDate: string; amount: number }>
+  >(() =>
+    derivePayCondition(initial) === 'INSTALLMENTS'
+      ? initialPayables.map((p) => ({
+          dueDate: p.dueDate.slice(0, 10),
+          amount: Number(p.amount),
+        }))
+      : [],
+  );
+  const [instCount, setInstCount] = useState(installments.length || 2);
+  const [instFirstDue, setInstFirstDue] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 30);
+    return d.toISOString().slice(0, 10);
+  });
+  // Caixas: pode falhar (403) pra quem não tem permissão de finance — nesse
+  // caso o select fica vazio e a compra à vista sai "sem caixa".
+  const { data: cashRegisters } = useSWR<CashRegister[]>(
+    payCondition === 'CASH' ? cashRegistersApi.listPath() : null,
+    () => cashRegistersApi.list(),
+    { shouldRetryOnError: false },
+  );
+
+  function generateInstallments() {
+    const count = Math.max(1, Math.min(60, Math.floor(instCount)));
+    const per = Math.floor((total / count) * 100) / 100;
+    const rows: Array<{ dueDate: string; amount: number }> = [];
+    const first = new Date(`${instFirstDue}T00:00:00`);
+    for (let i = 0; i < count; i++) {
+      const due = new Date(first);
+      due.setMonth(due.getMonth() + i);
+      rows.push({
+        dueDate: due.toISOString().slice(0, 10),
+        // Última parcela absorve o resto do arredondamento.
+        amount:
+          i === count - 1
+            ? Math.round((total - per * (count - 1)) * 100) / 100
+            : per,
+      });
+    }
+    setInstallments(rows);
+  }
+
+  function updateInstallment(
+    idx: number,
+    patch: Partial<{ dueDate: string; amount: number }>,
+  ) {
+    const next = [...installments];
+    next[idx] = { ...next[idx], ...patch };
+    setInstallments(next);
+  }
 
   function updateItem(idx: number, patch: Partial<PurchaseItemInput>) {
     const next = [...items];
@@ -419,6 +590,34 @@ function PurchaseFormModal({
       }
     }
 
+    // Validação do pagamento (contas a pagar)
+    let payment: PurchasePaymentInput | null = null;
+    if (payCondition === 'CASH') {
+      payment = {
+        condition: 'CASH',
+        cashRegisterId: payCashRegisterId || null,
+        ...(payVia ? { paidVia: payVia } : {}),
+      };
+    } else if (payCondition === 'INSTALLMENTS') {
+      if (installments.length === 0) return setError(t('payment.errors.noInstallments'));
+      for (let i = 0; i < installments.length; i++) {
+        const inst = installments[i];
+        if (!inst.dueDate) return setError(t('payment.errors.missingDueDate', { n: i + 1 }));
+        if (!Number.isFinite(inst.amount) || inst.amount <= 0)
+          return setError(t('payment.errors.invalidAmount', { n: i + 1 }));
+      }
+      const sum = installments.reduce((acc, p) => acc + p.amount, 0);
+      if (Math.abs(sum - total) > 0.01) {
+        return setError(
+          t('payment.errors.sumMismatch', {
+            sum: formatMoney(sum),
+            total: formatMoney(total),
+          }),
+        );
+      }
+      payment = { condition: 'INSTALLMENTS', installments };
+    }
+
     setSubmitting(true);
     try {
       const payload: CreatePurchaseInput = {
@@ -426,6 +625,7 @@ function PurchaseFormModal({
         invoiceNumber: invoiceNumber || null,
         date,
         notes: notes || null,
+        payment,
         items: items.map((it) => ({
           ...it,
           quantity: Number(it.quantity),
@@ -611,6 +811,128 @@ function PurchaseFormModal({
               );
             })}
           </div>
+        </div>
+
+        {/* Pagamento — gera as parcelas no contas a pagar */}
+        <div className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
+          <h3 className="text-sm font-semibold mb-2">{t('payment.heading')}</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <Label className="text-xs">{t('payment.condition')}</Label>
+              <select
+                className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
+                value={payCondition}
+                onChange={(e) => setPayCondition(e.target.value as PayCondition)}
+              >
+                <option value="NONE">{t('payment.conditionNone')}</option>
+                <option value="CASH">{t('payment.conditionCash')}</option>
+                <option value="INSTALLMENTS">{t('payment.conditionInstallments')}</option>
+              </select>
+            </div>
+
+            {payCondition === 'CASH' && (
+              <>
+                <div>
+                  <Label className="text-xs">{t('payment.method')}</Label>
+                  <select
+                    className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
+                    value={payVia}
+                    onChange={(e) => setPayVia(e.target.value)}
+                  >
+                    <option value="">—</option>
+                    {PAYMENT_METHODS.map((m) => (
+                      <option key={m} value={m}>{tpm(m as 'CASH')}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <Label className="text-xs">{t('payment.cashRegister')}</Label>
+                  <select
+                    className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
+                    value={payCashRegisterId}
+                    onChange={(e) => setPayCashRegisterId(e.target.value)}
+                  >
+                    <option value="">{t('payment.noCashRegister')}</option>
+                    {cashRegisters?.filter((r) => r.isActive).map((r) => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                  <p className="mt-1 text-xs text-slate-500">{t('payment.cashRegisterHelp')}</p>
+                </div>
+              </>
+            )}
+          </div>
+
+          {payCondition === 'INSTALLMENTS' && (
+            <div className="mt-3 space-y-2">
+              <div className="flex flex-wrap items-end gap-2">
+                <div>
+                  <Label className="text-xs">{t('payment.installmentCount')}</Label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="60"
+                    step="1"
+                    className="w-24"
+                    value={instCount}
+                    onChange={(e) => setInstCount(Number(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">{t('payment.firstDueDate')}</Label>
+                  <Input
+                    type="date"
+                    value={instFirstDue}
+                    onChange={(e) => setInstFirstDue(e.target.value)}
+                  />
+                </div>
+                <Button type="button" variant="ghost" size="sm" onClick={generateInstallments}>
+                  {t('payment.generate')}
+                </Button>
+              </div>
+
+              {installments.length > 0 && (
+                <div className="space-y-1">
+                  {installments.map((inst, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <span className="w-10 text-xs text-slate-500">
+                        {idx + 1}/{installments.length}
+                      </span>
+                      <Input
+                        type="date"
+                        className="w-40"
+                        value={inst.dueDate}
+                        onChange={(e) => updateInstallment(idx, { dueDate: e.target.value })}
+                      />
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0.01"
+                        className="w-32"
+                        value={inst.amount}
+                        onChange={(e) =>
+                          updateInstallment(idx, { amount: Number(e.target.value) })
+                        }
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setInstallments(installments.filter((_, i) => i !== idx))}
+                        className="text-xs text-red-600 hover:underline"
+                      >
+                        {t('form.remove')}
+                      </button>
+                    </div>
+                  ))}
+                  <p className="text-xs text-slate-500">
+                    {t('payment.installmentsSum', {
+                      sum: formatMoney(installments.reduce((a, p) => a + p.amount, 0)),
+                      total: formatMoney(total),
+                    })}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div>

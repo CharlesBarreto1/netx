@@ -77,6 +77,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     labelKey: 'group.finance',
     items: [
       { key: 'charges', href: '/finance/charges', labelKey: 'charges', permission: 'finance.charges.read' },
+      { key: 'payables', href: '/finance/payables', labelKey: 'payables', permission: 'finance.payables.read' },
       { key: 'cashRegisters', href: '/settings/cash-registers', labelKey: 'cashRegisters', permission: 'cash_registers.manage' },
       { key: 'efiConfig', href: '/settings/efi', labelKey: 'efiConfig', permission: 'efi.config.read' },
     ],

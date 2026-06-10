@@ -339,6 +339,91 @@ export const chargesApi = {
 };
 
 // =============================================================================
+// CONTAS A PAGAR — parcelas de pagamento a fornecedor (geradas pela compra
+// de estoque: à vista = 1 parcela paga; a prazo = N parcelas em aberto).
+// =============================================================================
+export type PayableStatus = 'OPEN' | 'PAID' | 'CANCELLED';
+
+export interface SupplierPayable {
+  id: string;
+  tenantId: string;
+  supplierId: string;
+  supplierName?: string;
+  purchaseId: string | null;
+  purchaseInvoiceNumber?: string | null;
+  description: string | null;
+  installmentNumber: number;
+  installmentCount: number;
+  amount: number;
+  dueDate: string;
+  status: PayableStatus;
+  /** Derivado no backend: OPEN + vencimento antes de hoje. */
+  isOverdue: boolean;
+  paidAt: string | null;
+  paidAmount: number | null;
+  paidVia: PaymentMethod | null;
+  cashRegisterId: string | null;
+  cashRegisterName?: string | null;
+  paymentNote: string | null;
+  createdById: string;
+  createdByName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PayablesSummary {
+  openCount: number;
+  openTotal: number;
+  overdueCount: number;
+  overdueTotal: number;
+  paidThisMonthTotal: number;
+}
+
+export interface ListPayablesParams {
+  page?: number;
+  pageSize?: number;
+  supplierId?: string;
+  purchaseId?: string;
+  status?: PayableStatus;
+  overdueOnly?: boolean;
+  dueFrom?: string;
+  dueTo?: string;
+  search?: string;
+  sortBy?: 'dueDate' | 'createdAt' | 'amount';
+  sortDir?: 'asc' | 'desc';
+}
+
+export interface PayPayableInput {
+  cashRegisterId?: string | null;
+  paidVia?: PaymentMethod;
+  paidAmount?: number;
+  paidAt?: string;
+  note?: string;
+}
+
+export const payablesApi = {
+  listPath: (params: ListPayablesParams = {}) => `/v1/finance/payables${qs(params)}`,
+  list(params: ListPayablesParams = {}) {
+    return api.get<Paginated<SupplierPayable>>(this.listPath(params));
+  },
+  summaryPath: () => `/v1/finance/payables/summary`,
+  summary() {
+    return api.get<PayablesSummary>(this.summaryPath());
+  },
+  get(id: string) {
+    return api.get<SupplierPayable>(`/v1/finance/payables/${id}`);
+  },
+  /** Dá baixa numa parcela (opcionalmente lançando a saída num caixa). */
+  pay(id: string, input: PayPayableInput) {
+    return api.post<SupplierPayable>(`/v1/finance/payables/${id}/pay`, input);
+  },
+  /** Estorna a baixa de uma parcela paga errada (desfaz o caixa). */
+  unpay(id: string) {
+    return api.post<SupplierPayable>(`/v1/finance/payables/${id}/unpay`, {});
+  },
+};
+
+// =============================================================================
 // EFI / EfiPay — pagamentos BR (Pix imediato + boleto híbrido "Bolix")
 // =============================================================================
 export type EfiChargeKind = 'PIX' | 'BOLIX';

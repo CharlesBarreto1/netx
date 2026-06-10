@@ -303,7 +303,8 @@ export class PurchasesController {
     @CurrentUser() u: AuthenticatedPrincipal,
     @ZodBody(CreatePurchaseRequestSchema) body: CreatePurchaseRequest,
   ) {
-    return this.purchases.create(u.tenantId, u.sub, body);
+    const isManager = u.permissions.includes('cash_registers.manage');
+    return this.purchases.create(u.tenantId, u.sub, body, isManager);
   }
 
   /**
@@ -318,7 +319,8 @@ export class PurchasesController {
     @Param('id', new ParseUUIDPipe()) id: string,
     @ZodBody(UpdatePurchaseRequestSchema) body: UpdatePurchaseRequest,
   ) {
-    return this.purchases.update(u.tenantId, u.sub, id, body);
+    const isManager = u.permissions.includes('cash_registers.manage');
+    return this.purchases.update(u.tenantId, u.sub, id, body, isManager);
   }
 
   /** Exclui (reverte) uma compra lançada errada — só se nada foi movimentado. */

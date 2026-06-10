@@ -109,6 +109,9 @@ const financePermissions = [
   { code: 'finance.charges.read', module: 'finance', resource: 'charges', action: 'read' },
   { code: 'finance.charges.write', module: 'finance', resource: 'charges', action: 'write' },
   { code: 'finance.charges.delete', module: 'finance', resource: 'charges', action: 'delete' },
+  // Contas a pagar (parcelas de compra de fornecedor — à vista/a prazo).
+  { code: 'finance.payables.read', module: 'finance', resource: 'payables', action: 'read' },
+  { code: 'finance.payables.write', module: 'finance', resource: 'payables', action: 'write' },
   // Aplicar desconto em pagamento (sensível — não vai pro operator default).
   { code: 'finance.discount.apply', module: 'finance', resource: 'payments', action: 'discount' },
 ];
@@ -331,6 +334,8 @@ const systemRoles = [
       'finance.charges.read',
       'finance.charges.write',
       'finance.charges.delete',
+      'finance.payables.read',
+      'finance.payables.write',
       'finance.discount.apply',
       // EFI — pagamentos BR (config + cobranças)
       'efi.config.read',
@@ -426,6 +431,10 @@ const systemRoles = [
       // nem aplicar desconto)
       'finance.charges.read',
       'finance.charges.write',
+      // Contas a pagar — operador consulta e dá baixa em parcela (a compra
+      // que gera as parcelas ele já lança via stock.purchase.create)
+      'finance.payables.read',
+      'finance.payables.write',
       // EFI — operador gera/consulta cobranças (sem mexer em credenciais)
       'efi.charges.read',
       'efi.charges.write',
@@ -487,6 +496,7 @@ const systemRoles = [
       'contracts.read',
       'service_orders.read',
       'finance.charges.read',
+      'finance.payables.read',
       'reports.read',
       'network.read',
       'stock.read',

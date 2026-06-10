@@ -5,12 +5,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service';
+import { SupplierPayablesService } from '../finance/supplier-payables.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { ProductsService } from './products.service';
 import { StockLocationsService } from './stock-locations.service';
 
-import type { Prisma, Product } from '@prisma/client';
+import type { Prisma, Product, Supplier } from '@prisma/client';
 import type { CreatePurchaseRequest, UpdatePurchaseRequest } from '@netx/shared';
 
 /**
@@ -43,6 +44,7 @@ const PURCHASE_INCLUDE = {
       location: { select: { id: true, code: true, name: true } },
     },
   },
+  payables: { orderBy: { installmentNumber: 'asc' as const } },
 } satisfies Prisma.PurchaseInclude;
 
 type PurchaseWithIncludes = Prisma.PurchaseGetPayload<{
@@ -61,6 +63,7 @@ export class PurchasesService {
     private readonly audit: AuditService,
     private readonly products: ProductsService,
     private readonly locations: StockLocationsService,
+    private readonly payables: SupplierPayablesService,
   ) {}
 
   // Achata o resultado do Prisma pro shape do PurchaseResponse (@netx/shared).
@@ -82,6 +85,17 @@ export class PurchasesService {
       updatedById: p.updatedById,
       updatedByName: fullName(p.updatedBy),
       updatedAt: p.updatedAt,
+      payables: p.payables.map((pay) => ({
+        id: pay.id,
+        installmentNumber: pay.installmentNumber,
+        installmentCount: pay.installmentCount,
+        amount: pay.amount,
+        dueDate: pay.dueDate,
+        status: pay.status,
+        paidAt: pay.paidAt,
+        paidVia: pay.paidVia,
+        cashRegisterId: pay.cashRegisterId,
+      })),
       items: p.items.map((it) => ({
         id: it.id,
         productId: it.productId,
@@ -179,7 +193,7 @@ export class PurchasesService {
       excludePurchaseId?: string;
       ignoreSerialsByProduct?: Map<string, Set<string>>;
     },
-  ): Promise<Map<string, Product>> {
+  ): Promise<{ productById: Map<string, Product>; supplier: Supplier }> {
     // 1. Supplier existe e pertence ao tenant
     const supplier = await this.prisma.supplier.findFirst({
       where: { id: input.supplierId, tenantId, deletedAt: null },
@@ -284,7 +298,7 @@ export class PurchasesService {
       }
     }
 
-    return productById;
+    return { productById, supplier };
   }
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -413,13 +427,30 @@ export class PurchasesService {
     tenantId: string,
     actorUserId: string,
     input: CreatePurchaseRequest,
+    /** Tem cash_registers.manage — bypassa membership de caixa (à vista). */
+    isManager = false,
   ) {
-    const productById = await this.validateInput(tenantId, actorUserId, input);
+    const { productById, supplier } = await this.validateInput(
+      tenantId,
+      actorUserId,
+      input,
+    );
 
     const totalCost = input.items.reduce(
       (acc, i) => acc + i.quantity * i.unitCost,
       0,
     );
+    const roundedTotal = Math.round(totalCost * 10000) / 10000;
+
+    if (input.payment) {
+      await this.payables.validatePurchasePayment(
+        tenantId,
+        actorUserId,
+        isManager,
+        input.payment,
+        roundedTotal,
+      );
+    }
 
     // ──────────────────────────────────────────────────────────────────────
     // TRANSAÇÃO ATÔMICA
@@ -431,7 +462,7 @@ export class PurchasesService {
           supplierId: input.supplierId,
           invoiceNumber: input.invoiceNumber ?? null,
           date: new Date(input.date),
-          totalCost: Math.round(totalCost * 10000) / 10000,
+          totalCost: roundedTotal,
           notes: input.notes ?? null,
           createdById: actorUserId,
         },
@@ -446,6 +477,22 @@ export class PurchasesService {
         productById,
         true,
       );
+
+      // Contas a pagar — à vista (1 parcela paga, com saída de caixa opcional)
+      // ou a prazo (N parcelas em aberto). Mesma transação da compra.
+      if (input.payment) {
+        await this.payables.createForPurchaseTx(tx, {
+          tenantId,
+          actorUserId,
+          purchaseId: created.id,
+          supplierId: supplier.id,
+          supplierName: supplier.name,
+          invoiceNumber: input.invoiceNumber ?? null,
+          purchaseDate: new Date(input.date),
+          totalCost: roundedTotal,
+          payment: input.payment,
+        });
+      }
 
       return created;
     });
@@ -474,6 +521,8 @@ export class PurchasesService {
     actorUserId: string,
     purchaseId: string,
     input: UpdatePurchaseRequest,
+    /** Tem cash_registers.manage — bypassa membership de caixa (à vista). */
+    isManager = false,
   ) {
     const purchase = await this.prisma.purchase.findFirst({
       where: { id: purchaseId, tenantId },
@@ -487,6 +536,9 @@ export class PurchasesService {
     });
     if (!purchase) throw new NotFoundException('Compra não encontrada');
 
+    // Parcela paga no contas a pagar prende a compra — estorna a baixa antes.
+    await this.payables.assertPurchaseUnlocked(tenantId, purchaseId, 'editar');
+
     // Serials criados pela própria compra não contam como "já cadastrados"
     // na validação do payload novo — eles serão revertidos antes do reapply.
     const ignoreSerialsByProduct = new Map<string, Set<string>>();
@@ -497,10 +549,15 @@ export class PurchasesService {
       ignoreSerialsByProduct.set(item.productId, set);
     }
 
-    const productById = await this.validateInput(tenantId, actorUserId, input, {
-      excludePurchaseId: purchaseId,
-      ignoreSerialsByProduct,
-    });
+    const { productById, supplier } = await this.validateInput(
+      tenantId,
+      actorUserId,
+      input,
+      {
+        excludePurchaseId: purchaseId,
+        ignoreSerialsByProduct,
+      },
+    );
 
     // Travas de reversão — iguais às do delete.
     const affectedProductIds = await this.assertRevertible(
@@ -514,6 +571,17 @@ export class PurchasesService {
       (acc, i) => acc + i.quantity * i.unitCost,
       0,
     );
+    const roundedTotal = Math.round(totalCost * 10000) / 10000;
+
+    if (input.payment) {
+      await this.payables.validatePurchasePayment(
+        tenantId,
+        actorUserId,
+        isManager,
+        input.payment,
+        roundedTotal,
+      );
+    }
     const beforeState = {
       supplierId: purchase.supplierId,
       invoiceNumber: purchase.invoiceNumber,
@@ -565,13 +633,13 @@ export class PurchasesService {
           supplierId: input.supplierId,
           invoiceNumber: input.invoiceNumber ?? null,
           date: new Date(input.date),
-          totalCost: Math.round(totalCost * 10000) / 10000,
+          totalCost: roundedTotal,
           notes: input.notes ?? null,
           updatedById: actorUserId,
         },
       });
 
-      // 4. Reaplica os itens novos (sem recálculo incremental — passo 5).
+      // 4. Reaplica os itens novos (sem recálculo incremental — passo 6).
       await this.applyItemsTx(
         tx,
         tenantId,
@@ -582,7 +650,24 @@ export class PurchasesService {
         false,
       );
 
-      // 5. Recomputa o custo médio de TODOS os produtos envolvidos
+      // 5. Regenera o contas a pagar: remove as parcelas antigas (nenhuma
+      //    paga — travado acima) e recria conforme o payment novo (se houver).
+      await this.payables.deleteForPurchaseTx(tx, tenantId, purchaseId);
+      if (input.payment) {
+        await this.payables.createForPurchaseTx(tx, {
+          tenantId,
+          actorUserId,
+          purchaseId,
+          supplierId: supplier.id,
+          supplierName: supplier.name,
+          invoiceNumber: input.invoiceNumber ?? null,
+          purchaseDate: new Date(input.date),
+          totalCost: roundedTotal,
+          payment: input.payment,
+        });
+      }
+
+      // 6. Recomputa o custo médio de TODOS os produtos envolvidos
       //    (removidos, alterados e adicionados) via replay do kardex.
       for (const pid of affectedProductIds) {
         await this.products.recomputeAverageCost(tx, pid);
@@ -614,6 +699,13 @@ export class PurchasesService {
       date: input.date,
       notes: input.notes ?? null,
       totalCost: Math.round(totalCost * 10000) / 10000,
+      payment: input.payment
+        ? {
+            condition: input.payment.condition,
+            installments: input.payment.installments?.length ?? 1,
+            cashRegisterId: input.payment.cashRegisterId ?? null,
+          }
+        : null,
       items: input.items.map((it) => ({
         sku: productById?.get(it.productId)?.sku ?? it.productId,
         locationId: it.locationId,
@@ -726,6 +818,9 @@ export class PurchasesService {
     });
     if (!purchase) throw new NotFoundException('Compra não encontrada');
 
+    // Parcela paga no contas a pagar prende a compra — estorna a baixa antes.
+    await this.payables.assertPurchaseUnlocked(tenantId, purchaseId, 'excluir');
+
     const affectedProductIds = await this.assertRevertible(
       tenantId,
       purchase,
@@ -761,7 +856,9 @@ export class PurchasesService {
         }
       }
 
-      // 4. Deleta itens + header.
+      // 4. Deleta parcelas do contas a pagar (nenhuma paga — travado acima),
+      //    itens e header.
+      await this.payables.deleteForPurchaseTx(tx, tenantId, purchaseId);
       await tx.purchaseItem.deleteMany({ where: { purchaseId } });
       await tx.purchase.delete({ where: { id: purchaseId } });
 

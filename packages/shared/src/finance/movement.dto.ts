@@ -16,6 +16,8 @@ export const CashMovementSourceSchema = z.enum([
   'MANUAL',
   'FLEET_EXPENSE',
   'PAYROLL',
+  // Pagamento a fornecedor — baixa de conta a pagar (compra de estoque).
+  'SUPPLIER_PAYABLE',
 ]);
 export type CashMovementSource = z.infer<typeof CashMovementSourceSchema>;
 

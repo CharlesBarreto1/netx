@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuditModule } from '../audit/audit.module';
+import { FinanceModule } from '../finance/finance.module';
 
 import { ComodatoService } from './comodato.service';
 import { OsConsumptionService } from './os-consumption.service';
@@ -22,7 +23,9 @@ import {
 } from './stock.controller';
 
 @Module({
-  imports: [AuditModule],
+  // FinanceModule: compra com pagamento (à vista/a prazo) gera parcelas no
+  // contas a pagar (SupplierPayablesService) dentro da transação da compra.
+  imports: [AuditModule, FinanceModule],
   controllers: [
     SuppliersController,
     ProductsController,

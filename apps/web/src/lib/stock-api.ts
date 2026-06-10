@@ -137,12 +137,26 @@ export interface PurchaseItemInput {
   notes?: string | null;
 }
 
+/**
+ * Condição de pagamento da compra → gera parcelas no contas a pagar:
+ * CASH = à vista (1 parcela já paga, caixa opcional);
+ * INSTALLMENTS = a prazo (N parcelas; soma deve bater com o total).
+ */
+export interface PurchasePaymentInput {
+  condition: 'CASH' | 'INSTALLMENTS';
+  cashRegisterId?: string | null;
+  paidVia?: string;
+  installments?: Array<{ dueDate: string; amount: number }>;
+}
+
 export interface CreatePurchaseInput {
   supplierId: string;
   invoiceNumber?: string | null;
   date: string; // ISO
   notes?: string | null;
   items: PurchaseItemInput[];
+  /** Opcional — sem ele a compra não gera financeiro. */
+  payment?: PurchasePaymentInput | null;
 }
 
 export interface Purchase {
@@ -161,6 +175,18 @@ export interface Purchase {
   updatedById?: string | null;
   updatedByName?: string | null;
   updatedAt?: string;
+  // Parcelas do contas a pagar geradas pela compra (vazio = sem financeiro).
+  payables?: Array<{
+    id: string;
+    installmentNumber: number;
+    installmentCount: number;
+    amount: string;
+    dueDate: string;
+    status: 'OPEN' | 'PAID' | 'CANCELLED';
+    paidAt: string | null;
+    paidVia: string | null;
+    cashRegisterId: string | null;
+  }>;
   items: Array<{
     id: string;
     productId: string;

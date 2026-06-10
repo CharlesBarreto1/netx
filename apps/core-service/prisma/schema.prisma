@@ -149,6 +149,7 @@ model Tenant {
   timeCorrectionRequests TimeCorrectionRequest[]
   payslips             Payslip[]
   salaryPayments       SalaryPayment[]
+  supplierPayables     SupplierPayable[]
   companyPosts         CompanyPost[]
 
   // EFI (pagamentos BR — Pix imediato + Bolix)
@@ -295,6 +296,7 @@ model User {
   stockMovementsCreated StockMovement[] @relation("StockMovementCreatedBy")
   purchasesCreated      Purchase[]      @relation("PurchaseCreatedBy")
   purchasesUpdated      Purchase[]      @relation("PurchaseUpdatedBy")
+  supplierPayablesCreated SupplierPayable[] @relation("SupplierPayableCreatedBy")
 
   // Mobile (app do técnico em campo)
   mobileDevices       MobileDevice[]
@@ -1638,6 +1640,7 @@ model CashRegister {
   movements      CashMovement[]
   fleetExpenses  FleetExpense[]
   salaryPayments SalaryPayment[]
+  supplierPayables SupplierPayable[]
 
   @@unique([tenantId, name])
   @@index([tenantId, isActive])
@@ -1711,6 +1714,56 @@ model OneTimeCharge {
 }
 
 // Tipo do movimento financeiro num caixa.
+// =============================================================================
+// CONTAS A PAGAR — parcela de pagamento a fornecedor, gerada pelo lançamento
+// de compra de estoque (à vista = 1 parcela já paga; a prazo = N parcelas com
+// vencimento). A baixa registra CashMovement OUTCOME (source SUPPLIER_PAYABLE).
+// "Vencida" é derivada: status OPEN + dueDate < hoje (sem cron de status).
+// =============================================================================
+enum PayableStatus {
+  OPEN
+  PAID
+  CANCELLED
+}
+
+model SupplierPayable {
+  id                String        @id @default(uuid()) @db.Uuid
+  tenantId          String        @map("tenant_id") @db.Uuid
+  supplierId        String        @map("supplier_id") @db.Uuid
+  // Compra que originou a parcela (null = lançamento avulso, reservado p/ fase 2)
+  purchaseId        String?       @map("purchase_id") @db.Uuid
+  description       String?       @db.VarChar(500)
+  installmentNumber Int           @default(1) @map("installment_number")
+  installmentCount  Int           @default(1) @map("installment_count")
+  amount            Decimal       @db.Decimal(14, 4)
+  dueDate           DateTime      @map("due_date")
+  status            PayableStatus @default(OPEN)
+
+  // Baixa (pagamento)
+  paidAt         DateTime?      @map("paid_at")
+  paidAmount     Decimal?       @map("paid_amount") @db.Decimal(14, 4)
+  paidVia        PaymentMethod? @map("paid_via")
+  cashRegisterId String?        @map("cash_register_id") @db.Uuid
+  cashMovementId String?        @map("cash_movement_id") @db.Uuid
+  paymentNote    String?        @map("payment_note") @db.VarChar(500)
+
+  createdById String   @map("created_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier     Supplier      @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  purchase     Purchase?     @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  cashRegister CashRegister? @relation(fields: [cashRegisterId], references: [id], onDelete: Restrict)
+  createdBy    User          @relation("SupplierPayableCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, status, dueDate])
+  @@index([tenantId, dueDate])
+  @@index([supplierId])
+  @@index([purchaseId])
+  @@map("supplier_payables")
+}
+
 enum CashMovementType {
   INCOME         // Entrada (pagamento recebido)
   OUTCOME        // Saída (sangria, pagamento de fornecedor)
@@ -1729,6 +1782,7 @@ enum CashMovementSource {
   MANUAL
   FLEET_EXPENSE   // Despesa de frota (combustível, manutenção, multa, etc.)
   PAYROLL         // Pagamento de salário/holerite a colaborador (RH)
+  SUPPLIER_PAYABLE // Pagamento a fornecedor (baixa de conta a pagar)
 }
 
 model CashMovement {
@@ -2334,6 +2388,7 @@ model Supplier {
 
   tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   purchases Purchase[]
+  payables  SupplierPayable[]
 
   @@unique([tenantId, taxId, taxIdType])
   @@index([tenantId, name])
@@ -2552,6 +2607,7 @@ model Purchase {
   updatedBy User?           @relation("PurchaseUpdatedBy", fields: [updatedById], references: [id], onDelete: Restrict)
   items     PurchaseItem[]
   movements StockMovement[]
+  payables  SupplierPayable[]
 
   @@unique([tenantId, supplierId, invoiceNumber])
   @@index([tenantId, date(sort: Desc)])

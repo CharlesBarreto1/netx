@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+import { PaymentMethodSchema } from '../finance/payment.dto';
+import type { PayableStatus } from '../finance/payable.dto';
+
 /**
  * Purchase — entrada por compra de fornecedor. Operação atômica: cria
  * Purchase, N PurchaseItems, N StockMovements (PURCHASE), atualiza
@@ -31,6 +34,49 @@ export const PurchaseItemInputSchema = z.object({
 });
 export type PurchaseItemInput = z.infer<typeof PurchaseItemInputSchema>;
 
+/**
+ * Condição de pagamento da compra → gera as parcelas no contas a pagar:
+ *   - CASH (à vista): 1 parcela já PAID na data da compra. `cashRegisterId`
+ *     opcional — se informado, lança a saída no caixa na hora.
+ *   - INSTALLMENTS (a prazo): N parcelas OPEN; a soma deve bater com o total
+ *     da compra (validado no service). Baixa depois em /finance/payables.
+ * Campo opcional no payload — sem ele a compra não gera financeiro (compat).
+ */
+export const PurchasePaymentSchema = z
+  .object({
+    condition: z.enum(['CASH', 'INSTALLMENTS']),
+    // À vista:
+    cashRegisterId: z.string().uuid().nullish(),
+    paidVia: PaymentMethodSchema.optional(),
+    // A prazo:
+    installments: z
+      .array(
+        z.object({
+          dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          amount: decimalStringOrNumber,
+        }),
+      )
+      .max(60)
+      .optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.condition === 'INSTALLMENTS' && (!v.installments || v.installments.length === 0)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['installments'],
+        message: 'Compra a prazo precisa de pelo menos 1 parcela',
+      });
+    }
+    if (v.condition === 'CASH' && v.installments && v.installments.length > 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['installments'],
+        message: 'Compra à vista não leva parcelas',
+      });
+    }
+  });
+export type PurchasePayment = z.infer<typeof PurchasePaymentSchema>;
+
 export const CreatePurchaseRequestSchema = z.object({
   supplierId: z.string().uuid(),
   invoiceNumber: z.string().max(64).nullish(),
@@ -38,6 +84,7 @@ export const CreatePurchaseRequestSchema = z.object({
   date: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),
   notes: z.string().max(2000).nullish(),
   items: z.array(PurchaseItemInputSchema).min(1, 'Compra precisa de pelo menos 1 item'),
+  payment: PurchasePaymentSchema.nullish(),
 });
 export type CreatePurchaseRequest = z.infer<typeof CreatePurchaseRequestSchema>;
 
@@ -66,6 +113,18 @@ export interface PurchaseResponse {
   updatedById?: string | null;
   updatedByName?: string | null;
   updatedAt?: string;
+  // Parcelas do contas a pagar geradas pela compra (vazio = sem financeiro).
+  payables?: Array<{
+    id: string;
+    installmentNumber: number;
+    installmentCount: number;
+    amount: string;
+    dueDate: string;
+    status: PayableStatus;
+    paidAt: string | null;
+    paidVia: string | null;
+    cashRegisterId: string | null;
+  }>;
   items: Array<{
     id: string;
     productId: string;
