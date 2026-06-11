@@ -830,6 +830,7 @@ export class ServiceOrdersService {
         'Provisionamento falhou — O.S não finalizada. Verifique OLT/ONT e tente novamente.',
       );
     }
+    await this.markCtoPortUsed(tenantId, so.contractId, input);
 
     // 2. Materiais consumíveis.
     if (input.materials.length > 0) {
@@ -924,6 +925,7 @@ export class ServiceOrdersService {
         );
         if (install.status === 'FAILED')
           throw new ConflictException('Provisionamento falhou — O.S não finalizada.');
+        await this.markCtoPortUsed(tenantId, so.contractId, input);
         await this.consumeMaterials(tenantId, actorUserId, id, input.materials, opts.isAdmin);
         break;
       }
@@ -1008,6 +1010,7 @@ export class ServiceOrdersService {
     );
     // NÃO lança em FAILED — materiais já foram usados em campo e o técnico
     // precisa cair na confirmação pra trocar/re-tentar a ONT.
+    await this.markCtoPortUsed(tenantId, so.contractId, input);
     await this.consumeMaterials(tenantId, actorUserId, id, input.materials, opts.isAdmin);
     await this.savePhotos(tenantId, actorUserId, id, input.photos);
     await this.prisma.serviceOrder.update({
@@ -1025,6 +1028,65 @@ export class ServiceOrdersService {
 
     const serviceOrder = await this.findById(tenantId, id);
     return { serviceOrder, install };
+  }
+
+  /**
+   * Marca a porta da CTO (OpticalEnclosure) como USED vinculada ao contrato, ao
+   * instalar. Resolve a CTO por id (rede própria, `enclosureId`) ou por CÓDIGO
+   * (Ufinet, `install.ufinetCto`). A porta vem de `enclosurePort` ou
+   * `install.ufinetPort`. Sem isso, as CTOs apareciam sempre 0/16.
+   */
+  private async markCtoPortUsed(
+    tenantId: string,
+    contractId: string,
+    input: {
+      enclosureId?: string | null;
+      enclosurePort?: string | null;
+      install: { ufinetCto?: string | null; ufinetPort?: string | null };
+    },
+  ): Promise<void> {
+    // CTO: id direto (rede própria) ou por código (Ufinet — a caixa real que o
+    // técnico escolheu, ex.: "JLMPY-MP0001").
+    let enclosureId = input.enclosureId ?? null;
+    const ufinetCto = input.install?.ufinetCto?.trim() || null;
+    if (!enclosureId && ufinetCto) {
+      const enc = await this.prisma.opticalEnclosure.findFirst({
+        where: { tenantId, code: ufinetCto, deletedAt: null },
+        select: { id: true },
+      });
+      enclosureId = enc?.id ?? null;
+    }
+    if (!enclosureId) return;
+
+    const portRaw = input.enclosurePort ?? input.install?.ufinetPort ?? null;
+    const portNum = portRaw != null ? Number(String(portRaw).trim()) : NaN;
+    if (!Number.isInteger(portNum) || portNum < 1) return;
+
+    const port = await this.prisma.opticalPort.findFirst({
+      where: { tenantId, enclosureId, number: portNum },
+      select: { id: true },
+    });
+    if (!port) return; // porta não cadastrada na CTO — não marca
+
+    await this.prisma.$transaction(async (tx) => {
+      // Libera porta anterior do contrato (re-instalação/troca de CTO).
+      await tx.opticalPort.updateMany({
+        where: { tenantId, contractId, NOT: { id: port.id } },
+        data: { status: 'FREE', contractId: null },
+      });
+      await tx.opticalPort.update({
+        where: { id: port.id },
+        data: { status: 'USED', contractId },
+      });
+    });
+
+    await this.audit.log({
+      tenantId,
+      action: 'optical.port.occupied_on_install',
+      resource: 'optical_ports',
+      resourceId: port.id,
+      afterState: { enclosureId, number: portNum, contractId },
+    });
   }
 
   private async consumeMaterials(
