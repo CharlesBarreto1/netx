@@ -34,6 +34,7 @@ interface TraccarDevice {
   name: string;
   status: string;
   lastUpdate: string | null;
+  positionId: number; // 0 = nunca reportou posição
 }
 
 interface TraccarPosition {
@@ -102,8 +103,13 @@ export class TraccarService {
     return this.request<T>(path);
   }
 
+  /**
+   * `all=true` é obrigatório: autenticamos com o service-account token (usuário
+   * VIRTUAL do Traccar) — devices não ficam vinculados a ele, e `/api/devices`
+   * sem o parâmetro lista só os vinculados (= sempre vazio pro token).
+   */
   async getDevices(): Promise<TraccarDevice[]> {
-    return this.get<TraccarDevice[]>('/api/devices');
+    return this.get<TraccarDevice[]>('/api/devices?all=true');
   }
 
   /**
@@ -133,14 +139,13 @@ export class TraccarService {
     }
   }
 
-  async getPositions(): Promise<TraccarPosition[]> {
-    return this.get<TraccarPosition[]>('/api/positions');
-  }
-
   /**
-   * Resolve a última posição por uniqueId (IMEI). Junta /api/devices (mapa
-   * uniqueId→deviceId) com /api/positions. Lança se o Traccar estiver
-   * inacessível — quem chama decide o fallback.
+   * Resolve a última posição por uniqueId (IMEI): /api/devices (all=true) dá
+   * o `positionId` da última posição de cada device, e /api/positions?id=...
+   * busca esse lote. NÃO usar /api/positions sem parâmetro — ele lista por
+   * vínculo de usuário e volta vazio pro service-account token (vide
+   * getDevices). Lança se o Traccar estiver inacessível — quem chama decide
+   * o fallback.
    */
   async getPositionsByUniqueIds(
     uniqueIds: string[],
@@ -149,16 +154,20 @@ export class TraccarService {
     const out = new Map<string, NormalizedPosition>();
     if (wanted.size === 0) return out;
 
-    const [devices, positions] = await Promise.all([
-      this.getDevices(),
-      this.getPositions(),
-    ]);
+    const devices = await this.getDevices();
 
-    // deviceId → uniqueId, só dos que nos interessam.
+    // deviceId → uniqueId, só dos que nos interessam e já reportaram.
     const deviceIdToUnique = new Map<number, string>();
+    const positionIds: number[] = [];
     for (const d of devices) {
-      if (wanted.has(d.uniqueId)) deviceIdToUnique.set(d.id, d.uniqueId);
+      if (!wanted.has(d.uniqueId) || !d.positionId) continue;
+      deviceIdToUnique.set(d.id, d.uniqueId);
+      positionIds.push(d.positionId);
     }
+    if (positionIds.length === 0) return out;
+
+    const query = positionIds.map((id) => `id=${id}`).join('&');
+    const positions = await this.get<TraccarPosition[]>(`/api/positions?${query}`);
 
     for (const p of positions) {
       const uniqueId = deviceIdToUnique.get(p.deviceId);
