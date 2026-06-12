@@ -59,6 +59,7 @@ import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { useTranslations } from 'next-intl';
 
 import { CommandPalette } from '@/components/layout/CommandPalette';
+import { LicenseBanner } from '@/components/layout/LicenseBanner';
 import { LocaleSwitcher } from '@/components/layout/LocaleSwitcher';
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
 import { Toaster } from '@/components/ui/sonner';
@@ -356,6 +357,7 @@ export function AppShell({
 
           <main className="min-h-[calc(100vh-3.5rem)] flex-1">
             <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8">
+              <LicenseBanner />
               {children}
             </div>
             <AppFooter />

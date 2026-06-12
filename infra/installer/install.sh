@@ -27,6 +27,8 @@
 #   NETX_TENANT_NAME="Minha ISP"
 #   NETX_TENANT_COUNTRY=PY         # PY, BR, AR, ...
 #   NETX_SKIP_WIZARD=1             # pula prompts (modo unattended)
+#   NETX_HUB_URL=...               # licenciamento: base do Hub (vazio = off)
+#   NETX_LICENSE_KEY=...           # licenciamento: segredo da instância (vazio = off)
 #   NETX_FORCE=1                   # re-roda mesmo se já instalado
 #
 # O script é idempotente: pode rodar várias vezes; só executa o que falta.
@@ -202,6 +204,8 @@ source "${INSTALLER_DIR}/lib/systemd.sh"
 source "${INSTALLER_DIR}/lib/nginx.sh"
 # shellcheck source=lib/wizard.sh
 source "${INSTALLER_DIR}/lib/wizard.sh"
+# shellcheck source=lib/licensing.sh
+source "${INSTALLER_DIR}/lib/licensing.sh"
 # shellcheck source=lib/backups.sh
 source "${INSTALLER_DIR}/lib/backups.sh"
 # shellcheck source=lib/smoke.sh
@@ -233,6 +237,8 @@ main() {
   step "redis"               redis_setup
   step "rabbitmq"            rabbitmq_setup
   step "minio"               minio_setup
+  # Enrollment de licença ANTES do netx_app — gera o instanceId que o .env usa.
+  step "licensing"           licensing_enroll
   step "netx_app"            netx_app_setup
   step "freeradius"          freeradius_setup
   step "chrony"              chrony_setup

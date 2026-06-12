@@ -111,6 +111,19 @@ function handleUnauthorized(): void {
   }
 }
 
+/**
+ * 402 Payment Required = licença desta instalação bloqueada/expirada (ver
+ * LicenseGuard no core). NÃO desloga (a sessão é válida) — leva pra tela de
+ * licença expirada, que ainda consegue ler GET /v1/license/status (rota
+ * isenta). Evita loop se já estivermos lá.
+ */
+function handleLicenseBlocked(): void {
+  if (typeof window === 'undefined') return;
+  if (!window.location.pathname.startsWith('/license-expired')) {
+    window.location.href = '/license-expired';
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Auto-refresh em 401
 // ─────────────────────────────────────────────────────────────────────────────
@@ -236,6 +249,7 @@ async function request<T>(
 
   if (!res.ok) {
     if (res.status === 401) handleUnauthorized();
+    if (res.status === 402) handleLicenseBlocked();
     const problem: ApiProblem =
       parsed && typeof parsed === 'object'
         ? (parsed as ApiProblem)
@@ -334,6 +348,7 @@ export async function apiUpload<T>(
   const parsed = text ? safeParse(text) : null;
   if (!res.ok) {
     if (res.status === 401) handleUnauthorized();
+    if (res.status === 402) handleLicenseBlocked();
     const problem: ApiProblem =
       parsed && typeof parsed === 'object'
         ? (parsed as ApiProblem)
