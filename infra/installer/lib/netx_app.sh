@@ -172,7 +172,16 @@ netx_app_render_env() {
   # deixa o literal `${VAR}` no .env quando o step é pulado, e qualquer source
   # com `set -u` (safe-migrate.sh, systemd EnvironmentFile) quebra.
   : "${NETX_TRACCAR_URL:=}"
-  export NETX_TRACCAR_URL
+  : "${NETX_TRACCAR_TOKEN:=}"
+  # Traccar habilitado (flag ou instalado manualmente): gera/reusa o token de
+  # serviço AQUI — mesmo segredo que traccar_setup injeta no traccar.xml. Como
+  # secret_get_or_create é idempotente, a ordem dos steps (netx_app roda antes
+  # do traccar) não importa: ambos resolvem o mesmo valor.
+  if [[ "${NETX_ENABLE_TRACCAR:-0}" == "1" || -d /opt/traccar ]]; then
+    NETX_TRACCAR_URL="${NETX_TRACCAR_URL:-http://127.0.0.1:8082}"
+    NETX_TRACCAR_TOKEN=$(secret_get_or_create TRACCAR_SERVICE_TOKEN 48)
+  fi
+  export NETX_TRACCAR_URL NETX_TRACCAR_TOKEN
   : "${NETX_MINIO_ENDPOINT:=http://127.0.0.1:9000}"
   : "${NETX_MINIO_PUBLIC_URL:=}"
   : "${NETX_MINIO_BUCKET:=netx-photos}"
@@ -205,7 +214,7 @@ netx_app_render_env() {
     NETX_TENANT_SLUG NETX_CORS_ORIGINS \
     NETX_MINIO_ENDPOINT NETX_MINIO_PUBLIC_URL NETX_MINIO_BUCKET \
     NETX_MINIO_ACCESS_KEY NETX_MINIO_SECRET_KEY \
-    NETX_TRACCAR_URL \
+    NETX_TRACCAR_URL NETX_TRACCAR_TOKEN \
     NETX_HUB_URL NETX_LICENSE_KEY NETX_INSTANCE_ID \
     EVOLUTION_API_KEY
 

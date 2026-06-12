@@ -2183,7 +2183,7 @@ const messages = {
       title: 'Live',
       subtitle: 'Real-time position of vehicles with a tracker (via Traccar). Refreshes on its own every few seconds.',
       updatedAt: 'updated {time}',
-      traccarNotConfigured: 'Traccar is not configured in this environment (env <code>TRACCAR_URL/USER/PASSWORD</code>). Vehicles with a tracker show their last known position, if any.',
+      traccarNotConfigured: 'Traccar is not configured in this environment (env <code>TRACCAR_URL/TOKEN</code>). Vehicles with a tracker show their last known position, if any.',
       loadError: 'Failed to load positions.',
       noTrackedVehicles: 'No vehicle has a tracker registered. Enter the tracker IMEI in the vehicle record (Vehicles tab) for it to appear here.',
       noPositionsYet: '{count, plural, one {# vehicle with a tracker, but no position received yet.} other {# vehicles with a tracker, but no position received yet.}}',

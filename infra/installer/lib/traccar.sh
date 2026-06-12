@@ -6,23 +6,35 @@
 #
 # Instala via installer oficial self-contained (JRE embutido) que cria a unit
 # systemd `traccar.service` e sobe em 0.0.0.0:8082 (web + REST API) + portas de
-# protocolo dos rastreadores. O core-service consome /api/devices + /api/positions
-# (ver TRACCAR_* no .env) e filtra por tenant via Vehicle.trackerUniqueId.
+# protocolo dos rastreadores (GT06/Concox=5023 — a que o firewall.sh abre).
+#
+# INTEGRAÇÃO 100% AUTOMÁTICA — sem passo manual:
+#   1. Gera um service-account token (persistido em /etc/netx/.secrets como
+#      TRACCAR_SERVICE_TOKEN — o netx_app.sh lê o MESMO segredo pra renderizar
+#      TRACCAR_TOKEN no .env, então a ordem dos steps não importa).
+#   2. Injeta o token no traccar.xml (web.serviceAccountToken) — a API aceita
+#      esse Bearer com poderes de admin, sem existir usuário no banco.
+#   3. O core-service cria/renomeia os devices sozinho a partir de
+#      Vehicle.trackerUniqueId (VehiclesService → TraccarService.ensureDevice).
+#
+# A web do Traccar (8082, atrás de túnel SSH — a porta NÃO é aberta no UFW)
+# continua disponível pra inspeção humana; criar usuário admin lá é OPCIONAL.
 #
 # DB embutido (H2) por default — suficiente pra começar. Migrar pra Postgres é
 # evolução futura (editar /opt/traccar/conf/traccar.xml).
-#
-# O primeiro usuário (admin) é criado na web no primeiro acesso; depois preencha
-# TRACCAR_USER / TRACCAR_PASSWORD no /etc/netx/.env e reinicie o core-service.
 # =============================================================================
 
 TRACCAR_VERSION="${TRACCAR_VERSION:-6.5}"
 TRACCAR_DIR="/opt/traccar"
+TRACCAR_XML="${TRACCAR_DIR}/conf/traccar.xml"
 
 traccar_setup() {
   if [[ -d "${TRACCAR_DIR}" ]]; then
     log_dim "Traccar já instalado em ${TRACCAR_DIR} — pulando download"
   else
+    # O zip oficial precisa de unzip — não vem no Debian mínimo.
+    command -v unzip >/dev/null 2>&1 || apt-get install -y -qq unzip
+
     local variant="linux-64"
     case "$(uname -m)" in
       aarch64 | arm64) variant="linux-arm-64" ;;
@@ -42,6 +54,20 @@ traccar_setup() {
     rm -rf "${tmp}" "${zip}"
   fi
 
+  # --- Service-account token (API admin sem usuário manual) ------------------
+  local token
+  token=$(secret_get_or_create TRACCAR_SERVICE_TOKEN 48)
+  if [[ ! -f "${TRACCAR_XML}" ]]; then
+    log_error "Config ${TRACCAR_XML} não encontrado — instalação do Traccar incompleta"
+    return 1
+  fi
+  if grep -q 'web.serviceAccountToken' "${TRACCAR_XML}"; then
+    # Idempotente: re-runs sincronizam o XML com o segredo persistido.
+    sed -i "s|<entry key='web.serviceAccountToken'>[^<]*</entry>|<entry key='web.serviceAccountToken'>${token}</entry>|" "${TRACCAR_XML}"
+  else
+    sed -i "s|</properties>|    <entry key='web.serviceAccountToken'>${token}</entry>\n</properties>|" "${TRACCAR_XML}"
+  fi
+
   systemctl enable traccar >/dev/null 2>&1 || true
   systemctl restart traccar
 
@@ -56,8 +82,16 @@ traccar_setup() {
     sleep 1
   done
 
+  # Smoke do token: a integração inteira depende desse Bearer funcionar.
+  if curl -fsS -H "Authorization: Bearer ${token}" \
+    http://127.0.0.1:8082/api/devices >/dev/null 2>&1; then
+    log_ok "Service-account token validado na API do Traccar"
+  else
+    log_warn "Token de serviço NÃO autenticou — confere web.serviceAccountToken em ${TRACCAR_XML}"
+  fi
+
   export NETX_TRACCAR_URL="http://127.0.0.1:8082"
-  log_ok "Traccar em ${NETX_TRACCAR_URL}"
-  log_dim "AÇÃO MANUAL: acesse a web do Traccar, crie o usuário admin e preencha"
-  log_dim "  TRACCAR_USER / TRACCAR_PASSWORD em /etc/netx/.env (depois reinicie core)"
+  export NETX_TRACCAR_TOKEN="${token}"
+  log_ok "Traccar em ${NETX_TRACCAR_URL} — integração via token, devices criados pelo NetX"
+  log_dim "Web do Traccar (opcional, inspeção): ssh -L 8082:127.0.0.1:8082 root@<vps> → http://localhost:8082"
 }

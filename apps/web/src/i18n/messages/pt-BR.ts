@@ -2213,7 +2213,7 @@ const messages = {
       title: 'Ao vivo',
       subtitle: 'Posição em tempo real dos veículos com rastreador (via Traccar). Atualiza sozinho a cada poucos segundos.',
       updatedAt: 'atualizado {time}',
-      traccarNotConfigured: 'Traccar não está configurado neste ambiente (env <code>TRACCAR_URL/USER/PASSWORD</code>). Os veículos com rastreador aparecem com a última posição conhecida, se houver.',
+      traccarNotConfigured: 'Traccar não está configurado neste ambiente (env <code>TRACCAR_URL/TOKEN</code>). Os veículos com rastreador aparecem com a última posição conhecida, se houver.',
       loadError: 'Falha ao carregar posições.',
       noTrackedVehicles: 'Nenhum veículo tem rastreador cadastrado. Informe o IMEI do rastreador no cadastro do veículo (aba Veículos) pra ele aparecer aqui.',
       noPositionsYet: '{count, plural, one {# veículo com rastreador, mas nenhuma posição recebida ainda.} other {# veículos com rastreador, mas nenhuma posição recebida ainda.}}',

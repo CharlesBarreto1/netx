@@ -1,6 +1,7 @@
 import {
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, VehicleStatus, VehicleType } from '@prisma/client';
@@ -17,6 +18,8 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 
+import { TraccarService } from './traccar.service';
+
 const vehicleInclude = {
   currentDriver: { select: { id: true, name: true } },
 } satisfies Prisma.VehicleInclude;
@@ -27,9 +30,12 @@ type VehicleWithRelations = Prisma.VehicleGetPayload<{
 
 @Injectable()
 export class VehiclesService {
+  private readonly logger = new Logger(VehiclesService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly traccar: TraccarService,
   ) {}
 
   async list(
@@ -121,6 +127,8 @@ export class VehiclesService {
         afterState: { plate: v.plate, trackerUniqueId: v.trackerUniqueId },
       });
 
+      await this.syncTrackerDevice(v.trackerUniqueId, v.plate);
+
       return toVehicleResponse(v);
     } catch (e) {
       throw this.mapUniqueError(e, input);
@@ -180,6 +188,8 @@ export class VehiclesService {
         afterState: { plate: v.plate, status: v.status },
       });
 
+      await this.syncTrackerDevice(v.trackerUniqueId, v.plate);
+
       return toVehicleResponse(v);
     } catch (e) {
       throw this.mapUniqueError(e, input);
@@ -205,6 +215,26 @@ export class VehiclesService {
       resourceId: id,
       beforeState: { plate: before.plate },
     });
+  }
+
+  /**
+   * Espelha o rastreador no Traccar (cria/renomeia device pelo IMEI).
+   * Defensivo: Traccar não-configurado ou fora do ar NÃO pode quebrar a
+   * mutação do veículo — a aba "Ao vivo" degrada gracioso e o espelho se
+   * corrige no próximo save (ensureDevice é idempotente).
+   */
+  private async syncTrackerDevice(
+    trackerUniqueId: string | null,
+    plate: string,
+  ): Promise<void> {
+    if (!trackerUniqueId || !this.traccar.isConfigured()) return;
+    try {
+      await this.traccar.ensureDevice(trackerUniqueId, plate);
+    } catch (e) {
+      this.logger.warn(
+        `Falha ao sincronizar device ${trackerUniqueId} no Traccar: ${(e as Error).message}`,
+      );
+    }
   }
 
   private async assertDriver(tenantId: string, driverId: string): Promise<void> {

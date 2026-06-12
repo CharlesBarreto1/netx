@@ -69,16 +69,28 @@ export class TraccarService {
     return `Basic ${basic}`;
   }
 
-  private async get<T>(path: string): Promise<T> {
+  private async request<T>(
+    path: string,
+    opts: { method?: string; body?: unknown } = {},
+  ): Promise<T> {
+    const method = opts.method ?? 'GET';
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
       const res = await fetch(`${this.baseUrl}${path}`, {
-        headers: { Authorization: this.authHeader(), Accept: 'application/json' },
+        method,
+        headers: {
+          Authorization: this.authHeader(),
+          Accept: 'application/json',
+          ...(opts.body !== undefined
+            ? { 'Content-Type': 'application/json' }
+            : {}),
+        },
+        body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
         signal: controller.signal,
       });
       if (!res.ok) {
-        throw new Error(`Traccar ${path} respondeu ${res.status}`);
+        throw new Error(`Traccar ${method} ${path} respondeu ${res.status}`);
       }
       return (await res.json()) as T;
     } finally {
@@ -86,8 +98,39 @@ export class TraccarService {
     }
   }
 
+  private async get<T>(path: string): Promise<T> {
+    return this.request<T>(path);
+  }
+
   async getDevices(): Promise<TraccarDevice[]> {
     return this.get<TraccarDevice[]>('/api/devices');
+  }
+
+  /**
+   * Garante que o device (IMEI) existe no Traccar com o nome dado (placa).
+   * Idempotente: cria se falta, renomeia se a placa mudou. Chamado pelo
+   * VehiclesService ao salvar veículo com trackerUniqueId — quem chama decide
+   * o fallback (Traccar fora do ar não pode derrubar a mutação do veículo).
+   */
+  async ensureDevice(uniqueId: string, name: string): Promise<void> {
+    const devices = await this.getDevices();
+    const existing = devices.find((d) => d.uniqueId === uniqueId);
+    if (!existing) {
+      await this.request('/api/devices', {
+        method: 'POST',
+        body: { name, uniqueId },
+      });
+      this.logger.log(`Device ${uniqueId} (${name}) criado no Traccar`);
+      return;
+    }
+    if (existing.name !== name) {
+      // PUT exige o objeto completo — manda o device como veio, só com o nome novo.
+      await this.request(`/api/devices/${existing.id}`, {
+        method: 'PUT',
+        body: { ...existing, name },
+      });
+      this.logger.log(`Device ${uniqueId} renomeado no Traccar para ${name}`);
+    }
   }
 
   async getPositions(): Promise<TraccarPosition[]> {
