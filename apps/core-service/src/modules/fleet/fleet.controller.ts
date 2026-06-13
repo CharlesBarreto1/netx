@@ -16,6 +16,7 @@ import {
   CreateMaintenancePlanRequestSchema,
   CreateMaintenanceRecordRequestSchema,
   CreateVehicleRequestSchema,
+  FleetRouteQuerySchema,
   ListDriversQuerySchema,
   ListFleetExpensesQuerySchema,
   ListMaintenancePlansQuerySchema,
@@ -310,5 +311,15 @@ export class FleetLiveController {
   @RequirePermissions('fleet.live.read')
   positions(@CurrentUser() u: AuthenticatedPrincipal) {
     return this.live.getLivePositions(u.tenantId);
+  }
+
+  @Get('vehicles/:id/route')
+  @RequirePermissions('fleet.live.read')
+  route(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: Record<string, string>,
+  ) {
+    return this.live.getRoute(u.tenantId, id, FleetRouteQuerySchema.parse(query));
   }
 }

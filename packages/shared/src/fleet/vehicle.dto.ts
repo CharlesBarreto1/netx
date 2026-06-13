@@ -25,6 +25,15 @@ export type VehicleType = z.infer<typeof VehicleTypeSchema>;
 export const VehicleStatusSchema = z.enum(['ACTIVE', 'MAINTENANCE', 'INACTIVE']);
 export type VehicleStatus = z.infer<typeof VehicleStatusSchema>;
 
+/** Ícone do veículo no mapa "Ao vivo" (escolhido no cadastro). */
+export const VehicleMapIconSchema = z.enum([
+  'RED_CAR', // carro vermelho
+  'LADDER_CAR', // carrinho com escada (utilitário de campo)
+  'WHITE_VAN', // van branca
+  'TRUCK', // caminhão
+]);
+export type VehicleMapIcon = z.infer<typeof VehicleMapIconSchema>;
+
 export const CreateVehicleRequestSchema = z.object({
   plate: z
     .string()
@@ -39,6 +48,7 @@ export const CreateVehicleRequestSchema = z.object({
   renavam: optionalString(32),
   chassis: optionalString(40),
   status: VehicleStatusSchema.default('ACTIVE'),
+  mapIcon: VehicleMapIconSchema.default('RED_CAR'),
   trackerUniqueId: optionalString(64),
   odometer: z.coerce.number().int().min(0).default(0),
   notes: optionalString(2000),
@@ -74,6 +84,7 @@ export interface VehicleResponse {
   renavam: string | null;
   chassis: string | null;
   status: VehicleStatus;
+  mapIcon: VehicleMapIcon;
   trackerUniqueId: string | null;
   odometer: number;
   notes: string | null;

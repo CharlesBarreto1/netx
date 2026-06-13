@@ -16,12 +16,14 @@ import {
   type Driver,
   type Paginated,
   type Vehicle,
+  type VehicleMapIcon,
   type VehicleStatus,
   type VehicleType,
 } from '@/lib/fleet-api';
 
 const TYPES: VehicleType[] = ['CAR', 'MOTORCYCLE', 'TRUCK', 'VAN', 'PICKUP', 'OTHER'];
 const STATUSES: VehicleStatus[] = ['ACTIVE', 'MAINTENANCE', 'INACTIVE'];
+const MAP_ICONS: VehicleMapIcon[] = ['RED_CAR', 'LADDER_CAR', 'WHITE_VAN', 'TRUCK'];
 
 const STATUS_BADGE: Record<VehicleStatus, string> = {
   ACTIVE: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300',
@@ -221,6 +223,12 @@ function VehicleFormModal({
     MAINTENANCE: t('statusMaintenance'),
     INACTIVE: t('statusInactive'),
   };
+  const MAP_ICON_LABELS: Record<VehicleMapIcon, string> = {
+    RED_CAR: t('iconRedCar'),
+    LADDER_CAR: t('iconLadderCar'),
+    WHITE_VAN: t('iconWhiteVan'),
+    TRUCK: t('iconTruck'),
+  };
 
   const { data: drivers } = useSWR<Paginated<Driver>>(
     fleetApi.driversPath({ status: 'ACTIVE', pageSize: 200 }),
@@ -236,6 +244,7 @@ function VehicleFormModal({
     renavam: initial?.renavam ?? '',
     chassis: initial?.chassis ?? '',
     status: initial?.status ?? 'ACTIVE',
+    mapIcon: initial?.mapIcon ?? 'RED_CAR',
     trackerUniqueId: initial?.trackerUniqueId ?? '',
     odometer: initial?.odometer ?? 0,
     notes: initial?.notes ?? '',
@@ -331,7 +340,7 @@ function VehicleFormModal({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <Label htmlFor="tracker">{t('fieldTracker')}</Label>
             <Input
@@ -349,6 +358,19 @@ function VehicleFormModal({
               value={form.odometer ?? 0}
               onChange={(e) => setForm({ ...form, odometer: e.target.value ? Number(e.target.value) : 0 })}
             />
+          </div>
+          <div>
+            <Label htmlFor="mapIcon">{t('fieldMapIcon')}</Label>
+            <select
+              id="mapIcon"
+              className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+              value={form.mapIcon}
+              onChange={(e) => setForm({ ...form, mapIcon: e.target.value as VehicleMapIcon })}
+            >
+              {MAP_ICONS.map((i) => (
+                <option key={i} value={i}>{MAP_ICON_LABELS[i]}</option>
+              ))}
+            </select>
           </div>
         </div>
 

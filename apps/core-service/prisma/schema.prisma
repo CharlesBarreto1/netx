@@ -3829,6 +3829,14 @@ enum VehicleStatus {
   INACTIVE
 }
 
+// Ícone do veículo no mapa "Ao vivo" da Frota (escolhido no cadastro).
+enum VehicleMapIcon {
+  RED_CAR     // carro vermelho
+  LADDER_CAR  // carrinho com escada (utilitário de campo)
+  WHITE_VAN   // van branca
+  TRUCK       // caminhão
+}
+
 enum DriverStatus {
   ACTIVE
   INACTIVE
@@ -3867,6 +3875,7 @@ model Vehicle {
   renavam         String?       @db.VarChar(32)
   chassis         String?       @db.VarChar(40)
   status          VehicleStatus @default(ACTIVE)
+  mapIcon         VehicleMapIcon @default(RED_CAR) @map("map_icon") // ícone no mapa Ao vivo
 
   // IMEI / uniqueId do rastreador no Traccar. Null = veículo sem rastreador.
   trackerUniqueId String?       @map("tracker_unique_id") @db.VarChar(64)
@@ -4057,6 +4066,7 @@ model VehiclePosition {
   deviceTime  DateTime @map("device_time")  // horário reportado pelo rastreador
   serverTime  DateTime @default(now()) @map("server_time") // quando o NetX gravou
   attributes  Json?    // payload extra do Traccar (ignition, battery, motion...)
+  lastMovedAt DateTime? @map("last_moved_at") // última vez em movimento — base do status IDLE
 
   tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   vehicle     Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)

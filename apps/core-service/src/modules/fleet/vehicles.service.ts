@@ -4,7 +4,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, VehicleStatus, VehicleType } from '@prisma/client';
+import { Prisma, VehicleMapIcon, VehicleStatus, VehicleType } from '@prisma/client';
 
 import {
   paginationMeta,
@@ -109,6 +109,7 @@ export class VehiclesService {
           renavam: input.renavam ?? null,
           chassis: input.chassis ?? null,
           status: input.status as VehicleStatus,
+          mapIcon: input.mapIcon as VehicleMapIcon,
           trackerUniqueId: input.trackerUniqueId ?? null,
           odometer: input.odometer,
           notes: input.notes ?? null,
@@ -164,6 +165,9 @@ export class VehiclesService {
           ...(input.chassis !== undefined ? { chassis: input.chassis } : {}),
           ...(input.status !== undefined
             ? { status: input.status as VehicleStatus }
+            : {}),
+          ...(input.mapIcon !== undefined
+            ? { mapIcon: input.mapIcon as VehicleMapIcon }
             : {}),
           ...(input.trackerUniqueId !== undefined
             ? { trackerUniqueId: input.trackerUniqueId }
@@ -275,6 +279,7 @@ function toVehicleResponse(v: VehicleWithRelations): VehicleResponse {
     renavam: v.renavam,
     chassis: v.chassis,
     status: v.status,
+    mapIcon: v.mapIcon,
     trackerUniqueId: v.trackerUniqueId,
     odometer: v.odometer,
     notes: v.notes,

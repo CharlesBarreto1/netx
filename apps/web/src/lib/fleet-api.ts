@@ -26,6 +26,7 @@ function qs<T extends object>(params: T | Record<string, never> = {}): string {
 // =============================================================================
 export type VehicleType = 'CAR' | 'MOTORCYCLE' | 'TRUCK' | 'VAN' | 'PICKUP' | 'OTHER';
 export type VehicleStatus = 'ACTIVE' | 'MAINTENANCE' | 'INACTIVE';
+export type VehicleMapIcon = 'RED_CAR' | 'LADDER_CAR' | 'WHITE_VAN' | 'TRUCK';
 
 export interface Vehicle {
   id: string;
@@ -39,6 +40,7 @@ export interface Vehicle {
   renavam: string | null;
   chassis: string | null;
   status: VehicleStatus;
+  mapIcon: VehicleMapIcon;
   trackerUniqueId: string | null;
   odometer: number;
   notes: string | null;
@@ -58,6 +60,7 @@ export interface CreateVehicleInput {
   renavam?: string | null;
   chassis?: string | null;
   status?: VehicleStatus;
+  mapIcon?: VehicleMapIcon;
   trackerUniqueId?: string | null;
   odometer?: number;
   notes?: string | null;
@@ -244,6 +247,13 @@ export interface CreateMaintenanceRecordInput {
 // =============================================================================
 export type LiveVehicleStatus = 'MOVING' | 'STOPPED' | 'OFFLINE';
 
+/**
+ * Bolinha de status ao lado do ícone: ON = ligado (verde), IDLE = ligado e
+ * parado > 2 min (amarelo), OFF = desligado (cinza), STALE = sem sincronizar
+ * > 4 h (vermelho).
+ */
+export type LiveDotStatus = 'ON' | 'IDLE' | 'OFF' | 'STALE';
+
 export interface LivePosition {
   vehicleId: string;
   plate: string;
@@ -257,7 +267,28 @@ export interface LivePosition {
   deviceTime: string;
   serverTime: string;
   status: LiveVehicleStatus;
+  dot: LiveDotStatus;
+  ignition: boolean | null;
+  mapIcon: VehicleMapIcon;
   driverName: string | null;
+}
+
+export interface RoutePoint {
+  latitude: number;
+  longitude: number;
+  speed: number | null;
+  course: number | null;
+  ignition: boolean | null;
+  deviceTime: string;
+}
+
+export interface FleetRoute {
+  vehicleId: string;
+  plate: string;
+  from: string;
+  to: string;
+  points: RoutePoint[];
+  truncated: boolean;
 }
 
 export interface FleetLive {
@@ -322,6 +353,8 @@ export const fleetApi = {
   // Ao vivo ------------------------------------------------------------------
   livePath: () => `/v1/fleet/live/positions`,
   getLive: () => api.get<FleetLive>('/v1/fleet/live/positions'),
+  getVehicleRoute: (vehicleId: string, from: string, to: string) =>
+    api.get<FleetRoute>(`/v1/fleet/live/vehicles/${vehicleId}/route${qs({ from, to })}`),
 };
 
 // =============================================================================
@@ -340,6 +373,13 @@ export const VEHICLE_STATUS_LABELS: Record<VehicleStatus, string> = {
   ACTIVE: 'Ativo',
   MAINTENANCE: 'Em manutenção',
   INACTIVE: 'Inativo',
+};
+
+export const VEHICLE_MAP_ICON_LABELS: Record<VehicleMapIcon, string> = {
+  RED_CAR: 'Carro vermelho',
+  LADDER_CAR: 'Carro com escada',
+  WHITE_VAN: 'Van branca',
+  TRUCK: 'Caminhão',
 };
 
 export const EXPENSE_TYPE_LABELS: Record<FleetExpenseType, string> = {

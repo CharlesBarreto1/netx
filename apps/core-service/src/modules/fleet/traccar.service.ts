@@ -15,6 +15,7 @@ import { Injectable, Logger } from '@nestjs/common';
 
 const KNOTS_TO_KMH = 1.852;
 const REQUEST_TIMEOUT_MS = 5000;
+const ROUTE_TIMEOUT_MS = 30000; // histórico de dias pode demorar mais
 
 export interface NormalizedPosition {
   latitude: number;
@@ -72,11 +73,14 @@ export class TraccarService {
 
   private async request<T>(
     path: string,
-    opts: { method?: string; body?: unknown } = {},
+    opts: { method?: string; body?: unknown; timeoutMs?: number } = {},
   ): Promise<T> {
     const method = opts.method ?? 'GET';
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timer = setTimeout(
+      () => controller.abort(),
+      opts.timeoutMs ?? REQUEST_TIMEOUT_MS,
+    );
     try {
       const res = await fetch(`${this.baseUrl}${path}`, {
         method,
@@ -172,23 +176,63 @@ export class TraccarService {
     for (const p of positions) {
       const uniqueId = deviceIdToUnique.get(p.deviceId);
       if (!uniqueId) continue;
-      const deviceTime = new Date(p.deviceTime);
+      const normalized = toNormalized(p);
       const prev = out.get(uniqueId);
       // Mantém a posição mais recente por device.
-      if (prev && prev.deviceTime >= deviceTime) continue;
-      out.set(uniqueId, {
-        latitude: p.latitude,
-        longitude: p.longitude,
-        speedKmh: p.speed != null ? Math.round(p.speed * KNOTS_TO_KMH * 10) / 10 : null,
-        course: p.course,
-        altitude: p.altitude,
-        address: p.address,
-        deviceTime,
-        serverTime: new Date(p.serverTime),
-        attributes: p.attributes ?? null,
-      });
+      if (prev && prev.deviceTime >= normalized.deviceTime) continue;
+      out.set(uniqueId, normalized);
     }
 
     return out;
   }
+
+  /**
+   * Percurso histórico de um device (IMEI) entre `from` e `to`, em ordem
+   * cronológica. Device desconhecido no Traccar = percurso vazio. Timeout
+   * maior que o padrão: janelas de dias podem retornar milhares de pontos.
+   */
+  async getRoute(
+    uniqueId: string,
+    from: Date,
+    to: Date,
+  ): Promise<NormalizedPosition[]> {
+    const devices = await this.getDevices();
+    const device = devices.find((d) => d.uniqueId === uniqueId);
+    if (!device) return [];
+
+    const qs =
+      `deviceId=${device.id}` +
+      `&from=${encodeURIComponent(from.toISOString())}` +
+      `&to=${encodeURIComponent(to.toISOString())}`;
+    const positions = await this.request<TraccarPosition[]>(
+      `/api/positions?${qs}`,
+      { timeoutMs: ROUTE_TIMEOUT_MS },
+    );
+
+    return positions
+      .map(toNormalized)
+      .sort((a, b) => a.deviceTime.getTime() - b.deviceTime.getTime());
+  }
+}
+
+/** Ignição (ACC) dos attributes do Traccar; null quando o device não reporta. */
+export function ignitionFrom(
+  attributes: Record<string, unknown> | null | undefined,
+): boolean | null {
+  const v = attributes?.['ignition'];
+  return typeof v === 'boolean' ? v : null;
+}
+
+function toNormalized(p: TraccarPosition): NormalizedPosition {
+  return {
+    latitude: p.latitude,
+    longitude: p.longitude,
+    speedKmh: p.speed != null ? Math.round(p.speed * KNOTS_TO_KMH * 10) / 10 : null,
+    course: p.course,
+    altitude: p.altitude,
+    address: p.address,
+    deviceTime: new Date(p.deviceTime),
+    serverTime: new Date(p.serverTime),
+    attributes: p.attributes ?? null,
+  };
 }
