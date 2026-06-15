@@ -59,8 +59,10 @@ const CRON_BATCH = 200;
 const RETENTION_DAYS = parseInt(process.env.TR069_DIAGNOSTIC_RETENTION_DAYS ?? '30', 10);
 /** Minutos após o arme até relaxar o PeriodicInformInterval (ZTP rápido → permanente). */
 const INFORM_RELAX_AFTER_MIN = parseInt(process.env.TR069_INFORM_RELAX_AFTER_MIN ?? '120', 10);
-/** Intervalo permanente de Inform (s) após o relaxamento. Default 6h. */
-const INFORM_RELAXED_INTERVAL = parseInt(process.env.TR069_INFORM_RELAXED_INTERVAL ?? '21600', 10);
+/** Intervalo permanente de Inform (s) após o relaxamento. Default 5min — base
+ *  do motor de conformidade (drift converge em minutos sem depender de CR).
+ *  Aumente em parque muito grande se quiser menos carga. */
+const INFORM_RELAXED_INTERVAL = parseInt(process.env.TR069_INFORM_RELAXED_INTERVAL ?? '300', 10);
 
 function dec(d: Prisma.Decimal | null): number | null {
   return d === null ? null : Number(d);
@@ -598,7 +600,7 @@ export class Tr069DiagnosticsService {
   /**
    * Relaxa o PeriodicInformInterval: o ZTP seta rápido (60s) pra ativação; após
    * INFORM_RELAX_AFTER_MIN (default 2h) sobe pro intervalo permanente (default
-   * 6h). Reduz tráfego de Inform/carga do ACS no regime estável — as
+   * 5min). Mantém a conformidade quase em tempo real sem depender de CR — as
    * notificações ativas (GPON Status) ainda disparam Inform na hora se algo cair.
    * Roda 1× por device (flag informIntervalRelaxedAt).
    */
