@@ -58,7 +58,16 @@ export const HUAWEI_EG8145_PATHS = {
   // e o /56 delegado (DHCPv6-PD) — ambos vêm do RADIUS/BNG. A ONT redistribui
   // o /56 na LAN automaticamente (RA + DHCPv6-PD server interno).
   ipv6Enable: `${pppPrefix}.X_HW_IPv6Enable`,
+  // IP Acquisition Mode da WAN IPv6 (dropdown do WebUI). DEVE ser
+  // "AutoConfigured" (Automatic). O preset de fábrica/Ufinet às vezes deixa
+  // "DHCPv6", e nesse modo a entrega de IPv6 ao cliente quebra. ⚠️ Só aplica
+  // após REBOOT (o Huawei responde Status=1 = "aplico no próximo boot").
+  // Confirmado por probe de data model em ONT certa vs errada (jun/2026).
+  ipv6AddrOrigin: `${pppPrefix}.X_HW_IPv6.IPv6Address.1.Origin`,
 } as const;
+
+/** Valor correto do IP Acquisition Mode IPv6 (Automatic — não DHCPv6). */
+export const HUAWEI_IPV6_ADDR_ORIGIN = 'AutoConfigured';
 
 /** Range de PeriodicInformInterval recomendado. */
 export const HUAWEI_INFORM_INTERVAL_DEFAULT = 60;

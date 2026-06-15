@@ -490,7 +490,7 @@ export class ProvisioningService {
             }
           : undefined;
 
-      const { taskId } = await this.tr069.enqueueSetWifi(
+      const { taskId, deviceId } = await this.tr069.enqueueSetWifi(
         tenantId,
         ont.id,
         contractId,
@@ -525,6 +525,23 @@ export class ProvisioningService {
           ? `Wi-Fi + credencial PPPoE enfileirados pro ACS — task ${taskId.slice(0, 8)}`
           : `Wi-Fi enfileirado pro ACS aplicar — task ${taskId.slice(0, 8)}`,
       );
+
+      // IP Acquisition Mode IPv6 (Origin=AutoConfigured) só aplica após reboot.
+      // Política: no provisionamento reiniciamos imediatamente (estamos em
+      // janela de instalação), mas só quando há PPPoE/IPv6 — que é a config
+      // que exige reboot. FIFO garante SET → REBOOT na mesma sessão do Inform.
+      if (pppoe) {
+        const { taskId: rebootTaskId } = await this.tr069.enqueueReboot(
+          tenantId,
+          deviceId,
+          contractId,
+        );
+        pushEvent(
+          'TR069_TASK_ENQUEUE',
+          'SUCCESS',
+          `Reboot pós-config enfileirado (ativa IPv6 Automatic) — task ${rebootTaskId.slice(0, 8)}`,
+        );
+      }
     } catch (err) {
       // TR-069 falha NÃO impede ativação — só loga
       const msg = err instanceof Error ? err.message : String(err);

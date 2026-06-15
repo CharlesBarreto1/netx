@@ -17,7 +17,7 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { Tr069TaskAction, Tr069TaskStatus } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
-import { HUAWEI_EG8145_PATHS, ssid5gFor } from './tr069-paths.huawei';
+import { HUAWEI_EG8145_PATHS, HUAWEI_IPV6_ADDR_ORIGIN, ssid5gFor } from './tr069-paths.huawei';
 
 // Re-export pra compat com código existente que importava daqui
 export { HUAWEI_EG8145_PATHS, ssid5gFor };
@@ -107,6 +107,10 @@ export class Tr069TasksService {
         { name: HUAWEI_EG8145_PATHS.pppoeVlan, value: String(input.pppoe.vlan), type: 'xsd:unsignedInt' },
         // IPv6 dual-stack: ONT negocia /64 (WAN) + /56 (PD) — ambos vêm do RADIUS.
         { name: HUAWEI_EG8145_PATHS.ipv6Enable, value: '1', type: 'xsd:boolean' },
+        // IP Acquisition Mode = Automatic (não DHCPv6). Corrige o default errado
+        // do preset de fábrica/Ufinet — sem isso o IPv6 não é entregue. ⚠️ só
+        // aplica após reboot (o provisionamento reinicia logo após este SET).
+        { name: HUAWEI_EG8145_PATHS.ipv6AddrOrigin, value: HUAWEI_IPV6_ADDR_ORIGIN, type: 'xsd:string' },
         { name: HUAWEI_EG8145_PATHS.pppoeEnable, value: '1', type: 'xsd:boolean' },
       );
       this.logger.log(
