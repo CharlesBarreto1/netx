@@ -15,6 +15,7 @@ import { OltsService } from './olts.service';
 import { ProvisioningController, OltsController, Tr069Controller } from './provisioning.controller';
 import { ProvisioningService } from './provisioning.service';
 import { Tr069DiagnosticsService } from './tr069-diagnostics.service';
+import { Tr069ReconcileService } from './tr069-reconcile.service';
 import { Tr069TasksService } from './tr069-tasks.service';
 
 @Module({
@@ -31,8 +32,15 @@ import { Tr069TasksService } from './tr069-tasks.service';
     OltsService,
     Tr069TasksService,
     Tr069DiagnosticsService,
+    Tr069ReconcileService,
     ProvisioningService,
   ],
-  exports: [ProvisioningService, OltsService, Tr069TasksService, Tr069DiagnosticsService],
+  exports: [
+    ProvisioningService,
+    OltsService,
+    Tr069TasksService,
+    Tr069DiagnosticsService,
+    Tr069ReconcileService,
+  ],
 })
 export class ProvisioningModule {}

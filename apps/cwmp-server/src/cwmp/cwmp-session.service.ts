@@ -400,11 +400,21 @@ export class CwmpSessionService {
           'aceitando assim mesmo (Huawei às vezes pula response intermediário)',
       );
     }
+    // Pra GET, guarda também os params já parseados (nome→valor) — o
+    // reconciliador (core-service) lê daqui sem reparsear SOAP.
+    const getParams =
+      task.action === 'GET_PARAMS' && parsed.kind === 'GetParameterValuesResponse'
+        ? parseParameterList(parsed.body)
+        : undefined;
     await this.prisma.tr069Task.update({
       where: { id: task.id },
       data: {
         status: 'DONE',
-        result: { kind: parsed.kind, body: parsed.body } as unknown as object,
+        result: {
+          kind: parsed.kind,
+          body: parsed.body,
+          ...(getParams ? { params: getParams } : {}),
+        } as unknown as object,
         completedAt: new Date(),
       },
     });

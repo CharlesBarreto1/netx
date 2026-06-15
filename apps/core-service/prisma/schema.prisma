@@ -127,6 +127,8 @@ model Tenant {
   tr069Diagnostics     Tr069Diagnostic[]
   tr069Alerts          Tr069Alert[]
   tr069DiagRuns        Tr069DiagnosticRun[]
+  tr069Profiles        Tr069Profile[]
+  tr069Drifts          Tr069Drift[]
   provisioningEvents   ProvisioningEvent[]
   ufinetServices       UfinetService[]
 
@@ -2954,6 +2956,15 @@ model Tr069Device {
   // Quando o PeriodicInformInterval foi relaxado (ZTP rápido → permanente).
   // null = ainda no intervalo rápido do ZTP.
   informIntervalRelaxedAt  DateTime? @map("inform_interval_relaxed_at")
+
+  // Conformidade (motor de profiles — Fase 2). profileId resolvido por
+  // (manufacturer, productClass, firmware). complianceStatus é o resumo
+  // denormalizado pro badge do portal.
+  profileId                String?  @map("profile_id") @db.Uuid
+  complianceStatus         Tr069ComplianceStatus @default(UNKNOWN) @map("compliance_status")
+  lastReconciledAt         DateTime? @map("last_reconciled_at")
+  reconciledProfileVersion Int?      @map("reconciled_profile_version")
+  pendingRebootSince       DateTime? @map("pending_reboot_since")
                                     // "0 BOOTSTRAP"|"1 BOOT"|"2 PERIODIC"|...
 
   createdAt                DateTime  @default(now()) @map("created_at")
@@ -2965,6 +2976,8 @@ model Tr069Device {
   diagnostics              Tr069Diagnostic[]
   alerts                   Tr069Alert[]
   diagRuns                 Tr069DiagnosticRun[]
+  profile                  Tr069Profile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  drifts                   Tr069Drift[]
 
   @@index([tenantId, status])
   @@index([tenantId, lastInformAt])
@@ -3201,6 +3214,126 @@ model Tr069DiagnosticRun {
   @@index([tenantId, deviceId, createdAt])
   @@index([deviceId, kind, state])
   @@map("tr069_diagnostic_runs")
+}
+
+// =============================================================================
+// TR-069 PROFILES — motor de conformidade (desired-state / drift remediation)
+// =============================================================================
+// Profile = config padrão de um modelo homologado (manufacturer/productClass/
+// firmware). O reconciliador compara o snapshot do CPE com as regras e remedia
+// (auto-enforce). IPv6 Origin vira uma regra. Decidido jun/2026.
+
+enum Tr069RuleSource {
+  STATIC                 // valor fixo na regra (staticValue)
+  CONTRACT_PPPOE_USER
+  CONTRACT_PPPOE_PASS
+  CONTRACT_PPPOE_VLAN
+  CONTRACT_WIFI_SSID
+  CONTRACT_WIFI_SSID_5G  // SSID 5G derivado (sufixo -5G no DUAL_BAND)
+  CONTRACT_WIFI_PASS
+}
+
+enum Tr069RuleMode {
+  ENFORCE      // diverge → SET automático
+  REPORT_ONLY  // diverge → só registra drift, não escreve
+}
+
+enum Tr069ComplianceStatus {
+  UNKNOWN         // ainda não reconciliado
+  COMPLIANT       // bate com o profile
+  DRIFTED         // divergência detectada (report-only ou pré-remediação)
+  REMEDIATING     // SET enfileirado, aguardando confirmação
+  PENDING_REBOOT  // SET aplicado, aguarda reboot pra valer
+  FAILED          // remediação não convergiu após N tentativas
+}
+
+enum Tr069DriftStatus {
+  OPEN
+  REMEDIATING
+  PENDING_REBOOT
+  RESOLVED
+  FAILED
+}
+
+model Tr069Profile {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+
+  name            String   @db.VarChar(120)
+  // Matching do modelo homologado. productClass/firmwarePattern null = curinga.
+  manufacturer    String   @db.VarChar(64)
+  productClass    String?  @map("product_class") @db.VarChar(64)
+  firmwarePattern String?  @map("firmware_pattern") @db.VarChar(64)
+
+  // Bump de versão → marca devices stale pra re-reconciliar (campanha).
+  version         Int      @default(1)
+  active          Boolean  @default(true)
+
+  createdById     String?  @map("created_by_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  tenant          Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  rules           Tr069ProfileRule[]
+  devices         Tr069Device[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, manufacturer, productClass])
+  @@map("tr069_profiles")
+}
+
+model Tr069ProfileRule {
+  id             String          @id @default(uuid()) @db.Uuid
+  profileId      String          @map("profile_id") @db.Uuid
+
+  // Path TR-069 (data model). Ex.: ...WANPPPConnection.1.X_HW_IPv6.IPv6Address.1.Origin
+  param          String          @db.VarChar(255)
+  valueType      String          @default("xsd:string") @map("value_type") @db.VarChar(32)
+  source         Tr069RuleSource @default(STATIC)
+  // Valor esperado quando source=STATIC. Para sources derivadas, ignorado.
+  staticValue    String?         @map("static_value") @db.VarChar(255)
+
+  mode           Tr069RuleMode   @default(REPORT_ONLY)
+  // Aplica só após reboot (ex.: IPv6 Origin). O reconciliador defere o reboot.
+  requiresReboot Boolean         @default(false) @map("requires_reboot")
+  enabled        Boolean         @default(true)
+  sortOrder      Int             @default(0) @map("sort_order")
+
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+
+  profile        Tr069Profile    @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, param])
+  @@index([profileId])
+  @@map("tr069_profile_rules")
+}
+
+model Tr069Drift {
+  id             String           @id @default(uuid()) @db.Uuid
+  tenantId       String           @map("tenant_id") @db.Uuid
+  deviceId       String           @map("device_id") @db.Uuid
+
+  param          String           @db.VarChar(255)
+  expected       String?          @db.VarChar(255)
+  actual         String?          @db.VarChar(255)
+
+  status         Tr069DriftStatus @default(OPEN)
+  requiresReboot Boolean          @default(false) @map("requires_reboot")
+  attempts       Int              @default(0)
+  // Task de remediação corrente (SET) — referência solta (sem FK).
+  taskId         String?          @map("task_id") @db.Uuid
+
+  detectedAt     DateTime         @default(now()) @map("detected_at")
+  lastSeenAt     DateTime         @default(now()) @map("last_seen_at")
+  resolvedAt     DateTime?        @map("resolved_at")
+
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  device         Tr069Device      @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, deviceId, status])
+  @@index([tenantId, status])
+  @@map("tr069_drifts")
 }
 
 // =============================================================================
