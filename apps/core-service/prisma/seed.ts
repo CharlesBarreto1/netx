@@ -772,76 +772,88 @@ async function main() {
     }
   }
 
-  // 8. TR-069 — profile padrão Huawei EG8145 (motor de conformidade — Fase 2).
-  //    Idempotente e CREATE-ONCE por tenant: se o profile já existe (mesmo
-  //    editado no portal), não mexe. Só params LEGÍVEIS viram regra — senhas
-  //    WiFi/PPPoE ficam de fora (o GET Huawei as devolve vazias; são aplicadas
-  //    no provisionamento). Paths espelham tr069-paths.huawei.ts (mesmo índice
-  //    de WAN). Ver scripts/tr069-default-profile.sql (alternativa manual).
+  // 8. TR-069 — profile padrão Huawei EG8145 (motor de conformidade).
+  //    IDEMPOTENTE POR REGRA: garante o profile (cria se faltar) e faz upsert de
+  //    cada regra-base por param — adiciona o que falta (ex.: regra nova num
+  //    deploy) SEM clobberar edições do operador em regras já existentes. Assim
+  //    `netx-update` mantém o baseline em dia em profiles já criados. Só params
+  //    LEGÍVEIS viram regra — senhas WiFi/PPPoE ficam de fora (o GET Huawei as
+  //    devolve vazias; são aplicadas no provisionamento). Paths espelham
+  //    tr069-paths.huawei.ts (mesmo índice de WAN).
   console.log('  → TR-069 default Huawei profile');
   const HW_PROFILE_NAME = 'Huawei EG8145 — padrão';
   const WAN = process.env.HUAWEI_PPPOE_WAN_INDEX ?? '2';
   const ppp = `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.${WAN}.WANPPPConnection.1`;
+  const HW_BASELINE_RULES = [
+    // IP Acquisition Mode IPv6 = Automatic (não DHCPv6) — exige reboot.
+    {
+      param: `${ppp}.X_HW_IPv6.IPv6Address.1.Origin`,
+      valueType: 'xsd:string',
+      source: 'STATIC' as const,
+      staticValue: 'AutoConfigured',
+      mode: 'ENFORCE' as const,
+      requiresReboot: true,
+      sortOrder: 1,
+    },
+    // SSID 2.4G / 5G — do cadastro do contrato (sistema é dono do WiFi).
+    {
+      param: 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID',
+      valueType: 'xsd:string',
+      source: 'CONTRACT_WIFI_SSID' as const,
+      mode: 'ENFORCE' as const,
+      sortOrder: 2,
+    },
+    {
+      param: 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.SSID',
+      valueType: 'xsd:string',
+      source: 'CONTRACT_WIFI_SSID_5G' as const,
+      mode: 'ENFORCE' as const,
+      sortOrder: 3,
+    },
+    // PPPoE username — do contrato.
+    {
+      param: `${ppp}.Username`,
+      valueType: 'xsd:string',
+      source: 'CONTRACT_PPPOE_USER' as const,
+      mode: 'ENFORCE' as const,
+      sortOrder: 4,
+    },
+    // VLAN PPPoE — informativo (pode variar por planta).
+    {
+      param: `${ppp}.X_HW_VLAN`,
+      valueType: 'xsd:unsignedInt',
+      source: 'STATIC' as const,
+      staticValue: '1010',
+      mode: 'REPORT_ONLY' as const,
+      sortOrder: 5,
+    },
+    // Periodic Inform = 5 min — ENFORCE idempotente: o reconciliador re-aplica
+    // se a ONT voltar pro default de fábrica. Garante 5 min em toda Huawei,
+    // independentemente. Aplica live (sem reboot).
+    {
+      param: 'InternetGatewayDevice.ManagementServer.PeriodicInformInterval',
+      valueType: 'xsd:unsignedInt',
+      source: 'STATIC' as const,
+      staticValue: '300',
+      mode: 'ENFORCE' as const,
+      sortOrder: 6,
+    },
+  ];
   for (const t of allTenants) {
-    const existing = await prisma.tr069Profile.findFirst({
-      where: { tenantId: t.id, name: HW_PROFILE_NAME },
+    const profile = await prisma.tr069Profile.upsert({
+      where: { tenantId_name: { tenantId: t.id, name: HW_PROFILE_NAME } },
+      update: {},
+      create: { tenantId: t.id, name: HW_PROFILE_NAME, manufacturer: 'Huawei' },
       select: { id: true },
     });
-    if (existing) continue;
-    await prisma.tr069Profile.create({
-      data: {
-        tenantId: t.id,
-        name: HW_PROFILE_NAME,
-        manufacturer: 'Huawei',
-        rules: {
-          create: [
-            // IP Acquisition Mode IPv6 = Automatic (não DHCPv6) — exige reboot.
-            {
-              param: `${ppp}.X_HW_IPv6.IPv6Address.1.Origin`,
-              valueType: 'xsd:string',
-              source: 'STATIC',
-              staticValue: 'AutoConfigured',
-              mode: 'ENFORCE',
-              requiresReboot: true,
-              sortOrder: 1,
-            },
-            // SSID 2.4G / 5G — do cadastro do contrato (sistema é dono do WiFi).
-            {
-              param: 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID',
-              valueType: 'xsd:string',
-              source: 'CONTRACT_WIFI_SSID',
-              mode: 'ENFORCE',
-              sortOrder: 2,
-            },
-            {
-              param: 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.SSID',
-              valueType: 'xsd:string',
-              source: 'CONTRACT_WIFI_SSID_5G',
-              mode: 'ENFORCE',
-              sortOrder: 3,
-            },
-            // PPPoE username — do contrato.
-            {
-              param: `${ppp}.Username`,
-              valueType: 'xsd:string',
-              source: 'CONTRACT_PPPOE_USER',
-              mode: 'ENFORCE',
-              sortOrder: 4,
-            },
-            // VLAN PPPoE — informativo (pode variar por planta).
-            {
-              param: `${ppp}.X_HW_VLAN`,
-              valueType: 'xsd:unsignedInt',
-              source: 'STATIC',
-              staticValue: '1010',
-              mode: 'REPORT_ONLY',
-              sortOrder: 5,
-            },
-          ],
-        },
-      },
-    });
-    console.log(`     · ${t.slug}: profile Huawei criado`);
+    for (const r of HW_BASELINE_RULES) {
+      await prisma.tr069ProfileRule.upsert({
+        where: { profileId_param: { profileId: profile.id, param: r.param } },
+        update: {},
+        create: { profileId: profile.id, ...r },
+      });
+    }
+    console.log(`     · ${t.slug}: profile Huawei garantido`);
   }
 
   console.log('✅ Seed completed.');
