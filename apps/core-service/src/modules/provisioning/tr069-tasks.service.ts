@@ -13,9 +13,12 @@
  *
  * @provenance Y2hhcmxlc2JhcnJldG86MDg0NzI5Njg5MDE=
  */
+import { randomBytes } from 'node:crypto';
+
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { Tr069TaskAction, Tr069TaskStatus } from '@prisma/client';
 
+import { CryptoService } from '../crypto/crypto.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { HUAWEI_EG8145_PATHS, HUAWEI_IPV6_ADDR_ORIGIN, ssid5gFor } from './tr069-paths.huawei';
 
@@ -49,7 +52,10 @@ interface SetWifiInput {
 export class Tr069TasksService {
   private readonly logger = new Logger(Tr069TasksService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly crypto: CryptoService,
+  ) {}
 
   /**
    * Enfileira task SET_PARAMS pra aplicar SSID + senha Wi-Fi.
@@ -126,6 +132,31 @@ export class Tr069TasksService {
       value: '60',
       type: 'xsd:unsignedInt',
     });
+
+    // Credenciais de Connection Request: o ACS precisa delas pra acordar a ONT
+    // (ACS→CPE) via HTTP Digest. Setamos no ZTP (proativo, não preguiçoso) e
+    // guardamos cifrado no device — reusa as existentes em re-provisionamento.
+    // São params standard TR-098 (ManagementServer.*), seguros em qualquer firmware.
+    let crUser: string;
+    let crPass: string;
+    if (device.connectionRequestUser && device.connectionRequestPwdEnc) {
+      crUser = device.connectionRequestUser;
+      crPass = this.crypto.decrypt(device.connectionRequestPwdEnc);
+    } else {
+      crUser = `netx-${device.id.slice(0, 8)}`;
+      crPass = randomBytes(12).toString('hex');
+      await this.prisma.tr069Device.update({
+        where: { id: device.id },
+        data: {
+          connectionRequestUser: crUser,
+          connectionRequestPwdEnc: this.crypto.encrypt(crPass),
+        },
+      });
+    }
+    params.push(
+      { name: HUAWEI_EG8145_PATHS.connReqUsername, value: crUser, type: 'xsd:string' },
+      { name: HUAWEI_EG8145_PATHS.connReqPassword, value: crPass, type: 'xsd:string' },
+    );
 
     const task = await this.prisma.tr069Task.create({
       data: {
