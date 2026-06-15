@@ -255,3 +255,156 @@ export interface Tr069RefreshResponse {
   taskId: string;
   message: string;
 }
+
+// =============================================================================
+// Profiles / conformidade (motor de desired-state — Fase 2/4)
+// =============================================================================
+export type Tr069RuleSource =
+  | 'STATIC'
+  | 'CONTRACT_PPPOE_USER'
+  | 'CONTRACT_PPPOE_PASS'
+  | 'CONTRACT_PPPOE_VLAN'
+  | 'CONTRACT_WIFI_SSID'
+  | 'CONTRACT_WIFI_SSID_5G'
+  | 'CONTRACT_WIFI_PASS';
+
+export type Tr069RuleMode = 'ENFORCE' | 'REPORT_ONLY';
+
+export type Tr069ComplianceStatus =
+  | 'UNKNOWN'
+  | 'COMPLIANT'
+  | 'DRIFTED'
+  | 'REMEDIATING'
+  | 'PENDING_REBOOT'
+  | 'FAILED';
+
+export type Tr069DriftStatus =
+  | 'OPEN'
+  | 'REMEDIATING'
+  | 'PENDING_REBOOT'
+  | 'RESOLVED'
+  | 'FAILED';
+
+/** Rótulos legíveis das origens de valor (pro select no portal). */
+export const TR069_RULE_SOURCE_LABELS: Record<Tr069RuleSource, string> = {
+  STATIC: 'Valor fixo',
+  CONTRACT_PPPOE_USER: 'PPPoE — usuário (contrato)',
+  CONTRACT_PPPOE_PASS: 'PPPoE — senha (contrato)',
+  CONTRACT_PPPOE_VLAN: 'PPPoE — VLAN (contrato)',
+  CONTRACT_WIFI_SSID: 'Wi-Fi — SSID 2.4G (contrato)',
+  CONTRACT_WIFI_SSID_5G: 'Wi-Fi — SSID 5G (contrato)',
+  CONTRACT_WIFI_PASS: 'Wi-Fi — senha (contrato)',
+};
+
+export const Tr069RuleSourceSchema = z.enum([
+  'STATIC',
+  'CONTRACT_PPPOE_USER',
+  'CONTRACT_PPPOE_PASS',
+  'CONTRACT_PPPOE_VLAN',
+  'CONTRACT_WIFI_SSID',
+  'CONTRACT_WIFI_SSID_5G',
+  'CONTRACT_WIFI_PASS',
+]);
+export const Tr069RuleModeSchema = z.enum(['ENFORCE', 'REPORT_ONLY']);
+
+export const Tr069ProfileRuleInputSchema = z.object({
+  param: z.string().min(3).max(255),
+  valueType: z.string().max(32).default('xsd:string'),
+  source: Tr069RuleSourceSchema.default('STATIC'),
+  staticValue: z.string().max(255).nullish(),
+  mode: Tr069RuleModeSchema.default('REPORT_ONLY'),
+  requiresReboot: z.boolean().default(false),
+  enabled: z.boolean().default(true),
+  sortOrder: z.coerce.number().int().min(0).max(9999).default(0),
+});
+export type Tr069ProfileRuleInput = z.infer<typeof Tr069ProfileRuleInputSchema>;
+
+export const CreateTr069ProfileSchema = z.object({
+  name: z.string().min(1).max(120),
+  manufacturer: z.string().min(1).max(64),
+  productClass: z.string().max(64).nullish(),
+  firmwarePattern: z.string().max(64).nullish(),
+  active: z.boolean().default(true),
+  rules: z.array(Tr069ProfileRuleInputSchema).max(100).default([]),
+});
+export type CreateTr069Profile = z.infer<typeof CreateTr069ProfileSchema>;
+
+export const UpdateTr069ProfileSchema = CreateTr069ProfileSchema.partial();
+export type UpdateTr069Profile = z.infer<typeof UpdateTr069ProfileSchema>;
+
+export const ListTr069DevicesQuerySchema = z.object({
+  /** Filtra por status de conformidade. */
+  compliance: z
+    .enum(['UNKNOWN', 'COMPLIANT', 'DRIFTED', 'REMEDIATING', 'PENDING_REBOOT', 'FAILED'])
+    .optional(),
+  /** Busca por deviceId/serial/fabricante. */
+  search: z.string().max(120).optional(),
+});
+export type ListTr069DevicesQuery = z.infer<typeof ListTr069DevicesQuerySchema>;
+
+export interface Tr069ProfileRuleDto {
+  id: string;
+  param: string;
+  valueType: string;
+  source: Tr069RuleSource;
+  staticValue: string | null;
+  mode: Tr069RuleMode;
+  requiresReboot: boolean;
+  enabled: boolean;
+  sortOrder: number;
+}
+
+export interface Tr069ProfileDto {
+  id: string;
+  name: string;
+  manufacturer: string;
+  productClass: string | null;
+  firmwarePattern: string | null;
+  version: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  rules: Tr069ProfileRuleDto[];
+  /** Quantos devices estão casados com este profile. */
+  deviceCount: number;
+}
+
+export interface Tr069ProfileSummaryDto {
+  id: string;
+  name: string;
+  manufacturer: string;
+  productClass: string | null;
+  version: number;
+  active: boolean;
+  ruleCount: number;
+  deviceCount: number;
+  updatedAt: string;
+}
+
+export interface Tr069DriftDto {
+  id: string;
+  param: string;
+  expected: string | null;
+  actual: string | null;
+  status: Tr069DriftStatus;
+  requiresReboot: boolean;
+  attempts: number;
+  detectedAt: string;
+  lastSeenAt: string;
+  resolvedAt: string | null;
+}
+
+export interface Tr069DeviceComplianceDto {
+  complianceStatus: Tr069ComplianceStatus;
+  profileId: string | null;
+  profileName: string | null;
+  lastReconciledAt: string | null;
+  pendingRebootSince: string | null;
+  drifts: Tr069DriftDto[];
+}
+
+export interface Tr069ReconcileResponse {
+  ok: boolean;
+  complianceStatus: Tr069ComplianceStatus;
+  message: string;
+}

@@ -198,10 +198,140 @@ export interface Tr069DeviceRow {
   productClass: string | null;
   softwareVersion: string | null;
   status: string;
+  complianceStatus: Tr069ComplianceStatus;
+  profileId: string | null;
   lastInformAt: string | null;
   lastInformReason: string | null;
   ont: { id: string; snGpon: string; contractId: string } | null;
   _count: { tasks: number };
+}
+
+// ── Conformidade / profiles (espelha @netx/shared/provisioning/tr069.dto) ─────
+export type Tr069ComplianceStatus =
+  | 'UNKNOWN'
+  | 'COMPLIANT'
+  | 'DRIFTED'
+  | 'REMEDIATING'
+  | 'PENDING_REBOOT'
+  | 'FAILED';
+export type Tr069RuleSource =
+  | 'STATIC'
+  | 'CONTRACT_PPPOE_USER'
+  | 'CONTRACT_PPPOE_PASS'
+  | 'CONTRACT_PPPOE_VLAN'
+  | 'CONTRACT_WIFI_SSID'
+  | 'CONTRACT_WIFI_SSID_5G'
+  | 'CONTRACT_WIFI_PASS';
+export type Tr069RuleMode = 'ENFORCE' | 'REPORT_ONLY';
+export type Tr069DriftStatus = 'OPEN' | 'REMEDIATING' | 'PENDING_REBOOT' | 'RESOLVED' | 'FAILED';
+
+export const TR069_RULE_SOURCE_LABELS: Record<Tr069RuleSource, string> = {
+  STATIC: 'Valor fixo',
+  CONTRACT_PPPOE_USER: 'PPPoE — usuário',
+  CONTRACT_PPPOE_PASS: 'PPPoE — senha',
+  CONTRACT_PPPOE_VLAN: 'PPPoE — VLAN',
+  CONTRACT_WIFI_SSID: 'Wi-Fi — SSID 2.4G',
+  CONTRACT_WIFI_SSID_5G: 'Wi-Fi — SSID 5G',
+  CONTRACT_WIFI_PASS: 'Wi-Fi — senha',
+};
+
+/** Rótulo + classes Tailwind por status de conformidade (badge inline). */
+export const COMPLIANCE_META: Record<Tr069ComplianceStatus, { label: string; cls: string }> = {
+  COMPLIANT: {
+    label: 'Conforme',
+    cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+  },
+  DRIFTED: {
+    label: 'Divergente',
+    cls: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+  },
+  REMEDIATING: {
+    label: 'Corrigindo',
+    cls: 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300',
+  },
+  PENDING_REBOOT: {
+    label: 'Aguardando reboot',
+    cls: 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300',
+  },
+  FAILED: { label: 'Falhou', cls: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300' },
+  UNKNOWN: {
+    label: 'Sem dados',
+    cls: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400',
+  },
+};
+
+export interface Tr069ProfileRule {
+  id: string;
+  param: string;
+  valueType: string;
+  source: Tr069RuleSource;
+  staticValue: string | null;
+  mode: Tr069RuleMode;
+  requiresReboot: boolean;
+  enabled: boolean;
+  sortOrder: number;
+}
+export interface Tr069ProfileRuleInput {
+  param: string;
+  valueType: string;
+  source: Tr069RuleSource;
+  staticValue?: string | null;
+  mode: Tr069RuleMode;
+  requiresReboot: boolean;
+  enabled: boolean;
+  sortOrder: number;
+}
+export interface Tr069Profile {
+  id: string;
+  name: string;
+  manufacturer: string;
+  productClass: string | null;
+  firmwarePattern: string | null;
+  version: number;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+  rules: Tr069ProfileRule[];
+  deviceCount: number;
+}
+export interface Tr069ProfileSummary {
+  id: string;
+  name: string;
+  manufacturer: string;
+  productClass: string | null;
+  version: number;
+  active: boolean;
+  ruleCount: number;
+  deviceCount: number;
+  updatedAt: string;
+}
+export interface Tr069Drift {
+  id: string;
+  param: string;
+  expected: string | null;
+  actual: string | null;
+  status: Tr069DriftStatus;
+  requiresReboot: boolean;
+  attempts: number;
+  detectedAt: string;
+  lastSeenAt: string;
+  resolvedAt: string | null;
+}
+export interface Tr069DeviceCompliance {
+  complianceStatus: Tr069ComplianceStatus;
+  profileId: string | null;
+  profileName: string | null;
+  lastReconciledAt: string | null;
+  pendingRebootSince: string | null;
+  drifts: Tr069Drift[];
+}
+export interface CreateTr069ProfileBody {
+  name: string;
+  manufacturer: string;
+  productClass?: string | null;
+  firmwarePattern?: string | null;
+  active?: boolean;
+  rules?: Tr069ProfileRuleInput[];
 }
 
 // ── Diagnóstico (espelha @netx/shared/provisioning/tr069.dto) ─────────────────
@@ -438,4 +568,19 @@ export const tr069Api = {
     pageSize?: number;
   }) => api.get<Paginated<Tr069AlertDto>>(`/v1/tr069/alerts${qs(params)}`),
   cancelTask: (taskId: string) => api.delete<void>(`/v1/tr069/tasks/${taskId}`),
+  // ── Conformidade / profiles (Fase 4) ───────────────────────────────────────
+  deviceCompliance: (id: string) =>
+    api.get<Tr069DeviceCompliance>(`/v1/tr069/devices/${id}/compliance`),
+  reconcile: (id: string) =>
+    api.post<{ ok: boolean; complianceStatus: Tr069ComplianceStatus; message: string }>(
+      `/v1/tr069/devices/${id}/reconcile`,
+      {},
+    ),
+  listProfiles: () => api.get<Tr069ProfileSummary[]>('/v1/tr069/profiles'),
+  getProfile: (id: string) => api.get<Tr069Profile>(`/v1/tr069/profiles/${id}`),
+  createProfile: (body: CreateTr069ProfileBody) =>
+    api.post<Tr069Profile>('/v1/tr069/profiles', body),
+  updateProfile: (id: string, body: Partial<CreateTr069ProfileBody>) =>
+    api.patch<Tr069Profile>(`/v1/tr069/profiles/${id}`, body),
+  deleteProfile: (id: string) => api.delete<void>(`/v1/tr069/profiles/${id}`),
 };

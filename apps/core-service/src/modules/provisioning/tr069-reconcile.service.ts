@@ -44,10 +44,20 @@ const MAX_ATTEMPTS = parseInt(process.env.TR069_RECONCILE_MAX_ATTEMPTS ?? '5', 1
 
 const ACTIVE_DRIFT: Tr069DriftStatus[] = ['OPEN', 'REMEDIATING', 'PENDING_REBOOT'];
 
+// ── Agendador de reboot (Fase 3) — OPT-IN, desligado por padrão ─────────────
+/** Liga o reboot automático de devices PENDING_REBOOT na janela de madrugada. */
+const AUTO_REBOOT = (process.env.TR069_AUTO_REBOOT_ENABLED ?? '0') === '1';
+/** Janela de manutenção (hora local do tenant). Default 03:00–05:00. */
+const REBOOT_WINDOW_START = parseInt(process.env.TR069_REBOOT_WINDOW_START ?? '3', 10);
+const REBOOT_WINDOW_END = parseInt(process.env.TR069_REBOOT_WINDOW_END ?? '5', 10);
+/** Não reinicia o mesmo device de novo dentro deste período (h). */
+const REBOOT_COOLDOWN_H = parseInt(process.env.TR069_REBOOT_COOLDOWN_H ?? '12', 10);
+
 type DeviceForReconcile = {
   id: string;
   tenantId: string;
   manufacturer: string | null;
+  oui: string | null;
   productClass: string | null;
   softwareVersion: string | null;
   profileId: string | null;
@@ -94,6 +104,61 @@ export class Tr069ReconcileService {
     }
   }
 
+  /**
+   * Agendador de reboot deferido (Fase 3). OPT-IN: só roda se
+   * TR069_AUTO_REBOOT_ENABLED=1. Na janela de madrugada (hora local do tenant),
+   * reinicia devices em PENDING_REBOOT que não foram reiniciados recentemente.
+   * Mecanismo: REBOOT TR-069 (aplica no próximo Inform/CR). Reboot via OLT é
+   * evolução futura (driver não expõe hoje). O reboot manual do painel é o
+   * caminho primário enquanto isto fica desligado.
+   */
+  @Cron(CronExpression.EVERY_30_MINUTES)
+  async rebootScheduler(): Promise<void> {
+    if (!ENABLED || !AUTO_REBOOT) return;
+    const candidates = await this.prisma.tr069Device.findMany({
+      where: { status: 'ONLINE', complianceStatus: 'PENDING_REBOOT' },
+      select: { id: true, tenantId: true, tenant: { select: { timezone: true } } },
+      take: BATCH,
+    });
+    const since = new Date(Date.now() - REBOOT_COOLDOWN_H * 3_600_000);
+    for (const d of candidates) {
+      if (!this.inRebootWindow(d.tenant?.timezone ?? 'UTC')) continue;
+      const recent = await this.prisma.tr069Task.count({
+        where: { deviceId: d.id, action: 'REBOOT', createdAt: { gte: since } },
+      });
+      if (recent > 0) continue; // cooldown — já reiniciado há pouco
+      await this.prisma.tr069Task.create({
+        data: {
+          tenantId: d.tenantId,
+          deviceId: d.id,
+          action: 'REBOOT',
+          payload: { purpose: 'RECONCILE_REBOOT' },
+          status: 'PENDING',
+        },
+      });
+      this.logger.log(`[reboot-scheduler] REBOOT agendado device=${d.id}`);
+    }
+  }
+
+  /** Hora local do tenant está dentro da janela de reboot? */
+  private inRebootWindow(timezone: string): boolean {
+    try {
+      const h = parseInt(
+        new Intl.DateTimeFormat('en-US', {
+          timeZone: timezone,
+          hour: '2-digit',
+          hour12: false,
+        }).format(new Date()),
+        10,
+      );
+      return REBOOT_WINDOW_START <= REBOOT_WINDOW_END
+        ? h >= REBOOT_WINDOW_START && h < REBOOT_WINDOW_END
+        : h >= REBOOT_WINDOW_START || h < REBOOT_WINDOW_END;
+    } catch {
+      return false;
+    }
+  }
+
   /** Reconcilia um device (também chamável on-demand pelo portal). */
   async reconcileDevice(deviceId: string): Promise<void> {
     const device = (await this.prisma.tr069Device.findUnique({
@@ -102,6 +167,7 @@ export class Tr069ReconcileService {
         id: true,
         tenantId: true,
         manufacturer: true,
+        oui: true,
         productClass: true,
         softwareVersion: true,
         profileId: true,
@@ -162,8 +228,11 @@ export class Tr069ReconcileService {
     const actual = await this.readActual(device.id);
     if (!actual) {
       // Sem leitura fresca: mede e espera o próximo ciclo (medir → agir → re-medir).
+      // Mantém PENDING_REBOOT (não regride pra UNKNOWN enquanto aguarda o boot).
       await this.ensureReconcileGet(device.tenantId, device.id, paramNames);
-      await this.markCompliance(device, 'UNKNOWN', profile.id, profile.version);
+      const waiting =
+        device.complianceStatus === 'PENDING_REBOOT' ? 'PENDING_REBOOT' : 'UNKNOWN';
+      await this.markCompliance(device, waiting, profile.id, profile.version);
       return;
     }
     // Params ausentes do GET fresco são não-legíveis (write-only, ex.: senhas/
@@ -254,21 +323,29 @@ export class Tr069ReconcileService {
 
   /** Acha o profile ativo mais específico pro device (productClass > curinga). */
   private async resolveProfile(device: DeviceForReconcile) {
-    if (!device.manufacturer) return null;
+    // Fabricante efetivo: o reportado no Inform, ou inferido pelo OUI
+    // (00259E = Huawei) quando o CPE não preenche manufacturer. Match é
+    // tolerante (case-insensitive "contém") porque o Huawei reporta
+    // "Huawei Technologies Co., Ltd." e o profile guarda só "Huawei".
+    const devMan = (
+      device.manufacturer ?? (device.oui === '00259E' ? 'Huawei' : '')
+    ).toLowerCase();
+    if (!devMan) return null;
     const candidates = await this.prisma.tr069Profile.findMany({
-      where: {
-        tenantId: device.tenantId,
-        active: true,
-        manufacturer: device.manufacturer,
-        OR: [{ productClass: null }, { productClass: device.productClass ?? undefined }],
-      },
+      where: { tenantId: device.tenantId, active: true },
       include: { rules: true },
-      orderBy: [{ productClass: { sort: 'desc', nulls: 'last' } }, { version: 'desc' }],
     });
-    return (
-      candidates.find((p) => this.firmwareMatches(p.firmwarePattern, device.softwareVersion)) ??
-      null
+    const matched = candidates.filter(
+      (p) =>
+        devMan.includes(p.manufacturer.toLowerCase()) &&
+        (p.productClass == null || p.productClass === device.productClass) &&
+        this.firmwareMatches(p.firmwarePattern, device.softwareVersion),
     );
+    // Mais específico primeiro: productClass setado > curinga; depois maior versão.
+    matched.sort(
+      (a, b) => (b.productClass ? 1 : 0) - (a.productClass ? 1 : 0) || b.version - a.version,
+    );
+    return matched[0] ?? null;
   }
 
   private firmwareMatches(pattern: string | null, sw: string | null): boolean {

@@ -31,6 +31,7 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   CreateOltRequestSchema,
+  CreateTr069ProfileSchema,
   FirmwareUpgradeRequestSchema,
   InstallCustomerRequestSchema,
   ListOltsQuerySchema,
@@ -43,8 +44,10 @@ import {
   PingRequestSchema,
   SpeedTestRequestSchema,
   UpdateOltRequestSchema,
+  UpdateTr069ProfileSchema,
   type AuthenticatedPrincipal,
   type CreateOltRequest,
+  type CreateTr069Profile,
   type FirmwareUpgradeRequest,
   type InstallCustomerRequest,
   type ListOltsQuery,
@@ -57,6 +60,7 @@ import {
   type PingRequest,
   type SpeedTestRequest,
   type UpdateOltRequest,
+  type UpdateTr069Profile,
 } from '@netx/shared';
 
 import { z } from 'zod';
@@ -72,6 +76,7 @@ const DeactivateInstallSchema = z.object({
 import { OltsService } from './olts.service';
 import { ProvisioningService } from './provisioning.service';
 import { Tr069DiagnosticsService } from './tr069-diagnostics.service';
+import { Tr069ProfilesService } from './tr069-profiles.service';
 import { Tr069TasksService } from './tr069-tasks.service';
 
 // =============================================================================
@@ -255,6 +260,7 @@ export class Tr069Controller {
   constructor(
     private readonly svc: Tr069TasksService,
     private readonly diag: Tr069DiagnosticsService,
+    private readonly profiles: Tr069ProfilesService,
   ) {}
 
   @Get('devices')
@@ -403,5 +409,73 @@ export class Tr069Controller {
     @Param('id', new ParseUUIDPipe()) id: string,
   ): Promise<void> {
     await this.svc.cancelTask(user.tenantId, id);
+  }
+
+  // ── Conformidade / profiles (Fase 4) ───────────────────────────────────────
+
+  /** Conformidade de um device: status + profile casado + drifts. */
+  @Get('devices/:id/compliance')
+  @RequirePermissions('tr069.admin')
+  deviceCompliance(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.profiles.deviceCompliance(user.tenantId, id);
+  }
+
+  /** Reconcilia um device agora (resolve drift + enfileira SET conforme profile). */
+  @Post('devices/:id/reconcile')
+  @HttpCode(200)
+  @RequirePermissions('tr069.admin')
+  reconcileNow(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.profiles.reconcileNow(user.tenantId, id);
+  }
+
+  /** Lista profiles (modelos homologados) do tenant. */
+  @Get('profiles')
+  @RequirePermissions('tr069.admin')
+  listProfiles(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.profiles.list(user.tenantId);
+  }
+
+  @Get('profiles/:id')
+  @RequirePermissions('tr069.admin')
+  getProfile(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.profiles.get(user.tenantId, id);
+  }
+
+  @Post('profiles')
+  @RequirePermissions('tr069.admin')
+  createProfile(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @ZodBody(CreateTr069ProfileSchema) input: CreateTr069Profile,
+  ) {
+    return this.profiles.create(user.tenantId, user.sub, input);
+  }
+
+  @Patch('profiles/:id')
+  @RequirePermissions('tr069.admin')
+  updateProfile(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(UpdateTr069ProfileSchema) input: UpdateTr069Profile,
+  ) {
+    return this.profiles.update(user.tenantId, id, input);
+  }
+
+  @Delete('profiles/:id')
+  @HttpCode(204)
+  @RequirePermissions('tr069.admin')
+  async deleteProfile(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<void> {
+    await this.profiles.remove(user.tenantId, id);
   }
 }

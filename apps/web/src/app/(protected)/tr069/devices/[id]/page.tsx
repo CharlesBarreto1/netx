@@ -8,7 +8,7 @@
  * e as tasks recentes. Ações: coletar diagnóstico agora (GET_PARAMS) e
  * reiniciar o CPE (Reboot) — ambas aplicadas no próximo Inform.
  */
-import { ArrowLeft, Gauge, HardDriveDownload, Network, RefreshCw, RotateCcw, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, Gauge, HardDriveDownload, Network, RefreshCw, RotateCcw, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
@@ -22,11 +22,29 @@ import { PageLoader } from '@/components/ui/Spinner';
 import { notify } from '@/lib/notify';
 import {
   classifyRxPower,
+  COMPLIANCE_META,
   tr069Api,
   type Tr069AlertSeverity,
   type Tr069DiagnosticDto,
+  type Tr069DriftStatus,
   type Tr069OpticalHealth,
 } from '@/lib/provisioning-api';
+
+const DRIFT_LABEL: Record<Tr069DriftStatus, string> = {
+  OPEN: 'Divergente',
+  REMEDIATING: 'Corrigindo',
+  PENDING_REBOOT: 'Aguardando reboot',
+  FAILED: 'Falhou',
+  RESOLVED: 'Resolvido',
+};
+
+/** Encurta o path TR-069 pra caber na tabela. */
+function shortParam(p: string): string {
+  return p
+    .replace('InternetGatewayDevice.', '')
+    .replace(/WANDevice\.1\.WANConnectionDevice\.\d+\.WANPPPConnection\.1\./, 'WAN.')
+    .replace('LANDevice.1.WLANConfiguration.', 'WLAN.');
+}
 
 const HEALTH_TONE: Record<Tr069OpticalHealth, 'success' | 'warning' | 'danger' | 'neutral'> = {
   OK: 'success',
@@ -98,6 +116,25 @@ export default function Tr069DeviceDetailPage() {
     () => tr069Api.diagRuns(id),
     { refreshInterval: 10_000 },
   );
+
+  const { data: compliance, mutate: mutateCompliance } = useSWR(
+    id ? `tr069/devices/${id}/compliance` : null,
+    () => tr069Api.deviceCompliance(id),
+    { refreshInterval: 30_000 },
+  );
+
+  async function handleReconcile() {
+    setBusy(true);
+    try {
+      const res = await tr069Api.reconcile(id);
+      notify.success('Reconciliação executada', { description: res.message });
+      await Promise.all([mutate(), mutateCompliance()]);
+    } catch (e) {
+      notify.apiError(e);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function handleRefresh() {
     setBusy(true);
@@ -226,6 +263,9 @@ export default function Tr069DeviceDetailPage() {
           <Button variant="outline" size="sm" loading={busy} onClick={handleFirmware}>
             <HardDriveDownload className="mr-1 h-4 w-4" /> {t('detail.firmware')}
           </Button>
+          <Button variant="secondary" size="sm" loading={busy} onClick={handleReconcile}>
+            <ShieldCheck className="mr-1 h-4 w-4" /> Reconciliar
+          </Button>
         </div>
       </div>
 
@@ -247,6 +287,76 @@ export default function Tr069DeviceDetailPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Conformidade (motor de profiles) */}
+      {compliance && (
+        <Card>
+          <CardHeader className="flex-row items-center justify-between">
+            <CardTitle>Conformidade</CardTitle>
+            <span
+              className={`rounded px-2 py-0.5 text-xs ${(COMPLIANCE_META[compliance.complianceStatus] ?? COMPLIANCE_META.UNKNOWN).cls}`}
+            >
+              {(COMPLIANCE_META[compliance.complianceStatus] ?? COMPLIANCE_META.UNKNOWN).label}
+            </span>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+              <span className="text-slate-500">
+                Profile:{' '}
+                <span className="text-slate-900 dark:text-slate-100">
+                  {compliance.profileName ?? '— (nenhum profile casou)'}
+                </span>
+              </span>
+              {compliance.lastReconciledAt && (
+                <span className="text-slate-500">
+                  Última checagem: {new Date(compliance.lastReconciledAt).toLocaleString('pt-BR')}
+                </span>
+              )}
+              {compliance.pendingRebootSince && (
+                <span className="text-purple-600 dark:text-purple-400">
+                  Aguardando reboot desde{' '}
+                  {new Date(compliance.pendingRebootSince).toLocaleString('pt-BR')}
+                </span>
+              )}
+            </div>
+            {compliance.drifts.filter((dr) => dr.status !== 'RESOLVED').length === 0 ? (
+              <p className="text-sm text-slate-500">Sem divergências em aberto.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="text-left text-slate-500">
+                    <tr>
+                      <th className="py-1 pr-2 font-medium">Parâmetro</th>
+                      <th className="py-1 pr-2 font-medium">Esperado</th>
+                      <th className="py-1 pr-2 font-medium">Atual</th>
+                      <th className="py-1 pr-2 font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {compliance.drifts
+                      .filter((dr) => dr.status !== 'RESOLVED')
+                      .map((dr) => (
+                        <tr key={dr.id}>
+                          <td className="py-1 pr-2 font-mono">{shortParam(dr.param)}</td>
+                          <td className="py-1 pr-2 font-mono text-emerald-600 dark:text-emerald-400">
+                            {dr.expected ?? '—'}
+                          </td>
+                          <td className="py-1 pr-2 font-mono text-red-600 dark:text-red-400">
+                            {dr.actual ?? '—'}
+                          </td>
+                          <td className="py-1 pr-2">
+                            {DRIFT_LABEL[dr.status]}
+                            {dr.requiresReboot ? ' · reboot' : ''}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       {!latest ? (

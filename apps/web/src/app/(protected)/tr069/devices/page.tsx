@@ -12,7 +12,7 @@ import Link from 'next/link';
 import useSWR from 'swr';
 
 import { PageLoader } from '@/components/ui/Spinner';
-import { tr069Api, type Tr069DeviceRow } from '@/lib/provisioning-api';
+import { COMPLIANCE_META, tr069Api, type Tr069DeviceRow } from '@/lib/provisioning-api';
 
 export default function Tr069DevicesPage() {
   const t = useTranslations('tr069');
@@ -58,6 +58,7 @@ export default function Tr069DevicesPage() {
                 <th className="px-3 py-2 text-left font-medium">{t('colManufacturer')}</th>
                 <th className="px-3 py-2 text-left font-medium">{t('colSnGpon')}</th>
                 <th className="px-3 py-2 text-left font-medium">{t('colStatus')}</th>
+                <th className="px-3 py-2 text-left font-medium">Conformidade</th>
                 <th className="px-3 py-2 text-left font-medium">{t('colLastInform')}</th>
                 <th className="px-3 py-2 text-right font-medium">{t('colTasks')}</th>
               </tr>
@@ -78,6 +79,13 @@ export default function Tr069DevicesPage() {
                   <td className="px-3 py-2">
                     <span className="rounded bg-slate-100 px-2 py-0.5 text-xs dark:bg-slate-800">
                       {d.status}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">
+                    <span
+                      className={`rounded px-2 py-0.5 text-xs ${(COMPLIANCE_META[d.complianceStatus] ?? COMPLIANCE_META.UNKNOWN).cls}`}
+                    >
+                      {(COMPLIANCE_META[d.complianceStatus] ?? COMPLIANCE_META.UNKNOWN).label}
                     </span>
                   </td>
                   <td className="px-3 py-2 text-xs text-slate-500">

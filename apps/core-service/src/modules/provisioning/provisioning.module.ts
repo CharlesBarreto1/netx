@@ -15,6 +15,7 @@ import { OltsService } from './olts.service';
 import { ProvisioningController, OltsController, Tr069Controller } from './provisioning.controller';
 import { ProvisioningService } from './provisioning.service';
 import { Tr069DiagnosticsService } from './tr069-diagnostics.service';
+import { Tr069ProfilesService } from './tr069-profiles.service';
 import { Tr069ReconcileService } from './tr069-reconcile.service';
 import { Tr069TasksService } from './tr069-tasks.service';
 
@@ -33,6 +34,7 @@ import { Tr069TasksService } from './tr069-tasks.service';
     Tr069TasksService,
     Tr069DiagnosticsService,
     Tr069ReconcileService,
+    Tr069ProfilesService,
     ProvisioningService,
   ],
   exports: [
@@ -41,6 +43,7 @@ import { Tr069TasksService } from './tr069-tasks.service';
     Tr069TasksService,
     Tr069DiagnosticsService,
     Tr069ReconcileService,
+    Tr069ProfilesService,
   ],
 })
 export class ProvisioningModule {}
