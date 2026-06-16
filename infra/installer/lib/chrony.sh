@@ -87,8 +87,12 @@ chrony_sync_allowlist() {
   } > "${CHRONY_ALLOWS_FILE}"
   chmod 644 "${CHRONY_ALLOWS_FILE}"
 
-  # Reload chrony se já estiver rodando (idempotente — não erra se não estiver)
+  # RESTART (não reload): as diretivas `allow` do conf.d só são lidas no
+  # startup do chronyd. `systemctl reload chrony` roda `chronyc reload sources`
+  # — relê fontes de tempo, NÃO relê a allowlist. Sem restart, o cliente NTP
+  # recém-adicionado continua negado mesmo com a porta 123 aberta no UFW
+  # (mesma classe de bug do FreeRADIUS reload×restart).
   if systemctl is-active --quiet chrony 2>/dev/null; then
-    systemctl reload chrony 2>/dev/null || systemctl restart chrony
+    systemctl restart chrony 2>/dev/null || true
   fi
 }

@@ -40,17 +40,18 @@ source "${INSTALLER_DIR}/lib/firewall.sh"
 firewall_sync_radius_nas
 
 # CRÍTICO: abrir UFW sozinho NÃO basta — FreeRADIUS carrega a lista de clients
-# (radius.nas) em memória no startup. Sem reload, ele continua sem conhecer o
-# NAS novo e descarta o pacote SILENCIOSAMENTE como "unknown client" (FR não
-# loga isso em produção, só em -X). Por isso reload tem que ser parte do mesmo
-# fluxo de sync. `reload` é leve (HUP, ~50ms), não derruba sessões em andamento.
+# (radius.nas) do SQL **só no startup**. E aqui está a pegadinha que já nos
+# mordeu várias vezes: `systemctl reload` (SIGHUP) NÃO relê os SQL clients —
+# o reload retorna sucesso (~50ms), mas o FR continua sem conhecer o NAS novo
+# e descarta o pacote SILENCIOSAMENTE como "unknown client" (em produção mal
+# loga). Só `restart` força o FR a reinstanciar o módulo sql e reler radius.nas.
+# Por isso aqui é restart, de propósito. (O sudoers já autoriza netx a rodar
+# `systemctl restart freeradius`.)
 if systemctl is-active --quiet freeradius 2>/dev/null; then
-  if systemctl reload freeradius 2>/dev/null; then
-    log_dim "FreeRADIUS recarregado (releu radius.nas)"
+  if systemctl restart freeradius 2>/dev/null; then
+    log_dim "FreeRADIUS reiniciado (releu radius.nas do SQL)"
   else
-    # Reload pode falhar em FR antigo — fallback pra restart (corta ~5s de auth)
-    log_warn "Reload falhou — tentando restart"
-    systemctl restart freeradius
+    log_warn "Falha ao reiniciar FreeRADIUS — verifique 'systemctl status freeradius'"
   fi
 fi
 

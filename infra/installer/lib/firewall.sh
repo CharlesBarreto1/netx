@@ -56,18 +56,54 @@ firewall_setup() {
   # Necessário pro backend disparar resync após cadastrar NetworkEquipment.
   firewall_install_sudoers
 
+  # Serviço de reconciliação no boot — re-aplica regras UFW (radius.nas) +
+  # allowlist chrony (network_equipment) a cada boot. Torna o firewall/NTP
+  # auto-curáveis após restore/reinstall/migração de máquina (cenários em que
+  # as syncs nunca rodam contra os dados restaurados, deixando RADIUS/NTP mudos).
+  firewall_install_boot_sync
+
   log_ok "UFW configurado"
+}
+
+# Instala netx-infra-sync.service (oneshot, no boot) que roda sync-firewall.sh
+# + sync-ntp.sh. Idempotente. Sem isso, qualquer mudança em radius.nas/
+# network_equipment feita fora do hook da UI (restore de backup, reinstall,
+# edição manual no DB) deixa o firewall e o chrony desatualizados até alguém
+# rodar a sync na mão — a origem recorrente de "RADIUS/NTP pararam".
+firewall_install_boot_sync() {
+  local unit="/etc/systemd/system/netx-infra-sync.service"
+  local home="${NETX_HOME:-/opt/netx}"
+  cat > "${unit}" <<EOF
+# Auto-gerado pelo NetX installer.
+[Unit]
+Description=NetX — reconcilia UFW (radius.nas) + chrony allowlist (network_equipment)
+After=postgresql.service freeradius.service chrony.service network-online.target
+Wants=postgresql.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=${home}/infra/installer/scripts/sync-firewall.sh
+ExecStart=${home}/infra/installer/scripts/sync-ntp.sh
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  chmod 0644 "${unit}"
+  systemctl daemon-reload
+  systemctl enable netx-infra-sync.service >/dev/null 2>&1 || true
+  log_dim "Boot resync: netx-infra-sync.service (UFW + chrony reconciliam a cada boot)"
 }
 
 # Cria /etc/sudoers.d/netx-infra-sync com NOPASSWD pros scripts de sync.
 # Idempotente — usa `visudo -c` pra validar antes de escrever.
 #
-# Por que sync-firewall.sh precisa de systemctl reload freeradius dentro dele:
+# Por que sync-firewall.sh precisa de systemctl restart freeradius dentro dele:
 # UFW + radius.nas sozinhos não bastam — FreeRADIUS carrega a lista de NAS
-# clients em memória no startup e NÃO releé sozinho. Sem reload, NAS recém
-# cadastrado pela UI fica "desconhecido" pro FR e pacotes são descartados
-# silenciosamente. Por isso o script chama systemctl reload internamente, e
-# pra ELE conseguir, autorizamos o user netx a rodar `systemctl reload
+# clients (SQL) só no startup e `reload`/SIGHUP NÃO relê SQL clients. Sem
+# restart, NAS recém cadastrado fica "desconhecido" pro FR e pacotes são
+# descartados silenciosamente. Por isso o script chama systemctl restart, e
+# pra ELE conseguir, autorizamos o user netx a rodar `systemctl restart
 # freeradius` direto no sudoers (NOPASSWD restrito só pra esse comando).
 firewall_install_sudoers() {
   local sudoers="/etc/sudoers.d/netx-infra-sync"
