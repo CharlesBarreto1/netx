@@ -22,8 +22,13 @@ backups_setup() {
 }
 
 backups_install_dirs() {
-  # /var/backups/netx — root-owned, grupo netx pode ler pra restaurar via UI.
-  install -d -o root  -g netx -m 0750 /var/backups/netx
+  # /var/backups/netx — root-owned, grupo netx com WRITE (0770) porque o
+  # BackupsService roda como user netx e cria/apaga os backups MANUAIS direto
+  # aqui via UI (/settings/backups). O cron (netx-backup.sh) roda como root e
+  # grava no subdir auto/. Sem o write de grupo, o pg_dump manual falha com
+  # EACCES mesmo após /var/backups/netx entrar no ReadWritePaths do
+  # core-service. (Mesmo motivo do pre-migration/ abaixo já ser 0770.)
+  install -d -o root  -g netx -m 0770 /var/backups/netx
   # Subdir pra pre-migration snapshots — mode 0770 porque safe-migrate.sh roda
   # como user netx e precisa WRITE aqui. (auto/ é 0750 porque só root cron grava.)
   install -d -o root  -g netx -m 0770 /var/backups/netx/pre-migration

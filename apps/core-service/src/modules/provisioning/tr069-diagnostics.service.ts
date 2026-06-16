@@ -442,6 +442,25 @@ export class Tr069DiagnosticsService {
   }
 
   /**
+   * Lista plana de todos os parâmetros do último snapshot (Inform/GET) — pro
+   * visor de atributos TR-069 no portal (busca/paginação no front).
+   */
+  async listDeviceParameters(
+    tenantId: string,
+    deviceId: string,
+  ): Promise<Array<{ name: string; value: string }>> {
+    const device = await this.prisma.tr069Device.findFirst({
+      where: { id: deviceId, tenantId },
+      select: { parametersSnapshot: true },
+    });
+    if (!device) throw new NotFoundException('Device TR-069 não encontrado');
+    const snap = (device.parametersSnapshot ?? {}) as Record<string, unknown>;
+    return Object.entries(snap)
+      .map(([name, value]) => ({ name, value: value == null ? '' : String(value) }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /**
    * Resolve o device TR-069 de um contrato (via ONT) e devolve o detalhe.
    * Null quando o contrato não tem CPE gerenciada — o card no contrato some.
    * Usado pelo "Hub do Atendente" (painel de diagnóstico dentro do contrato).

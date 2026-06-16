@@ -572,6 +572,8 @@ export const tr069Api = {
   ping: (id: string, host: string) =>
     api.post<{ runId: string; message: string }>(`/v1/tr069/devices/${id}/ping`, { host }),
   diagRuns: (id: string) => api.get<Tr069DiagRunDto[]>(`/v1/tr069/devices/${id}/diag-runs`),
+  deviceParameters: (id: string) =>
+    api.get<Array<{ name: string; value: string }>>(`/v1/tr069/devices/${id}/parameters`),
   wifiCoverage: (params?: { days?: number; maxRssi?: number; minSamples?: number; page?: number; pageSize?: number }) =>
     api.get<Paginated<WifiCoverageRow>>(`/v1/tr069/wifi-coverage${qs(params)}`),
   listAlerts: (params?: {

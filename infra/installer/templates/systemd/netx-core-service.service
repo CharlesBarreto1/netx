@@ -56,6 +56,13 @@ ProtectHome=true
 #   sync-ntp:      /etc/chrony/conf.d/netx-allows.conf
 #   sync-firewall: ufw escreve em /etc/ufw/user.rules
 #
+# /var/backups/netx: o backup MANUAL via UI (BackupsService) roda DENTRO deste
+# processo e escreve o .dump direto via pg_dump. Sem expor o dir aqui, o
+# pg_dump aborta com EROFS ("read-only file system") mesmo o dir existindo —
+# o backup automático (netx-backup.timer) não sofre porque é um .service à
+# parte com namespace próprio. Criado pelo installer (backups_install_dirs),
+# então sempre existe; não precisa do prefixo `-`.
+#
 # CUIDADO: systemd RECUSA criar o namespace se algum path em ReadWritePaths
 # NÃO EXISTIR — serviço fica em crash loop com status=226/NAMESPACE e
 # "Failed to set up mount namespacing: /path: No such file or directory".
@@ -68,7 +75,7 @@ ProtectHome=true
 #
 # Não adicione /etc/sudoers.d aqui — ele NÃO precisa ser writable em runtime
 # (install.sh popula durante setup) e expor sudoers ao backend = vetor de RCE.
-ReadWritePaths=/var/lib/netx /var/log/netx /opt/netx/apps/core-service/dist -/etc/chrony -/etc/ufw
+ReadWritePaths=/var/lib/netx /var/log/netx /var/backups/netx /opt/netx/apps/core-service/dist -/etc/chrony -/etc/ufw
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true

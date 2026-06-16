@@ -123,6 +123,13 @@ export default function Tr069DeviceDetailPage() {
     { refreshInterval: 30_000 },
   );
 
+  const { data: deviceParams } = useSWR(
+    id ? `tr069/devices/${id}/parameters` : null,
+    () => tr069Api.deviceParameters(id),
+  );
+  const [paramSearch, setParamSearch] = useState('');
+  const [paramPage, setParamPage] = useState(0);
+
   async function handleReconcile() {
     setBusy(true);
     try {
@@ -222,6 +229,14 @@ export default function Tr069DeviceDetailPage() {
 
   const d = data;
   const latest = d.latest;
+  const lastSeenTs = d.lastInformAt ?? d.lastDiagnosticAt;
+  const isStale = lastSeenTs ? Date.now() - new Date(lastSeenTs).getTime() > 5 * 60_000 : false;
+  const paramList = (deviceParams ?? []).filter((p) =>
+    `${p.name} ${p.value}`.toLowerCase().includes(paramSearch.toLowerCase()),
+  );
+  const PARAM_PAGE_SIZE = 50;
+  const paramPages = Math.max(1, Math.ceil(paramList.length / PARAM_PAGE_SIZE));
+  const paramSlice = paramList.slice(paramPage * PARAM_PAGE_SIZE, (paramPage + 1) * PARAM_PAGE_SIZE);
   const lastDiagTask = d.recentTasks.find((task) => task.action === 'GET_PARAMS');
   const rxPoints = (history ?? [])
     .map((h: Tr069DiagnosticDto) => h.rxPower)
@@ -268,6 +283,15 @@ export default function Tr069DeviceDetailPage() {
           </Button>
         </div>
       </div>
+
+      {isStale && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+          <span>Dados coletados há mais de 5 minutos — podem estar desatualizados.</span>
+          <Button variant="secondary" size="sm" loading={busy} onClick={handleRefresh}>
+            <RefreshCw className="mr-1 h-4 w-4" /> Atualizar
+          </Button>
+        </div>
+      )}
 
       {/* Informações do cliente — quem é o dono do CPE */}
       {d.customer && (
@@ -666,6 +690,74 @@ export default function Tr069DeviceDetailPage() {
           </CardContent>
         </Card>
       )}
+      {/* Visor de todos os atributos TR-069 (read-only) */}
+      <Card>
+        <CardHeader className="flex-row items-center justify-between gap-3">
+          <CardTitle>Atributos TR-069 ({paramList.length})</CardTitle>
+          <input
+            value={paramSearch}
+            onChange={(e) => {
+              setParamSearch(e.target.value);
+              setParamPage(0);
+            }}
+            placeholder="Buscar parâmetro…"
+            className="w-64 rounded-md border border-slate-200 bg-transparent px-2 py-1 text-sm dark:border-slate-700"
+          />
+        </CardHeader>
+        <CardContent>
+          {paramList.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              {deviceParams ? 'Nenhum atributo no último snapshot.' : 'Carregando…'}
+            </p>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="text-left text-slate-500">
+                    <tr>
+                      <th className="py-1 pr-2 font-medium">Atributo</th>
+                      <th className="py-1 pr-2 font-medium">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {paramSlice.map((p) => (
+                      <tr key={p.name}>
+                        <td className="break-all py-1 pr-2 font-mono">{p.name}</td>
+                        <td className="break-all py-1 pr-2 font-mono">{p.value || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {paramPages > 1 && (
+                <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+                  <span>
+                    Página {paramPage + 1} de {paramPages}
+                  </span>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={paramPage === 0}
+                      onClick={() => setParamPage((p) => Math.max(0, p - 1))}
+                    >
+                      Anterior
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={paramPage >= paramPages - 1}
+                      onClick={() => setParamPage((p) => Math.min(paramPages - 1, p + 1))}
+                    >
+                      Próxima
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }

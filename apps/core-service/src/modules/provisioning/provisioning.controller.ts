@@ -381,6 +381,16 @@ export class Tr069Controller {
     return this.diag.listDiagRuns(user.tenantId, id);
   }
 
+  /** Lista plana de todos os atributos TR-069 do último snapshot (visor). */
+  @Get('devices/:id/parameters')
+  @RequirePermissions('tr069.admin')
+  parameters(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.diag.listDeviceParameters(user.tenantId, id);
+  }
+
   /** Ranking de cobertura Wi-Fi (piores RSSI médios) — proativo / venda de mesh. */
   @Get('wifi-coverage')
   @RequirePermissions('provisioning.read')
