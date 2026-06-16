@@ -378,6 +378,15 @@ export class Tr069DiagnosticsService {
             status: true,
             lastRxPower: true,
             lastTxPower: true,
+            contract: {
+              select: {
+                id: true,
+                code: true,
+                status: true,
+                pppoeUsername: true,
+                customer: { select: { id: true, displayName: true, status: true } },
+              },
+            },
           },
         },
         diagnostics: { orderBy: { capturedAt: 'desc' }, take: 1 },
@@ -413,6 +422,17 @@ export class Tr069DiagnosticsService {
             status: device.ont.status,
             lastRxPower: device.ont.lastRxPower === null ? null : String(device.ont.lastRxPower),
             lastTxPower: device.ont.lastTxPower === null ? null : String(device.ont.lastTxPower),
+          }
+        : null,
+      customer: device.ont?.contract
+        ? {
+            customerId: device.ont.contract.customer.id,
+            customerName: device.ont.contract.customer.displayName,
+            customerStatus: device.ont.contract.customer.status,
+            contractId: device.ont.contract.id,
+            contractCode: device.ont.contract.code,
+            contractStatus: device.ont.contract.status,
+            pppoeUsername: device.ont.contract.pppoeUsername,
           }
         : null,
       latest: latest ? this.toDiagnosticDto(latest) : null,

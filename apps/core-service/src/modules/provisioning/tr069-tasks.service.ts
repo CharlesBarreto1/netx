@@ -265,7 +265,16 @@ export class Tr069TasksService {
       orderBy: { lastInformAt: { sort: 'desc', nulls: 'last' } },
       take: 100,
       include: {
-        ont: { select: { id: true, snGpon: true, contractId: true } },
+        ont: {
+          select: {
+            id: true,
+            snGpon: true,
+            contractId: true,
+            contract: {
+              select: { code: true, customer: { select: { id: true, displayName: true } } },
+            },
+          },
+        },
         _count: { select: { tasks: true } },
       },
     });

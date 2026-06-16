@@ -269,6 +269,52 @@ export default function Tr069DeviceDetailPage() {
         </div>
       </div>
 
+      {/* Informações do cliente — quem é o dono do CPE */}
+      {d.customer && (
+        <Card>
+          <CardHeader className="flex-row items-center justify-between">
+            <CardTitle>Informações do cliente</CardTitle>
+            <span
+              className={`rounded px-2 py-0.5 text-xs ${
+                d.customer.customerStatus === 'ACTIVE'
+                  ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+                  : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+              }`}
+            >
+              {d.customer.customerStatus}
+            </span>
+          </CardHeader>
+          <CardContent className="flex flex-wrap items-center gap-x-8 gap-y-3 text-sm">
+            <div>
+              <p className="text-xs text-slate-500">Nome</p>
+              <Link
+                href={`/customers/${d.customer.customerId}`}
+                className="font-medium text-sky-600 hover:underline dark:text-sky-400"
+              >
+                {d.customer.customerName}
+              </Link>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Login PPPoE</p>
+              <p className="font-mono">{d.customer.pppoeUsername ?? '—'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Contrato</p>
+              <Link
+                href={`/contracts/${d.customer.contractId}`}
+                className="text-sky-600 hover:underline dark:text-sky-400"
+              >
+                {d.customer.contractCode ?? d.customer.contractId.slice(0, 8)}
+              </Link>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500">Status do contrato</p>
+              <p>{d.customer.contractStatus}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Alertas abertos */}
       {d.openAlerts.length > 0 && (
         <div className="space-y-2">

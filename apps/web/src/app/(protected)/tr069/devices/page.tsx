@@ -57,6 +57,7 @@ export default function Tr069DevicesPage() {
                 <th className="px-3 py-2 text-left font-medium">{t('colDeviceId')}</th>
                 <th className="px-3 py-2 text-left font-medium">{t('colManufacturer')}</th>
                 <th className="px-3 py-2 text-left font-medium">{t('colSnGpon')}</th>
+                <th className="px-3 py-2 text-left font-medium">Cliente</th>
                 <th className="px-3 py-2 text-left font-medium">{t('colStatus')}</th>
                 <th className="px-3 py-2 text-left font-medium">Conformidade</th>
                 <th className="px-3 py-2 text-left font-medium">{t('colLastInform')}</th>
@@ -76,6 +77,7 @@ export default function Tr069DevicesPage() {
                   </td>
                   <td className="px-3 py-2">{d.manufacturer ?? '—'}</td>
                   <td className="px-3 py-2 font-mono text-xs">{d.ont?.snGpon ?? '—'}</td>
+                  <td className="px-3 py-2">{d.ont?.contract?.customer?.displayName ?? '—'}</td>
                   <td className="px-3 py-2">
                     <span className="rounded bg-slate-100 px-2 py-0.5 text-xs dark:bg-slate-800">
                       {d.status}

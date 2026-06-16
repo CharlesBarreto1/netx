@@ -246,6 +246,16 @@ export interface Tr069DeviceDetailResponse {
     lastRxPower: string | null;
     lastTxPower: string | null;
   } | null;
+  /** Cliente/contrato vinculado (via ONT) — quem é o dono do CPE. */
+  customer: {
+    customerId: string;
+    customerName: string;
+    customerStatus: string;
+    contractId: string;
+    contractCode: string | null;
+    contractStatus: string;
+    pppoeUsername: string | null;
+  } | null;
   latest: Tr069DiagnosticDto | null;
   openAlerts: Tr069AlertDto[];
   recentTasks: Tr069TaskDto[];

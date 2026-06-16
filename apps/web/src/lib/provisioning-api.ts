@@ -202,7 +202,12 @@ export interface Tr069DeviceRow {
   profileId: string | null;
   lastInformAt: string | null;
   lastInformReason: string | null;
-  ont: { id: string; snGpon: string; contractId: string } | null;
+  ont: {
+    id: string;
+    snGpon: string;
+    contractId: string;
+    contract: { code: string | null; customer: { id: string; displayName: string } | null } | null;
+  } | null;
   _count: { tasks: number };
 }
 
@@ -450,6 +455,15 @@ export interface Tr069DeviceDetailResponse {
     status: string;
     lastRxPower: string | null;
     lastTxPower: string | null;
+  } | null;
+  customer: {
+    customerId: string;
+    customerName: string;
+    customerStatus: string;
+    contractId: string;
+    contractCode: string | null;
+    contractStatus: string;
+    pppoeUsername: string | null;
   } | null;
   latest: Tr069DiagnosticDto | null;
   openAlerts: Tr069AlertDto[];
