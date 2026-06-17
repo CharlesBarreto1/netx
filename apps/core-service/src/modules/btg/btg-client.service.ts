@@ -67,6 +67,48 @@ export class BtgClientService {
     return `${cfg.environment}|${cfg.credentials.clientId}`;
   }
 
+  /**
+   * Probe de baixo nível do /oauth2/token contra um host BTG Id ARBITRÁRIO.
+   * Não lança — devolve {status, ok, body} cru. Usado pelo diagnóstico p/
+   * descobrir em qual ambiente (sandbox/produção) o client_id está registrado.
+   */
+  async tokenProbe(
+    idBase: string,
+    clientId: string,
+    clientSecret: string,
+    params: Record<string, string>,
+  ): Promise<{ url: string; status: number; ok: boolean; body: unknown }> {
+    const url = `${idBase}/oauth2/token`;
+    const basic = `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`;
+    const body = new URLSearchParams(params).toString();
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), TOKEN_TIMEOUT_MS);
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          Authorization: basic,
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'application/json',
+        },
+        body,
+        signal: ctrl.signal,
+      });
+      const text = await res.text();
+      let json: unknown = null;
+      try {
+        json = text ? JSON.parse(text) : null;
+      } catch {
+        json = text;
+      }
+      return { url, status: res.status, ok: res.ok, body: json };
+    } catch (e) {
+      return { url, status: 0, ok: false, body: { error: String(e) } };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   /** POST application/x-www-form-urlencoded no BTG Id, devolve o token JSON. */
   private async tokenRequest(
     cfg: BtgResolvedConfig,

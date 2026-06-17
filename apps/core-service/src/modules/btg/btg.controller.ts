@@ -72,6 +72,16 @@ export class BtgController {
     return this.config.startAuthorization(user.tenantId);
   }
 
+  /**
+   * Diagnóstico: mostra a authorizeUrl exata + probes client_credentials nos
+   * dois hosts BTG Id (descobre em qual ambiente o client_id está registrado).
+   */
+  @Get('config/diagnostics')
+  @RequirePermissions('btg.config.write')
+  diagnostics(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.config.diagnose(user.tenantId);
+  }
+
   /** Registra (ou re-registra) o webhook no BTG. */
   @Post('config/register-webhook')
   @RequirePermissions('btg.config.write')

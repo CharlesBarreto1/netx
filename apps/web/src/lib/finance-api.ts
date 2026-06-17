@@ -636,6 +636,27 @@ export interface GenerateBtgChargeInput {
   force?: boolean;
 }
 
+export interface BtgDiagnosticsProbe {
+  env: 'SANDBOX' | 'PRODUCTION';
+  idBase: string;
+  ok: boolean;
+  status: number;
+  hint: string;
+  body: unknown;
+}
+
+export interface BtgDiagnostics {
+  environment: 'SANDBOX' | 'PRODUCTION';
+  idBase: string;
+  apiBase: string;
+  clientId: string;
+  redirectUri: string | null;
+  scopes: string;
+  companyId: string | null;
+  authorizeUrl: string | null;
+  probes: BtgDiagnosticsProbe[];
+}
+
 export interface CreateBtgRecurrenceInput {
   period?: BtgRecurrencePeriod;
   amount?: number | null;
@@ -657,6 +678,10 @@ export const btgApi = {
   // Consentimento OAuth — devolve a URL do BTG Id p/ abrir no navegador.
   authorize() {
     return api.post<{ authorizeUrl: string }>('/v1/btg/config/authorize');
+  },
+  // Diagnóstico: authorizeUrl exata + probes client_credentials nos 2 hosts.
+  diagnostics() {
+    return api.get<BtgDiagnostics>('/v1/btg/config/diagnostics');
   },
   registerWebhook() {
     return api.post<{ url: string }>('/v1/btg/config/register-webhook');

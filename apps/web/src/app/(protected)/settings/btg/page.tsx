@@ -30,6 +30,7 @@ import {
   type BrPaymentGateway,
   type BtgChargeKind,
   type BtgConfigView,
+  type BtgDiagnostics,
 } from '@/lib/finance-api';
 import { hasPermission } from '@/lib/session';
 
@@ -47,7 +48,10 @@ export default function BtgSettingsPage() {
       toast.success('Conta BTG autorizada com sucesso.');
       void mutate();
     } else if (result === 'error') {
-      toast.error('Falha ao autorizar a conta BTG. Tente novamente.');
+      const reason = searchParams.get('reason');
+      toast.error(reason ? `Falha ao autorizar: ${reason}` : 'Falha ao autorizar a conta BTG.', {
+        duration: reason ? 12000 : 4000,
+      });
       void mutate();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -411,6 +415,8 @@ function CredentialsCard({
 // =============================================================================
 function ConsentCard({ config, canWrite }: { config: BtgConfigView; canWrite: boolean }) {
   const [authorizing, setAuthorizing] = useState(false);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [diag, setDiag] = useState<BtgDiagnostics | null>(null);
 
   async function authorize() {
     setAuthorizing(true);
@@ -421,6 +427,18 @@ function ConsentCard({ config, canWrite }: { config: BtgConfigView; canWrite: bo
       const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
       toast.error(`Falha: ${msg}`);
       setAuthorizing(false);
+    }
+  }
+
+  async function runDiagnostics() {
+    setDiagnosing(true);
+    try {
+      setDiag(await btgApi.diagnostics());
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
+      toast.error(`Falha no diagnóstico: ${msg}`);
+    } finally {
+      setDiagnosing(false);
     }
   }
 
@@ -443,7 +461,16 @@ function ConsentCard({ config, canWrite }: { config: BtgConfigView; canWrite: bo
         funcionam. Cadastre as credenciais e o Redirect URI antes de autorizar.
       </p>
       {canWrite && (
-        <div className="flex justify-end">
+        <div className="flex flex-wrap justify-end gap-2">
+          <Button
+            variant="secondary"
+            onClick={runDiagnostics}
+            loading={diagnosing}
+            disabled={!config.hasCredentials}
+            title={!config.hasCredentials ? 'Cadastre as credenciais primeiro.' : undefined}
+          >
+            Diagnosticar conexão
+          </Button>
           <Button
             onClick={authorize}
             loading={authorizing}
@@ -454,6 +481,62 @@ function ConsentCard({ config, canWrite }: { config: BtgConfigView; canWrite: bo
           >
             Autorizar conta BTG
           </Button>
+        </div>
+      )}
+
+      {diag && (
+        <div className="mt-4 space-y-3 rounded-md border border-border bg-surface-muted p-3 text-xs">
+          <div className="font-semibold text-text">Diagnóstico</div>
+          <dl className="grid gap-1 sm:grid-cols-[160px_1fr]">
+            <dt className="text-text-muted">Ambiente configurado</dt>
+            <dd className="font-mono">{diag.environment}</dd>
+            <dt className="text-text-muted">BTG Id (host)</dt>
+            <dd className="font-mono break-all">{diag.idBase}</dd>
+            <dt className="text-text-muted">client_id enviado</dt>
+            <dd className="font-mono break-all">{diag.clientId}</dd>
+            <dt className="text-text-muted">redirect_uri</dt>
+            <dd className="font-mono break-all">{diag.redirectUri ?? '— (não configurado)'}</dd>
+            <dt className="text-text-muted">scopes</dt>
+            <dd className="font-mono break-all">{diag.scopes}</dd>
+            <dt className="text-text-muted">companyId</dt>
+            <dd className="font-mono break-all">{diag.companyId ?? '—'}</dd>
+          </dl>
+
+          <div>
+            <div className="mb-1 font-semibold text-text">
+              Teste do client_id/secret nos dois ambientes (client_credentials)
+            </div>
+            <p className="mb-2 text-text-muted">
+              Valida o app no MESMO registro do BTG Id que o consentimento usa. O ✅ indica em qual
+              ambiente o seu app está registrado — o «Ambiente configurado» acima precisa bater com
+              ele.
+            </p>
+            <div className="space-y-1">
+              {diag.probes.map((p) => (
+                <div key={p.env} className="flex items-center gap-2">
+                  <Badge tone={p.ok ? 'success' : 'neutral'}>{p.env}</Badge>
+                  <span className="font-mono">HTTP {p.status || '—'}</span>
+                  <span className="text-text-muted">{p.hint}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {diag.authorizeUrl && (
+            <div>
+              <div className="mb-1 font-semibold text-text">URL de consentimento gerada</div>
+              <code className="block break-all rounded bg-surface p-2 text-[11px]">
+                {diag.authorizeUrl}
+              </code>
+            </div>
+          )}
+
+          <details>
+            <summary className="cursor-pointer text-text-muted">Resposta crua do BTG</summary>
+            <pre className="mt-2 max-h-60 overflow-auto rounded bg-surface p-2 text-[11px]">
+              {JSON.stringify(diag.probes.map((p) => ({ env: p.env, body: p.body })), null, 2)}
+            </pre>
+          </details>
         </div>
       )}
     </Section>

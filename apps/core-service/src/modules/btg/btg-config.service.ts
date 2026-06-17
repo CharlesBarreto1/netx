@@ -9,7 +9,7 @@ import { CryptoService } from '../crypto/crypto.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { BtgClientService } from './btg-client.service';
-import { BTG_DEFAULT_SCOPES, type BtgResolvedConfig } from './btg.types';
+import { BTG_API_BASE, BTG_DEFAULT_SCOPES, BTG_ID_BASE, type BtgResolvedConfig } from './btg.types';
 
 @Injectable()
 export class BtgConfigService {
@@ -140,7 +140,89 @@ export class BtgConfigService {
     const state = `${tenantId}.${randomBytes(16).toString('hex')}`;
     await this.prisma.btgConfig.update({ where: { tenantId }, data: { oauthState: state } });
     const authorizeUrl = this.client.buildAuthorizeUrl(resolved, state);
+    this.logger.log(
+      `[btg-authorize] tenant=${tenantId} env=${resolved.environment} ` +
+        `clientId=${resolved.credentials.clientId} url=${authorizeUrl}`,
+    );
     return { authorizeUrl };
+  }
+
+  // ---------------------------------------------------------------------------
+  // DIAGNÓSTICO — descobre por que o consentimento/token falha.
+  //  - Mostra a authorizeUrl exata (compare o client_id com o console BTG).
+  //  - Faz client_credentials contra AMBOS os hosts BTG Id (sandbox+produção):
+  //    valida o client_id/secret no MESMO registro que o /authorize usa, então
+  //    um app-not-found aqui = client_id não existe naquele ambiente.
+  // ---------------------------------------------------------------------------
+  async diagnose(tenantId: string): Promise<{
+    environment: string;
+    idBase: string;
+    apiBase: string;
+    clientId: string;
+    redirectUri: string | null;
+    scopes: string;
+    companyId: string | null;
+    authorizeUrl: string | null;
+    probes: Array<{
+      env: string;
+      idBase: string;
+      ok: boolean;
+      status: number;
+      hint: string;
+      body: unknown;
+    }>;
+  }> {
+    const cfg = await this.findRaw(tenantId);
+    if (!cfg) throw new BadRequestException('Configure o BTG antes de diagnosticar');
+    const resolved = this.resolveFrom(cfg);
+
+    let authorizeUrl: string | null = null;
+    try {
+      authorizeUrl = this.client.buildAuthorizeUrl(resolved, `${tenantId}.diagnose`);
+    } catch {
+      authorizeUrl = null;
+    }
+
+    const envs: Array<{ env: 'SANDBOX' | 'PRODUCTION'; idBase: string }> = [
+      { env: 'SANDBOX', idBase: BTG_ID_BASE.SANDBOX },
+      { env: 'PRODUCTION', idBase: BTG_ID_BASE.PRODUCTION },
+    ];
+    const probes = await Promise.all(
+      envs.map(async ({ env, idBase }) => {
+        const r = await this.client.tokenProbe(
+          idBase,
+          resolved.credentials.clientId,
+          resolved.credentials.clientSecret,
+          { grant_type: 'client_credentials', scope: 'apps' },
+        );
+        const brn =
+          r.body && typeof r.body === 'object' ? (r.body as Record<string, unknown>).brn : undefined;
+        let hint: string;
+        if (r.ok) hint = 'client_id/secret VÁLIDOS neste ambiente ✅';
+        else if (typeof brn === 'string' && brn.includes('app-not-found'))
+          hint = 'app NÃO existe neste BTG Id ❌';
+        else if (r.status === 401) hint = 'client_id existe mas secret inválido (401)';
+        else hint = `falhou (${r.status})`;
+        return { env, idBase, ok: r.ok, status: r.status, hint, body: r.body };
+      }),
+    );
+
+    this.logger.log(
+      `[btg-diagnose] tenant=${tenantId} env=${resolved.environment} clientId=${resolved.credentials.clientId} ` +
+        probes.map((p) => `${p.env}:${p.status}`).join(' '),
+    );
+
+    return {
+      environment: resolved.environment,
+      idBase: BTG_ID_BASE[resolved.environment],
+      apiBase: BTG_API_BASE[resolved.environment],
+      clientId: resolved.credentials.clientId,
+      redirectUri: resolved.redirectUri,
+      scopes: resolved.scopes,
+      companyId: resolved.companyId,
+      authorizeUrl,
+      probes,
+    };
   }
 
   /**
