@@ -242,6 +242,18 @@ const efiPermissions = [
 ];
 
 // -----------------------------------------------------------------------------
+// Permission catalog — BTG Pactual (pagamentos BR: boleto + Pix + Pix Automático)
+// -----------------------------------------------------------------------------
+const btgPermissions = [
+  // Config (credenciais OAuth + consentimento da conta PJ — sensível, admin).
+  { code: 'btg.config.read',  module: 'btg', resource: 'btg_config',  action: 'read'  },
+  { code: 'btg.config.write', module: 'btg', resource: 'btg_config',  action: 'write' },
+  // Cobranças (gerar boleto/Pix sobre faturas; ver status).
+  { code: 'btg.charges.read',  module: 'btg', resource: 'btg_charges', action: 'read'  },
+  { code: 'btg.charges.write', module: 'btg', resource: 'btg_charges', action: 'write' },
+];
+
+// -----------------------------------------------------------------------------
 // Permission catalog — Chat / Atendimento (WhatsApp via Evolution API)
 // -----------------------------------------------------------------------------
 const chatPermissions = [
@@ -342,6 +354,11 @@ const systemRoles = [
       'efi.config.write',
       'efi.charges.read',
       'efi.charges.write',
+      // BTG — pagamentos BR (config + cobranças)
+      'btg.config.read',
+      'btg.config.write',
+      'btg.charges.read',
+      'btg.charges.write',
       'reports.read',
       'backups.manage',
       // Rede
@@ -438,6 +455,9 @@ const systemRoles = [
       // EFI — operador gera/consulta cobranças (sem mexer em credenciais)
       'efi.charges.read',
       'efi.charges.write',
+      // BTG — operador gera/consulta cobranças (sem mexer em credenciais)
+      'btg.charges.read',
+      'btg.charges.write',
       // Reports (operador também pode ver)
       'reports.read',
       // Rede — só leitura pra operador
@@ -541,6 +561,7 @@ async function main() {
     ...provisioningPermissions,
     ...ufinetPermissions,
     ...efiPermissions,
+    ...btgPermissions,
     ...chatPermissions,
   ]) {
     await prisma.permission.upsert({

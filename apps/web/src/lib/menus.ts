@@ -80,6 +80,7 @@ export const MENU_GROUPS: MenuGroup[] = [
       { key: 'payables', href: '/finance/payables', labelKey: 'payables', permission: 'finance.payables.read' },
       { key: 'cashRegisters', href: '/settings/cash-registers', labelKey: 'cashRegisters', permission: 'cash_registers.manage' },
       { key: 'efiConfig', href: '/settings/efi', labelKey: 'efiConfig', permission: 'efi.config.read' },
+      { key: 'btgConfig', href: '/settings/btg', labelKey: 'btgConfig', permission: 'btg.config.read' },
     ],
   },
 

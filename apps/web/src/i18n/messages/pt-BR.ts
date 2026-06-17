@@ -160,6 +160,7 @@ const messages = {
     serviceOrderReasons: 'Motivos de O.S',
     cashRegisters: 'Caixas',
     efiConfig: 'Pagamentos (EFI)',
+    btgConfig: 'Pagamentos (BTG)',
     users: 'Usuários',
     plans: 'Planos',
     backups: 'Backups',

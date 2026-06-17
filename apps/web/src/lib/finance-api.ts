@@ -517,3 +517,174 @@ export interface UpsertEfiConfigInput {
   finePercent?: number | null;
   interestPercent?: number | null;
 }
+
+// =============================================================================
+// BTG Pactual — pagamentos BR (boleto + Pix cobrança + Pix Automático).
+// Auth OAuth2 via BTG Id (Authorization Code → consentimento). Coexiste com EFI;
+// o tenant escolhe o gateway BR ativo (br.gateway).
+// =============================================================================
+export type BtgChargeKind = 'BOLETO' | 'PIX';
+export type BtgChargeStatus = 'PENDING' | 'ACTIVE' | 'PAID' | 'CANCELED' | 'ERROR';
+export type BrPaymentGateway = 'EFI' | 'BTG';
+export type BtgRecurrencePeriod =
+  | 'WEEKLY'
+  | 'MONTHLY'
+  | 'QUARTERLY'
+  | 'SEMIANNUAL'
+  | 'ANNUALLY';
+export type BtgRecurrenceStatus =
+  | 'PENDING'
+  | 'PROCESSING'
+  | 'CREATED'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'EXPIRED'
+  | 'CANCELED'
+  | 'FINISHED'
+  | 'ERROR';
+
+export interface BtgCharge {
+  id: string;
+  tenantId: string;
+  invoiceId: string;
+  kind: BtgChargeKind;
+  status: BtgChargeStatus;
+  amount: number;
+  txid: string | null;
+  btgChargeId: string | null;
+  pixEmv: string | null; // copia-e-cola
+  pixQrImage: string | null;
+  barcode: string | null;
+  digitableLine: string | null;
+  pdfUrl: string | null;
+  paymentLink: string | null;
+  expiresAt: string | null;
+  paidAt: string | null;
+  paidAmount: number | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BtgRecurrence {
+  id: string;
+  tenantId: string;
+  contractId: string;
+  status: BtgRecurrenceStatus;
+  contractRef: string;
+  authorizationId: string | null;
+  period: BtgRecurrencePeriod;
+  retryPolicy: string;
+  amount: number | null;
+  minimumAmount: number | null;
+  initialDate: string;
+  finalDate: string | null;
+  installments: number | null;
+  emv: string | null;
+  qrImage: string | null;
+  approvedAt: string | null;
+  canceledAt: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BtgConfigView {
+  tenantId: string;
+  environment: 'PRODUCTION' | 'SANDBOX';
+  enabled: boolean;
+  hasCredentials: boolean;
+  authorized: boolean;
+  authorizedAt: string | null;
+  redirectUri: string | null;
+  scopes: string | null;
+  companyId: string | null;
+  accountNumber: string | null;
+  accountBranch: string | null;
+  pixKey: string | null;
+  defaultChargeKind: BtgChargeKind;
+  expirationDays: number;
+  autoGenerate: boolean;
+  finePercent: number | null;
+  interestPercent: number | null;
+  webhookUrl: string | null;
+  webhookRegistered: boolean;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface UpsertBtgConfigInput {
+  environment?: 'PRODUCTION' | 'SANDBOX';
+  enabled?: boolean;
+  clientId?: string;
+  clientSecret?: string;
+  redirectUri?: string | null;
+  scopes?: string | null;
+  companyId?: string | null;
+  accountNumber?: string | null;
+  accountBranch?: string | null;
+  pixKey?: string | null;
+  defaultChargeKind?: BtgChargeKind;
+  expirationDays?: number;
+  autoGenerate?: boolean;
+  finePercent?: number | null;
+  interestPercent?: number | null;
+}
+
+export interface GenerateBtgChargeInput {
+  kind?: BtgChargeKind;
+  force?: boolean;
+}
+
+export interface CreateBtgRecurrenceInput {
+  period?: BtgRecurrencePeriod;
+  amount?: number | null;
+  minimumAmount?: number | null;
+  initialDate?: string;
+  finalDate?: string | null;
+  installments?: number | null;
+  force?: boolean;
+}
+
+export const btgApi = {
+  configPath: () => `/v1/btg/config`,
+  getConfig() {
+    return api.get<BtgConfigView>(this.configPath());
+  },
+  saveConfig(input: UpsertBtgConfigInput) {
+    return api.put<BtgConfigView>('/v1/btg/config', input);
+  },
+  // Consentimento OAuth — devolve a URL do BTG Id p/ abrir no navegador.
+  authorize() {
+    return api.post<{ authorizeUrl: string }>('/v1/btg/config/authorize');
+  },
+  registerWebhook() {
+    return api.post<{ url: string }>('/v1/btg/config/register-webhook');
+  },
+  getGateway() {
+    return api.get<{ gateway: BrPaymentGateway }>('/v1/btg/gateway');
+  },
+  setGateway(gateway: BrPaymentGateway) {
+    return api.put<{ gateway: BrPaymentGateway }>('/v1/btg/gateway', { gateway });
+  },
+  // Cobranças
+  invoiceChargePath: (invoiceId: string) => `/v1/btg/invoices/${invoiceId}/charge`,
+  getForInvoice(invoiceId: string) {
+    return api.get<BtgCharge | null>(this.invoiceChargePath(invoiceId));
+  },
+  generate(invoiceId: string, input: GenerateBtgChargeInput = {}) {
+    return api.post<BtgCharge>(`/v1/btg/invoices/${invoiceId}/charge`, input);
+  },
+  pdfPath: (chargeId: string) => `/v1/btg/charges/${chargeId}/pdf`,
+  // Pix Automático (recorrências)
+  contractRecurrencePath: (contractId: string) => `/v1/btg/contracts/${contractId}/recurrence`,
+  getRecurrenceForContract(contractId: string) {
+    return api.get<BtgRecurrence | null>(this.contractRecurrencePath(contractId));
+  },
+  createRecurrence(contractId: string, input: CreateBtgRecurrenceInput = {}) {
+    return api.post<BtgRecurrence>(`/v1/btg/contracts/${contractId}/recurrence`, input);
+  },
+  cancelRecurrence(id: string) {
+    return api.post<BtgRecurrence>(`/v1/btg/recurrences/${id}/cancel`);
+  },
+};

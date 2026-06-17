@@ -20,6 +20,7 @@ import {
   InvoiceStatus as PrismaInvoiceStatus,
 } from '@prisma/client';
 
+import { resolveBrGateway } from '../btg/btg-autogen.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { EfiChargesService } from './efi-charges.service';
@@ -62,6 +63,10 @@ export class EfiAutogenService {
 
     let created = 0;
     for (const { tenantId } of tenants) {
+      // Coexistência EFI×BTG: se o tenant escolheu BTG como gateway BR ativo,
+      // o EFI autogen não emite (evita cobrança duplicada). Default = EFI.
+      if ((await resolveBrGateway(this.prisma, tenantId)) === 'BTG') continue;
+
       const invoices = await this.prisma.contractInvoice.findMany({
         where: {
           tenantId,
