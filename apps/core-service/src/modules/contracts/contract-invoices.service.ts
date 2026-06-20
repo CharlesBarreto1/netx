@@ -259,12 +259,15 @@ export class ContractInvoicesService {
       (existing.kind === PrismaInvoiceKind.REGULAR ||
         existing.kind === PrismaInvoiceKind.INITIAL)
     ) {
-      // Base do próximo ciclo = periodEnd da fatura paga (se existir, é a
-      // fonte da verdade); fallback pra prepaidUntil atual; último fallback
-      // pra hoje (caso patológico).
-      const base =
-        existing.periodEnd ?? existing.contract.prepaidUntil ?? paidAt;
-      const newPrepaidUntil = nextPrepaidDate(base, 1);
+      // periodEnd já é EXCLUSIVO (= próximo vencimento). Quitar a fatura
+      // significa estar pago ATÉ periodEnd, logo prepaidUntil = periodEnd.
+      // NÃO avançar +1 mês aqui — periodEnd já é o início do próximo ciclo
+      // (avançar duplicava e pulava um mês de cobrança). Sem periodEnd
+      // (faturas manuais antigas) cai no fallback que avança a partir do
+      // vencimento atual / data do pagamento.
+      const newPrepaidUntil = existing.periodEnd
+        ? existing.periodEnd
+        : nextPrepaidDate(existing.contract.prepaidUntil ?? paidAt, 1);
       await this.prisma.contract.update({
         where: { id: existing.contractId },
         data: { prepaidUntil: newPrepaidUntil },
@@ -356,10 +359,12 @@ export class ContractInvoicesService {
       });
       if (mov) await this.movements.removeMovement(tenantId, mov.id, tx);
 
-      // PREPAID: desfaz o avanço do ciclo (volta pro fim do período da fatura).
+      // PREPAID: desfaz o avanço do ciclo. pay() deixou prepaidUntil =
+      // periodEnd; estornar volta pro periodStart (vencimento desta fatura,
+      // que era o prepaidUntil anterior ao pagamento).
       if (wasPrepaidCycle && existing.contract.prepaidUntil) {
         const revertTo =
-          existing.periodEnd ??
+          existing.periodStart ??
           nextPrepaidDate(existing.contract.prepaidUntil, -1);
         await tx.contract.update({
           where: { id: existing.contractId },
@@ -446,8 +451,11 @@ export class ContractInvoicesService {
       (existing.kind === PrismaInvoiceKind.REGULAR ||
         existing.kind === PrismaInvoiceKind.INITIAL)
     ) {
-      const base = existing.periodEnd ?? existing.contract.prepaidUntil ?? input.paidAt;
-      const newPrepaidUntil = nextPrepaidDate(base, 1);
+      // Mesma regra do pay() manual: periodEnd é exclusivo (= próximo
+      // vencimento), não avançar +1 mês quando ele existe.
+      const newPrepaidUntil = existing.periodEnd
+        ? existing.periodEnd
+        : nextPrepaidDate(existing.contract.prepaidUntil ?? input.paidAt, 1);
       await this.prisma.contract.update({
         where: { id: existing.contractId },
         data: { prepaidUntil: newPrepaidUntil },

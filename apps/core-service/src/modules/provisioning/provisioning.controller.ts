@@ -263,6 +263,13 @@ export class Tr069Controller {
     private readonly profiles: Tr069ProfilesService,
   ) {}
 
+  /** Dashboard "Fila de diagnóstico" — KPIs + fila + sintomas. */
+  @Get('dashboard')
+  @RequirePermissions('tr069.admin')
+  dashboard(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.diag.getDashboard(user.tenantId);
+  }
+
   @Get('devices')
   @RequirePermissions('tr069.admin')
   listDevices(@CurrentUser() user: AuthenticatedPrincipal) {

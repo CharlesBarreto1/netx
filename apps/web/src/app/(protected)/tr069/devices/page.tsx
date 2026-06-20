@@ -9,10 +9,25 @@
  */
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
+import { useState } from 'react';
 import useSWR from 'swr';
 
 import { PageLoader } from '@/components/ui/Spinner';
 import { COMPLIANCE_META, tr069Api, type Tr069DeviceRow } from '@/lib/provisioning-api';
+
+const SEV_DOT: Record<string, string> = {
+  ok: '#12b886',
+  warn: '#f59f00',
+  crit: '#fa5252',
+  neutral: '#cbd5e1',
+};
+function rowSeverity(d: Tr069DeviceRow): keyof typeof SEV_DOT {
+  if (d.status === 'OFFLINE') return 'crit';
+  if (d.complianceStatus === 'FAILED') return 'crit';
+  if (['DRIFTED', 'PENDING_REBOOT', 'REMEDIATING'].includes(d.complianceStatus)) return 'warn';
+  if (d.status === 'ONLINE') return 'ok';
+  return 'neutral';
+}
 
 export default function Tr069DevicesPage() {
   const t = useTranslations('tr069');
@@ -21,6 +36,7 @@ export default function Tr069DevicesPage() {
     () => tr069Api.listDevices(),
     { refreshInterval: 60_000 },
   );
+  const [q, setQ] = useState('');
 
   if (isLoading) return <PageLoader />;
   if (error) {
@@ -31,16 +47,31 @@ export default function Tr069DevicesPage() {
     );
   }
   const rows = data ?? [];
+  const term = q.trim().toLowerCase();
+  const filtered =
+    term.length > 1
+      ? rows.filter((d) =>
+          `${d.deviceId} ${d.manufacturer ?? ''} ${d.ont?.snGpon ?? ''} ${d.ont?.contract?.customer?.displayName ?? ''}`
+            .toLowerCase()
+            .includes(term),
+        )
+      : rows;
 
   return (
     <div className="space-y-5">
-      <header>
-        <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          {t.rich('subtitle', {
-            code: (chunks) => <code>{chunks}</code>,
-          })}
-        </p>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            {t.rich('subtitle', { code: (chunks) => <code>{chunks}</code> })}
+          </p>
+        </div>
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Buscar cliente, serial, fabricante…"
+          className="w-72 rounded-md border border-slate-200 bg-transparent px-3 py-1.5 text-sm dark:border-slate-700"
+        />
       </header>
 
       {rows.length === 0 ? (
@@ -54,6 +85,7 @@ export default function Tr069DevicesPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 dark:bg-slate-900">
               <tr>
+                <th className="w-6 px-3 py-2"></th>
                 <th className="px-3 py-2 text-left font-medium">{t('colDeviceId')}</th>
                 <th className="px-3 py-2 text-left font-medium">{t('colManufacturer')}</th>
                 <th className="px-3 py-2 text-left font-medium">{t('colSnGpon')}</th>
@@ -65,8 +97,14 @@ export default function Tr069DevicesPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-              {rows.map((d) => (
+              {filtered.map((d) => (
                 <tr key={d.id} className="hover:bg-slate-50 dark:hover:bg-slate-900/50">
+                  <td className="px-3 py-2">
+                    <span
+                      className="inline-block h-2.5 w-2.5 rounded-full"
+                      style={{ background: SEV_DOT[rowSeverity(d)] }}
+                    />
+                  </td>
                   <td className="px-3 py-2 font-mono text-xs">
                     <Link
                       href={`/tr069/devices/${d.id}`}

@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  ::-webkit-scrollbar{width:10px;height:10px;}
+  ::-webkit-scrollbar-thumb{background:#cfd6e0;border-radius:8px;border:2px solid transparent;background-clip:padding-box;}
+  ::-webkit-scrollbar-thumb:hover{background:#b6bfcc;background-clip:padding-box;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+  @keyframes toastin{from{transform:translateY(12px);opacity:0;}to{transform:translateY(0);opacity:1;}}
+  @keyframes dash{to{stroke-dashoffset:0;}}
+  @keyframes blip{0%{transform:scale(.6);opacity:.9;}100%{transform:scale(2.4);opacity:0;}}
+</style>
+</helmet>
+<div style="display:flex;flex-direction:column;height:100vh;width:100%;font-family:'IBM Plex Sans',system-ui,sans-serif;background:#eef1f6;color:#0f1726;overflow:hidden;">
+
+  <!-- TOP BAR -->
+  <header style="flex:none;height:58px;display:flex;align-items:center;gap:18px;padding:0 20px;background:#0e1726;color:#eaeef6;border-bottom:1px solid #1d2940;">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div style="width:30px;height:30px;border-radius:7px;background:linear-gradient(135deg,#1565ff,#3b82f6);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:#fff;box-shadow:0 2px 8px rgba(21,101,255,.5);">F</div>
+      <div style="display:flex;flex-direction:column;line-height:1.05;">
+        <span style="font-weight:600;font-size:14px;letter-spacing:.2px;">FibraACS</span>
+        <span style="font-size:10px;color:#7f8da6;font-family:'IBM Plex Mono';letter-spacing:.5px;">TR-069 · CWMP</span>
+      </div>
+    </div>
+    <div style="flex:1;max-width:540px;position:relative;">
+      <div style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#6b7892;font-size:13px;">⌕</div>
+      <input value="{{ query }}" onInput="{{ onQuery }}" onFocus="{{ goSearch }}" placeholder="Buscar assinante, CPF, contrato, MAC, serial ou IP…" style="width:100%;height:36px;border:1px solid #25324c;background:#16223a;color:#eaeef6;border-radius:9px;padding:0 14px 0 32px;font-size:13px;font-family:'IBM Plex Sans';outline:none;" />
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;font-family:'IBM Plex Mono';font-size:11px;color:#8b98b3;">
+      <span style="width:7px;height:7px;border-radius:50%;background:#12b886;box-shadow:0 0 0 3px rgba(18,184,134,.18);"></span>ACS online · 18.204 CPEs
+    </div>
+    <div style="display:flex;align-items:center;gap:9px;padding-left:14px;border-left:1px solid #1d2940;">
+      <div style="width:30px;height:30px;border-radius:50%;background:#243149;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#9fb3d6;">RC</div>
+      <div style="display:flex;flex-direction:column;line-height:1.15;">
+        <span style="font-size:12px;font-weight:500;">Rafael Costa</span>
+        <span style="font-size:10px;color:#7f8da6;">N1 · Suporte</span>
+      </div>
+    </div>
+  </header>
+
+  <div style="flex:1;display:flex;min-height:0;">
+    <!-- SIDEBAR -->
+    <nav style="flex:none;width:62px;background:#11192a;display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:4px;">
+      <sc-for list="{{ navItems }}" as="n" hint-placeholder-count="5">
+        <button onClick="{{ n.go }}" title="{{ n.label }}" style="{{ n.style }}">
+          <span style="font-size:18px;line-height:1;">{{ n.icon }}</span>
+          <span style="font-size:9px;font-weight:500;letter-spacing:.2px;">{{ n.label }}</span>
+          <sc-if value="{{ n.badge }}" hint-placeholder-val="">
+            <span style="position:absolute;top:6px;right:9px;min-width:16px;height:16px;padding:0 4px;border-radius:8px;background:#fa5252;color:#fff;font-size:9px;font-weight:700;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono';">{{ n.badge }}</span>
+          </sc-if>
+        </button>
+      </sc-for>
+      <div style="flex:1;"></div>
+      <button style="width:46px;height:46px;border-radius:11px;border:none;background:transparent;color:#5b6783;cursor:pointer;font-size:17px;">⚙</button>
+    </nav>
+
+    <!-- MAIN -->
+    <main style="flex:1;min-width:0;overflow:auto;">
+
+      <!-- ===================== DASHBOARD ===================== -->
+      <sc-if value="{{ isDashboard }}" hint-placeholder-val="{{ true }}">
+        <div style="padding:22px 26px 40px;max-width:1480px;margin:0 auto;">
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:18px;flex-wrap:wrap;">
+            <div>
+              <div style="font-size:12px;color:#6b7585;font-family:'IBM Plex Mono';letter-spacing:.4px;text-transform:uppercase;">Operação · Atendimento N1</div>
+              <h1 style="margin:4px 0 0;font-size:23px;font-weight:600;letter-spacing:-.3px;">Fila de diagnóstico</h1>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <div style="display:flex;background:#fff;border:1px solid #e2e7ef;border-radius:10px;padding:3px;gap:2px;">
+                <sc-for list="{{ dashViews }}" as="v" hint-placeholder-count="3">
+                  <button onClick="{{ v.go }}" style="{{ v.style }}">{{ v.label }}</button>
+                </sc-for>
+              </div>
+              <button onClick="{{ refresh }}" style="height:36px;padding:0 14px;border:1px solid #e2e7ef;background:#fff;border-radius:10px;font-size:13px;font-weight:500;color:#39414f;cursor:pointer;display:flex;align-items:center;gap:7px;">↻ Atualizar</button>
+            </div>
+          </div>
+
+          <!-- KPI row -->
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px;">
+            <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="4">
+              <div style="{{ k.cardStyle }}">
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                  <span style="font-size:12px;color:#6b7585;font-weight:500;">{{ k.label }}</span>
+                  <span style="{{ k.trendStyle }}">{{ k.trend }}</span>
+                </div>
+                <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:8px;gap:8px;">
+                  <span style="font-size:30px;font-weight:600;font-family:'IBM Plex Mono';letter-spacing:-1px;line-height:1;color:{{ k.color }};">{{ k.value }}</span>
+                  <span>{{ k.spark }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 360px;gap:16px;align-items:start;">
+            <!-- LEFT: queue / cards / map -->
+            <div>
+              <!-- FILA (table) -->
+              <sc-if value="{{ isFila }}" hint-placeholder-val="{{ true }}">
+                <div style="background:#fff;border:1px solid #e6eaf1;border-radius:14px;overflow:hidden;box-shadow:0 1px 2px rgba(16,23,38,.04);">
+                  <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #eef1f6;">
+                    <div style="font-size:14px;font-weight:600;">CPEs com problema <span style="color:#9aa3b2;font-weight:400;">· {{ queueCount }}</span></div>
+                    <div style="display:flex;gap:6px;">
+                      <sc-for list="{{ filters }}" as="f" hint-placeholder-count="4">
+                        <button onClick="{{ f.go }}" style="{{ f.style }}">{{ f.label }}</button>
+                      </sc-for>
+                    </div>
+                  </div>
+                  <div style="display:grid;grid-template-columns:14px 1.6fr 1.2fr 90px 84px 92px;gap:0;padding:10px 18px;font-size:11px;color:#8a93a3;font-weight:500;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #f0f2f7;">
+                    <span></span><span>Assinante / CPE</span><span>Sintoma</span><span>Sinal</span><span>Visto</span><span></span>
+                  </div>
+                  <sc-for list="{{ queue }}" as="q" hint-placeholder-count="6">
+                    <div onClick="{{ q.open }}" style="display:grid;grid-template-columns:14px 1.6fr 1.2fr 90px 84px 92px;gap:0;align-items:center;padding:13px 18px;border-bottom:1px solid #f3f5f9;cursor:pointer;transition:background .12s;" style-hover="background:#f7f9fc;">
+                      <span style="width:8px;height:8px;border-radius:50%;background:{{ q.sevColor }};"></span>
+                      <div style="min-width:0;">
+                        <div style="font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ q.name }}</div>
+                        <div style="font-size:11.5px;color:#8a93a3;font-family:'IBM Plex Mono';">{{ q.meta }}</div>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:8px;">
+                        <span style="{{ q.tagStyle }}">{{ q.tag }}</span>
+                        <span style="font-size:12px;color:#5a6273;">{{ q.symptom }}</span>
+                      </div>
+                      <div style="display:flex;align-items:center;gap:7px;">{{ q.spark }}<span style="font-size:11px;font-family:'IBM Plex Mono';color:{{ q.sevColor }};font-weight:600;">{{ q.signal }}</span></div>
+                      <span style="font-size:11.5px;color:#8a93a3;font-family:'IBM Plex Mono';">{{ q.seen }}</span>
+                      <div style="display:flex;justify-content:flex-end;"><span style="font-size:12px;font-weight:600;color:#1565ff;">Abrir →</span></div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+
+              <!-- CARDS -->
+              <sc-if value="{{ isCards }}" hint-placeholder-val="">
+                <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:14px;">
+                  <sc-for list="{{ queue }}" as="q" hint-placeholder-count="6">
+                    <div onClick="{{ q.open }}" style="background:#fff;border:1px solid #e6eaf1;border-left:3px solid {{ q.sevColor }};border-radius:13px;padding:16px;cursor:pointer;box-shadow:0 1px 2px rgba(16,23,38,.04);transition:transform .12s,box-shadow .12s;" style-hover="transform:translateY(-2px);box-shadow:0 8px 22px rgba(16,23,38,.09);">
+                      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+                        <div style="min-width:0;">
+                          <div style="font-size:14px;font-weight:600;">{{ q.name }}</div>
+                          <div style="font-size:11.5px;color:#8a93a3;font-family:'IBM Plex Mono';margin-top:2px;">{{ q.meta }}</div>
+                        </div>
+                        <span style="{{ q.tagStyle }}">{{ q.tag }}</span>
+                      </div>
+                      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;padding-top:12px;border-top:1px solid #f0f2f7;">
+                        <div style="font-size:12px;color:#5a6273;">{{ q.symptom }}</div>
+                        <div style="display:flex;align-items:center;gap:7px;">{{ q.spark }}<span style="font-size:12px;font-family:'IBM Plex Mono';color:{{ q.sevColor }};font-weight:600;">{{ q.signal }}</span></div>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+
+              <!-- MAPA / heatmap regional -->
+              <sc-if value="{{ isMapa }}" hint-placeholder-val="">
+                <div style="background:#0e1726;border-radius:14px;padding:18px 20px;color:#dbe3f0;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                    <div style="font-size:14px;font-weight:600;color:#fff;">Saúde por OLT / região</div>
+                    <div style="font-size:11px;color:#7f8da6;font-family:'IBM Plex Mono';">CPEs em alerta · últimas 24h</div>
+                  </div>
+                  <p style="margin:0 0 14px;font-size:12px;color:#8b98b3;">Cada célula é uma OLT. Cor = % de CPEs degradados. Clique para filtrar a fila.</p>
+                  <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:8px;">
+                    <sc-for list="{{ oltCells }}" as="c" hint-placeholder-count="24">
+                      <div title="{{ c.title }}" style="aspect-ratio:1;border-radius:8px;background:{{ c.bg }};display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;border:1px solid rgba(255,255,255,.06);">
+                        <span style="font-size:10px;color:rgba(255,255,255,.55);font-family:'IBM Plex Mono';">{{ c.code }}</span>
+                        <span style="font-size:14px;font-weight:700;font-family:'IBM Plex Mono';color:#fff;">{{ c.pct }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:8px;margin-top:16px;font-size:11px;color:#8b98b3;font-family:'IBM Plex Mono';">
+                    <span>Saudável</span>
+                    <div style="flex:1;height:8px;border-radius:4px;background:linear-gradient(90deg,#12b886,#f59f00,#fa5252);"></div>
+                    <span>Crítico</span>
+                  </div>
+                </div>
+              </sc-if>
+            </div>
+
+            <!-- RIGHT RAIL: network summary -->
+            <div style="display:flex;flex-direction:column;gap:14px;">
+              <div style="background:#0e1726;border-radius:14px;padding:16px 18px;color:#dbe3f0;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:2px;">
+                  <span style="font-size:13px;font-weight:600;color:#fff;">Tráfego agregado</span>
+                  <span style="font-size:11px;color:#7f8da6;font-family:'IBM Plex Mono';">6h</span>
+                </div>
+                <div style="font-size:24px;font-weight:600;font-family:'IBM Plex Mono';color:#fff;letter-spacing:-1px;">428.6 <span style="font-size:13px;color:#7f8da6;">Gbps</span></div>
+                <div style="margin-top:6px;">{{ aggChart }}</div>
+                <div style="display:flex;gap:14px;margin-top:6px;font-size:11px;font-family:'IBM Plex Mono';">
+                  <span style="color:#3b82f6;">● Down 428.6G</span>
+                  <span style="color:#12b886;">● Up 96.2G</span>
+                </div>
+              </div>
+              <div style="background:#fff;border:1px solid #e6eaf1;border-radius:14px;padding:16px 18px;">
+                <div style="font-size:13px;font-weight:600;margin-bottom:12px;">Sintomas mais comuns (hoje)</div>
+                <sc-for list="{{ symptoms }}" as="s" hint-placeholder-count="4">
+                  <div style="margin-bottom:11px;">
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;"><span style="color:#39414f;">{{ s.label }}</span><span style="font-family:'IBM Plex Mono';color:#8a93a3;">{{ s.count }}</span></div>
+                    <div style="height:7px;border-radius:4px;background:#eef1f6;overflow:hidden;"><div style="height:100%;width:{{ s.pct }};border-radius:4px;background:{{ s.color }};"></div></div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ===================== SEARCH ===================== -->
+      <sc-if value="{{ isSearch }}" hint-placeholder-val="">
+        <div style="padding:22px 26px 40px;max-width:1100px;margin:0 auto;">
+          <div style="font-size:12px;color:#6b7585;font-family:'IBM Plex Mono';letter-spacing:.4px;text-transform:uppercase;">Busca de assinante</div>
+          <h1 style="margin:4px 0 16px;font-size:23px;font-weight:600;letter-spacing:-.3px;">{{ searchTitle }}</h1>
+          <div style="background:#fff;border:1px solid #e6eaf1;border-radius:14px;overflow:hidden;">
+            <div style="display:grid;grid-template-columns:14px 1.5fr 1fr 1fr 110px 84px;gap:0;padding:11px 18px;font-size:11px;color:#8a93a3;font-weight:500;text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid #f0f2f7;">
+              <span></span><span>Assinante</span><span>Plano / Contrato</span><span>Equipamento</span><span>Status</span><span></span>
+            </div>
+            <sc-for list="{{ results }}" as="r" hint-placeholder-count="5">
+              <div onClick="{{ r.open }}" style="display:grid;grid-template-columns:14px 1.5fr 1fr 1fr 110px 84px;gap:0;align-items:center;padding:13px 18px;border-bottom:1px solid #f3f5f9;cursor:pointer;" style-hover="background:#f7f9fc;">
+                <span style="width:8px;height:8px;border-radius:50%;background:{{ r.sevColor }};"></span>
+                <div><div style="font-size:13.5px;font-weight:600;">{{ r.name }}</div><div style="font-size:11.5px;color:#8a93a3;font-family:'IBM Plex Mono';">{{ r.doc }}</div></div>
+                <div style="font-size:12.5px;color:#39414f;">{{ r.plan }}<div style="font-size:11px;color:#9aa3b2;font-family:'IBM Plex Mono';">{{ r.contract }}</div></div>
+                <div style="font-size:12.5px;color:#39414f;">{{ r.model }}<div style="font-size:11px;color:#9aa3b2;font-family:'IBM Plex Mono';">{{ r.mac }}</div></div>
+                <span style="{{ r.statusStyle }}">{{ r.status }}</span>
+                <div style="display:flex;justify-content:flex-end;"><span style="font-size:12px;font-weight:600;color:#1565ff;">Abrir →</span></div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- ===================== DETAIL ===================== -->
+      <sc-if value="{{ isDetail }}" hint-placeholder-val="">
+        <div style="padding:18px 26px 48px;max-width:1480px;margin:0 auto;">
+          <button onClick="{{ goBack }}" style="background:none;border:none;color:#6b7585;font-size:13px;cursor:pointer;padding:0;display:flex;align-items:center;gap:6px;margin-bottom:12px;">← Voltar para a fila</button>
+
+          <!-- header card -->
+          <div style="background:#fff;border:1px solid #e6eaf1;border-radius:16px;padding:18px 22px;box-shadow:0 1px 2px rgba(16,23,38,.04);">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:18px;flex-wrap:wrap;">
+              <div style="display:flex;gap:16px;align-items:flex-start;">
+                <div style="width:50px;height:50px;border-radius:13px;background:linear-gradient(135deg,#16223a,#0e1726);display:flex;align-items:center;justify-content:center;font-size:22px;flex:none;">📡</div>
+                <div>
+                  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <h1 style="margin:0;font-size:21px;font-weight:600;letter-spacing:-.3px;">{{ cpe.subscriber }}</h1>
+                    <span style="{{ cpe.statusStyle }}">{{ cpe.statusLabel }}</span>
+                  </div>
+                  <div style="display:flex;gap:16px;flex-wrap:wrap;margin-top:7px;font-size:12px;color:#6b7585;font-family:'IBM Plex Mono';">
+                    <span>{{ cpe.plan }}</span><span>· {{ cpe.contract }}</span><span>· {{ cpe.model }}</span><span>· SN {{ cpe.serial }}</span><span>· {{ cpe.ip }}</span>
+                  </div>
+                </div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button onClick="{{ openReboot }}" style="height:38px;padding:0 14px;border:none;background:#1565ff;color:#fff;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:7px;box-shadow:0 2px 8px rgba(21,101,255,.28);">⟳ Reboot</button>
+                <button onClick="{{ openWifi }}" style="height:38px;padding:0 13px;border:1px solid #e2e7ef;background:#fff;color:#39414f;border-radius:10px;font-size:13px;font-weight:500;cursor:pointer;">WiFi</button>
+                <button onClick="{{ openFirmware }}" style="height:38px;padding:0 13px;border:1px solid #e2e7ef;background:#fff;color:#39414f;border-radius:10px;font-size:13px;font-weight:500;cursor:pointer;">Firmware</button>
+                <button onClick="{{ openReprov }}" style="height:38px;padding:0 13px;border:1px solid #e2e7ef;background:#fff;color:#39414f;border-radius:10px;font-size:13px;font-weight:500;cursor:pointer;">Reprovisionar</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- alert banner -->
+          <sc-if value="{{ cpe.hasAlert }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:center;gap:12px;background:#fff4f4;border:1px solid #ffd4d4;border-radius:12px;padding:12px 16px;margin-top:14px;">
+              <span style="width:26px;height:26px;border-radius:50%;background:#fa5252;color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;flex:none;">!</span>
+              <div style="font-size:13px;color:#9c2c2c;"><b>Sinal óptico crítico:</b> RX em {{ cpe.optRx }} dBm (limite −25 dBm). Provável atenuação na fibra/conector. Verifique reflexões e curvatura do drop.</div>
+            </div>
+          </sc-if>
+
+          <!-- tabs -->
+          <div style="display:flex;gap:2px;margin:18px 0 16px;border-bottom:1px solid #e2e7ef;">
+            <sc-for list="{{ tabs }}" as="t" hint-placeholder-count="4">
+              <button onClick="{{ t.go }}" style="{{ t.style }}">{{ t.label }}</button>
+            </sc-for>
+          </div>
+
+          <!-- TAB: VISÃO GERAL -->
+          <sc-if value="{{ isTabGeral }}" hint-placeholder-val="{{ true }}">
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px;">
+              <sc-for list="{{ overviewCards }}" as="c" hint-placeholder-count="4">
+                <div style="background:#fff;border:1px solid #e6eaf1;border-radius:13px;padding:15px 16px;">
+                  <div style="font-size:11.5px;color:#8a93a3;font-weight:500;text-transform:uppercase;letter-spacing:.3px;">{{ c.label }}</div>
+                  <div style="font-size:22px;font-weight:600;font-family:'IBM Plex Mono';margin-top:6px;color:{{ c.color }};letter-spacing:-.5px;">{{ c.value }}</div>
+                  <div style="font-size:11.5px;color:#9aa3b2;margin-top:3px;">{{ c.sub }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+              <div style="background:#0e1726;border-radius:14px;padding:16px 18px;color:#dbe3f0;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="font-size:13px;font-weight:600;color:#fff;">Throughput WAN</span><span style="font-size:11px;color:#7f8da6;font-family:'IBM Plex Mono';">24h</span></div>
+                {{ wanChart }}
+                <div style="display:flex;gap:14px;margin-top:6px;font-size:11px;font-family:'IBM Plex Mono';"><span style="color:#3b82f6;">● Down pico 412 Mbps</span><span style="color:#12b886;">● Up pico 188 Mbps</span></div>
+              </div>
+              <div style="background:#fff;border:1px solid #e6eaf1;border-radius:14px;padding:16px 18px;">
+                <div style="font-size:13px;font-weight:600;margin-bottom:14px;">Recursos do CPE</div>
+                <div style="display:flex;gap:8px;justify-content:space-around;">
+                  <div style="text-align:center;">{{ cpuGauge }}<div style="font-size:12px;color:#6b7585;margin-top:4px;">CPU</div></div>
+                  <div style="text-align:center;">{{ memGauge }}<div style="font-size:12px;color:#6b7585;margin-top:4px;">Memória</div></div>
+                  <div style="text-align:center;">{{ tempGauge }}<div style="font-size:12px;color:#6b7585;margin-top:4px;">Temp.</div></div>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- TAB: DIAGNÓSTICO -->
+          <sc-if value="{{ isTabDiag }}" hint-placeholder-val="">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+              <div style="background:#fff;border:1px solid #e6eaf1;border-radius:14px;padding:16px 18px;">
+                <div style="font-size:13px;font-weight:600;margin-bottom:8px;">Sinal óptico GPON</div>
+                <div style="display:flex;gap:8px;justify-content:space-around;align-items:center;">
+                  <div style="text-align:center;">{{ rxGauge }}<div style="font-size:12px;color:#6b7585;margin-top:2px;">RX power</div></div>
+                  <div style="text-align:center;">{{ txGauge }}<div style="font-size:12px;color:#6b7585;margin-top:2px;">TX power</div></div>
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:10px;padding-top:12px;border-top:1px solid #f0f2f7;font-size:12px;font-family:'IBM Plex Mono';color:#6b7585;">
+                  <span>Distância OLT: <b style="color:#39414f;">1.84 km</b></span><span>Atenuação: <b style="color:#fa5252;">28.6 dB</b></span>
+                </div>
+              </div>
+              <div style="background:#0e1726;border-radius:14px;padding:16px 18px;color:#dbe3f0;">
+                <div style="display:flex;justify-content:space-between;margin-bottom:6px;"><span style="font-size:13px;font-weight:600;color:#fff;">RX power · histórico</span><span style="font-size:11px;color:#7f8da6;font-family:'IBM Plex Mono';">24h · dBm</span></div>
+                {{ rxChart }}
+                <div style="font-size:11px;color:#ff9b9b;font-family:'IBM Plex Mono';margin-top:6px;">↓ Queda de −18.9 → −26.8 dBm às 19:40</div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+              <!-- connection status -->
+              <div style="background:#fff;border:1px solid #e6eaf1;border-radius:14px;padding:16px 18px;">
+                <div style="font-size:13px;font-weight:600;margin-bottom:12px;">Conexão WAN</div>
+                <sc-for list="{{ connRows }}" as="c" hint-placeholder-count="5">
+                  <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f3f5f9;">
+                    <span style="font-size:12.5px;color:#6b7585;">{{ c.k }}</span>
+                    <span style="font-size:12.5px;font-family:'IBM Plex Mono';font-weight:600;color:{{ c.color }};">{{ c.v }}</span>
+                  </div>
+                </sc-for>
+              </div>
+              <!-- ping/traceroute -->
+              <div style="background:#0b1220;border-radius:14px;padding:16px 18px;color:#cdd6e6;font-family:'IBM Plex Mono';">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                  <span style="font-size:13px;font-weight:600;color:#fff;font-family:'IBM Plex Sans';">Ping & Traceroute remoto</span>
+                  <button onClick="{{ runPing }}" style="height:30px;padding:0 12px;border:1px solid #2a3a57;background:#16223a;color:#7fb0ff;border-radius:8px;font-size:12px;cursor:pointer;font-family:'IBM Plex Sans';font-weight:600;">{{ pingBtnLabel }}</button>
+                </div>
+                <div style="background:#070c16;border-radius:9px;padding:12px;font-size:11.5px;line-height:1.7;min-height:150px;max-height:150px;overflow:auto;">
+                  <sc-for list="{{ pingLines }}" as="l" hint-placeholder-count="6">
+                    <div style="color:{{ l.color }};white-space:pre;">{{ l.text }}</div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <!-- TAB: WIFI -->
+          <sc-if value="{{ isTabWifi }}" hint-placeholder-val="">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;">
+              <sc-for list="{{ radios }}" as="r" hint-placeholder-count="2">
+                <div style="background:#fff;border:1px solid #e6eaf1;border-radius:14px;padding:16px 18px;">
+                  <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div style="display:flex;align-items:center;gap:9px;"><span style="font-size:13px;font-weight:600;">{{ r.band }}</span><span style="{{ r.tagStyle }}">{{ r.tag }}</span></div>
+                    <button onClick="{{ openWifi }}" style="font-size:12px;color:#1565ff;background:none;border:none;cursor:pointer;font-weight:600;">Editar</button>
+                  </div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:13px;">
+                    <div><div style="font-size:11px;color:#8a93a3;text-transform:uppercase;letter-spacing:.3px;">SSID</div><div style="font-size:14px;font-weight:600;font-family:'IBM Plex Mono';margin-top:2px;">{{ r.ssid }}</div></div>
+                    <div><div style="font-size:11px;color:#8a93a3;text-transform:uppercase;letter-spacing:.3px;">Canal</div><div style="font-size:14px;font-weight:600;font-family:'IBM Plex Mono';margin-top:2px;color:{{ r.chColor }};">{{ r.channel }}</div></div>
+                    <div><div style="font-size:11px;color:#8a93a3;text-transform:uppercase;letter-spacing:.3px;">Largura</div><div style="font-size:14px;font-weight:600;font-family:'IBM Plex Mono';margin-top:2px;">{{ r.width }}</div></div>
+                    <div><div style="font-size:11px;color:#8a93a3;text-transform:uppercase;letter-spacing:.3px;">Clientes</div><div style="font-size:14px;font-weight:600;font-family:'IBM Plex Mono';margin-top:2px;">{{ r.clients }}</div></div>
+                  </div>
+                </div>
+              </sc-for>
+            </div>
+
+            <div style="background:#0e1726;border-radius:14px;padding:16px 18px;color:#dbe3f0;margin-bottom:16px;">
+              <div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span style="font-size:13px;font-weight:600;color:#fff;">Ocupação de canais 2.4 GHz</span><span style="font-size:11px;color:#7f8da6;font-family:'IBM Plex Mono';">scan de vizinhança</span></div>
+              <p style="margin:0 0 12px;font-size:11.5px;color:#8b98b3;">Canal atual <b style="color:#fff;">6</b> está congestionado (7 redes). Sugestão: migrar para <b style="color:#7fffcf;">canal 1</b>.</p>
+              {{ wifiHeatmap }}
+            </div>
+
+            <div style="background:#fff;border:1px solid #e6eaf1;border-radius:14px;padding:16px 18px;">
+              <div style="font-size:13px;font-weight:600;margin-bottom:6px;">Dispositivos conectados <span style="color:#9aa3b2;font-weight:400;">· {{ deviceCount }}</span></div>
+              <div style="display:grid;grid-template-columns:1.4fr 90px 1fr 110px 120px;padding:8px 0;font-size:11px;color:#8a93a3;text-transform:uppercase;letter-spacing:.3px;border-bottom:1px solid #f0f2f7;">
+                <span>Dispositivo</span><span>Banda</span><span>IP / MAC</span><span>Tráfego</span><span>Sinal (RSSI)</span>
+              </div>
+              <sc-for list="{{ devices }}" as="d" hint-placeholder-count="5">
+                <div style="display:grid;grid-template-columns:1.4fr 90px 1fr 110px 120px;align-items:center;padding:11px 0;border-bottom:1px solid #f3f5f9;">
+                  <div style="display:flex;align-items:center;gap:9px;"><span style="font-size:15px;">{{ d.icon }}</span><span style="font-size:13px;font-weight:500;">{{ d.name }}</span></div>
+                  <span style="{{ d.bandStyle }}">{{ d.band }}</span>
+                  <div style="font-size:11.5px;font-family:'IBM Plex Mono';color:#6b7585;">{{ d.ip }}<div style="color:#aab2bf;">{{ d.mac }}</div></div>
+                  <span style="font-size:12px;font-family:'IBM Plex Mono';color:#39414f;">{{ d.traffic }}</span>
+                  <div style="display:flex;align-items:center;gap:8px;">{{ d.rssiBars }}<span style="font-size:11.5px;font-family:'IBM Plex Mono';color:{{ d.rssiColor }};">{{ d.rssi }}</span></div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+
+          <!-- TAB: HISTÓRICO -->
+          <sc-if value="{{ isTabHist }}" hint-placeholder-val="">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+              <div style="background:#fff;border:1px solid #e6eaf1;border-radius:14px;padding:16px 18px;">
+                <div style="font-size:13px;font-weight:600;margin-bottom:6px;">Reboots & quedas <span style="color:#9aa3b2;font-weight:400;">· 7 dias</span></div>
+                <div style="display:flex;align-items:flex-end;gap:4px;height:70px;margin:10px 0 4px;">
+                  <sc-for list="{{ rebootBars }}" as="b" hint-placeholder-count="14">
+                    <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;" title="{{ b.title }}">
+                      <div style="width:100%;border-radius:3px 3px 0 0;background:{{ b.color }};height:{{ b.h }};min-height:3px;"></div>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="display:flex;justify-content:space-between;font-size:10px;color:#9aa3b2;font-family:'IBM Plex Mono';"><span>7d atrás</span><span>hoje</span></div>
+              </div>
+              <div style="background:#fff;border:1px solid #e6eaf1;border-radius:14px;padding:16px 18px;">
+                <div style="font-size:13px;font-weight:600;margin-bottom:6px;">Disponibilidade</div>
+                <div style="font-size:30px;font-weight:600;font-family:'IBM Plex Mono';color:#12b886;letter-spacing:-1px;">98.2%</div>
+                <div style="font-size:12px;color:#9aa3b2;margin-bottom:10px;">uptime · 30 dias · 5 quedas</div>
+                <div style="display:flex;gap:2px;flex-wrap:wrap;">
+                  <sc-for list="{{ uptimeDays }}" as="u" hint-placeholder-count="30">
+                    <span title="{{ u.title }}" style="width:13px;height:18px;border-radius:3px;background:{{ u.color }};"></span>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+            <div style="background:#fff;border:1px solid #e6eaf1;border-radius:14px;padding:16px 18px;margin-top:16px;">
+              <div style="font-size:13px;font-weight:600;margin-bottom:12px;">Linha do tempo de eventos</div>
+              <sc-for list="{{ events }}" as="e" hint-placeholder-count="6">
+                <div style="display:flex;gap:13px;padding-bottom:14px;position:relative;">
+                  <div style="display:flex;flex-direction:column;align-items:center;flex:none;">
+                    <span style="width:11px;height:11px;border-radius:50%;background:{{ e.color }};border:2px solid #fff;box-shadow:0 0 0 1px {{ e.color }};margin-top:3px;"></span>
+                    <span style="flex:1;width:2px;background:#eef1f6;margin-top:3px;"></span>
+                  </div>
+                  <div style="padding-bottom:2px;">
+                    <div style="font-size:13px;font-weight:500;color:#1f2733;">{{ e.title }}</div>
+                    <div style="font-size:12px;color:#8a93a3;margin-top:1px;">{{ e.desc }}</div>
+                  </div>
+                  <div style="margin-left:auto;font-size:11.5px;color:#9aa3b2;font-family:'IBM Plex Mono';white-space:nowrap;">{{ e.time }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+    </main>
+  </div>
+
+  <!-- TOAST -->
+  <sc-if value="{{ toast }}" hint-placeholder-val="">
+    <div style="position:fixed;bottom:22px;left:50%;transform:translateX(-50%);z-index:60;animation:toastin .25s ease;">
+      <div style="display:flex;align-items:center;gap:11px;background:#0e1726;color:#fff;padding:12px 18px;border-radius:12px;box-shadow:0 12px 30px rgba(16,23,38,.35);font-size:13px;">
+        <span style="width:20px;height:20px;border-radius:50%;background:{{ toast.color }};display:flex;align-items:center;justify-content:center;font-size:12px;flex:none;">{{ toast.icon }}</span>
+        {{ toast.text }}
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- MODAL -->
+  <sc-if value="{{ modal }}" hint-placeholder-val="">
+    <div onClick="{{ closeModal }}" style="position:fixed;inset:0;z-index:50;background:rgba(14,23,38,.45);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(2px);">
+      <div onClick="{{ stop }}" style="background:#fff;border-radius:16px;width:440px;max-width:92vw;box-shadow:0 24px 60px rgba(16,23,38,.35);overflow:hidden;">
+        <div style="padding:18px 22px 0;">
+          <div style="display:flex;align-items:center;gap:11px;">
+            <span style="width:34px;height:34px;border-radius:10px;background:{{ modal.iconBg }};display:flex;align-items:center;justify-content:center;font-size:17px;">{{ modal.icon }}</span>
+            <h3 style="margin:0;font-size:17px;font-weight:600;">{{ modal.title }}</h3>
+          </div>
+          <p style="font-size:13px;color:#6b7585;line-height:1.55;margin:13px 0 0;">{{ modal.body }}</p>
+        </div>
+        <sc-if value="{{ modal.isWifi }}" hint-placeholder-val="">
+          <div style="padding:14px 22px 0;display:flex;flex-direction:column;gap:12px;">
+            <div><label style="font-size:11.5px;color:#8a93a3;font-weight:500;text-transform:uppercase;letter-spacing:.3px;">SSID (2.4G)</label><input value="{{ wifiSsid }}" onInput="{{ onSsid }}" style="width:100%;height:38px;margin-top:5px;border:1px solid #e2e7ef;border-radius:9px;padding:0 12px;font-size:13px;font-family:'IBM Plex Mono';outline:none;" /></div>
+            <div><label style="font-size:11.5px;color:#8a93a3;font-weight:500;text-transform:uppercase;letter-spacing:.3px;">Senha</label><input value="{{ wifiPass }}" onInput="{{ onPass }}" style="width:100%;height:38px;margin-top:5px;border:1px solid #e2e7ef;border-radius:9px;padding:0 12px;font-size:13px;font-family:'IBM Plex Mono';outline:none;" /></div>
+            <div><label style="font-size:11.5px;color:#8a93a3;font-weight:500;text-transform:uppercase;letter-spacing:.3px;">Canal 2.4G</label>
+              <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+                <sc-for list="{{ channelOpts }}" as="c" hint-placeholder-count="3">
+                  <button onClick="{{ c.pick }}" style="{{ c.style }}">{{ c.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+        <div style="display:flex;gap:9px;justify-content:flex-end;padding:18px 22px 20px;">
+          <button onClick="{{ closeModal }}" style="height:38px;padding:0 16px;border:1px solid #e2e7ef;background:#fff;border-radius:10px;font-size:13px;font-weight:500;color:#39414f;cursor:pointer;">Cancelar</button>
+          <button onClick="{{ confirmModal }}" style="height:38px;padding:0 18px;border:none;background:{{ modal.confirmBg }};color:#fff;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;">{{ modal.confirmLabel }}</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    screen: 'dashboard',
+    dashView: 'fila',
+    filter: 'todos',
+    query: '',
+    activeId: 'CPE-4471',
+    tab: 'geral',
+    toast: null,
+    modal: null,
+    wifiSsid: 'SOUZA_2G',
+    wifiPass: 'fibra@2024',
+    wifiChannel: 6,
+    pingState: 'idle', // idle | running | done
+  };
+
+  // ---------- data ----------
+  CPES = {
+    'CPE-4471': { id:'CPE-4471', subscriber:'Maria Aparecida Souza', doc:'CPF ***.412.778-** ', plan:'Fibra 500 Mega', contract:'Contrato #88231', model:'ONT-G2400 GPON', serial:'ZTEG-9A2117F0', mac:'A4:2B:8C:11:9F:30', ip:'100.84.21.7', status:'critico', optRx:-26.8, optTx:2.1, temp:54, cpu:23, mem:61, uptime:'4d 12h 38m', sev:'crit', symptom:'Lentidão / quedas', tag:'Óptico', signal:'-26.8' },
+    'CPE-2208': { id:'CPE-2208', subscriber:'João Pedro Martins', doc:'CPF ***.330.901-**', plan:'Fibra 700 Mega', contract:'Contrato #71140', model:'ONT-G2400 GPON', serial:'ZTEG-77B201A4', mac:'B8:55:10:42:A1:0C', ip:'100.84.30.18', status:'alerta', optRx:-19.2, optTx:2.3, temp:49, cpu:18, mem:54, uptime:'11h 02m', sev:'warn', symptom:'WiFi instável', tag:'WiFi', signal:'-19.2' },
+  };
+
+  RAW_QUEUE = [
+    { id:'CPE-4471', name:'Maria Aparecida Souza', meta:'#88231 · ONT-G2400', sev:'crit', tag:'Óptico', symptom:'Sinal óptico −26.8 dBm', signal:'-26.8', seen:'há 4 min', sp:[-19,-19.2,-19,-20,-22,-24,-26,-26.8] },
+    { id:'CPE-2208', name:'João Pedro Martins', meta:'#71140 · ONT-G2400', sev:'warn', tag:'WiFi', symptom:'Canal 2.4G congestionado', signal:'62%', seen:'há 9 min', sp:[40,55,70,62,75,68,80,72] },
+    { id:'CPE-9931', name:'Condomínio Vista Verde', meta:'#10455 · ONT-G8 EPON', sev:'crit', tag:'Offline', symptom:'LOS — sem sinal há 12 min', signal:'LOS', seen:'há 12 min', sp:[-21,-22,-24,-28,-34,-40,-40,-40] },
+    { id:'CPE-7720', name:'Ana Beatriz Ferreira', meta:'#65412 · RTX-AX1800', sev:'warn', tag:'PPPoE', symptom:'Reautenticações PPPoE', signal:'flap', seen:'há 18 min', sp:[1,0,1,1,0,1,0,1] },
+    { id:'CPE-3390', name:'Carlos Henrique Dias', meta:'#23901 · ONT-G2400', sev:'warn', tag:'CPU', symptom:'CPU 92% / temperatura 71°C', signal:'92%', seen:'há 26 min', sp:[40,55,60,70,82,88,90,92] },
+    { id:'CPE-5567', name:'Luana Rodrigues', meta:'#44820 · RTX-AX1800', sev:'warn', tag:'WiFi', symptom:'RSSI baixo nos clientes', signal:'-71', seen:'há 33 min', sp:[-55,-58,-62,-65,-68,-70,-71,-71] },
+  ];
+
+  RAW_RESULTS = [
+    { id:'CPE-4471', name:'Maria Aparecida Souza', doc:'CPF ***.412.778-**', plan:'Fibra 500 Mega', contract:'#88231', model:'ONT-G2400', mac:'A4:2B:8C:11:9F:30', sev:'crit', status:'Crítico' },
+    { id:'CPE-2208', name:'João Pedro Martins', doc:'CPF ***.330.901-**', plan:'Fibra 700 Mega', contract:'#71140', model:'ONT-G2400', mac:'B8:55:10:42:A1:0C', sev:'warn', status:'Alerta' },
+    { id:'CPE-8810', name:'Maria Aparecida Lima', doc:'CPF ***.118.245-**', plan:'Fibra 300 Mega', contract:'#52017', model:'RTX-AX1800', mac:'C0:3D:46:90:7B:2E', sev:'ok', status:'Online' },
+    { id:'CPE-1190', name:'Maria Souza Comércio ME', doc:'CNPJ **.402.118/0001-**', plan:'Fibra Dedicada 1G', contract:'#90233', model:'ONT-G8 EPON', sev:'ok', status:'Online' },
+  ];
+
+  rxHist = [-18.6,-18.8,-19.0,-18.9,-19.1,-19.0,-18.8,-19.2,-19.0,-19.3,-19.1,-19.0,-19.2,-19.4,-19.1,-19.0,-19.3,-22.1,-24.0,-25.4,-26.1,-26.6,-26.7,-26.8];
+  wanDown = [120,90,60,40,55,80,140,220,310,280,360,412,390,330,280,360,300,250,310,280,240,180,150,120];
+  wanUp = [40,30,22,18,24,40,70,110,140,120,160,188,170,150,120,150,130,110,140,120,100,80,60,45];
+  agg = [380,372,360,358,365,388,402,418,425,428,422,415];
+
+  // ---------- helpers ----------
+  H = (...a) => React.createElement(...a);
+
+  sevColor(s){ return s==='crit' ? '#fa5252' : s==='warn' ? '#f59f00' : '#12b886'; }
+
+  sparkline(data, color, w=66, h=22){
+    const h_ = this.H;
+    const max=Math.max(...data), min=Math.min(...data), rng=(max-min)||1;
+    const pts=data.map((v,i)=>[ (i/(data.length-1))*w, h-2-((v-min)/rng)*(h-4) ]);
+    const d=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+    const area=d+` L ${w} ${h} L 0 ${h} Z`;
+    const id='sg'+Math.random().toString(36).slice(2,7);
+    return h_('svg',{width:w,height:h,style:{display:'block'}},
+      h_('defs',null,h_('linearGradient',{id,x1:'0',y1:'0',x2:'0',y2:'1'},
+        h_('stop',{offset:'0%',stopColor:color,stopOpacity:0.28}),
+        h_('stop',{offset:'100%',stopColor:color,stopOpacity:0}))),
+      h_('path',{d:area,fill:`url(#${id})`}),
+      h_('path',{d,fill:'none',stroke:color,strokeWidth:1.6,strokeLinejoin:'round',strokeLinecap:'round'})
+    );
+  }
+
+  lineChart(series, opts){
+    const h_=this.H;
+    const w=opts.w||320, h=opts.h||120, pad=opts.pad||{t:8,r:6,b:16,l:6};
+    const all=series.flatMap(s=>s.data);
+    let max=opts.max!=null?opts.max:Math.max(...all);
+    let min=opts.min!=null?opts.min:Math.min(...all);
+    const rng=(max-min)||1;
+    const iw=w-pad.l-pad.r, ih=h-pad.t-pad.b;
+    const x=i=> pad.l + (i/(series[0].data.length-1))*iw;
+    const y=v=> pad.t + ih - ((v-min)/rng)*ih;
+    const grid=[0,0.25,0.5,0.75,1].map(f=> h_('line',{key:'g'+f,x1:pad.l,x2:w-pad.r,y1:pad.t+ih*f,y2:pad.t+ih*f,stroke:'rgba(255,255,255,.07)',strokeWidth:1}));
+    const layers=series.map((s,si)=>{
+      const d=s.data.map((v,i)=>(i?'L':'M')+x(i).toFixed(1)+' '+y(v).toFixed(1)).join(' ');
+      const area=d+` L ${x(s.data.length-1)} ${pad.t+ih} L ${pad.l} ${pad.t+ih} Z`;
+      const id='lc'+si+Math.random().toString(36).slice(2,6);
+      return h_('g',{key:si},
+        h_('defs',null,h_('linearGradient',{id,x1:'0',y1:'0',x2:'0',y2:'1'},
+          h_('stop',{offset:'0%',stopColor:s.color,stopOpacity:0.3}),
+          h_('stop',{offset:'100%',stopColor:s.color,stopOpacity:0}))),
+        s.fill!==false?h_('path',{d:area,fill:`url(#${id})`}):null,
+        h_('path',{d,fill:'none',stroke:s.color,strokeWidth:2,strokeLinejoin:'round',strokeLinecap:'round'}),
+        h_('circle',{cx:x(s.data.length-1),cy:y(s.data[s.data.length-1]),r:3,fill:s.color})
+      );
+    });
+    return h_('svg',{width:'100%',viewBox:`0 0 ${w} ${h}`,style:{display:'block'}}, ...grid, ...layers);
+  }
+
+  gauge(value, min, max, color, display, size=104){
+    const h_=this.H;
+    const cx=size/2, cy=size*0.86, r=size*0.40;
+    const frac=Math.max(0,Math.min(1,(value-min)/(max-min)));
+    const polar=(deg)=>{ const a=(deg-180)*Math.PI/180; return [cx+r*Math.cos(a), cy+r*Math.sin(a)]; };
+    const arc=(a,b)=>{ const [x1,y1]=polar(a),[x2,y2]=polar(b); const lg=(b-a)>180?1:0; return `M ${x1} ${y1} A ${r} ${r} 0 ${lg} 1 ${x2} ${y2}`; };
+    return h_('svg',{width:size,height:size*0.74,viewBox:`0 0 ${size} ${size*0.74}`,style:{display:'block',margin:'0 auto'}},
+      h_('path',{d:arc(0,180),fill:'none',stroke:'#eef1f6',strokeWidth:9,strokeLinecap:'round'}),
+      h_('path',{d:arc(0,180*frac||0.001),fill:'none',stroke:color,strokeWidth:9,strokeLinecap:'round'}),
+      h_('text',{x:cx,y:cy-4,textAnchor:'middle',style:{font:"600 19px 'IBM Plex Mono'",fill:'#1f2733'}},display)
+    );
+  }
+
+  rssiBars(rssi){
+    const h_=this.H;
+    const level = rssi>=-55?4 : rssi>=-65?3 : rssi>=-72?2 : 1;
+    const col = level>=3?'#12b886' : level===2?'#f59f00':'#fa5252';
+    return h_('div',{style:{display:'flex',alignItems:'flex-end',gap:2,height:14}},
+      [6,9,12,15].map((hh,i)=> h_('span',{key:i,style:{width:3,height:hh,borderRadius:1,background:i<level?col:'#dfe4ec'}})));
+  }
+
+  // ---------- actions ----------
+  showToast(text, color='#12b886', icon='✓'){
+    this.setState({toast:{text,color,icon}});
+    clearTimeout(this._t); this._t=setTimeout(()=>this.setState({toast:null}),3200);
+  }
+
+  runPing = ()=>{
+    if(this.state.pingState==='running') return;
+    this.setState({pingState:'running'});
+    setTimeout(()=>this.setState({pingState:'done'}), 2200);
+  };
+
+  // ---------- render ----------
+  renderVals(){
+    const S=this.state;
+    const cpe = this.CPES[S.activeId] || this.CPES['CPE-4471'];
+    const nav = (screen)=>()=>this.setState({screen, toast:null});
+    const open = (id)=>this.setState({screen:'detail', activeId:id, tab:'geral', pingState:'idle'});
+
+    // nav
+    const navDefs=[
+      {key:'dashboard',icon:'▦',label:'Início'},
+      {key:'search',icon:'⌕',label:'Busca'},
+      {key:'alertas',icon:'⚠',label:'Alertas',badge:'12'},
+      {key:'rede',icon:'⤳',label:'Rede'},
+      {key:'relatorios',icon:'▤',label:'Relat.'},
+    ];
+    const navItems=navDefs.map(n=>{
+      const active = (n.key==='dashboard'&&S.screen==='dashboard')||(n.key==='search'&&S.screen==='search');
+      return { ...n, go: n.key==='search'?nav('search'):nav('dashboard'),
+        style:`position:relative;width:46px;height:48px;border-radius:11px;border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:${active?'#1d2b48':'transparent'};color:${active?'#fff':'#6b7791'};` };
+    });
+
+    // dash views
+    const dvDefs=[{k:'fila',l:'Fila'},{k:'cards',l:'Cards'},{k:'mapa',l:'Mapa OLT'}];
+    const dashViews=dvDefs.map(d=>({label:d.l, go:()=>this.setState({dashView:d.k}),
+      style:`height:30px;padding:0 14px;border:none;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'IBM Plex Sans';background:${S.dashView===d.k?'#1565ff':'transparent'};color:${S.dashView===d.k?'#fff':'#6b7585'};`}));
+
+    const filtDefs=[{k:'todos',l:'Todos'},{k:'crit',l:'Crítico'},{k:'warn',l:'Alerta'},{k:'optico',l:'Óptico'}];
+    const filters=filtDefs.map(f=>({label:f.l, go:()=>this.setState({filter:f.k}),
+      style:`height:27px;padding:0 11px;border:1px solid ${S.filter===f.k?'#1565ff':'#e2e7ef'};border-radius:7px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'IBM Plex Sans';background:${S.filter===f.k?'#eaf1ff':'#fff'};color:${S.filter===f.k?'#1565ff':'#6b7585'};`}));
+
+    // KPIs
+    const tagStyle=(sev)=>{ const c=this.sevColor(sev); const bg=sev==='crit'?'#fff0f0':sev==='warn'?'#fff7e8':'#eafaf3';
+      return `font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:6px;background:${bg};color:${c};white-space:nowrap;`; };
+    const kpis=[
+      {label:'CPEs online',value:'17.9k',color:'#12b886',trend:'▲ 99.2%',tc:'#12b886',sp:[17800,17850,17900,17880,17920,17910,17905],spc:'#12b886'},
+      {label:'Offline',value:'214',color:'#fa5252',trend:'▲ 12',tc:'#fa5252',sp:[180,190,200,205,210,212,214],spc:'#fa5252'},
+      {label:'Em alerta',value:'88',color:'#f59f00',trend:'▼ 6',tc:'#12b886',sp:[100,96,94,92,90,89,88],spc:'#f59f00'},
+      {label:'Chamados N1',value:'31',color:'#1565ff',trend:'fila',tc:'#8a93a3',sp:[20,24,28,26,30,29,31],spc:'#1565ff'},
+    ].map(k=>({label:k.label,value:k.value,color:k.color,trend:k.trend,
+      cardStyle:'background:#fff;border:1px solid #e6eaf1;border-radius:13px;padding:14px 16px;box-shadow:0 1px 2px rgba(16,23,38,.04);',
+      trendStyle:`font-size:11px;font-weight:600;font-family:'IBM Plex Mono';color:${k.tc};`,
+      spark:this.sparkline(k.sp,k.spc,60,26)}));
+
+    // queue
+    let q=this.RAW_QUEUE;
+    if(S.filter==='crit') q=q.filter(x=>x.sev==='crit');
+    else if(S.filter==='warn') q=q.filter(x=>x.sev==='warn');
+    else if(S.filter==='optico') q=q.filter(x=>x.tag==='Óptico'||x.tag==='Offline');
+    const queue=q.map(item=>({...item, sevColor:this.sevColor(item.sev), tagStyle:tagStyle(item.sev),
+      open:()=> this.CPES[item.id]?open(item.id):open('CPE-4471'),
+      spark:this.sparkline(item.sp, this.sevColor(item.sev), 50, 20)}));
+
+    // olt heatmap cells
+    const oltCells=Array.from({length:24}).map((_,i)=>{
+      const pct=[2,1,0,3,1,8,2,0,1,4,12,1,0,2,1,3,7,1,0,1,2,1,0,1][i];
+      const f=Math.min(1,pct/12);
+      const bg= pct===0?'#16223a' : `rgba(${Math.round(18+f*230)},${Math.round(184-f*120)},${Math.round(134-f*100)},${0.25+f*0.6})`;
+      return {code:'O'+(i+1), pct:pct, bg, title:`OLT-${i+1} · ${pct}% degradados`};
+    });
+
+    const symptoms=[
+      {label:'Sinal óptico baixo',count:34,pct:'82%',color:'#fa5252'},
+      {label:'WiFi / interferência',count:27,pct:'64%',color:'#f59f00'},
+      {label:'PPPoE / reautenticação',count:14,pct:'34%',color:'#1565ff'},
+      {label:'Offline / LOS',count:9,pct:'22%',color:'#7c3aed'},
+    ];
+
+    // search
+    const ql=(S.query||'').toLowerCase();
+    let results=this.RAW_RESULTS;
+    if(ql.length>1) results=results.filter(r=> (r.name+r.doc+r.contract+r.model+r.mac).toLowerCase().includes(ql));
+    const statusStyle=(sev)=>tagStyle(sev);
+    const resultsV=results.map(r=>({...r, sevColor:this.sevColor(r.sev), statusStyle:statusStyle(r.sev),
+      open:()=> this.CPES[r.id]?open(r.id):open('CPE-4471')}));
+    const searchTitle = ql.length>1 ? `${results.length} resultado(s) para "${S.query}"` : 'Resultados recentes';
+
+    // ----- detail -----
+    const cpeStatus = cpe.status==='critico'?{l:'Crítico',sev:'crit'}: cpe.status==='alerta'?{l:'Alerta',sev:'warn'}:{l:'Online',sev:'ok'};
+    const cpeV={ ...cpe, statusLabel:cpeStatus.l, statusStyle:tagStyle(cpeStatus.sev),
+      hasAlert: cpe.sev==='crit', optRx:cpe.optRx };
+
+    const tabDefs=[{k:'geral',l:'Visão geral'},{k:'diag',l:'Diagnóstico'},{k:'wifi',l:'WiFi'},{k:'hist',l:'Histórico'}];
+    const tabs=tabDefs.map(t=>({label:t.l, go:()=>this.setState({tab:t.k}),
+      style:`height:38px;padding:0 16px;border:none;background:none;cursor:pointer;font-size:13.5px;font-weight:600;font-family:'IBM Plex Sans';color:${S.tab===t.k?'#1565ff':'#6b7585'};border-bottom:2px solid ${S.tab===t.k?'#1565ff':'transparent'};margin-bottom:-1px;`}));
+
+    const overviewCards=[
+      {label:'Uptime',value:cpe.uptime,sub:'desde 13/06 02:14',color:'#1f2733'},
+      {label:'PPPoE',value:'Conectado',sub:'IP '+cpe.ip,color:'#12b886'},
+      {label:'Latência',value:'8 ms',sub:'gateway · estável',color:'#1f2733'},
+      {label:'Perda',value:'2.1%',sub:'últimos 5 min',color:'#f59f00'},
+    ];
+
+    const wanChart=this.lineChart([
+      {data:this.wanDown,color:'#3b82f6'},{data:this.wanUp,color:'#12b886'}
+    ],{w:340,h:130,min:0});
+    const rxChart=this.lineChart([{data:this.rxHist,color:'#fa5252'}],{w:340,h:130});
+    const aggChart=this.lineChart([{data:this.agg,color:'#3b82f6'}],{w:320,h:80,min:300});
+
+    const cpuGauge=this.gauge(cpe.cpu,0,100,cpe.cpu>80?'#fa5252':'#1565ff',cpe.cpu+'%');
+    const memGauge=this.gauge(cpe.mem,0,100,cpe.mem>85?'#fa5252':'#3b82f6',cpe.mem+'%');
+    const tempGauge=this.gauge(cpe.temp,20,90,cpe.temp>65?'#fa5252':'#12b886',cpe.temp+'°');
+    // optical gauges: RX -30..-8 ; healthy ~ -8..-25
+    const rxGauge=this.gauge(cpe.optRx,-30,-8, cpe.optRx<-25?'#fa5252':cpe.optRx<-22?'#f59f00':'#12b886', cpe.optRx);
+    const txGauge=this.gauge(cpe.optTx,0,5,'#12b886', cpe.optTx);
+
+    const connRows=[
+      {k:'Estado PPPoE',v:'UP',color:'#12b886'},
+      {k:'Endereço WAN',v:cpe.ip,color:'#39414f'},
+      {k:'Gateway',v:'100.84.21.1',color:'#39414f'},
+      {k:'DNS',v:'189.38.95.95',color:'#39414f'},
+      {k:'VLAN',v:'2102',color:'#39414f'},
+      {k:'Reautenticações (24h)',v:'3',color:'#f59f00'},
+    ];
+
+    // ping output
+    let pingLines=[{text:'$ ping -c4 8.8.8.8  (via CPE)',color:'#6b7fa6'},{text:'pronto. clique em Executar.',color:'#4a5a78'}];
+    if(S.pingState==='running') pingLines=[{text:'$ ping -c4 8.8.8.8  (via CPE)',color:'#6b7fa6'},{text:'executando teste remoto…',color:'#f0c674'}];
+    if(S.pingState==='done') pingLines=[
+      {text:'$ ping -c4 8.8.8.8  (via CPE)',color:'#6b7fa6'},
+      {text:'64 bytes de 8.8.8.8: icmp_seq=1 ttl=118 tempo=9.2 ms',color:'#8ce0a0'},
+      {text:'64 bytes de 8.8.8.8: icmp_seq=2 ttl=118 tempo=8.7 ms',color:'#8ce0a0'},
+      {text:'64 bytes de 8.8.8.8: icmp_seq=3 ttl=118 tempo=41.5 ms',color:'#f0c674'},
+      {text:'64 bytes de 8.8.8.8: icmp_seq=4 ttl=118 tempo=8.9 ms',color:'#8ce0a0'},
+      {text:'--- 4 pacotes, 1 com jitter alto, 0% perda ---',color:'#8aa0c0'},
+      {text:'$ traceroute  →  3 saltos · gargalo no salto 1 (CPE→OLT)',color:'#6b7fa6'},
+    ];
+    const pingBtnLabel = S.pingState==='running'?'Executando…':'Executar';
+
+    // wifi
+    const radios=[
+      {band:'2.4 GHz',tag:'Congestionado',tagStyle:tagStyle('warn'),ssid:cpe.id===cpe.id?S.wifiSsid:'SOUZA_2G',channel:S.wifiChannel,chColor:'#f59f00',width:'20 MHz',clients:'4'},
+      {band:'5 GHz',tag:'Bom',tagStyle:tagStyle('ok'),ssid:'SOUZA_5G',channel:36,chColor:'#12b886',width:'80 MHz',clients:'3'},
+    ];
+    const wifiHeatmap=this.H('div',{style:{display:'flex',alignItems:'flex-end',gap:6,height:90}},
+      [1,2,3,4,5,6,7,8,9,10,11].map(ch=>{
+        const occ=[5,1,2,1,3,7,2,1,4,1,3][ch-1];
+        const f=occ/7; const cur=ch===6;
+        const col= cur?'#fa5252' : f>0.6?'#f59f00' : f>0.3?'#3b82f6':'#2a3a57';
+        return this.H('div',{key:ch,style:{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:5,height:'100%',justifyContent:'flex-end'},title:`Canal ${ch} · ${occ} redes`},
+          this.H('div',{style:{width:'100%',borderRadius:'4px 4px 0 0',background:col,height:`${20+f*60}%`,opacity:cur?1:0.85}}),
+          this.H('span',{style:{fontSize:10,fontFamily:"'IBM Plex Mono'",color:cur?'#fff':'#7f8da6',fontWeight:cur?700:400}},ch));
+      }));
+
+    const devs=[
+      {name:'iPhone de Maria',icon:'📱',band:'5G',ip:'192.168.1.14',mac:'F2:18:9A:..',traffic:'42 Mbps',rssi:-48},
+      {name:'Smart TV Sala',icon:'📺',band:'5G',ip:'192.168.1.22',mac:'A0:CC:2B:..',traffic:'18 Mbps',rssi:-58},
+      {name:'Notebook',icon:'💻',band:'5G',ip:'192.168.1.31',mac:'3C:22:FB:..',traffic:'6 Mbps',rssi:-67},
+      {name:'Câmera Garagem',icon:'📷',band:'2.4G',ip:'192.168.1.40',mac:'B8:27:EB:..',traffic:'2 Mbps',rssi:-74},
+      {name:'Alexa Echo',icon:'🔊',band:'2.4G',ip:'192.168.1.45',mac:'44:65:0D:..',traffic:'0.3 Mbps',rssi:-69},
+    ];
+    const devices=devs.map(d=>({...d,
+      bandStyle:`font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:6px;background:${d.band==='5G'?'#eaf1ff':'#f3eaff'};color:${d.band==='5G'?'#1565ff':'#7c3aed'};`,
+      rssiBars:this.rssiBars(d.rssi), rssi:d.rssi+' dBm',
+      rssiColor: d.rssi>=-60?'#12b886':d.rssi>=-70?'#f59f00':'#fa5252'}));
+
+    // history
+    const rebootData=[0,0,1,0,0,2,0,0,0,0,1,0,3,1];
+    const rebootBars=rebootData.map((v,i)=>({h:`${Math.min(100,v*30+(v?14:0))}%`, color:v>2?'#fa5252':v>0?'#f59f00':'#e9edf3', title:`dia ${i+1}: ${v} reboot(s)`}));
+    const uptimeDays=Array.from({length:30}).map((_,i)=>{ const bad=[8,17,23].includes(i); const warn=[12,28].includes(i);
+      return {color: bad?'#fa5252':warn?'#f59f00':'#12b886', title:`dia ${i+1}: ${bad?'queda':warn?'instável':'ok'}`}; });
+
+    const events=[
+      {title:'Sinal óptico degradou para −26.8 dBm',desc:'RX abaixo do limite. Alarme aberto automaticamente.',time:'hoje 19:40',color:'#fa5252'},
+      {title:'Reboot remoto solicitado por N1',desc:'Rafael Costa · sessão #8841',time:'hoje 14:02',color:'#1565ff'},
+      {title:'Reautenticação PPPoE',desc:'Sessão renovada · IP 100.84.21.7',time:'hoje 02:14',color:'#f59f00'},
+      {title:'Firmware atualizado V2.1.6 → V2.1.8',desc:'Push TR-069 · sucesso',time:'12/06 03:10',color:'#12b886'},
+      {title:'CPE provisionado',desc:'Perfil "Residencial 500M" aplicado',time:'02/01 10:22',color:'#8a93a3'},
+    ];
+
+    // ---- modal ----
+    const M=S.modal;
+    let modalV=null;
+    if(M){
+      const cfg={
+        reboot:{icon:'⟳',iconBg:'#eaf1ff',title:'Reiniciar CPE',body:`O equipamento de ${cpe.subscriber} ficará offline por ~40 segundos. Confirmar reboot remoto via TR-069?`,confirmLabel:'Reiniciar agora',confirmBg:'#1565ff'},
+        firmware:{icon:'⬆',iconBg:'#eafaf3',title:'Forçar atualização de firmware',body:'Enviar V2.1.8 (mais recente) para este CPE. A atualização leva ~3 min e reinicia o equipamento ao final.',confirmLabel:'Enviar firmware',confirmBg:'#0ca678'},
+        reprov:{icon:'⚙',iconBg:'#f3eaff',title:'Reprovisionar CPE',body:'Reaplicar o perfil "Residencial 500M": VLAN, PPPoE, WiFi e QoS serão reescritos a partir do ACS.',confirmLabel:'Reprovisionar',confirmBg:'#7c3aed'},
+        wifi:{icon:'📶',iconBg:'#eaf1ff',title:'Configurar WiFi',body:'Alterações são aplicadas via TR-069. O WiFi reinicia e os clientes reconectam.',confirmLabel:'Aplicar',confirmBg:'#1565ff',isWifi:true},
+      }[M];
+      modalV={...cfg};
+    }
+    const channelOpts=[1,6,11].map(c=>({label:'Canal '+c, pick:()=>this.setState({wifiChannel:c}),
+      style:`height:32px;padding:0 14px;border:1px solid ${S.wifiChannel===c?'#1565ff':'#e2e7ef'};border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:'IBM Plex Mono';background:${S.wifiChannel===c?'#eaf1ff':'#fff'};color:${S.wifiChannel===c?'#1565ff':'#6b7585'};`}));
+
+    const confirmModal=()=>{
+      const kind=S.modal;
+      this.setState({modal:null});
+      const msg={reboot:'Reboot enviado — CPE reiniciando.', firmware:'Firmware V2.1.8 em envio (TR-069).', reprov:'Reprovisionamento aplicado com sucesso.', wifi:`WiFi atualizado · canal ${this.state.wifiChannel}.`}[kind];
+      const col=kind==='reboot'?'#1565ff':'#12b886';
+      this.showToast(msg, col, '✓');
+    };
+
+    return {
+      // nav / screens
+      navItems, dashViews, filters,
+      isDashboard: S.screen==='dashboard',
+      isSearch: S.screen==='search',
+      isDetail: S.screen==='detail',
+      isFila: S.dashView==='fila', isCards: S.dashView==='cards', isMapa: S.dashView==='mapa',
+      goSearch: ()=>this.setState({screen:'search'}),
+      query:S.query, onQuery:(e)=>this.setState({query:e.target.value, screen:'search'}),
+      refresh:()=>this.showToast('Fila atualizada · agora','#1565ff','↻'),
+      // dashboard data
+      kpis, queue, queueCount:queue.length, oltCells, symptoms, aggChart,
+      // search
+      results:resultsV, searchTitle,
+      // detail
+      cpe:cpeV, tabs,
+      isTabGeral:S.tab==='geral', isTabDiag:S.tab==='diag', isTabWifi:S.tab==='wifi', isTabHist:S.tab==='hist',
+      goBack:()=>this.setState({screen:'dashboard'}),
+      overviewCards, wanChart, rxChart, cpuGauge, memGauge, tempGauge, rxGauge, txGauge,
+      connRows, pingLines, pingBtnLabel, runPing:this.runPing,
+      radios, wifiHeatmap, devices, deviceCount:devices.length,
+      rebootBars, uptimeDays, events,
+      // actions / modal
+      openReboot:()=>this.setState({modal:'reboot'}),
+      openFirmware:()=>this.setState({modal:'firmware'}),
+      openReprov:()=>this.setState({modal:'reprov'}),
+      openWifi:()=>this.setState({modal:'wifi', wifiSsid:'SOUZA_2G'}),
+      closeModal:()=>this.setState({modal:null}),
+      stop:(e)=>e.stopPropagation(),
+      confirmModal, modal:modalV, channelOpts,
+      wifiSsid:S.wifiSsid, wifiPass:S.wifiPass,
+      onSsid:(e)=>this.setState({wifiSsid:e.target.value}),
+      onPass:(e)=>this.setState({wifiPass:e.target.value}),
+      // toast
+      toast:S.toast,
+    };
+  }
+}
+</script>
+</body>
+</html>

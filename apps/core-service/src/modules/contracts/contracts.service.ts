@@ -670,9 +670,18 @@ export class ContractsService {
         include: DEFAULT_INCLUDE,
       });
       await this.radius.enqueueSync(c, opts.note ?? 'reativação', tx);
+      // Mesmo motivo do suspend: kick a sessão pra forçar re-auth na
+      // autorização nova (cliente em walled-garden não volta sozinho).
+      await this.radius.enqueueDisconnect(c, opts.note ?? 'reativação', tx);
       await recalcCustomerStatus(tx, tenantId, c.customerId);
       return c;
     });
+
+    // CoA real DEPOIS do commit — força a sessão blocada a reautenticar.
+    const coaResults = await this.fireCoADisconnect(
+      updated,
+      opts.note ?? 'reativação',
+    );
 
     await this.audit.log({
       tenantId,
@@ -680,7 +689,7 @@ export class ContractsService {
       action: 'contracts.reactivated',
       resource: 'contracts',
       resourceId: updated.id,
-      metadata: { note: opts.note ?? null },
+      metadata: { note: opts.note ?? null, coaKicked: coaResults.kicked },
     });
     return toContractResponse(updated, { includePassword: true });
   }
@@ -762,14 +771,26 @@ export class ContractsService {
       where: { id, tenantId, deletedAt: null },
     });
     if (!existing) throw new NotFoundException('Contrato não encontrado');
-    if (existing.status !== PrismaContractStatus.SUSPENDED) {
+    // Idempotente: aceita suspenso-por-inadimplência (religar) OU contrato já
+    // em religue de confiança (apenas estender o prazo). Rejeita ativo-normal,
+    // suspensão manual e estados não-religáveis.
+    const wasSuspended = existing.status === PrismaContractStatus.SUSPENDED;
+    if (wasSuspended) {
+      if (existing.suspendReason !== 'OVERDUE_PAYMENT') {
+        throw new BadRequestException(
+          'Contrato suspenso manualmente — use Reativar normal',
+        );
+      }
+    } else if (existing.status === PrismaContractStatus.ACTIVE) {
+      if (!existing.trustExtensionUntil) {
+        throw new BadRequestException(
+          'Contrato já ativo sem religue de confiança — nada a religar',
+        );
+      }
+      // ACTIVE + trustExtensionUntil: re-religue, só estende o prazo.
+    } else {
       throw new BadRequestException(
-        'Religue de confiança só vale pra contratos suspensos',
-      );
-    }
-    if (existing.suspendReason !== 'OVERDUE_PAYMENT') {
-      throw new BadRequestException(
-        'Contrato suspenso manualmente — use Reativar normal',
+        'Religue de confiança só vale pra contratos suspensos por inadimplência',
       );
     }
 
@@ -790,9 +811,25 @@ export class ContractsService {
         include: DEFAULT_INCLUDE,
       });
       await this.radius.enqueueSync(c, `religue de confiança (${days}d)`, tx);
+      // Kick a sessão blocada (walled-garden) pra forçar re-auth na
+      // autorização nova — só quando vinha de SUSPENDED. Re-religue de um
+      // contrato já ativo só estende o prazo, sem derrubar a sessão boa.
+      if (wasSuspended) {
+        await this.radius.enqueueDisconnect(
+          c,
+          `religue de confiança (${days}d)`,
+          tx,
+        );
+      }
       await recalcCustomerStatus(tx, tenantId, c.customerId);
       return c;
     });
+
+    // CoA real DEPOIS do commit (radcheck já reflete ACTIVE). Não-bloqueante:
+    // se o cliente estiver offline, retorna 0 NAS e segue.
+    const coaResults = wasSuspended
+      ? await this.fireCoADisconnect(updated, `religue de confiança (${days}d)`)
+      : { kicked: 0, total: 0 };
 
     await this.audit.log({
       tenantId,
@@ -807,6 +844,7 @@ export class ContractsService {
         days,
         until: until.toISOString().slice(0, 10),
         note: opts.note ?? null,
+        coaKicked: coaResults.kicked,
       },
     });
 

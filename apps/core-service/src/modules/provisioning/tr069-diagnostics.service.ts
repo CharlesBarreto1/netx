@@ -25,6 +25,7 @@ import {
   type ListTr069AlertsQuery,
   type Paginated,
   type Tr069AlertDto,
+  type Tr069DashboardResponse,
   type Tr069DeviceDetailResponse,
   type Tr069DiagnosticDto,
   type Tr069DiagRunDto,
@@ -365,6 +366,82 @@ export class Tr069DiagnosticsService {
   // ---------------------------------------------------------------------------
   // Leitura pra UI
   // ---------------------------------------------------------------------------
+
+  /**
+   * Dashboard "Fila de diagnóstico" (landing /tr069): KPIs + fila de CPEs com
+   * alerta aberto (1 linha por device, pior severidade) + breakdown de sintomas.
+   */
+  async getDashboard(tenantId: string): Promise<Tr069DashboardResponse> {
+    const [statusCounts, complianceCounts, alerts, symptomGroups] = await Promise.all([
+      this.prisma.tr069Device.groupBy({ by: ['status'], where: { tenantId }, _count: { _all: true } }),
+      this.prisma.tr069Device.groupBy({
+        by: ['complianceStatus'],
+        where: { tenantId },
+        _count: { _all: true },
+      }),
+      this.prisma.tr069Alert.findMany({
+        where: { tenantId, status: 'OPEN' },
+        orderBy: [{ severity: 'desc' }, { lastSeenAt: 'desc' }],
+        take: 100,
+        include: {
+          device: {
+            select: {
+              id: true,
+              deviceId: true,
+              productClass: true,
+              lastInformAt: true,
+              ont: {
+                select: { contract: { select: { customer: { select: { displayName: true } } } } },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.tr069Alert.groupBy({
+        by: ['type'],
+        where: { tenantId, status: 'OPEN' },
+        _count: { _all: true },
+      }),
+    ]);
+
+    const byStatus = (s: string) => statusCounts.find((x) => x.status === s)?._count._all ?? 0;
+    const naoConformes = complianceCounts
+      .filter((c) => ['DRIFTED', 'REMEDIATING', 'PENDING_REBOOT', 'FAILED'].includes(c.complianceStatus))
+      .reduce((sum, c) => sum + c._count._all, 0);
+    const sevMap = (s: string): 'ok' | 'warn' | 'crit' =>
+      s === 'CRITICAL' ? 'crit' : s === 'WARNING' ? 'warn' : 'ok';
+
+    // 1 linha por device — a 1ª (ordenada por severidade desc) é a pior.
+    const seen = new Set<string>();
+    const queue: Tr069DashboardResponse['queue'] = [];
+    for (const a of alerts) {
+      if (seen.has(a.deviceId)) continue;
+      seen.add(a.deviceId);
+      queue.push({
+        deviceId: a.device.id,
+        label: a.device.ont?.contract?.customer?.displayName ?? a.device.deviceId,
+        model: a.device.productClass,
+        severity: sevMap(a.severity),
+        symptom: a.message,
+        type: a.type,
+        signal: a.value === null ? null : Number(a.value),
+        lastInformAt: a.device.lastInformAt?.toISOString() ?? null,
+      });
+    }
+
+    return {
+      kpis: {
+        online: byStatus('ONLINE'),
+        offline: byStatus('OFFLINE'),
+        alerta: seen.size,
+        naoConformes,
+      },
+      queue,
+      symptoms: symptomGroups
+        .map((g) => ({ type: g.type, count: g._count._all }))
+        .sort((x, y) => y.count - x.count),
+    };
+  }
 
   async getDeviceDetail(tenantId: string, deviceId: string): Promise<Tr069DeviceDetailResponse> {
     const device = await this.prisma.tr069Device.findFirst({

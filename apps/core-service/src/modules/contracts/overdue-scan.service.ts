@@ -17,8 +17,8 @@ import { InvoiceGeneratorService } from './invoice-generator.service';
  * 06:00 BRT (cron definido em TZ do host/container — ver README):
  *   1. Gera próximas faturas dentro da janela LEAD_DAYS para contratos ACTIVE.
  *   2. Marca faturas OPEN cuja dueDate passou como OVERDUE.
- *   3. Suspende contratos PREPAID cujo prepaidUntil já passou (período pago
- *      acabou e não há nova fatura paga cobrindo o ciclo seguinte).
+ *   3. Suspende contratos PREPAID cujo prepaidUntil passou há mais que a
+ *      carência (mesmo threshold do pós-pago: contract>plan>5 dias).
  *   4. Suspende contratos POSTPAID com fatura vencida há mais que o threshold
  *      do plano (contract.blockAfterDays ?? plan.blockAfterDays ?? 5).
  *
@@ -114,9 +114,11 @@ export class OverdueScanService {
   }
 
   /**
-   * Suspende contratos PREPAID cujo prepaidUntil < hoje. Cliente pré-pago
-   * que não pagou a próxima cobrança perde acesso quando o período pago
-   * termina — sem dívida (vide política "cliente não deve a última").
+   * Suspende contratos PREPAID cujo período pago (prepaidUntil) acabou há mais
+   * que a carência. Aplica o MESMO threshold do pós-pago
+   * (contract.blockAfterDays ?? plan.blockAfterDays ?? 5): só corta quando
+   * `dias desde prepaidUntil > threshold`, dando N dias de tolerância antes
+   * do corte.
    *
    * Idempotente: filtra status=ACTIVE pra não suspender contrato já parado.
    */
@@ -128,17 +130,39 @@ export class OverdueScanService {
         status: PrismaContractStatus.ACTIVE,
         deletedAt: null,
         prepaidUntil: { lt: today },
+        // Respeita religue de confiança ativo: não corta enquanto o prazo vale.
+        // (expireTrustExtensions já re-suspende os vencidos antes deste passo.)
+        OR: [
+          { trustExtensionUntil: null },
+          { trustExtensionUntil: { lt: today } },
+        ],
       },
-      select: { id: true, tenantId: true, prepaidUntil: true },
+      select: {
+        id: true,
+        tenantId: true,
+        prepaidUntil: true,
+        blockAfterDays: true,
+        plan: { select: { blockAfterDays: true } },
+      },
     });
     let count = 0;
     for (const c of candidates) {
+      if (!c.prepaidUntil) continue;
+      const threshold = resolveBlockAfterDays(
+        { blockAfterDays: c.blockAfterDays },
+        c.plan ? { blockAfterDays: c.plan.blockAfterDays } : null,
+      );
+      const expiredDays = Math.floor(
+        (today.getTime() - c.prepaidUntil.getTime()) / (24 * 60 * 60 * 1000),
+      );
+      if (expiredDays <= threshold) continue; // ainda dentro da carência
       try {
         await this.contracts.applySuspend(c.tenantId, c.id, 'OVERDUE_PAYMENT', {
           manual: false,
           note:
             `Suspensão automática: pré-pago expirado em ` +
-            `${c.prepaidUntil?.toISOString().slice(0, 10) ?? '?'}`,
+            `${c.prepaidUntil.toISOString().slice(0, 10)} ` +
+            `(há ${expiredDays} dia(s), carência ${threshold})`,
         });
         count++;
       } catch (err) {
@@ -174,6 +198,11 @@ export class OverdueScanService {
             dueDate: { lt: today },
           },
         },
+        // Respeita religue de confiança ativo (vide suspendExpiredPrepaid).
+        OR: [
+          { trustExtensionUntil: null },
+          { trustExtensionUntil: { lt: today } },
+        ],
       },
       select: {
         id: true,

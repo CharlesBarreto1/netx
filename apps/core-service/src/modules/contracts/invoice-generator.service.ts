@@ -164,10 +164,48 @@ export class InvoiceGeneratorService {
     let created = 0;
     for (const c of contracts) {
       if (c.paymentMode === PaymentMode.PREPAID) {
-        // PREPAID: próximo vencimento = prepaidUntil. Se ainda não tem,
-        // pula (deveria ter sido inicializado em generateInitialInvoice).
-        if (!c.prepaidUntil) continue;
-        const nextDue = utcMidnight(c.prepaidUntil);
+        // PREPAID: próximo vencimento = prepaidUntil. Normalmente é setado em
+        // generateInitialInvoice; mas contratos ativados por caminhos que não
+        // passaram por lá ficam com prepaidUntil null e invisíveis pro cron.
+        // Auto-cura: deriva da última fatura (period_end se paga, senão
+        // vencimento) ou da ativação, persiste e segue — em vez de pular em
+        // silêncio.
+        let prepaidUntil = c.prepaidUntil;
+        if (!prepaidUntil) {
+          const last = c.invoices[0];
+          let derived: Date | null;
+          if (last) {
+            derived =
+              last.status === InvoiceStatus.PAID && last.periodEnd
+                ? last.periodEnd
+                : last.dueDate;
+          } else if (c.activatedAt) {
+            // Sem fatura nenhuma: cobra desde a ativação (1º mês).
+            derived = utcMidnight(c.activatedAt);
+          } else {
+            derived = null;
+          }
+          if (!derived) {
+            this.logger.warn(
+              `[generateUpcoming] PREPAID ${c.id} sem prepaidUntil e sem base ` +
+                `pra derivar (sem faturas nem activatedAt) — pulando`,
+            );
+            continue;
+          }
+          prepaidUntil = utcMidnight(derived);
+          await this.prisma.contract.update({
+            where: { id: c.id },
+            data: {
+              prepaidUntil,
+              cycleAnchorDay: c.cycleAnchorDay ?? prepaidUntil.getUTCDate(),
+            },
+          });
+          this.logger.warn(
+            `[generateUpcoming] PREPAID ${c.id} auto-curado: ` +
+              `prepaidUntil=${prepaidUntil.toISOString().slice(0, 10)}`,
+          );
+        }
+        const nextDue = utcMidnight(prepaidUntil);
         if (nextDue > limitDate) continue;
 
         const periodStart = nextDue;

@@ -330,6 +330,22 @@ export interface Tr069DeviceCompliance {
   pendingRebootSince: string | null;
   drifts: Tr069Drift[];
 }
+export interface Tr069DashboardQueueItem {
+  deviceId: string;
+  label: string;
+  model: string | null;
+  severity: 'ok' | 'warn' | 'crit';
+  symptom: string;
+  type: Tr069AlertType;
+  signal: number | null;
+  lastInformAt: string | null;
+}
+export interface Tr069Dashboard {
+  kpis: { online: number; offline: number; alerta: number; naoConformes: number };
+  queue: Tr069DashboardQueueItem[];
+  symptoms: Array<{ type: Tr069AlertType; count: number }>;
+}
+
 export interface CreateTr069ProfileBody {
   name: string;
   manufacturer: string;
@@ -345,9 +361,11 @@ export type Tr069AlertType =
   | 'OPTICAL_RX_LOW'
   | 'OPTICAL_RX_HIGH'
   | 'OPTICAL_TX_ABNORMAL'
+  | 'OPTICAL_FIBER_DEGRADED'
   | 'DEVICE_OFFLINE'
   | 'WIFI_WEAK_CLIENT'
-  | 'WIFI_HIGH_UTIL';
+  | 'WIFI_HIGH_UTIL'
+  | 'WAN_DOWN';
 export type Tr069AlertSeverity = 'INFO' | 'WARNING' | 'CRITICAL';
 export type Tr069AlertStatus = 'OPEN' | 'RESOLVED';
 
@@ -554,6 +572,7 @@ export const provisioningApi = {
 // /v1/tr069 (Fase 3 entrega lógica real)
 // =============================================================================
 export const tr069Api = {
+  dashboard: () => api.get<Tr069Dashboard>('/v1/tr069/dashboard'),
   listDevices: () => api.get<Tr069DeviceRow[]>('/v1/tr069/devices'),
   getDevice: (id: string) => api.get<Tr069DeviceDetailResponse>(`/v1/tr069/devices/${id}`),
   byContractPath: (contractId: string) => `/v1/tr069/by-contract/${contractId}`,

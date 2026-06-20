@@ -187,6 +187,7 @@ const messages = {
     stockReport: 'Relatório',
     provisioningPending: 'Instalações pendentes',
     olts: 'OLTs',
+    tr069Dashboard: 'Fila de diagnóstico',
     tr069Devices: 'Dispositivos TR-069',
     tr069Alerts: 'Alertas TR-069',
     tr069WifiCoverage: 'Cobertura Wi-Fi',

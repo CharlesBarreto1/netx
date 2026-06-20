@@ -18,9 +18,11 @@ export type Tr069AlertType =
   | 'OPTICAL_RX_LOW'
   | 'OPTICAL_RX_HIGH'
   | 'OPTICAL_TX_ABNORMAL'
+  | 'OPTICAL_FIBER_DEGRADED'
   | 'DEVICE_OFFLINE'
   | 'WIFI_WEAK_CLIENT'
-  | 'WIFI_HIGH_UTIL';
+  | 'WIFI_HIGH_UTIL'
+  | 'WAN_DOWN';
 
 export type Tr069AlertSeverity = 'INFO' | 'WARNING' | 'CRITICAL';
 export type Tr069AlertStatus = 'OPEN' | 'RESOLVED';
@@ -417,4 +419,27 @@ export interface Tr069ReconcileResponse {
   ok: boolean;
   complianceStatus: Tr069ComplianceStatus;
   message: string;
+}
+
+// =============================================================================
+// Dashboard "Fila de diagnóstico" (CPE Manager — landing /tr069)
+// =============================================================================
+export interface Tr069DashboardQueueItem {
+  deviceId: string;
+  /** Cliente (displayName) ou o deviceId quando não há cliente vinculado. */
+  label: string;
+  model: string | null;
+  severity: 'ok' | 'warn' | 'crit';
+  /** Mensagem do alerta de maior severidade do device. */
+  symptom: string;
+  type: Tr069AlertType;
+  /** Valor que disparou o alerta (ex.: RX dBm) — pra coluna "Sinal". */
+  signal: number | null;
+  lastInformAt: string | null;
+}
+
+export interface Tr069DashboardResponse {
+  kpis: { online: number; offline: number; alerta: number; naoConformes: number };
+  queue: Tr069DashboardQueueItem[];
+  symptoms: Array<{ type: Tr069AlertType; count: number }>;
 }
