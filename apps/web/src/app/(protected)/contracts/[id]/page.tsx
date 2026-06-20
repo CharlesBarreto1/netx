@@ -698,6 +698,26 @@ export default function ContractDetailPage() {
                             {tDetail('reversePayment')}
                           </Button>
                         )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() =>
+                            window.open(`/invoices/${inv.id}/print`, '_blank')
+                          }
+                        >
+                          Imprimir
+                        </Button>
+                        {inv.status === 'PAID' && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() =>
+                              window.open(`/receipts/invoice/${inv.id}`, '_blank')
+                            }
+                          >
+                            Recibo
+                          </Button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -744,34 +764,56 @@ export default function ContractDetailPage() {
                       {ch.paidAt ? formatDate(ch.paidAt) : '—'}
                     </td>
                     <td className="px-3 py-2 text-right">
-                      {ch.status === 'PAID' && canReverse && (
+                      <div className="flex justify-end gap-1">
                         <Button
                           size="sm"
                           variant="ghost"
-                          className="text-red-600 dark:text-red-400"
-                          onClick={() => void doUnpayCharge(ch)}
+                          onClick={() =>
+                            window.open(`/charges/${ch.id}/print`, '_blank')
+                          }
                         >
-                          {tDetail('reversePayment')}
+                          Imprimir
                         </Button>
-                      )}
-                      {ch.status === 'OPEN' && canWrite && (
-                        <div className="flex justify-end gap-1">
-                          <Button
-                            size="sm"
-                            variant="primary"
-                            onClick={() => setPayCharge(ch)}
-                          >
-                            Dar baixa
-                          </Button>
+                        {ch.status === 'PAID' && (
                           <Button
                             size="sm"
                             variant="ghost"
-                            onClick={() => setCancelCharge(ch)}
+                            onClick={() =>
+                              window.open(`/receipts/charge/${ch.id}`, '_blank')
+                            }
                           >
-                            Cancelar
+                            Recibo
                           </Button>
-                        </div>
-                      )}
+                        )}
+                        {ch.status === 'PAID' && canReverse && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-red-600 dark:text-red-400"
+                            onClick={() => void doUnpayCharge(ch)}
+                          >
+                            {tDetail('reversePayment')}
+                          </Button>
+                        )}
+                        {ch.status === 'OPEN' && canWrite && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="primary"
+                              onClick={() => setPayCharge(ch)}
+                            >
+                              Dar baixa
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setCancelCharge(ch)}
+                            >
+                              Cancelar
+                            </Button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
