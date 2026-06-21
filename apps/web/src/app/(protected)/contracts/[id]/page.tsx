@@ -63,6 +63,34 @@ export default function ContractDetailPage() {
   const tenantConfig = useTenantConfig();
   const tenantCountry = tenantConfig?.tenant?.country ?? null;
   const formatMoney = useFormatMoney();
+
+  // Abre o documento da fatura/cobrança: KuDE fiscal quando há DTE aprovado
+  // (PY); senão, o documento não fiscal.
+  const openDoc = async (
+    kind: 'invoice' | 'charge',
+    refId: string,
+  ): Promise<void> => {
+    if (tenantCountry === 'PY') {
+      try {
+        const res = await sifenApi.list({
+          ...(kind === 'invoice'
+            ? { contractInvoiceId: refId }
+            : { oneTimeChargeId: refId }),
+          status: 'APPROVED',
+          pageSize: 1,
+        });
+        const sdoc = res.data[0];
+        if (sdoc) {
+          window.open(`/fiscal/documents/${sdoc.id}/print`, '_blank');
+          return;
+        }
+      } catch {
+        // cai no documento não fiscal
+      }
+    }
+    const path = kind === 'invoice' ? 'invoices' : 'charges';
+    window.open(`/${path}/${refId}/print`, '_blank');
+  };
   const tCommon = useTranslations('common');
   const tContracts = useTranslations('contracts');
   const tDetail = useTranslations('contracts.detail');
@@ -701,9 +729,7 @@ export default function ContractDetailPage() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() =>
-                            window.open(`/invoices/${inv.id}/print`, '_blank')
-                          }
+                          onClick={() => void openDoc('invoice', inv.id)}
                         >
                           Imprimir
                         </Button>
@@ -768,9 +794,7 @@ export default function ContractDetailPage() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() =>
-                            window.open(`/charges/${ch.id}/print`, '_blank')
-                          }
+                          onClick={() => void openDoc('charge', ch.id)}
                         >
                           Imprimir
                         </Button>
