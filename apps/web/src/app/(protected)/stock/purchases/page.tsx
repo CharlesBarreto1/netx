@@ -19,6 +19,8 @@ import {
   type Purchase,
   type PurchaseAuditEntry,
   type PurchaseItemInput,
+  type PurchaseItemSerial,
+  type PurchaseItemSerials,
   type PurchasePaymentInput,
   type StockLocation,
   type Supplier,
@@ -32,6 +34,11 @@ const PAYMENT_METHODS: PaymentMethod[] = [
   'BOLETO',
   'OTHER',
 ];
+
+// Acima disso, não renderiza a grade de inputs inline (lote grande digita-se
+// depois no gerenciador de seriais, em lotes). Evita travar a tela com milhares
+// de campos.
+const MAX_INLINE_SERIALS = 60;
 
 type PayCondition = 'NONE' | 'CASH' | 'INSTALLMENTS';
 
@@ -63,6 +70,7 @@ export default function PurchasesPage() {
   const [editing, setEditing] = useState<Purchase | null>(null);
   const [viewing, setViewing] = useState<Purchase | null>(null);
   const [deleting, setDeleting] = useState<Purchase | null>(null);
+  const [managingSerials, setManagingSerials] = useState<Purchase | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function doDelete() {
@@ -129,7 +137,10 @@ export default function PurchasesPage() {
                     </td>
                     <td className="px-4 py-3">{p.supplierName ?? '—'}</td>
                     <td className="px-4 py-3 font-mono text-xs">{p.invoiceNumber ?? '—'}</td>
-                    <td className="px-4 py-3 text-right">{p.items.length}</td>
+                    <td className="px-4 py-3 text-right">
+                      {p.items.length}
+                      <SerialProgress purchase={p} />
+                    </td>
                     <td className="px-4 py-3 text-right">{formatMoney(p.totalCost)}</td>
                     <td className="px-4 py-3"><PaymentBadge purchase={p} /></td>
                     <td className="px-4 py-3 text-xs text-slate-500">{p.createdByName ?? '—'}</td>
@@ -138,6 +149,11 @@ export default function PurchasesPage() {
                         <Button variant="ghost" size="sm" onClick={() => setViewing(p)}>
                           {t('view')}
                         </Button>
+                        {canUpdate && hasPatrimonial(p) && (
+                          <Button variant="ghost" size="sm" onClick={() => setManagingSerials(p)}>
+                            {t('serials.action')}
+                          </Button>
+                        )}
                         {canUpdate && (
                           <Button variant="ghost" size="sm" onClick={() => setEditing(p)}>
                             {tc('edit')}
@@ -186,6 +202,14 @@ export default function PurchasesPage() {
 
       {viewing && <PurchaseDetailsModal purchase={viewing} onClose={() => setViewing(null)} />}
 
+      {managingSerials && (
+        <SerialManagerModal
+          purchase={managingSerials}
+          onClose={() => setManagingSerials(null)}
+          onChanged={() => mutate()}
+        />
+      )}
+
       <ConfirmDialog
         open={!!deleting}
         onClose={() => setDeleting(null)}
@@ -205,6 +229,39 @@ function formatMoney(v: string | number | null): string {
   const n = typeof v === 'string' ? Number(v) : v;
   if (!Number.isFinite(n)) return '—';
   return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/** Tem ao menos um item PATRIMONIAL (que comporta seriais). */
+function hasPatrimonial(p: Purchase): boolean {
+  return p.items.some((it) => it.productType === 'PATRIMONIAL');
+}
+
+/** Soma de seriais cadastrados vs. esperados nos itens patrimoniais da compra. */
+function serialTotals(p: Purchase): { registered: number; expected: number } {
+  let registered = 0;
+  let expected = 0;
+  for (const it of p.items) {
+    if (it.productType !== 'PATRIMONIAL') continue;
+    registered += it.serials.length;
+    expected += Math.floor(Number(it.quantity));
+  }
+  return { registered, expected };
+}
+
+// Badge "seriais X/N" sob a contagem de itens — âmbar quando ainda falta digitar.
+function SerialProgress({ purchase }: { purchase: Purchase }) {
+  const t = useTranslations('stock.purchases');
+  const { registered, expected } = serialTotals(purchase);
+  if (expected === 0) return null;
+  const complete = registered >= expected;
+  const cls = complete
+    ? 'text-slate-400'
+    : 'text-amber-600 dark:text-amber-400 font-medium';
+  return (
+    <span className={`block text-[11px] ${cls}`}>
+      {t('serials.progress', { registered, expected })}
+    </span>
+  );
 }
 
 // Situação do financeiro da compra: — (sem parcelas), À vista, ou x/y pagas
@@ -574,13 +631,15 @@ function PurchaseFormModal({
       if (!Number.isFinite(cost) || cost <= 0)
         return setError(t('errors.itemInvalidCost', { n: i + 1 }));
       if (product?.type === 'PATRIMONIAL') {
-        const serials = it.serials ?? [];
-        if (serials.length !== qty) {
+        // Lançamento parcial é permitido: valida só os preenchidos (≤ qty, sem
+        // duplicar). O restante entra depois pelo gerenciador de seriais.
+        const filled = (it.serials ?? []).map((s) => s.trim()).filter(Boolean);
+        if (filled.length > qty) {
           return setError(
-            t('errors.serialsCount', { n: i + 1, product: product.name, expected: qty, got: serials.length }),
+            t('errors.serialsTooMany', { n: i + 1, product: product.name, expected: qty, got: filled.length }),
           );
         }
-        if (new Set(serials).size !== serials.length) {
+        if (new Set(filled).size !== filled.length) {
           return setError(t('errors.serialsDuplicate', { n: i + 1 }));
         }
       } else {
@@ -626,12 +685,16 @@ function PurchaseFormModal({
         date,
         notes: notes || null,
         payment,
-        items: items.map((it) => ({
-          ...it,
-          quantity: Number(it.quantity),
-          unitCost: Number(it.unitCost),
-          serials: it.serials ?? [],
-        })),
+        items: items.map((it) => {
+          const isPat = productsById.get(it.productId)?.type === 'PATRIMONIAL';
+          return {
+            ...it,
+            quantity: Number(it.quantity),
+            unitCost: Number(it.unitCost),
+            // Só seriais preenchidos vão pro backend (parcial OK); consumível vazio.
+            serials: isPat ? (it.serials ?? []).map((s) => s.trim()).filter(Boolean) : [],
+          };
+        }),
       };
       if (initial) {
         await stockApi.updatePurchase(initial.id, payload);
@@ -743,14 +806,15 @@ function PurchaseFormModal({
                         value={it.quantity}
                         onChange={(e) => {
                           const qty = Number(e.target.value);
+                          const floored = Math.max(0, Math.floor(qty));
                           updateItem(idx, {
                             quantity: e.target.value === '' ? 1 : qty,
-                            // Pra patrimonial, garante array de seriais com tamanho == qty
+                            // Patrimonial: prepara a grade de seriais até o teto;
+                            // lote grande mantém o que já tem (digita no gerenciador).
                             serials: isPatrimonial
-                              ? Array.from(
-                                  { length: Math.max(0, Math.floor(qty)) },
-                                  (_, i) => it.serials?.[i] ?? '',
-                                )
+                              ? floored <= MAX_INLINE_SERIALS
+                                ? Array.from({ length: floored }, (_, i) => it.serials?.[i] ?? '')
+                                : (it.serials ?? []).slice(0, floored)
                               : [],
                           });
                         }}
@@ -781,26 +845,36 @@ function PurchaseFormModal({
                     </div>
                   </div>
 
-                  {/* Seriais — só pra patrimonial */}
+                  {/* Seriais — só pra patrimonial. Opcionais: pode lançar
+                      parcial (ou nenhum) e completar depois no gerenciador. */}
                   {isPatrimonial && Number(it.quantity) > 0 && (
                     <div className="mt-2">
                       <Label className="text-xs">
-                        {t('form.serials', { filled: (it.serials ?? []).filter(Boolean).length, total: Number(it.quantity) })}
+                        {t('form.serialsOptional', {
+                          filled: (it.serials ?? []).filter((s) => s.trim()).length,
+                          total: Math.floor(Number(it.quantity)),
+                        })}
                       </Label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                        {Array.from({ length: Math.floor(Number(it.quantity)) }, (_, sidx) => (
-                          <Input
-                            key={sidx}
-                            placeholder={t('form.serialPlaceholder', { n: sidx + 1 })}
-                            value={it.serials?.[sidx] ?? ''}
-                            onChange={(e) => {
-                              const next = [...(it.serials ?? [])];
-                              next[sidx] = e.target.value;
-                              updateItem(idx, { serials: next });
-                            }}
-                          />
-                        ))}
-                      </div>
+                      {Math.floor(Number(it.quantity)) <= MAX_INLINE_SERIALS ? (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                          {Array.from({ length: Math.floor(Number(it.quantity)) }, (_, sidx) => (
+                            <Input
+                              key={sidx}
+                              placeholder={t('form.serialPlaceholder', { n: sidx + 1 })}
+                              value={it.serials?.[sidx] ?? ''}
+                              onChange={(e) => {
+                                const next = [...(it.serials ?? [])];
+                                next[sidx] = e.target.value;
+                                updateItem(idx, { serials: next });
+                              }}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-2 text-xs text-slate-500 dark:border-slate-600 dark:bg-slate-900/40">
+                          {t('form.largeLotHint', { total: Math.floor(Number(it.quantity)) })}
+                        </p>
+                      )}
                     </div>
                   )}
 
@@ -961,5 +1035,274 @@ function PurchaseFormModal({
         </div>
       </form>
     </Modal>
+  );
+}
+
+// =============================================================================
+// SERIAL MANAGER — entrada incremental + correção de seriais por linha
+// =============================================================================
+function SerialManagerModal({
+  purchase,
+  onClose,
+  onChanged,
+}: {
+  purchase: Purchase;
+  onClose: () => void;
+  /** Avisa a página pra revalidar a lista (progresso/saldo mudaram). */
+  onChanged: () => void;
+}) {
+  const t = useTranslations('stock.purchases');
+  const tc = useTranslations('common');
+  const patItems = purchase.items.filter((it) => it.productType === 'PATRIMONIAL');
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="xl"
+      title={t('serials.title', { invoice: purchase.invoiceNumber ?? '—' })}
+    >
+      <div className="space-y-4">
+        <p className="rounded-md bg-slate-50 p-3 text-xs text-slate-500 dark:bg-slate-900/40 dark:text-slate-400">
+          {t('serials.help')}
+        </p>
+
+        {patItems.map((it) => (
+          <SerialItemPanel
+            key={it.id}
+            purchaseId={purchase.id}
+            item={it}
+            onChanged={onChanged}
+          />
+        ))}
+
+        <div className="flex justify-end pt-2">
+          <Button variant="ghost" onClick={onClose}>
+            {tc('close')}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function SerialItemPanel({
+  purchaseId,
+  item,
+  onChanged,
+}: {
+  purchaseId: string;
+  item: Purchase['items'][number];
+  onChanged: () => void;
+}) {
+  const t = useTranslations('stock.purchases');
+  const tc = useTranslations('common');
+  const { data, mutate, isLoading } = useSWR<PurchaseItemSerials>(
+    stockApi.purchaseItemSerialsPath(purchaseId, item.id),
+    () => stockApi.listPurchaseItemSerials(purchaseId, item.id),
+  );
+  const [batch, setBatch] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const registered = data?.registered ?? item.serials.length;
+  const expected = data?.quantity ?? Math.floor(Number(item.quantity));
+  const remaining = Math.max(0, expected - registered);
+  const complete = remaining === 0;
+
+  async function refresh() {
+    await mutate();
+    onChanged();
+  }
+
+  async function addBatch() {
+    const serials = batch
+      .split(/[\n,;\t]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (serials.length === 0) return;
+    if (serials.length > remaining) {
+      toast.error(t('serials.tooMany', { remaining }));
+      return;
+    }
+    setBusy(true);
+    try {
+      await stockApi.addPurchaseItemSerials(purchaseId, item.id, serials);
+      setBatch('');
+      await refresh();
+      toast.success(t('serials.addedToast', { count: serials.length }));
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : tc('error'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <strong className="text-sm">{item.productName ?? item.productSku ?? '—'}</strong>
+          {item.locationName && (
+            <span className="text-xs text-slate-500"> · {item.locationName}</span>
+          )}
+        </div>
+        <span
+          className={`text-xs font-medium ${
+            complete ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'
+          }`}
+        >
+          {t('serials.progress', { registered, expected })}
+        </span>
+      </div>
+
+      {!complete && (
+        <div className="mt-2">
+          <Label className="text-xs">{t('serials.addBatchLabel', { remaining })}</Label>
+          <Textarea
+            rows={3}
+            value={batch}
+            onChange={(e) => setBatch(e.target.value)}
+            placeholder={t('serials.addBatchPlaceholder')}
+            className="font-mono text-xs"
+          />
+          <div className="mt-1 flex justify-end">
+            <Button
+              type="button"
+              size="sm"
+              loading={busy}
+              disabled={!batch.trim()}
+              onClick={addBatch}
+            >
+              {t('serials.addButton')}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-2 space-y-1">
+        {isLoading && <p className="text-xs text-slate-400">{tc('loading')}</p>}
+        {data?.serials.map((s) => (
+          <SerialRow
+            key={s.id}
+            purchaseId={purchaseId}
+            itemId={item.id}
+            serial={s}
+            onMutated={refresh}
+          />
+        ))}
+        {data && data.serials.length === 0 && !isLoading && (
+          <p className="text-xs text-slate-400">{t('serials.none')}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SerialRow({
+  purchaseId,
+  itemId,
+  serial,
+  onMutated,
+}: {
+  purchaseId: string;
+  itemId: string;
+  serial: PurchaseItemSerial;
+  onMutated: () => Promise<void>;
+}) {
+  const t = useTranslations('stock.purchases');
+  const tc = useTranslations('common');
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(serial.serial);
+  const [busy, setBusy] = useState(false);
+  // Só dá pra remover do lote se ainda intocado; renomear vale sempre.
+  const canRemove = serial.status === 'IN_STOCK' && !serial.contractCode;
+
+  function cancelEdit() {
+    setEditing(false);
+    setValue(serial.serial);
+  }
+
+  async function save() {
+    const next = value.trim();
+    if (!next || next === serial.serial) return cancelEdit();
+    setBusy(true);
+    try {
+      await stockApi.renameSerial(serial.id, next);
+      setEditing(false);
+      await onMutated();
+      toast.success(t('serials.renamedToast'));
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : tc('error'));
+      setValue(serial.serial);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove() {
+    setBusy(true);
+    try {
+      await stockApi.removePurchaseItemSerial(purchaseId, itemId, serial.id);
+      await onMutated();
+      toast.success(t('serials.removedToast'));
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : tc('error'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-2">
+        <Input
+          autoFocus
+          className="h-7 flex-1 font-mono text-xs"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              return save();
+            }
+            if (e.key === 'Escape') cancelEdit();
+          }}
+        />
+        <Button type="button" size="sm" loading={busy} onClick={save}>
+          {tc('save')}
+        </Button>
+        <button type="button" className="text-xs text-slate-500 hover:underline" onClick={cancelEdit}>
+          {tc('cancel')}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 border-b border-slate-100 py-1 last:border-0 dark:border-slate-800">
+      <span className="flex-1 font-mono text-xs">{serial.serial}</span>
+      {serial.status !== 'IN_STOCK' && (
+        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+          {serial.contractCode ? t('serials.inContract', { code: serial.contractCode }) : serial.status}
+        </span>
+      )}
+      <button
+        type="button"
+        className="text-xs text-sky-600 hover:underline dark:text-sky-400"
+        onClick={() => setEditing(true)}
+      >
+        {tc('edit')}
+      </button>
+      {canRemove && (
+        <button
+          type="button"
+          disabled={busy}
+          className="text-xs text-red-600 hover:underline disabled:opacity-50 dark:text-red-400"
+          onClick={remove}
+        >
+          {t('form.remove')}
+        </button>
+      )}
+    </div>
   );
 }

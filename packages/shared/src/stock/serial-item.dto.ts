@@ -59,6 +59,17 @@ export const ChangeSerialStatusRequestSchema = z
   });
 export type ChangeSerialStatusRequest = z.infer<typeof ChangeSerialStatusRequestSchema>;
 
+/**
+ * Corrige o serial (identificador) de um patrimônio lançado com erro de
+ * digitação. Não movimenta estoque — só renomeia — então é permitido mesmo com
+ * o item já em comodato/contrato. Valida colisão com outro serial do mesmo
+ * produto no service.
+ */
+export const RenameSerialRequestSchema = z.object({
+  serial: z.string().trim().min(1, 'Serial obrigatório').max(120),
+});
+export type RenameSerialRequest = z.infer<typeof RenameSerialRequestSchema>;
+
 // ---------------------------------------------------------------------------
 // RELATÓRIO de estoque/patrimônio (agregados + detalhe + export)
 // ---------------------------------------------------------------------------

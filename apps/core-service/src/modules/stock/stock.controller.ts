@@ -13,6 +13,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ProductType } from '@prisma/client';
 import {
   AddOsConsumptionRequestSchema,
+  AddPurchaseSerialsRequestSchema,
   AllocateComodatoRequestSchema,
   ChangeSerialStatusRequestSchema,
   CreateAdjustmentRequestSchema,
@@ -23,6 +24,7 @@ import {
   CreateStockTransferRequestSchema,
   ListSerialItemsQuerySchema,
   ListStockMovementsQuerySchema,
+  RenameSerialRequestSchema,
   StockReportQuerySchema,
   ReturnComodatoRequestSchema,
   SetLocationAccessRequestSchema,
@@ -31,6 +33,7 @@ import {
   UpdateStockLocationRequestSchema,
   UpdateSupplierRequestSchema,
   type AddOsConsumptionRequest,
+  type AddPurchaseSerialsRequest,
   type AllocateComodatoRequest,
   type AuthenticatedPrincipal,
   type ChangeSerialStatusRequest,
@@ -42,6 +45,7 @@ import {
   type CreateStockTransferRequest,
   type ListSerialItemsQuery,
   type ListStockMovementsQuery,
+  type RenameSerialRequest,
   type StockReportQuery,
   type ReturnComodatoRequest,
   type SetLocationAccessRequest,
@@ -333,6 +337,43 @@ export class PurchasesController {
   ): Promise<void> {
     await this.purchases.delete(u.tenantId, u.sub, id);
   }
+
+  // ── Seriais de uma linha PATRIMONIAL (entrada incremental) ─────────────────
+
+  /** Lista os seriais já cadastrados numa linha (com status/local). */
+  @Get(':id/items/:itemId/serials')
+  @RequirePermissions('stock.read')
+  listItemSerials(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('itemId', new ParseUUIDPipe()) itemId: string,
+  ) {
+    return this.purchases.listItemSerials(u.tenantId, id, itemId);
+  }
+
+  /** Adiciona um lote de seriais a uma linha PATRIMONIAL já lançada. */
+  @Post(':id/items/:itemId/serials')
+  @RequirePermissions('stock.purchase.update')
+  addSerials(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('itemId', new ParseUUIDPipe()) itemId: string,
+    @ZodBody(AddPurchaseSerialsRequestSchema) body: AddPurchaseSerialsRequest,
+  ) {
+    return this.purchases.addSerials(u.tenantId, u.sub, id, itemId, body.serials);
+  }
+
+  /** Remove um serial adicionado por engano (só se ainda IN_STOCK, intocado). */
+  @Delete(':id/items/:itemId/serials/:serialItemId')
+  @RequirePermissions('stock.purchase.update')
+  removeSerial(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('itemId', new ParseUUIDPipe()) itemId: string,
+    @Param('serialItemId', new ParseUUIDPipe()) serialItemId: string,
+  ) {
+    return this.purchases.removeSerial(u.tenantId, u.sub, id, itemId, serialItemId);
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -440,6 +481,20 @@ export class SerialItemsController {
     @ZodBody(ChangeSerialStatusRequestSchema) body: ChangeSerialStatusRequest,
   ) {
     return this.serials.changeStatus(u.tenantId, u.sub, id, body);
+  }
+
+  /**
+   * Corrige o serial (erro de digitação) de um patrimônio. Não movimenta
+   * estoque, então funciona mesmo com o item já em comodato.
+   */
+  @Patch(':id/serial')
+  @RequirePermissions('stock.adjust')
+  renameSerial(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(RenameSerialRequestSchema) body: RenameSerialRequest,
+  ) {
+    return this.serials.renameSerial(u.tenantId, u.sub, id, body.serial);
   }
 }
 

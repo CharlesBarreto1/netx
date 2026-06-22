@@ -216,6 +216,30 @@ export interface PurchaseAuditEntry {
   afterState: unknown;
 }
 
+// Seriais de uma linha PATRIMONIAL (entrada incremental / correção).
+export interface PurchaseItemSerial {
+  id: string;
+  serial: string;
+  status:
+    | 'IN_STOCK'
+    | 'ALLOCATED'
+    | 'IN_TRANSIT'
+    | 'DEFECTIVE'
+    | 'WRITTEN_OFF'
+    | 'SOLD'
+    | 'DISCARDED';
+  locationName: string | null;
+  contractCode: string | null;
+}
+
+export interface PurchaseItemSerials {
+  itemId: string;
+  productSku: string;
+  quantity: number;
+  registered: number;
+  serials: PurchaseItemSerial[];
+}
+
 // =============================================================================
 // STOCK MOVEMENTS (kardex)
 // =============================================================================
@@ -357,6 +381,28 @@ export const stockApi = {
   /** Trilha de auditoria da compra (criação + edições, com before/after). */
   getPurchaseAudit: (id: string) =>
     api.get<PurchaseAuditEntry[]>(`/v1/stock/purchases/${id}/audit`),
+
+  // Seriais incrementais de uma linha PATRIMONIAL ----------------------------
+  purchaseItemSerialsPath: (purchaseId: string, itemId: string) =>
+    `/v1/stock/purchases/${purchaseId}/items/${itemId}/serials`,
+  listPurchaseItemSerials: (purchaseId: string, itemId: string) =>
+    api.get<PurchaseItemSerials>(
+      `/v1/stock/purchases/${purchaseId}/items/${itemId}/serials`,
+    ),
+  /** Adiciona um lote de seriais a uma linha já lançada. */
+  addPurchaseItemSerials: (purchaseId: string, itemId: string, serials: string[]) =>
+    api.post<PurchaseItemSerials>(
+      `/v1/stock/purchases/${purchaseId}/items/${itemId}/serials`,
+      { serials },
+    ),
+  /** Remove um serial adicionado por engano (só se ainda IN_STOCK, intocado). */
+  removePurchaseItemSerial: (purchaseId: string, itemId: string, serialItemId: string) =>
+    api.delete<PurchaseItemSerials>(
+      `/v1/stock/purchases/${purchaseId}/items/${itemId}/serials/${serialItemId}`,
+    ),
+  /** Corrige o serial (erro de digitação) — funciona mesmo em comodato. */
+  renameSerial: (serialItemId: string, serial: string) =>
+    api.patch<SerialItem>(`/v1/stock/serial-items/${serialItemId}/serial`, { serial }),
 
   // Movements (kardex) -------------------------------------------------------
   movementsPath: (params?: ListMovementsQuery) =>

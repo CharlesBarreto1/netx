@@ -235,9 +235,11 @@ export class PurchasesService {
     for (const item of input.items) {
       const product = productById.get(item.productId)!;
       if (product.type === 'PATRIMONIAL') {
-        if (item.serials.length !== Math.floor(item.quantity)) {
+        // Lançamento PARCIAL é permitido (0 <= serials <= quantity). O restante
+        // é digitado depois via addSerials. Só barra excesso.
+        if (item.serials.length > Math.floor(item.quantity)) {
           throw new BadRequestException(
-            `Produto ${product.sku} é PATRIMONIAL — passe ${item.quantity} serial(s), recebeu ${item.serials.length}`,
+            `Produto ${product.sku} é PATRIMONIAL — no máximo ${item.quantity} serial(s), recebeu ${item.serials.length}`,
           );
         }
         // quantity deve ser inteiro pra patrimonial
@@ -320,7 +322,7 @@ export class PurchasesService {
       const product = productById.get(item.productId)!;
       const itemTotal = Math.round(item.quantity * item.unitCost * 10000) / 10000;
 
-      await tx.purchaseItem.create({
+      const purchaseItem = await tx.purchaseItem.create({
         data: {
           tenantId,
           purchaseId,
@@ -335,22 +337,28 @@ export class PurchasesService {
       });
 
       // Recalcula custo médio do produto ANTES de atualizar saldo — usa a
-      // quantidade ANTERIOR ao incremento.
-      if (incrementalCost) {
+      // quantidade ANTERIOR ao incremento. Pra PATRIMONIAL a quantidade que de
+      // fato entra é o nº de seriais criados agora (pode ser parcial, < quantity);
+      // os seriais restantes recalculam a média quando forem adicionados.
+      const inboundQty =
+        product.type === 'PATRIMONIAL' ? item.serials.length : item.quantity;
+      if (incrementalCost && inboundQty > 0) {
         await this.products.recalcAverageCost(
           tx,
           product.id,
-          item.quantity,
+          inboundQty,
           item.unitCost,
         );
       }
 
       if (product.type === 'PATRIMONIAL') {
-        // Cria N SerialItems
+        // Cria N SerialItems vinculados à linha (purchaseItemId). N pode ser
+        // 0 (lançamento parcial) — nesse caso nada é criado aqui.
         await tx.serialItem.createMany({
           data: item.serials.map((serial) => ({
             tenantId,
             productId: product.id,
+            purchaseItemId: purchaseItem.id,
             serial: serial.trim(),
             status: 'IN_STOCK' as const,
             locationId: item.locationId,
@@ -791,6 +799,245 @@ export class PurchasesService {
       }
     }
     return affectedProductIds;
+  }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // ENTRADA INCREMENTAL de seriais numa linha PATRIMONIAL já lançada.
+  // Resolve o caso do lote grande (ex.: 2000 ONTs): lança-se a NF com as
+  // quantidades e vai-se digitando/escaneando os seriais aos poucos, sem REPLACE
+  // e sem trava de "nada movido". Cada serial vira SerialItem + kardex na hora.
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /** Carrega a linha + valida que é PATRIMONIAL e pertence à compra/tenant. */
+  private async loadPatrimonialItem(
+    tenantId: string,
+    purchaseId: string,
+    itemId: string,
+  ) {
+    const item = await this.prisma.purchaseItem.findFirst({
+      where: { id: itemId, purchaseId, tenantId },
+      include: {
+        purchase: { select: { date: true } },
+        product: { select: { id: true, sku: true, type: true } },
+      },
+    });
+    if (!item) throw new NotFoundException('Item de compra não encontrado');
+    if (item.product.type !== 'PATRIMONIAL') {
+      throw new BadRequestException(
+        'Seriais só se aplicam a itens PATRIMONIAIS.',
+      );
+    }
+    return item;
+  }
+
+  /**
+   * Lista os seriais (SerialItem) de uma linha de compra, com status e local —
+   * usado pela tela de gestão de seriais (renomear/remover pontualmente).
+   */
+  async listItemSerials(tenantId: string, purchaseId: string, itemId: string) {
+    const item = await this.loadPatrimonialItem(tenantId, purchaseId, itemId);
+    const serials = await this.prisma.serialItem.findMany({
+      where: { tenantId, purchaseItemId: item.id },
+      orderBy: { serial: 'asc' },
+      include: {
+        location: { select: { name: true } },
+        contract: { select: { code: true } },
+      },
+    });
+    return {
+      itemId: item.id,
+      productSku: item.product.sku,
+      quantity: Number(item.quantity),
+      registered: serials.length,
+      serials: serials.map((s) => ({
+        id: s.id,
+        serial: s.serial,
+        status: s.status,
+        locationName: s.location?.name ?? null,
+        contractCode: s.contract?.code ?? null,
+      })),
+    };
+  }
+
+  /**
+   * Adiciona um lote de seriais a uma linha PATRIMONIAL. Valida: não exceder a
+   * quantidade da linha, únicos no lote e sem colisão no DB. Cria os SerialItems
+   * (IN_STOCK, no local da linha), o kardex (PURCHASE) e atualiza o cache
+   * desnormalizado `serials`. Recalcula o custo médio com as unidades que
+   * entraram agora. Não toca financeiro (total da NF independe da serialização).
+   */
+  async addSerials(
+    tenantId: string,
+    actorUserId: string,
+    purchaseId: string,
+    itemId: string,
+    rawSerials: string[],
+  ) {
+    const item = await this.loadPatrimonialItem(tenantId, purchaseId, itemId);
+
+    // Precisa de acesso de escrita no local onde a linha foi recebida.
+    await this.locations.assertCanWrite(tenantId, actorUserId, item.locationId);
+
+    const serials = rawSerials.map((s) => s.trim()).filter((s) => s.length > 0);
+    if (serials.length === 0) {
+      throw new BadRequestException('Informe pelo menos 1 serial.');
+    }
+    // Únicos dentro do lote.
+    const set = new Set(serials);
+    if (set.size !== serials.length) {
+      throw new BadRequestException('Há seriais duplicados no lote.');
+    }
+
+    const already = item.serials.length;
+    const capacity = Math.floor(Number(item.quantity)) - already;
+    if (serials.length > capacity) {
+      throw new BadRequestException(
+        `A linha comporta mais ${capacity} serial(is) (${already}/${Math.floor(
+          Number(item.quantity),
+        )} já cadastrados), recebeu ${serials.length}.`,
+      );
+    }
+
+    // Colisão com seriais já existentes do mesmo produto (qualquer compra).
+    const existing = await this.prisma.serialItem.findMany({
+      where: { tenantId, productId: item.productId, serial: { in: serials } },
+      select: { serial: true },
+    });
+    if (existing.length > 0) {
+      throw new ConflictException(
+        `Serial(is) já cadastrado(s): ${existing.map((e) => e.serial).join(', ')}`,
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // Recalcula o custo médio ANTES de criar os seriais — o recalc incremental
+      // usa a contagem ANTERIOR ao incremento (mesma ordem do caminho de criação).
+      await this.products.recalcAverageCost(
+        tx,
+        item.productId,
+        serials.length,
+        Number(item.unitCost),
+      );
+
+      await tx.serialItem.createMany({
+        data: serials.map((serial) => ({
+          tenantId,
+          productId: item.productId,
+          purchaseItemId: item.id,
+          serial,
+          status: 'IN_STOCK' as const,
+          locationId: item.locationId,
+          acquisitionCost: item.unitCost,
+          acquisitionDate: item.purchase.date,
+        })),
+      });
+
+      const created = await tx.serialItem.findMany({
+        where: { tenantId, productId: item.productId, serial: { in: serials } },
+        select: { id: true },
+      });
+      await tx.stockMovement.createMany({
+        data: created.map((s) => ({
+          tenantId,
+          type: 'PURCHASE' as const,
+          productId: item.productId,
+          serialItemId: s.id,
+          fromLocationId: null,
+          toLocationId: item.locationId,
+          quantity: 1,
+          unitCost: item.unitCost,
+          totalCost: item.unitCost,
+          purchaseId,
+          createdById: actorUserId,
+        })),
+      });
+
+      await tx.purchaseItem.update({
+        where: { id: item.id },
+        data: { serials: { push: serials } },
+      });
+    });
+
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'purchase.serials_added',
+      resource: 'purchases',
+      resourceId: purchaseId,
+      afterState: { itemId: item.id, sku: item.product.sku, added: serials },
+    });
+
+    return this.listItemSerials(tenantId, purchaseId, itemId);
+  }
+
+  /**
+   * Remove um serial adicionado por engano de uma linha PATRIMONIAL. Só é
+   * permitido se aquele patrimônio ainda está IN_STOCK no local da linha, sem
+   * contrato e sem movimentação posterior à compra (mesmas travas do delete).
+   * Desfaz SerialItem + kardex, tira do cache `serials` e recomputa o custo.
+   */
+  async removeSerial(
+    tenantId: string,
+    actorUserId: string,
+    purchaseId: string,
+    itemId: string,
+    serialItemId: string,
+  ) {
+    const item = await this.loadPatrimonialItem(tenantId, purchaseId, itemId);
+
+    const serial = await this.prisma.serialItem.findFirst({
+      where: { id: serialItemId, tenantId, purchaseItemId: item.id },
+      select: { id: true, serial: true, status: true, locationId: true, contractId: true },
+    });
+    if (!serial) throw new NotFoundException('Serial não encontrado nesta linha.');
+
+    if (
+      serial.status !== 'IN_STOCK' ||
+      serial.contractId ||
+      serial.locationId !== item.locationId
+    ) {
+      throw new ConflictException(
+        `Não dá pra remover ${serial.serial}: já foi movimentado (situação ${serial.status}${
+          serial.contractId ? ', em contrato' : ''
+        }). Corrija o serial (renomear) ou use um ajuste de estoque.`,
+      );
+    }
+    // Movimentação posterior à compra?
+    const extraMovements = await this.prisma.stockMovement.count({
+      where: {
+        tenantId,
+        serialItemId: serial.id,
+        OR: [{ purchaseId: null }, { purchaseId: { not: purchaseId } }],
+      },
+    });
+    if (extraMovements > 0) {
+      throw new ConflictException(
+        `Não dá pra remover ${serial.serial}: já teve movimentação posterior. Use um ajuste de estoque.`,
+      );
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.stockMovement.deleteMany({
+        where: { tenantId, serialItemId: serial.id, purchaseId },
+      });
+      await tx.serialItem.delete({ where: { id: serial.id } });
+      await tx.purchaseItem.update({
+        where: { id: item.id },
+        data: { serials: item.serials.filter((s) => s !== serial.serial) },
+      });
+      await this.products.recomputeAverageCost(tx, item.productId);
+    });
+
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'purchase.serial_removed',
+      resource: 'purchases',
+      resourceId: purchaseId,
+      beforeState: { itemId: item.id, sku: item.product.sku, serial: serial.serial },
+    });
+
+    return this.listItemSerials(tenantId, purchaseId, itemId);
   }
 
   /**

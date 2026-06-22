@@ -2540,6 +2540,11 @@ model SerialItem {
   // FK em migration 20260520000000_stock_phase2_comodato_consumption.
   contractId      String?      @map("contract_id") @db.Uuid
 
+  // Linha de compra que originou este patrimônio (null = veio de ajuste de
+  // entrada ou de backfill sem correspondência). Permite entrada incremental de
+  // seriais e reversão por FK (sem casar string). SetNull ao excluir a compra.
+  purchaseItemId  String?      @map("purchase_item_id") @db.Uuid
+
   acquisitionCost Decimal?     @map("acquisition_cost") @db.Decimal(14, 4)
   acquisitionDate DateTime?    @map("acquisition_date")
   allocatedAt     DateTime?    @map("allocated_at")
@@ -2554,13 +2559,15 @@ model SerialItem {
   // SetNull: se contrato for deletado (hoje bloqueado por Restrict em Contract→
   // Customer; defensive aqui), serial volta ao "limbo" sem contrato. Status NÃO
   // muda automaticamente — operador deve devolver via UI/comodato.return.
-  contract  Contract?       @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  contract     Contract?      @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  purchaseItem PurchaseItem?  @relation(fields: [purchaseItemId], references: [id], onDelete: SetNull)
   movements StockMovement[]
 
   @@unique([tenantId, productId, serial])
   @@index([tenantId, status])
   @@index([tenantId, contractId])
   @@index([tenantId, locationId, status])
+  @@index([purchaseItemId])
   @@map("serial_items")
 }
 
@@ -2664,6 +2671,9 @@ model PurchaseItem {
   purchase Purchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
   product  Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
   location StockLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  // Seriais cadastrados nesta linha (PATRIMONIAL) — vínculo forte que substitui
+  // o casamento por string. A coluna `serials` acima continua como cache/denorm.
+  serialItems SerialItem[]
 
   @@index([purchaseId])
   @@index([productId])

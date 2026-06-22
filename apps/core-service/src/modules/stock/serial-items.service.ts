@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { Prisma, SerialStatus as PrismaSerialStatus } from '@prisma/client';
 
 import {
@@ -284,6 +289,84 @@ export class SerialItemsService {
       product: { sku: item.product.sku, name: item.product.name },
       events,
     };
+  }
+
+  /**
+   * Corrige o serial (identificador) de um patrimônio lançado com erro de
+   * digitação. NÃO movimenta estoque — só renomeia — então é permitido mesmo
+   * com o item já em comodato/contrato (resolve o caso em que editar a compra
+   * inteira é impossível porque algo já foi movimentado). Mantém o cache
+   * desnormalizado `PurchaseItem.serials` em sincronia quando houver vínculo.
+   */
+  async renameSerial(
+    tenantId: string,
+    actorUserId: string,
+    id: string,
+    newSerialRaw: string,
+  ): Promise<SerialItemResponse> {
+    const item = await this.prisma.serialItem.findFirst({
+      where: { id, tenantId },
+      select: {
+        id: true,
+        serial: true,
+        productId: true,
+        purchaseItemId: true,
+        product: { select: { sku: true } },
+      },
+    });
+    if (!item) throw new NotFoundException('Patrimônio não encontrado');
+
+    const newSerial = newSerialRaw.trim();
+    if (!newSerial) throw new BadRequestException('Serial obrigatório.');
+    if (newSerial === item.serial) {
+      throw new BadRequestException('O serial é o mesmo — nada a corrigir.');
+    }
+
+    // Colisão com outro serial do mesmo produto (constraint unique por
+    // tenant+produto+serial; checamos antes pra erro amigável).
+    const clash = await this.prisma.serialItem.findFirst({
+      where: { tenantId, productId: item.productId, serial: newSerial, NOT: { id } },
+      select: { id: true },
+    });
+    if (clash) {
+      throw new ConflictException(
+        `Já existe o serial "${newSerial}" pro produto ${item.product.sku}.`,
+      );
+    }
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const u = await tx.serialItem.update({
+        where: { id: item.id },
+        data: { serial: newSerial },
+        include: SERIAL_INCLUDE,
+      });
+      // Sincroniza o cache desnormalizado da linha de compra (se houver).
+      if (item.purchaseItemId) {
+        const pi = await tx.purchaseItem.findUnique({
+          where: { id: item.purchaseItemId },
+          select: { serials: true },
+        });
+        if (pi) {
+          await tx.purchaseItem.update({
+            where: { id: item.purchaseItemId },
+            data: { serials: pi.serials.map((s) => (s === item.serial ? newSerial : s)) },
+          });
+        }
+      }
+      return u;
+    });
+
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'stock.serial.renamed',
+      resource: 'serial_items',
+      resourceId: id,
+      beforeState: { serial: item.serial },
+      afterState: { serial: newSerial },
+    });
+
+    return toResponse(updated);
   }
 
   async changeStatus(
