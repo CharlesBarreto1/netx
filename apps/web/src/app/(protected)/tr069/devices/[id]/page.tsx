@@ -13,9 +13,14 @@ import {
   Gauge as GaugeIcon,
   HardDriveDownload,
   Network,
+  Plus,
   RefreshCw,
   RotateCcw,
+  Router,
+  Search,
   ShieldCheck,
+  StickyNote,
+  Trash2,
   TriangleAlert,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
@@ -29,16 +34,33 @@ import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Modal } from '@/components/ui/Modal';
 import { PageLoader } from '@/components/ui/Spinner';
-import { Gauge, LineChart, RssiBars, TR069_COLORS } from '@/components/tr069/Charts';
+import {
+  BarHeatmap,
+  Gauge,
+  LineChart,
+  MiniBars,
+  RssiBars,
+  StatusGrid,
+  TR069_COLORS,
+} from '@/components/tr069/Charts';
 import { notify } from '@/lib/notify';
 import {
   COMPLIANCE_META,
   provisioningApi,
   tr069Api,
+  TR069_WIFI_CHANNELS,
+  TR069_WIFI_TX_POWER_LEVELS,
+  TR069_WIFI_WIDTHS,
+  TR069_ROUTER_TZ_OFFSETS,
   type Tr069AlertSeverity,
+  type Tr069DeviceNoteDto,
   type Tr069DiagnosticDto,
+  type Tr069ProbeResultDto,
   type Tr069DriftStatus,
   type Tr069OpticalHealth,
+  type Tr069WifiBand,
+  type SetWifiRadioBody,
+  type SetRouterSettingsBody,
 } from '@/lib/provisioning-api';
 
 const DRIFT_LABEL: Record<Tr069DriftStatus, string> = {
@@ -102,6 +124,8 @@ export default function Tr069DeviceDetailPage() {
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<TabKey>('geral');
   const [modal, setModal] = useState<'reboot' | 'firmware' | 'reprovision' | null>(null);
+  const [wifiEdit, setWifiEdit] = useState<Tr069WifiBand | null>(null);
+  const [routerOpen, setRouterOpen] = useState(false);
   const [fwUrl, setFwUrl] = useState('');
 
   const { data, isLoading, error, mutate } = useSWR(
@@ -127,6 +151,11 @@ export default function Tr069DeviceDetailPage() {
   const { data: deviceParams } = useSWR(
     id ? `tr069/devices/${id}/parameters` : null,
     () => tr069Api.deviceParameters(id),
+  );
+  const { data: deviceHistory } = useSWR(
+    id && tab === 'hist' ? `tr069/devices/${id}/history` : null,
+    () => tr069Api.deviceHistory(id),
+    { refreshInterval: 60_000 },
   );
   const [paramSearch, setParamSearch] = useState('');
   const [paramPage, setParamPage] = useState(0);
@@ -220,6 +249,27 @@ export default function Tr069DeviceDetailPage() {
     .map((h: Tr069DiagnosticDto) => h.rxPower)
     .filter((v): v is number => v !== null)
     .reverse();
+
+  // Throughput WAN: delta de bytes ÷ delta de tempo entre pontos da série (Mbps).
+  const chrono = (history ?? []).slice().reverse(); // antigo → novo
+  const downPts: number[] = [];
+  const upPts: number[] = [];
+  for (let i = 1; i < chrono.length; i++) {
+    const a = chrono[i - 1];
+    const b = chrono[i];
+    if (a.wanRxBytes == null || b.wanRxBytes == null || a.wanTxBytes == null || b.wanTxBytes == null) {
+      continue;
+    }
+    const dt = (new Date(b.capturedAt).getTime() - new Date(a.capturedAt).getTime()) / 1000;
+    if (dt <= 0) continue;
+    const dRx = b.wanRxBytes - a.wanRxBytes;
+    const dTx = b.wanTxBytes - a.wanTxBytes;
+    if (dRx < 0 || dTx < 0) continue; // contador zerou/estourou — pula o intervalo
+    downPts.push(Math.round(((dRx * 8) / dt / 1e6) * 10) / 10);
+    upPts.push(Math.round(((dTx * 8) / dt / 1e6) * 10) / 10);
+  }
+  const lastDown = downPts.length ? downPts[downPts.length - 1] : null;
+  const lastUp = upPts.length ? upPts[upPts.length - 1] : null;
   const lastDiagTask = d.recentTasks.find((task) => task.action === 'GET_PARAMS');
   const paramList = (deviceParams ?? []).filter((p) =>
     `${p.name} ${p.value}`.toLowerCase().includes(paramSearch.toLowerCase()),
@@ -268,6 +318,12 @@ export default function Tr069DeviceDetailPage() {
                   <span>SN {d.ont.snGpon}</span>
                 </>
               )}
+              {d.ont?.macAddress && (
+                <>
+                  <span>·</span>
+                  <span>MAC {d.ont.macAddress}</span>
+                </>
+              )}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -279,6 +335,9 @@ export default function Tr069DeviceDetailPage() {
             </Button>
             <Button variant="outline" size="sm" onClick={() => setModal('firmware')}>
               <HardDriveDownload className="mr-1 h-4 w-4" /> {t('detail.firmware')}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setRouterOpen(true)}>
+              <Router className="mr-1 h-4 w-4" /> Roteador
             </Button>
             {cust && (
               <Button variant="outline" size="sm" onClick={() => setModal('reprovision')}>
@@ -341,6 +400,76 @@ export default function Tr069DeviceDetailPage() {
             />
             <Metric label="Temperatura" value={fmt(latest?.temperature, '°C')} big />
             <Metric label="Tensão" value={fmt(latest?.voltage, 'V')} big />
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Recursos do CPE</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {latest && (latest.cpuUsage !== null || latest.memUsage !== null || latest.deviceTemp !== null) ? (
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <Gauge
+                      value={latest.cpuUsage ?? 0}
+                      min={0}
+                      max={100}
+                      color={(latest.cpuUsage ?? 0) > 80 ? TR069_COLORS.crit : TR069_COLORS.blue}
+                      display={latest.cpuUsage === null ? '—' : `${latest.cpuUsage}%`}
+                    />
+                    <p className="text-center text-xs text-slate-500">CPU</p>
+                  </div>
+                  <div>
+                    <Gauge
+                      value={latest.memUsage ?? 0}
+                      min={0}
+                      max={100}
+                      color={(latest.memUsage ?? 0) > 85 ? TR069_COLORS.crit : TR069_COLORS.blue}
+                      display={latest.memUsage === null ? '—' : `${latest.memUsage}%`}
+                    />
+                    <p className="text-center text-xs text-slate-500">Memória</p>
+                  </div>
+                  <div>
+                    <Gauge
+                      value={latest.deviceTemp ?? 0}
+                      min={0}
+                      max={90}
+                      color={(latest.deviceTemp ?? 0) > 65 ? TR069_COLORS.crit : TR069_COLORS.ok}
+                      display={latest.deviceTemp === null ? '—' : `${latest.deviceTemp}°`}
+                    />
+                    <p className="text-center text-xs text-slate-500">Temp</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">Sem coleta de recursos ainda.</p>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Throughput WAN (painel escuro + line chart down/up) */}
+          <div className="rounded-xl border border-slate-800 bg-[#0e1726] p-4">
+            <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+              <span className="text-slate-400">Throughput WAN (Mbps)</span>
+              <span className="flex gap-3 font-mono">
+                <span style={{ color: TR069_COLORS.blueChart }}>
+                  ↓ {lastDown === null ? '—' : lastDown}
+                </span>
+                <span style={{ color: TR069_COLORS.ok }}>↑ {lastUp === null ? '—' : lastUp}</span>
+              </span>
+            </div>
+            {downPts.length >= 2 ? (
+              <LineChart
+                series={[
+                  { data: downPts, color: TR069_COLORS.blueChart },
+                  { data: upPts, color: TR069_COLORS.ok, fill: false },
+                ]}
+                height={140}
+              />
+            ) : (
+              <p className="text-sm text-slate-500">
+                Série insuficiente — a vazão aparece após 2+ coletas com contadores de bytes.
+              </p>
+            )}
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
@@ -422,6 +551,8 @@ export default function Tr069DeviceDetailPage() {
                 </CardContent>
               </Card>
             )}
+
+            <NotesCard deviceId={id} />
           </div>
         </div>
       )}
@@ -549,6 +680,21 @@ export default function Tr069DeviceDetailPage() {
             <DiagEmpty t={t} lastDiagTask={lastDiagTask} />
           ) : (
             <>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <RadioCard
+                  band="2.4G"
+                  channel={latest.wifiChannel24}
+                  clients={latest.wifiClients24}
+                  onEdit={() => setWifiEdit('2.4G')}
+                />
+                <RadioCard
+                  band="5G"
+                  channel={latest.wifiChannel5}
+                  clients={latest.wifiClients5}
+                  onEdit={() => setWifiEdit('5G')}
+                />
+              </div>
+              <ChannelScanCard deviceId={id} currentChannel={latest.wifiChannel24} />
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
                 <Metric label={t('detail.clients24')} value={fmt(latest.wifiClients24, '')} big />
                 <Metric label={t('detail.clients5')} value={fmt(latest.wifiClients5, '')} big />
@@ -619,6 +765,90 @@ export default function Tr069DeviceDetailPage() {
       {/* ───────── Histórico ───────── */}
       {tab === 'hist' && (
         <div className="space-y-4">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Reboots &amp; quedas · 14 dias</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <MiniBars
+                  data={(deviceHistory?.daily ?? []).map((dd) => dd.reboots + dd.outages)}
+                  color={TR069_COLORS.purple}
+                />
+                <div className="flex gap-4 text-xs text-slate-500">
+                  <span>
+                    Reboots:{' '}
+                    <span className="font-medium text-slate-900 dark:text-slate-100">
+                      {(deviceHistory?.daily ?? []).reduce((s, dd) => s + dd.reboots, 0)}
+                    </span>
+                  </span>
+                  <span>
+                    Quedas:{' '}
+                    <span className="font-medium text-slate-900 dark:text-slate-100">
+                      {(deviceHistory?.daily ?? []).reduce((s, dd) => s + dd.outages, 0)}
+                    </span>
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex-row items-center justify-between">
+                <CardTitle>Disponibilidade · 30 dias</CardTitle>
+                <span className="font-mono text-lg font-semibold text-emerald-600 dark:text-emerald-400">
+                  {deviceHistory ? `${deviceHistory.availabilityPct}%` : '—'}
+                </span>
+              </CardHeader>
+              <CardContent>
+                {deviceHistory && deviceHistory.availability.length > 0 ? (
+                  <StatusGrid days={deviceHistory.availability} />
+                ) : (
+                  <p className="text-sm text-slate-500">Sem dados de disponibilidade.</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Linha do tempo de eventos</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {!deviceHistory || deviceHistory.timeline.length === 0 ? (
+                <p className="text-sm text-slate-500">Nenhum evento recente.</p>
+              ) : (
+                <ul className="space-y-3">
+                  {deviceHistory.timeline.map((ev, i) => (
+                    <li key={i} className="flex gap-3">
+                      <span
+                        className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+                        style={{
+                          background:
+                            ev.severity === 'crit'
+                              ? TR069_COLORS.crit
+                              : ev.severity === 'warn'
+                                ? TR069_COLORS.warn
+                                : ev.severity === 'ok'
+                                  ? TR069_COLORS.ok
+                                  : TR069_COLORS.blueChart,
+                        }}
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium">{ev.title}</p>
+                        {ev.description && (
+                          <p className="break-words text-xs text-slate-500">{ev.description}</p>
+                        )}
+                      </div>
+                      <span className="shrink-0 font-mono text-xs text-slate-400">
+                        {new Date(ev.at).toLocaleString('pt-BR')}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </CardContent>
+          </Card>
+
           {d.openAlerts.length > 0 && (
             <div className="space-y-2">
               {d.openAlerts.map((a) => (
@@ -752,6 +982,8 @@ export default function Tr069DeviceDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          <ProbeCard deviceId={id} />
         </div>
       )}
       {/* Modais de ação */}
@@ -800,6 +1032,30 @@ export default function Tr069DeviceDetailPage() {
           />
         </label>
       </Modal>
+
+      {routerOpen && (
+        <RouterSettingsModal
+          deviceId={id}
+          onClose={() => setRouterOpen(false)}
+          onSaved={() => {
+            setRouterOpen(false);
+            void mutate();
+          }}
+        />
+      )}
+
+      {wifiEdit && (
+        <WifiEditModal
+          deviceId={id}
+          band={wifiEdit}
+          currentChannel={wifiEdit === '2.4G' ? latest?.wifiChannel24 ?? null : latest?.wifiChannel5 ?? null}
+          onClose={() => setWifiEdit(null)}
+          onSaved={() => {
+            setWifiEdit(null);
+            void mutate();
+          }}
+        />
+      )}
 
       <Modal
         open={modal === 'reprovision'}
@@ -873,6 +1129,550 @@ function Metric({
       <p className="text-xs text-slate-500">{label}</p>
       <p className={`${big ? 'text-2xl font-bold' : 'text-base font-medium'} ${color}`}>{value}</p>
     </div>
+  );
+}
+
+function ChannelScanCard({
+  deviceId,
+  currentChannel,
+}: {
+  deviceId: string;
+  currentChannel: number | null;
+}) {
+  const { data, mutate } = useSWR(
+    `tr069/devices/${deviceId}/wifi-scan`,
+    () => tr069Api.wifiScan(deviceId),
+    { refreshInterval: (d) => (d?.pending ? 5000 : 0) },
+  );
+  const [busy, setBusy] = useState(false);
+
+  const scan = async () => {
+    setBusy(true);
+    try {
+      const res = await tr069Api.requestWifiScan(deviceId);
+      notify.success('Scan disparado', { description: res.message });
+      await mutate();
+    } catch (e) {
+      notify.apiError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const channels24 = data?.channels24 ?? [];
+  const bars = channels24.map((c) => ({
+    label: String(c.channel),
+    value: c.count,
+    active: c.channel === currentChannel,
+  }));
+  // Sugestão: entre os canais não sobrepostos (1/6/11), o menos ocupado.
+  const suggestion = [1, 6, 11]
+    .map((ch) => ({ ch, count: channels24.find((c) => c.channel === ch)?.count ?? 0 }))
+    .sort((a, b) => a.count - b.count)[0];
+  const hasData = channels24.some((c) => c.count > 0);
+
+  return (
+    <div className="rounded-xl border border-slate-800 bg-[#0e1726] p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <p className="text-xs text-slate-400">
+          Ocupação de canais 2.4 GHz
+          {data?.neighbors.length ? ` · ${data.neighbors.length} redes` : ''}
+        </p>
+        <Button variant="secondary" size="sm" loading={busy} onClick={scan}>
+          <Search className="mr-1 h-4 w-4" /> Escanear
+        </Button>
+      </div>
+      {hasData ? (
+        <>
+          <BarHeatmap bars={bars} />
+          {suggestion && currentChannel !== null && suggestion.ch !== currentChannel && (
+            <p className="mt-3 text-xs text-amber-300">
+              Canal atual {currentChannel}. Sugestão: migrar para o canal {suggestion.ch} (menos
+              congestionado).
+            </p>
+          )}
+        </>
+      ) : (
+        <p className="text-sm text-slate-500">
+          {data?.pending
+            ? 'Escaneando… o resultado chega no próximo Inform.'
+            : 'Sem dados de vizinhança. Clique em Escanear.'}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function RadioCard({
+  band,
+  channel,
+  clients,
+  onEdit,
+}: {
+  band: Tr069WifiBand;
+  channel: number | null;
+  clients: number | null;
+  onEdit: () => void;
+}) {
+  return (
+    <Card>
+      <CardContent className="flex items-center justify-between gap-3 pt-6">
+        <div>
+          <p className="text-sm font-semibold">Rádio {band}</p>
+          <p className="mt-0.5 font-mono text-xs text-slate-500">
+            Canal {channel ?? '—'} · {clients ?? 0} cliente(s)
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={onEdit}>
+          Editar
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Valor especial do select = "não alterar este campo". */
+const KEEP = '__keep__';
+
+function RouterSettingsModal({
+  deviceId,
+  onClose,
+  onSaved,
+}: {
+  deviceId: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [steeringSel, setSteeringSel] = useState<string>(KEEP);
+  const [ntpSel, setNtpSel] = useState<string>(KEEP);
+  const [tzSel, setTzSel] = useState<string>(KEEP);
+  const [ntpServer, setNtpServer] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const dirty =
+    steeringSel !== KEEP || ntpSel !== KEEP || tzSel !== KEEP || ntpServer.trim() !== '';
+
+  const save = async () => {
+    const body: SetRouterSettingsBody = {};
+    if (steeringSel !== KEEP) body.bandSteering = steeringSel === 'on';
+    if (ntpSel !== KEEP) body.timeEnable = ntpSel === 'on';
+    if (tzSel !== KEEP) body.timeZoneOffset = tzSel;
+    if (ntpServer.trim()) body.ntpServer = ntpServer.trim();
+    setBusy(true);
+    try {
+      const res = await tr069Api.setRouter(deviceId, body);
+      notify.success('Roteador enfileirado', { description: res.message });
+      onSaved();
+    } catch (e) {
+      notify.apiError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const selCls =
+    'mt-1 w-full rounded-md border border-slate-200 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700';
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Configurações do roteador"
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button variant="primary" size="sm" loading={busy} disabled={!dirty} onClick={save}>
+            Aplicar
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <p className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/50">
+          UPnP e EasyMesh não são expostos por este firmware via TR-069. Aplica no próximo Inform.
+        </p>
+
+        <label className="block text-sm">
+          <span className="text-slate-500">Band steering (2.4G/5G unificado)</span>
+          <select className={selCls} value={steeringSel} onChange={(e) => setSteeringSel(e.target.value)}>
+            <option value={KEEP}>Manter</option>
+            <option value="on">Ligado</option>
+            <option value="off">Desligado</option>
+          </select>
+        </label>
+
+        <label className="block text-sm">
+          <span className="text-slate-500">Cliente de horário (NTP)</span>
+          <select className={selCls} value={ntpSel} onChange={(e) => setNtpSel(e.target.value)}>
+            <option value={KEEP}>Manter</option>
+            <option value="on">Ligado</option>
+            <option value="off">Desligado</option>
+          </select>
+        </label>
+
+        <label className="block text-sm">
+          <span className="text-slate-500">Fuso horário</span>
+          <select className={selCls} value={tzSel} onChange={(e) => setTzSel(e.target.value)}>
+            <option value={KEEP}>Manter</option>
+            {TR069_ROUTER_TZ_OFFSETS.map((o) => (
+              <option key={o} value={o}>
+                UTC{o}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block text-sm">
+          <span className="text-slate-500">Servidor NTP (opcional)</span>
+          <input
+            value={ntpServer}
+            onChange={(e) => setNtpServer(e.target.value)}
+            placeholder="ex.: a.st1.ntp.br"
+            className={selCls}
+          />
+        </label>
+      </div>
+    </Modal>
+  );
+}
+
+function WifiEditModal({
+  deviceId,
+  band,
+  currentChannel,
+  onClose,
+  onSaved,
+}: {
+  deviceId: string;
+  band: Tr069WifiBand;
+  currentChannel: number | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  // channelSel: KEEP | 'auto' | número(string)
+  const [channelSel, setChannelSel] = useState<string>(KEEP);
+  const [widthSel, setWidthSel] = useState<string>(KEEP);
+  const [powerSel, setPowerSel] = useState<string>(KEEP);
+  const [securitySel, setSecuritySel] = useState<string>(KEEP);
+  const [busy, setBusy] = useState(false);
+
+  const dirty =
+    channelSel !== KEEP || widthSel !== KEEP || powerSel !== KEEP || securitySel !== KEEP;
+
+  const save = async () => {
+    const body: SetWifiRadioBody = { band };
+    if (channelSel === 'auto') body.autoChannel = true;
+    else if (channelSel !== KEEP) {
+      body.autoChannel = false;
+      body.channel = Number(channelSel);
+    }
+    if (widthSel !== KEEP) body.channelWidth = widthSel as SetWifiRadioBody['channelWidth'];
+    if (powerSel !== KEEP) body.txPower = Number(powerSel);
+    if (securitySel !== KEEP) body.security = securitySel as SetWifiRadioBody['security'];
+    setBusy(true);
+    try {
+      const res = await tr069Api.setWifi(deviceId, body);
+      notify.success('Wi-Fi enfileirado', { description: res.message });
+      onSaved();
+    } catch (e) {
+      notify.apiError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const selCls =
+    'mt-1 w-full rounded-md border border-slate-200 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700';
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`Editar Wi-Fi · ${band}`}
+      footer={
+        <>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button variant="primary" size="sm" loading={busy} disabled={!dirty} onClick={save}>
+            Aplicar
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <p className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-800/50">
+          SSID e senha vêm do contrato — aqui só canal, potência e criptografia. Aplica no próximo
+          Inform do CPE.
+        </p>
+
+        <label className="block text-sm">
+          <span className="text-slate-500">Canal (atual: {currentChannel ?? '—'})</span>
+          <select className={selCls} value={channelSel} onChange={(e) => setChannelSel(e.target.value)}>
+            <option value={KEEP}>Manter</option>
+            <option value="auto">Automático</option>
+            {TR069_WIFI_CHANNELS[band].map((c) => (
+              <option key={c} value={String(c)}>
+                Canal {c}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block text-sm">
+          <span className="text-slate-500">Largura de banda</span>
+          <select className={selCls} value={widthSel} onChange={(e) => setWidthSel(e.target.value)}>
+            <option value={KEEP}>Manter</option>
+            {TR069_WIFI_WIDTHS[band].map((wd) => (
+              <option key={wd} value={wd}>
+                {wd === 'auto' ? 'Automática' : `${wd} MHz`}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block text-sm">
+          <span className="text-slate-500">Potência</span>
+          <select className={selCls} value={powerSel} onChange={(e) => setPowerSel(e.target.value)}>
+            <option value={KEEP}>Manter</option>
+            {TR069_WIFI_TX_POWER_LEVELS.map((p) => (
+              <option key={p} value={String(p)}>
+                {p}%
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block text-sm">
+          <span className="text-slate-500">Criptografia</span>
+          <select
+            className={selCls}
+            value={securitySel}
+            onChange={(e) => setSecuritySel(e.target.value)}
+          >
+            <option value={KEEP}>Manter</option>
+            <option value="WPA2">WPA2 (AES)</option>
+            <option value="WPA_WPA2">WPA/WPA2 (TKIP+AES)</option>
+          </select>
+        </label>
+      </div>
+    </Modal>
+  );
+}
+
+function ProbeCard({ deviceId }: { deviceId: string }) {
+  const [path, setPath] = useState('InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.');
+  const [taskId, setTaskId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const { data: result } = useSWR(
+    taskId ? `tr069/probe/${deviceId}/${taskId}` : null,
+    () => tr069Api.probeResult(deviceId, taskId as string),
+    {
+      refreshInterval: (latest?: Tr069ProbeResultDto) =>
+        latest && ['DONE', 'FAILED', 'CANCELLED'].includes(latest.status) ? 0 : 4000,
+    },
+  );
+
+  const run = async () => {
+    const name = path.trim();
+    if (!name) return;
+    setBusy(true);
+    try {
+      const res = await tr069Api.probe(deviceId, [name]);
+      setTaskId(res.taskId);
+      setSearch('');
+      notify.success('Probe enfileirado', { description: res.message });
+    } catch (e) {
+      notify.apiError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const rows = (result?.params ?? []).filter((p) =>
+    `${p.name} ${p.value}`.toLowerCase().includes(search.toLowerCase()),
+  );
+  const pending = result && (result.status === 'PENDING' || result.status === 'RUNNING');
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center gap-2">
+        <Search className="h-4 w-4 text-slate-400" />
+        <CardTitle>Probe TR-069 (bancada)</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+          Huawei dá fault no GET inteiro se um nome não existir. Prove{' '}
+          <strong>um caminho parcial por vez</strong> (terminando em <code>.</code>) — o CPE devolve a
+          subárvore. Aplica no próximo Inform (ou via acionamento, se alcançável).
+        </p>
+        <div className="flex items-start gap-2">
+          <input
+            value={path}
+            onChange={(e) => setPath(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void run();
+            }}
+            placeholder="InternetGatewayDevice.…"
+            className="flex-1 rounded-md border border-slate-200 bg-transparent px-2 py-1.5 font-mono text-xs dark:border-slate-700"
+          />
+          <Button variant="primary" size="sm" loading={busy} onClick={run} disabled={!path.trim()}>
+            Enfileirar
+          </Button>
+        </div>
+
+        {result && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 text-xs">
+              <Badge
+                tone={
+                  result.status === 'DONE'
+                    ? 'success'
+                    : result.status === 'FAILED'
+                      ? 'danger'
+                      : result.status === 'RUNNING'
+                        ? 'info'
+                        : 'neutral'
+                }
+              >
+                {result.status}
+              </Badge>
+              <span className="font-mono text-slate-400">{result.names.join(', ')}</span>
+            </div>
+            {pending && (
+              <p className="text-sm text-slate-500">
+                Aguardando o CPE responder no próximo Inform…
+              </p>
+            )}
+            {result.status === 'FAILED' && (
+              <p className="font-mono text-xs text-red-600 dark:text-red-400">
+                {result.error ?? 'fault'}
+              </p>
+            )}
+            {result.status === 'DONE' && result.params && (
+              <>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-slate-500">{result.params.length} parâmetro(s)</span>
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Filtrar…"
+                    className="w-48 rounded-md border border-slate-200 bg-transparent px-2 py-1 text-xs dark:border-slate-700"
+                  />
+                </div>
+                {rows.length === 0 ? (
+                  <p className="text-sm text-slate-500">
+                    {result.params.length === 0 ? 'Resposta vazia (caminho sem folhas?).' : 'Nada no filtro.'}
+                  </p>
+                ) : (
+                  <div className="max-h-80 overflow-auto rounded-md border border-slate-100 dark:border-slate-800">
+                    <table className="w-full text-xs">
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {rows.map((p) => (
+                          <tr key={p.name}>
+                            <td className="break-all py-1 pr-2 pl-2 font-mono">{p.name}</td>
+                            <td className="break-all py-1 pr-2 font-mono text-slate-500">{p.value || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function NotesCard({ deviceId }: { deviceId: string }) {
+  const { data: notes, mutate } = useSWR(
+    deviceId ? `tr069/devices/${deviceId}/notes` : null,
+    () => tr069Api.listNotes(deviceId),
+  );
+  const [body, setBody] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const add = async () => {
+    const text = body.trim();
+    if (!text) return;
+    setBusy(true);
+    try {
+      await tr069Api.createNote(deviceId, text);
+      setBody('');
+      notify.success('Nota adicionada');
+      await mutate();
+    } catch (e) {
+      notify.apiError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const remove = async (noteId: string) => {
+    try {
+      await tr069Api.deleteNote(deviceId, noteId);
+      await mutate();
+    } catch (e) {
+      notify.apiError(e);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-center gap-2">
+        <StickyNote className="h-4 w-4 text-slate-400" />
+        <CardTitle>Notas {notes?.length ? `(${notes.length})` : ''}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex items-start gap-2">
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            onKeyDown={(e) => {
+              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') void add();
+            }}
+            placeholder="Anotação do atendimento (Ctrl+Enter pra salvar)…"
+            rows={2}
+            className="flex-1 resize-y rounded-md border border-slate-200 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+          />
+          <Button variant="primary" size="sm" loading={busy} onClick={add} disabled={!body.trim()}>
+            <Plus className="h-4 w-4" />
+          </Button>
+        </div>
+        {!notes || notes.length === 0 ? (
+          <p className="text-sm text-slate-500">Nenhuma nota.</p>
+        ) : (
+          <ul className="space-y-2">
+            {notes.map((n: Tr069DeviceNoteDto) => (
+              <li
+                key={n.id}
+                className="group rounded-md border border-slate-100 bg-slate-50 p-2 text-sm dark:border-slate-800 dark:bg-slate-900"
+              >
+                <p className="whitespace-pre-wrap break-words">{n.body}</p>
+                <div className="mt-1 flex items-center justify-between gap-2 text-xs text-slate-400">
+                  <span>
+                    {n.createdByEmail ?? 'sistema'} · {new Date(n.createdAt).toLocaleString('pt-BR')}
+                  </span>
+                  <button
+                    onClick={() => remove(n.id)}
+                    className="opacity-0 transition-opacity hover:text-red-500 group-hover:opacity-100"
+                    title="Remover nota"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

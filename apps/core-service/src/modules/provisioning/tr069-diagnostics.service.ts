@@ -35,16 +35,32 @@ import {
   type WifiCoverageRow,
   type Tr069TaskDto,
   type Tr069WifiClient,
+  type Tr069DeviceNoteDto,
+  type Tr069DeviceHistoryResponse,
+  type Tr069ProbeResultDto,
+  type SetWifiRadio,
+  type SetRouterSettings,
+  type Tr069WifiScanResponse,
+  type Tr069WifiNeighbor,
 } from '@netx/shared';
 
+import { AuditService } from '../audit/audit.service';
 import { CryptoService } from '../crypto/crypto.service';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { performConnectionRequest } from './tr069-connection-request';
 import {
   HUAWEI_EG8145_PATHS,
+  HUAWEI_ROUTER_PATHS,
+  HUAWEI_WIFI_SCAN,
+  HUAWEI_TX_POWER_LEVELS,
+  HUAWEI_WIFI_CHANNELS,
+  HUAWEI_WIFI_WIDTH_CODE,
+  HUAWEI_WIFI_WIDTHS,
   huaweiDiagnosticParamNames,
   huaweiNotificationAttributes,
+  huaweiWlanPaths,
+  huaweiWlanSecurityParams,
   TR143_DOWNLOAD,
   TR143_PING,
   TR143_UPLOAD,
@@ -69,6 +85,32 @@ function dec(d: Prisma.Decimal | null): number | null {
   return d === null ? null : Number(d);
 }
 
+const NEIGHBOR_RE = /NeighboringWiFiDiagnostic\.Result\.(\d+)\.(.+)$/;
+
+/** Reconstrói a lista de redes vizinhas a partir da subárvore Result.{i}. */
+function parseWifiNeighbors(params: Record<string, unknown>): Tr069WifiNeighbor[] {
+  const byIdx = new Map<string, Tr069WifiNeighbor>();
+  for (const [name, raw] of Object.entries(params)) {
+    const m = NEIGHBOR_RE.exec(name);
+    if (!m) continue;
+    const [, idx, field] = m;
+    let n = byIdx.get(idx);
+    if (!n) {
+      n = { ssid: null, bssid: null, channel: null, band: null, signal: null, bandwidth: null, security: null };
+      byIdx.set(idx, n);
+    }
+    const value = raw == null ? '' : String(raw);
+    if (field === 'SSID') n.ssid = value || null;
+    else if (field === 'BSSID') n.bssid = value || null;
+    else if (field === 'Channel') n.channel = value === '' ? null : Number(value);
+    else if (field === 'OperatingFrequencyBand') n.band = value || null;
+    else if (field === 'SignalStrength') n.signal = value === '' ? null : Number(value);
+    else if (field === 'OperatingChannelBandwidth') n.bandwidth = value || null;
+    else if (field === 'SecurityModeEnabled') n.security = value || null;
+  }
+  return [...byIdx.values()].filter((n) => n.bssid !== null || n.ssid !== null);
+}
+
 @Injectable()
 export class Tr069DiagnosticsService {
   private readonly logger = new Logger(Tr069DiagnosticsService.name);
@@ -76,6 +118,7 @@ export class Tr069DiagnosticsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly crypto: CryptoService,
+    private readonly audit: AuditService,
   ) {}
 
   private get enabled(): boolean {
@@ -232,6 +275,415 @@ export class Tr069DiagnosticsService {
     return { username, password, ready: false };
   }
 
+  /**
+   * Tenta acordar o CPE via Connection Request (ACS→CPE). Devolve uma frase
+   * legível do que aconteceu (pra mensagem do refresh/probe). Em rede com NAT é
+   * comum não alcançar — cai no Periodic Inform.
+   */
+  private async tryWake(tenantId: string, deviceId: string): Promise<string> {
+    const device = await this.prisma.tr069Device.findFirst({
+      where: { id: deviceId, tenantId },
+      select: {
+        id: true,
+        connectionRequestUrl: true,
+        connectionRequestUser: true,
+        connectionRequestPwdEnc: true,
+      },
+    });
+    if (!device?.connectionRequestUrl) {
+      return 'será aplicado no próximo Inform (CPE sem URL de acionamento)';
+    }
+    const creds = await this.ensureConnReqCreds(tenantId, device);
+    if (!creds.ready) {
+      return 'credenciais de acionamento sendo aplicadas; o próximo Inform já traz o resultado';
+    }
+    const cr = await performConnectionRequest(device.connectionRequestUrl, creds.username, creds.password);
+    return cr.ok
+      ? 'CPE acionado — resultado em instantes'
+      : `acionamento imediato indisponível (${cr.reason ?? 'falhou'}); aplica no próximo Inform`;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Probe de data model (ferramenta de bancada)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Enfileira um GetParameterValues com caminhos arbitrários (parciais/completos)
+   * pra descobrir os paths reais do firmware Huawei. ⚠️ Huawei dá fault no GET
+   * inteiro se UM nome não existir — prove um caminho parcial por vez.
+   */
+  async enqueueProbe(
+    tenantId: string,
+    deviceId: string,
+    userId: string,
+    names: string[],
+  ): Promise<{ taskId: string; message: string }> {
+    const device = await this.prisma.tr069Device.findFirst({
+      where: { id: deviceId, tenantId },
+      select: { id: true },
+    });
+    if (!device) throw new NotFoundException('Device TR-069 não encontrado');
+    const task = await this.prisma.tr069Task.create({
+      data: {
+        tenantId,
+        deviceId,
+        action: 'GET_PARAMS',
+        payload: { names, purpose: 'PROBE' },
+        status: 'PENDING',
+      },
+    });
+    await this.audit.log({
+      tenantId,
+      userId,
+      action: 'tr069.device.probe',
+      resource: 'tr069_task',
+      resourceId: task.id,
+      metadata: { deviceId, names },
+    });
+    const wake = await this.tryWake(tenantId, deviceId);
+    return { taskId: task.id, message: `Probe enfileirado — ${wake}.` };
+  }
+
+  /** Lê o resultado de uma task de probe (status + params do GET). */
+  async getProbeResult(
+    tenantId: string,
+    deviceId: string,
+    taskId: string,
+  ): Promise<Tr069ProbeResultDto> {
+    const task = await this.prisma.tr069Task.findFirst({
+      where: { id: taskId, deviceId, tenantId, action: 'GET_PARAMS' },
+      select: {
+        id: true,
+        status: true,
+        error: true,
+        payload: true,
+        result: true,
+        createdAt: true,
+        completedAt: true,
+      },
+    });
+    if (!task) throw new NotFoundException('Probe não encontrado');
+    const payload = (task.payload ?? {}) as { names?: unknown };
+    const names = Array.isArray(payload.names) ? (payload.names as string[]) : [];
+    const result = (task.result ?? {}) as { params?: Record<string, unknown> };
+    const params = result.params
+      ? Object.entries(result.params)
+          .map(([name, value]) => ({ name, value: value == null ? '' : String(value) }))
+          .sort((a, b) => a.name.localeCompare(b.name))
+      : null;
+    return {
+      taskId: task.id,
+      status: task.status,
+      error: task.error,
+      names,
+      params,
+      createdAt: task.createdAt.toISOString(),
+      completedAt: task.completedAt?.toISOString() ?? null,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Edição de rádio Wi-Fi (canal/potência/criptografia — SET direto no CPE)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Enfileira um SET de tuning de rádio (canal/potência/criptografia). É SET
+   * direto no CPE — o reconciliador ignora (não vira regra de profile). SSID e
+   * senha continuam vindo do contrato. Aplica no próximo Inform.
+   */
+  async setWifiRadio(
+    tenantId: string,
+    deviceId: string,
+    userId: string,
+    input: SetWifiRadio,
+  ): Promise<{ taskId: string; message: string }> {
+    const device = await this.prisma.tr069Device.findFirst({
+      where: { id: deviceId, tenantId },
+      select: { id: true },
+    });
+    if (!device) throw new NotFoundException('Device TR-069 não encontrado');
+
+    const w = huaweiWlanPaths(input.band);
+    const params: Array<{ name: string; value: string; type: string }> = [];
+
+    // Canal: auto vs. manual (auto=0 é obrigatório pra fixar o canal).
+    if (input.autoChannel === true) {
+      params.push({ name: w.autoChannel, value: '1', type: 'xsd:boolean' });
+    } else if (input.channel !== undefined || input.autoChannel === false) {
+      if (input.channel === undefined) {
+        throw new BadRequestException('Canal manual exige escolher o canal');
+      }
+      if (!HUAWEI_WIFI_CHANNELS[input.band].includes(input.channel)) {
+        throw new BadRequestException(
+          `Canal ${input.channel} inválido para ${input.band} (válidos: ${HUAWEI_WIFI_CHANNELS[input.band].join(', ')})`,
+        );
+      }
+      params.push({ name: w.autoChannel, value: '0', type: 'xsd:boolean' });
+      params.push({ name: w.channel, value: String(input.channel), type: 'xsd:unsignedInt' });
+    }
+
+    // Largura de canal (enum vendor X_HW_HT20).
+    if (input.channelWidth !== undefined) {
+      if (!HUAWEI_WIFI_WIDTHS[input.band].includes(input.channelWidth)) {
+        throw new BadRequestException(
+          `Largura ${input.channelWidth} não suportada em ${input.band} (válidas: ${HUAWEI_WIFI_WIDTHS[input.band].join(', ')})`,
+        );
+      }
+      params.push({
+        name: w.htMode,
+        value: HUAWEI_WIFI_WIDTH_CODE[input.channelWidth],
+        type: 'xsd:unsignedInt',
+      });
+    }
+
+    // Potência (%).
+    if (input.txPower !== undefined) {
+      if (!HUAWEI_TX_POWER_LEVELS.includes(input.txPower as (typeof HUAWEI_TX_POWER_LEVELS)[number])) {
+        throw new BadRequestException(
+          `Potência ${input.txPower} inválida (válidas: ${HUAWEI_TX_POWER_LEVELS.join(', ')})`,
+        );
+      }
+      params.push({ name: w.txPower, value: String(input.txPower), type: 'xsd:unsignedInt' });
+    }
+
+    // Criptografia (nunca abre a rede — só WPA2 ou WPA/WPA2).
+    if (input.security) {
+      params.push(...huaweiWlanSecurityParams(input.band, input.security));
+    }
+
+    if (params.length === 0) {
+      throw new BadRequestException('Nenhuma alteração informada');
+    }
+
+    const task = await this.prisma.tr069Task.create({
+      data: {
+        tenantId,
+        deviceId,
+        action: 'SET_PARAMS',
+        payload: { params, purpose: 'WIFI_RADIO', band: input.band },
+        status: 'PENDING',
+      },
+    });
+    await this.audit.log({
+      tenantId,
+      userId,
+      action: 'tr069.device.wifi.set',
+      resource: 'tr069_task',
+      resourceId: task.id,
+      metadata: {
+        deviceId,
+        band: input.band,
+        autoChannel: input.autoChannel ?? null,
+        channel: input.channel ?? null,
+        channelWidth: input.channelWidth ?? null,
+        txPower: input.txPower ?? null,
+        security: input.security ?? null,
+      },
+    });
+    const wake = await this.tryWake(tenantId, deviceId);
+    return { taskId: task.id, message: `Configuração de Wi-Fi (${input.band}) enfileirada — ${wake}.` };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Toggles do roteador (TimeZone + BandSteering — SET direto no CPE)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Enfileira um SET dos toggles de roteador (fuso/NTP + band steering). SET
+   * direto no CPE; o reconciliador ignora. UPnP/EasyMesh não são expostos via
+   * TR-069 nesse firmware, então ficam de fora.
+   */
+  async setRouterSettings(
+    tenantId: string,
+    deviceId: string,
+    userId: string,
+    input: SetRouterSettings,
+  ): Promise<{ taskId: string; message: string }> {
+    const device = await this.prisma.tr069Device.findFirst({
+      where: { id: deviceId, tenantId },
+      select: { id: true },
+    });
+    if (!device) throw new NotFoundException('Device TR-069 não encontrado');
+
+    const params: Array<{ name: string; value: string; type: string }> = [];
+    if (input.timeEnable !== undefined) {
+      params.push({
+        name: HUAWEI_ROUTER_PATHS.timeEnable,
+        value: input.timeEnable ? '1' : '0',
+        type: 'xsd:boolean',
+      });
+    }
+    if (input.timeZoneOffset !== undefined) {
+      params.push({ name: HUAWEI_ROUTER_PATHS.timeZoneOffset, value: input.timeZoneOffset, type: 'xsd:string' });
+    }
+    if (input.timeZoneName !== undefined) {
+      params.push({ name: HUAWEI_ROUTER_PATHS.timeZoneName, value: input.timeZoneName, type: 'xsd:string' });
+    }
+    if (input.ntpServer !== undefined) {
+      params.push({ name: HUAWEI_ROUTER_PATHS.ntpServer1, value: input.ntpServer, type: 'xsd:string' });
+    }
+    if (input.bandSteering !== undefined) {
+      params.push({
+        name: HUAWEI_ROUTER_PATHS.bandSteeringPolicy,
+        value: input.bandSteering ? '1' : '0',
+        type: 'xsd:unsignedInt',
+      });
+    }
+
+    if (params.length === 0) {
+      throw new BadRequestException('Nenhuma alteração informada');
+    }
+
+    const task = await this.prisma.tr069Task.create({
+      data: {
+        tenantId,
+        deviceId,
+        action: 'SET_PARAMS',
+        payload: { params, purpose: 'ROUTER_SETTINGS' },
+        status: 'PENDING',
+      },
+    });
+    await this.audit.log({
+      tenantId,
+      userId,
+      action: 'tr069.device.router.set',
+      resource: 'tr069_task',
+      resourceId: task.id,
+      metadata: {
+        deviceId,
+        timeEnable: input.timeEnable ?? null,
+        timeZoneOffset: input.timeZoneOffset ?? null,
+        timeZoneName: input.timeZoneName ?? null,
+        ntpServer: input.ntpServer ?? null,
+        bandSteering: input.bandSteering ?? null,
+      },
+    });
+    const wake = await this.tryWake(tenantId, deviceId);
+    return { taskId: task.id, message: `Configuração do roteador enfileirada — ${wake}.` };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Scan de vizinhança Wi-Fi (heatmap de ocupação de canais 2.4G)
+  // ---------------------------------------------------------------------------
+
+  /** Dispara o scan (DiagnosticsState=Requested) + enfileira a leitura. */
+  async requestWifiScan(
+    tenantId: string,
+    deviceId: string,
+    userId: string,
+  ): Promise<{ message: string }> {
+    const device = await this.prisma.tr069Device.findFirst({
+      where: { id: deviceId, tenantId },
+      select: { id: true },
+    });
+    if (!device) throw new NotFoundException('Device TR-069 não encontrado');
+    await this.prisma.tr069Task.create({
+      data: {
+        tenantId,
+        deviceId,
+        action: 'SET_PARAMS',
+        payload: {
+          params: [{ name: HUAWEI_WIFI_SCAN.state, value: 'Requested', type: 'xsd:string' }],
+          purpose: 'WIFI_SCAN_TRIGGER',
+        },
+        status: 'PENDING',
+      },
+    });
+    await this.enqueueWifiScanRead(tenantId, deviceId);
+    await this.audit.log({
+      tenantId,
+      userId,
+      action: 'tr069.device.wifi.scan',
+      resource: 'tr069_device',
+      resourceId: deviceId,
+    });
+    const wake = await this.tryWake(tenantId, deviceId);
+    return { message: `Scan de canais disparado — ${wake}.` };
+  }
+
+  /** Enfileira a leitura da subárvore do scan, se não houver uma em voo. */
+  private async enqueueWifiScanRead(tenantId: string, deviceId: string): Promise<void> {
+    const inflight = await this.prisma.tr069Task.findFirst({
+      where: {
+        tenantId,
+        deviceId,
+        action: 'GET_PARAMS',
+        status: { in: ['PENDING', 'RUNNING'] },
+        payload: { path: ['purpose'], equals: 'WIFI_SCAN' },
+      },
+      select: { id: true },
+    });
+    if (inflight) return;
+    await this.prisma.tr069Task.create({
+      data: {
+        tenantId,
+        deviceId,
+        action: 'GET_PARAMS',
+        payload: { names: [HUAWEI_WIFI_SCAN.subtree], purpose: 'WIFI_SCAN' },
+        status: 'PENDING',
+      },
+    });
+  }
+
+  /**
+   * Resultado do scan: parseia a subárvore Result.{i} da última leitura DONE e
+   * agrega a ocupação por canal 2.4G. Mantém uma leitura em voo pra atualizar.
+   */
+  async getWifiScan(tenantId: string, deviceId: string): Promise<Tr069WifiScanResponse> {
+    const device = await this.prisma.tr069Device.findFirst({
+      where: { id: deviceId, tenantId },
+      select: { id: true },
+    });
+    if (!device) throw new NotFoundException('Device TR-069 não encontrado');
+
+    const [done, pendingTask] = await Promise.all([
+      this.prisma.tr069Task.findFirst({
+        where: {
+          tenantId,
+          deviceId,
+          action: 'GET_PARAMS',
+          status: 'DONE',
+          payload: { path: ['purpose'], equals: 'WIFI_SCAN' },
+        },
+        orderBy: { completedAt: 'desc' },
+        select: { result: true, completedAt: true },
+      }),
+      this.prisma.tr069Task.findFirst({
+        where: {
+          tenantId,
+          deviceId,
+          action: 'GET_PARAMS',
+          status: { in: ['PENDING', 'RUNNING'] },
+          payload: { path: ['purpose'], equals: 'WIFI_SCAN' },
+        },
+        select: { id: true },
+      }),
+    ]);
+
+    const params = ((done?.result ?? {}) as { params?: Record<string, unknown> }).params ?? {};
+    const neighbors = parseWifiNeighbors(params as Record<string, unknown>);
+    const state = (params[HUAWEI_WIFI_SCAN.state] as string | undefined) ?? null;
+
+    // Ocupação por canal 2.4G (1–13).
+    const counts = new Map<number, number>();
+    for (const n of neighbors) {
+      if (n.band !== '2.4GHz' || n.channel === null || n.channel < 1 || n.channel > 13) continue;
+      counts.set(n.channel, (counts.get(n.channel) ?? 0) + 1);
+    }
+    const channels24 = Array.from({ length: 13 }, (_, i) => ({
+      channel: i + 1,
+      count: counts.get(i + 1) ?? 0,
+    }));
+
+    return {
+      state,
+      scannedAt: done?.completedAt?.toISOString() ?? null,
+      pending: !!pendingTask,
+      neighbors,
+      channels24,
+    };
+  }
+
   // ---------------------------------------------------------------------------
   // TR-143 — speed test / ping a pedido
   // ---------------------------------------------------------------------------
@@ -372,7 +824,7 @@ export class Tr069DiagnosticsService {
    * alerta aberto (1 linha por device, pior severidade) + breakdown de sintomas.
    */
   async getDashboard(tenantId: string): Promise<Tr069DashboardResponse> {
-    const [statusCounts, complianceCounts, alerts, symptomGroups] = await Promise.all([
+    const [statusCounts, complianceCounts, alerts, symptomGroups, oltDevices] = await Promise.all([
       this.prisma.tr069Device.groupBy({ by: ['status'], where: { tenantId }, _count: { _all: true } }),
       this.prisma.tr069Device.groupBy({
         by: ['complianceStatus'],
@@ -402,6 +854,15 @@ export class Tr069DiagnosticsService {
         where: { tenantId, status: 'OPEN' },
         _count: { _all: true },
       }),
+      // Devices com OLT (via ONT) — base do "Mapa OLT".
+      this.prisma.tr069Device.findMany({
+        where: { tenantId, ont: { isNot: null } },
+        select: {
+          id: true,
+          status: true,
+          ont: { select: { olt: { select: { id: true, name: true } } } },
+        },
+      }),
     ]);
 
     const byStatus = (s: string) => statusCounts.find((x) => x.status === s)?._count._all ?? 0;
@@ -410,6 +871,32 @@ export class Tr069DiagnosticsService {
       .reduce((sum, c) => sum + c._count._all, 0);
     const sevMap = (s: string): 'ok' | 'warn' | 'crit' =>
       s === 'CRITICAL' ? 'crit' : s === 'WARNING' ? 'warn' : 'ok';
+
+    // Devices (todos) com alerta aberto — base do "degradado" no Mapa OLT.
+    const alertedDeviceIds = new Set(
+      (
+        await this.prisma.tr069Alert.findMany({
+          where: { tenantId, status: 'OPEN' },
+          select: { deviceId: true },
+          distinct: ['deviceId'],
+        })
+      ).map((a) => a.deviceId),
+    );
+
+    // Agrega saúde por OLT: total de CPEs e quantos degradados (offline ou com alerta).
+    const oltMap = new Map<string, { oltId: string; oltName: string; total: number; degraded: number }>();
+    for (const dev of oltDevices) {
+      const olt = dev.ont?.olt;
+      if (!olt) continue;
+      let cell = oltMap.get(olt.id);
+      if (!cell) {
+        cell = { oltId: olt.id, oltName: olt.name, total: 0, degraded: 0 };
+        oltMap.set(olt.id, cell);
+      }
+      cell.total += 1;
+      if (dev.status === 'OFFLINE' || alertedDeviceIds.has(dev.id)) cell.degraded += 1;
+    }
+    const olts = Array.from(oltMap.values()).sort((a, b) => a.oltName.localeCompare(b.oltName));
 
     // 1 linha por device — a 1ª (ordenada por severidade desc) é a pior.
     const seen = new Set<string>();
@@ -440,6 +927,7 @@ export class Tr069DiagnosticsService {
       symptoms: symptomGroups
         .map((g) => ({ type: g.type, count: g._count._all }))
         .sort((x, y) => y.count - x.count),
+      olts,
     };
   }
 
@@ -451,6 +939,7 @@ export class Tr069DiagnosticsService {
           select: {
             id: true,
             snGpon: true,
+            macAddress: true,
             contractId: true,
             status: true,
             lastRxPower: true,
@@ -495,6 +984,7 @@ export class Tr069DiagnosticsService {
         ? {
             id: device.ont.id,
             snGpon: device.ont.snGpon,
+            macAddress: device.ont.macAddress,
             contractId: device.ont.contractId,
             status: device.ont.status,
             lastRxPower: device.ont.lastRxPower === null ? null : String(device.ont.lastRxPower),
@@ -535,6 +1025,211 @@ export class Tr069DiagnosticsService {
     return Object.entries(snap)
       .map(([name, value]) => ({ name, value: value == null ? '' : String(value) }))
       .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Notas do device (anotações livres do atendimento N1)
+  // ---------------------------------------------------------------------------
+
+  /** Lista as notas (não apagadas) de um device, mais recentes primeiro. */
+  async listNotes(tenantId: string, deviceId: string): Promise<Tr069DeviceNoteDto[]> {
+    const device = await this.prisma.tr069Device.findFirst({
+      where: { id: deviceId, tenantId },
+      select: { id: true },
+    });
+    if (!device) throw new NotFoundException('Device TR-069 não encontrado');
+    const rows = await this.prisma.tr069DeviceNote.findMany({
+      where: { tenantId, deviceId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    return rows.map((n) => this.toNoteDto(n));
+  }
+
+  /** Cria uma nota livre no device. */
+  async createNote(
+    tenantId: string,
+    deviceId: string,
+    user: { sub: string; email: string },
+    body: string,
+  ): Promise<Tr069DeviceNoteDto> {
+    const device = await this.prisma.tr069Device.findFirst({
+      where: { id: deviceId, tenantId },
+      select: { id: true },
+    });
+    if (!device) throw new NotFoundException('Device TR-069 não encontrado');
+    const note = await this.prisma.tr069DeviceNote.create({
+      data: {
+        tenantId,
+        deviceId,
+        body,
+        createdById: user.sub,
+        createdByEmail: user.email,
+      },
+    });
+    await this.audit.log({
+      tenantId,
+      userId: user.sub,
+      action: 'tr069.device.note.create',
+      resource: 'tr069_device_note',
+      resourceId: note.id,
+      metadata: { deviceId },
+    });
+    return this.toNoteDto(note);
+  }
+
+  /** Soft-delete de uma nota. */
+  async deleteNote(tenantId: string, deviceId: string, noteId: string, userId: string): Promise<void> {
+    const note = await this.prisma.tr069DeviceNote.findFirst({
+      where: { id: noteId, deviceId, tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!note) throw new NotFoundException('Nota não encontrada');
+    await this.prisma.tr069DeviceNote.update({
+      where: { id: note.id },
+      data: { deletedAt: new Date() },
+    });
+    await this.audit.log({
+      tenantId,
+      userId,
+      action: 'tr069.device.note.delete',
+      resource: 'tr069_device_note',
+      resourceId: note.id,
+      metadata: { deviceId },
+    });
+  }
+
+  private toNoteDto(n: {
+    id: string;
+    body: string;
+    createdById: string | null;
+    createdByEmail: string | null;
+    createdAt: Date;
+  }): Tr069DeviceNoteDto {
+    return {
+      id: n.id,
+      body: n.body,
+      createdById: n.createdById,
+      createdByEmail: n.createdByEmail,
+      createdAt: n.createdAt.toISOString(),
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Histórico do device (aba Histórico — derivado de tasks + alertas)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Histórico do device sem coletor novo: reboots/quedas por dia (14d),
+   * disponibilidade (30d, derivada dos alertas DEVICE_OFFLINE) e linha do tempo
+   * de eventos (alertas + tasks). Tudo a partir de dados que já temos.
+   */
+  async getDeviceHistory(
+    tenantId: string,
+    deviceId: string,
+  ): Promise<Tr069DeviceHistoryResponse> {
+    const device = await this.prisma.tr069Device.findFirst({
+      where: { id: deviceId, tenantId },
+      select: { id: true },
+    });
+    if (!device) throw new NotFoundException('Device TR-069 não encontrado');
+
+    const DAY_MS = 24 * 60 * 60_000;
+    const now = Date.now();
+    const startOfToday = new Date(new Date(now).setHours(0, 0, 0, 0)).getTime();
+
+    const DAILY_DAYS = 14;
+    const AVAIL_DAYS = 30;
+    const dailyStart = startOfToday - (DAILY_DAYS - 1) * DAY_MS;
+    const availStart = startOfToday - (AVAIL_DAYS - 1) * DAY_MS;
+
+    const [rebootTasks, offlineAlerts, recentAlerts, recentTasks] = await Promise.all([
+      this.prisma.tr069Task.findMany({
+        where: { tenantId, deviceId, action: 'REBOOT', createdAt: { gte: new Date(dailyStart) } },
+        select: { createdAt: true },
+      }),
+      // Alertas de queda que tocam a janela de 30d (abertos no período OU ainda
+      // não resolvidos) — pra colorir disponibilidade e contar quedas no daily.
+      this.prisma.tr069Alert.findMany({
+        where: {
+          tenantId,
+          deviceId,
+          type: 'DEVICE_OFFLINE',
+          OR: [{ resolvedAt: null }, { resolvedAt: { gte: new Date(availStart) } }],
+        },
+        select: { openedAt: true, resolvedAt: true, lastSeenAt: true },
+      }),
+      this.prisma.tr069Alert.findMany({
+        where: { tenantId, deviceId },
+        orderBy: { openedAt: 'desc' },
+        take: 25,
+        select: { type: true, severity: true, status: true, message: true, openedAt: true, resolvedAt: true },
+      }),
+      this.prisma.tr069Task.findMany({
+        where: { tenantId, deviceId },
+        orderBy: { createdAt: 'desc' },
+        take: 25,
+        select: { action: true, status: true, error: true, createdAt: true },
+      }),
+    ]);
+
+    // ── Daily (14d): reboots + quedas por dia ─────────────────────────────────
+    const dayIndex = (t: number, start: number) => Math.floor((t - start) / DAY_MS);
+    const reboots = new Array<number>(DAILY_DAYS).fill(0);
+    const outages = new Array<number>(DAILY_DAYS).fill(0);
+    for (const r of rebootTasks) {
+      const i = dayIndex(r.createdAt.getTime(), dailyStart);
+      if (i >= 0 && i < DAILY_DAYS) reboots[i] += 1;
+    }
+    for (const a of offlineAlerts) {
+      const i = dayIndex(a.openedAt.getTime(), dailyStart);
+      if (i >= 0 && i < DAILY_DAYS) outages[i] += 1;
+    }
+    const daily = Array.from({ length: DAILY_DAYS }, (_, i) => ({
+      date: new Date(dailyStart + i * DAY_MS).toISOString(),
+      reboots: reboots[i],
+      outages: outages[i],
+    }));
+
+    // ── Disponibilidade (30d): dia é 'crit' se houve queda sobrepondo o dia ────
+    const availability: Array<'ok' | 'warn' | 'crit'> = [];
+    let okDays = 0;
+    for (let i = 0; i < AVAIL_DAYS; i++) {
+      const dayStart = availStart + i * DAY_MS;
+      const dayEnd = dayStart + DAY_MS;
+      const down = offlineAlerts.some((a) => {
+        const s = a.openedAt.getTime();
+        const e = (a.resolvedAt ?? a.lastSeenAt ?? new Date(now)).getTime();
+        return s < dayEnd && e >= dayStart;
+      });
+      availability.push(down ? 'crit' : 'ok');
+      if (!down) okDays += 1;
+    }
+    const availabilityPct = Math.round((okDays / AVAIL_DAYS) * 1000) / 10;
+
+    // ── Timeline: alertas + tasks, mais recentes primeiro ─────────────────────
+    const sevFromAlert = (s: string): 'ok' | 'warn' | 'crit' | 'info' =>
+      s === 'CRITICAL' ? 'crit' : s === 'WARNING' ? 'warn' : 'info';
+    const sevFromTask = (s: string): 'ok' | 'warn' | 'crit' | 'info' =>
+      s === 'FAILED' ? 'crit' : s === 'DONE' ? 'ok' : 'info';
+
+    const alertEvents = recentAlerts.map((a) => ({
+      at: a.openedAt.toISOString(),
+      severity: sevFromAlert(a.severity),
+      title: a.status === 'RESOLVED' ? `Alerta resolvido · ${a.type}` : `Alerta · ${a.type}`,
+      description: a.message,
+    }));
+    const taskEvents = recentTasks.map((t) => ({
+      at: t.createdAt.toISOString(),
+      severity: sevFromTask(t.status),
+      title: `${t.action} · ${t.status}`,
+      description: t.error,
+    }));
+    const timeline = [...alertEvents, ...taskEvents]
+      .sort((x, y) => (x.at < y.at ? 1 : x.at > y.at ? -1 : 0))
+      .slice(0, 30);
+
+    return { daily, availability, availabilityPct, timeline };
   }
 
   /**
@@ -889,6 +1584,11 @@ export class Tr069DiagnosticsService {
     wifiChannel5: number | null;
     wifiWorstRssi: number | null;
     wifiClients: Prisma.JsonValue | null;
+    cpuUsage: number | null;
+    memUsage: number | null;
+    deviceTemp: number | null;
+    wanRxBytes: bigint | null;
+    wanTxBytes: bigint | null;
   }): Tr069DiagnosticDto {
     return {
       id: r.id,
@@ -917,6 +1617,11 @@ export class Tr069DiagnosticsService {
       wifiClients: Array.isArray(r.wifiClients)
         ? (r.wifiClients as unknown as Tr069WifiClient[])
         : [],
+      cpuUsage: r.cpuUsage,
+      memUsage: r.memUsage,
+      deviceTemp: r.deviceTemp,
+      wanRxBytes: r.wanRxBytes === null ? null : Number(r.wanRxBytes),
+      wanTxBytes: r.wanTxBytes === null ? null : Number(r.wanTxBytes),
     };
   }
 

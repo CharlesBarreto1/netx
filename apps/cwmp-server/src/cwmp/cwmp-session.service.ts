@@ -599,6 +599,11 @@ export class CwmpSessionService {
           wifiWorstRssi: diag.wifiWorstRssi,
           wifiAvgRssi: diag.wifiAvgRssi,
           wifiClients: diag.wifiClients as unknown as object,
+          cpuUsage: diag.cpuUsage,
+          memUsage: diag.memUsage,
+          deviceTemp: diag.deviceTemp,
+          wanRxBytes: diag.wanRxBytes,
+          wanTxBytes: diag.wanTxBytes,
           // `raw` (mapa completo) só na coleta manual — é o que mais pesa. O
           // snapshot mais recente já vive em tr069_devices.parametersSnapshot.
           raw: warnIfEmpty ? (diag.raw as unknown as object) : undefined,

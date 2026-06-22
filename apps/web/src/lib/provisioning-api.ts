@@ -340,10 +340,17 @@ export interface Tr069DashboardQueueItem {
   signal: number | null;
   lastInformAt: string | null;
 }
+export interface Tr069DashboardOltCell {
+  oltId: string;
+  oltName: string;
+  total: number;
+  degraded: number;
+}
 export interface Tr069Dashboard {
   kpis: { online: number; offline: number; alerta: number; naoConformes: number };
   queue: Tr069DashboardQueueItem[];
   symptoms: Array<{ type: Tr069AlertType; count: number }>;
+  olts: Tr069DashboardOltCell[];
 }
 
 export interface CreateTr069ProfileBody {
@@ -426,6 +433,11 @@ export interface Tr069DiagnosticDto {
   wifiChannel5: number | null;
   wifiWorstRssi: number | null;
   wifiClients: Tr069WifiClient[];
+  cpuUsage: number | null;
+  memUsage: number | null;
+  deviceTemp: number | null;
+  wanRxBytes: number | null;
+  wanTxBytes: number | null;
 }
 
 export interface Tr069AlertDto {
@@ -469,6 +481,7 @@ export interface Tr069DeviceDetailResponse {
   ont: {
     id: string;
     snGpon: string;
+    macAddress: string | null;
     contractId: string;
     status: string;
     lastRxPower: string | null;
@@ -491,6 +504,87 @@ export interface Tr069DeviceDetailResponse {
 export interface Tr069RefreshResponse {
   taskId: string;
   message: string;
+}
+
+export interface Tr069DeviceNoteDto {
+  id: string;
+  body: string;
+  createdById: string | null;
+  createdByEmail: string | null;
+  createdAt: string;
+}
+
+export type Tr069WifiBand = '2.4G' | '5G';
+export type Tr069WifiSecurity = 'WPA2' | 'WPA_WPA2';
+export type Tr069WifiWidth = 'auto' | '20' | '40' | '80' | '160';
+export const TR069_WIFI_WIDTHS: Record<Tr069WifiBand, Tr069WifiWidth[]> = {
+  '2.4G': ['auto', '20', '40'],
+  '5G': ['auto', '20', '40', '80', '160'],
+};
+export const TR069_WIFI_TX_POWER_LEVELS = [20, 40, 60, 80, 100] as const;
+export const TR069_WIFI_CHANNELS: Record<Tr069WifiBand, number[]> = {
+  '2.4G': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+  '5G': [
+    36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140,
+    144, 149, 153, 157, 161,
+  ],
+};
+export interface SetWifiRadioBody {
+  band: Tr069WifiBand;
+  autoChannel?: boolean;
+  channel?: number;
+  channelWidth?: Tr069WifiWidth;
+  txPower?: number;
+  security?: Tr069WifiSecurity;
+}
+
+export const TR069_ROUTER_TZ_OFFSETS = ['-02:00', '-03:00', '-04:00', '-05:00'] as const;
+export interface SetRouterSettingsBody {
+  timeEnable?: boolean;
+  timeZoneOffset?: string;
+  timeZoneName?: string;
+  ntpServer?: string;
+  bandSteering?: boolean;
+}
+
+export interface Tr069ProbeResultDto {
+  taskId: string;
+  status: string;
+  error: string | null;
+  names: string[];
+  params: Array<{ name: string; value: string }> | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export interface Tr069WifiNeighbor {
+  ssid: string | null;
+  bssid: string | null;
+  channel: number | null;
+  band: string | null;
+  signal: number | null;
+  bandwidth: string | null;
+  security: string | null;
+}
+export interface Tr069WifiScanResponse {
+  state: string | null;
+  scannedAt: string | null;
+  pending: boolean;
+  neighbors: Tr069WifiNeighbor[];
+  channels24: Array<{ channel: number; count: number }>;
+}
+
+export type Tr069TimelineSeverity = 'ok' | 'warn' | 'crit' | 'info';
+export interface Tr069DeviceHistoryResponse {
+  daily: Array<{ date: string; reboots: number; outages: number }>;
+  availability: Array<'ok' | 'warn' | 'crit'>;
+  availabilityPct: number;
+  timeline: Array<{
+    at: string;
+    severity: Tr069TimelineSeverity;
+    title: string;
+    description: string | null;
+  }>;
 }
 
 export interface WifiCoverageRow {
@@ -593,6 +687,24 @@ export const tr069Api = {
   diagRuns: (id: string) => api.get<Tr069DiagRunDto[]>(`/v1/tr069/devices/${id}/diag-runs`),
   deviceParameters: (id: string) =>
     api.get<Array<{ name: string; value: string }>>(`/v1/tr069/devices/${id}/parameters`),
+  deviceHistory: (id: string) =>
+    api.get<Tr069DeviceHistoryResponse>(`/v1/tr069/devices/${id}/history`),
+  setWifi: (id: string, body: SetWifiRadioBody) =>
+    api.post<{ taskId: string; message: string }>(`/v1/tr069/devices/${id}/wifi`, body),
+  setRouter: (id: string, body: SetRouterSettingsBody) =>
+    api.post<{ taskId: string; message: string }>(`/v1/tr069/devices/${id}/router`, body),
+  requestWifiScan: (id: string) =>
+    api.post<{ message: string }>(`/v1/tr069/devices/${id}/wifi-scan`, {}),
+  wifiScan: (id: string) => api.get<Tr069WifiScanResponse>(`/v1/tr069/devices/${id}/wifi-scan`),
+  probe: (id: string, names: string[]) =>
+    api.post<{ taskId: string; message: string }>(`/v1/tr069/devices/${id}/probe`, { names }),
+  probeResult: (id: string, taskId: string) =>
+    api.get<Tr069ProbeResultDto>(`/v1/tr069/devices/${id}/probe/${taskId}`),
+  listNotes: (id: string) => api.get<Tr069DeviceNoteDto[]>(`/v1/tr069/devices/${id}/notes`),
+  createNote: (id: string, body: string) =>
+    api.post<Tr069DeviceNoteDto>(`/v1/tr069/devices/${id}/notes`, { body }),
+  deleteNote: (id: string, noteId: string) =>
+    api.delete<void>(`/v1/tr069/devices/${id}/notes/${noteId}`),
   wifiCoverage: (params?: { days?: number; maxRssi?: number; minSamples?: number; page?: number; pageSize?: number }) =>
     api.get<Paginated<WifiCoverageRow>>(`/v1/tr069/wifi-coverage${qs(params)}`),
   listAlerts: (params?: {

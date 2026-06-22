@@ -10,12 +10,17 @@
  */
 import { RefreshCw } from 'lucide-react';
 import Link from 'next/link';
+import { useState } from 'react';
 import useSWR from 'swr';
 
 import { Button } from '@/components/ui/Button';
 import { PageLoader } from '@/components/ui/Spinner';
 import { sevColor } from '@/components/tr069/Charts';
-import { tr069Api, type Tr069Dashboard } from '@/lib/provisioning-api';
+import {
+  tr069Api,
+  type Tr069Dashboard,
+  type Tr069DashboardOltCell,
+} from '@/lib/provisioning-api';
 
 const ALERT_LABEL: Record<string, string> = {
   OPTICAL_RX_LOW: 'Sinal óptico baixo',
@@ -42,6 +47,23 @@ function ago(iso: string | null): string {
   return `há ${Math.floor(h / 24)} d`;
 }
 
+const DASH_VIEWS = [
+  { key: 'fila', label: 'Fila' },
+  { key: 'cards', label: 'Cards' },
+  { key: 'mapa', label: 'Mapa OLT' },
+] as const;
+type DashView = (typeof DASH_VIEWS)[number]['key'];
+
+/** Cor da célula do Mapa OLT pela fração de CPEs degradados (verde→âmbar→vermelho). */
+function oltCellColor(cell: Tr069DashboardOltCell): string {
+  if (cell.total === 0) return '#1d2b48';
+  const ratio = cell.degraded / cell.total;
+  if (ratio === 0) return '#12b886';
+  if (ratio < 0.1) return '#74c69d';
+  if (ratio < 0.3) return '#f59f00';
+  return '#fa5252';
+}
+
 function Kpi({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
@@ -54,6 +76,7 @@ function Kpi({ label, value, color }: { label: string; value: number; color: str
 }
 
 export default function Tr069DashboardPage() {
+  const [dashView, setDashView] = useState<DashView>('fila');
   const { data, isLoading, error, mutate } = useSWR<Tr069Dashboard>(
     'tr069/dashboard',
     () => tr069Api.dashboard(),
@@ -69,7 +92,7 @@ export default function Tr069DashboardPage() {
     );
   }
 
-  const { kpis, queue, symptoms } = data;
+  const { kpis, queue, symptoms, olts } = data;
   const maxSym = Math.max(1, ...symptoms.map((s) => s.count));
 
   return (
@@ -81,9 +104,26 @@ export default function Tr069DashboardPage() {
           </p>
           <h1 className="text-2xl font-bold tracking-tight">Fila de diagnóstico</h1>
         </div>
-        <Button variant="secondary" size="sm" onClick={() => mutate()}>
-          <RefreshCw className="mr-1 h-4 w-4" /> Atualizar
-        </Button>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-lg border border-slate-200 bg-white p-0.5 dark:border-slate-700 dark:bg-slate-900">
+            {DASH_VIEWS.map((v) => (
+              <button
+                key={v.key}
+                onClick={() => setDashView(v.key)}
+                className={`rounded-md px-3 py-1 text-xs font-medium transition-colors ${
+                  dashView === v.key
+                    ? 'bg-sky-600 text-white'
+                    : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+                }`}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => mutate()}>
+            <RefreshCw className="mr-1 h-4 w-4" /> Atualizar
+          </Button>
+        </div>
       </header>
 
       {/* KPIs */}
@@ -95,49 +135,138 @@ export default function Tr069DashboardPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
-        {/* Fila */}
-        <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
-          <div className="border-b border-slate-100 px-4 py-3 dark:border-slate-800">
-            <h2 className="text-sm font-semibold">CPEs com problema · {queue.length}</h2>
-          </div>
-          {queue.length === 0 ? (
-            <p className="p-8 text-center text-sm text-slate-500">
-              Nenhum CPE com alerta aberto. 🎉
-            </p>
-          ) : (
-            <div className="divide-y divide-slate-100 dark:divide-slate-800">
-              {queue.map((q) => (
-                <Link
-                  key={q.deviceId}
-                  href={`/tr069/devices/${q.deviceId}`}
-                  className="grid grid-cols-[10px_1.6fr_1.4fr_84px_92px] items-center gap-3 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50"
-                >
-                  <span
-                    className="h-2.5 w-2.5 rounded-full"
-                    style={{ background: sevColor(q.severity) }}
-                  />
-                  <div className="min-w-0">
-                    <p className="truncate font-medium">{q.label}</p>
-                    <p className="truncate font-mono text-xs text-slate-400">{q.model ?? '—'}</p>
-                  </div>
-                  <div className="min-w-0">
-                    <span
-                      className="rounded px-1.5 py-0.5 text-[11px] font-medium"
-                      style={{ background: `${sevColor(q.severity)}1a`, color: sevColor(q.severity) }}
-                    >
-                      {alertLabel(q.type)}
-                    </span>
-                    <p className="truncate text-xs text-slate-500">{q.symptom}</p>
-                  </div>
-                  <span className="font-mono text-xs" style={{ color: sevColor(q.severity) }}>
-                    {q.signal === null ? '—' : q.signal}
-                  </span>
-                  <span className="text-right text-xs text-slate-400">{ago(q.lastInformAt)}</span>
-                </Link>
-              ))}
+        {/* Modo Fila */}
+        {dashView === 'fila' && (
+          <div className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+            <div className="border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+              <h2 className="text-sm font-semibold">CPEs com problema · {queue.length}</h2>
             </div>
-          )}
-        </div>
+            {queue.length === 0 ? (
+              <p className="p-8 text-center text-sm text-slate-500">
+                Nenhum CPE com alerta aberto. 🎉
+              </p>
+            ) : (
+              <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                {queue.map((q) => (
+                  <Link
+                    key={q.deviceId}
+                    href={`/tr069/devices/${q.deviceId}`}
+                    className="grid grid-cols-[10px_1.6fr_1.4fr_84px_92px] items-center gap-3 px-4 py-2.5 text-sm hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                  >
+                    <span
+                      className="h-2.5 w-2.5 rounded-full"
+                      style={{ background: sevColor(q.severity) }}
+                    />
+                    <div className="min-w-0">
+                      <p className="truncate font-medium">{q.label}</p>
+                      <p className="truncate font-mono text-xs text-slate-400">{q.model ?? '—'}</p>
+                    </div>
+                    <div className="min-w-0">
+                      <span
+                        className="rounded px-1.5 py-0.5 text-[11px] font-medium"
+                        style={{ background: `${sevColor(q.severity)}1a`, color: sevColor(q.severity) }}
+                      >
+                        {alertLabel(q.type)}
+                      </span>
+                      <p className="truncate text-xs text-slate-500">{q.symptom}</p>
+                    </div>
+                    <span className="font-mono text-xs" style={{ color: sevColor(q.severity) }}>
+                      {q.signal === null ? '—' : q.signal}
+                    </span>
+                    <span className="text-right text-xs text-slate-400">{ago(q.lastInformAt)}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Modo Cards */}
+        {dashView === 'cards' && (
+          <div>
+            {queue.length === 0 ? (
+              <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900">
+                Nenhum CPE com alerta aberto. 🎉
+              </div>
+            ) : (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {queue.map((q) => (
+                  <Link
+                    key={q.deviceId}
+                    href={`/tr069/devices/${q.deviceId}`}
+                    className="rounded-xl border border-slate-200 bg-white p-3 transition-all hover:-translate-y-0.5 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900"
+                    style={{ borderLeft: `3px solid ${sevColor(q.severity)}` }}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium">{q.label}</p>
+                        <p className="truncate font-mono text-xs text-slate-400">{q.model ?? '—'}</p>
+                      </div>
+                      <span className="shrink-0 text-xs text-slate-400">{ago(q.lastInformAt)}</span>
+                    </div>
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <span
+                        className="rounded px-1.5 py-0.5 text-[11px] font-medium"
+                        style={{ background: `${sevColor(q.severity)}1a`, color: sevColor(q.severity) }}
+                      >
+                        {alertLabel(q.type)}
+                      </span>
+                      <span className="font-mono text-xs" style={{ color: sevColor(q.severity) }}>
+                        {q.signal === null ? '—' : q.signal}
+                      </span>
+                    </div>
+                    <p className="mt-1 truncate text-xs text-slate-500">{q.symptom}</p>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Modo Mapa OLT */}
+        {dashView === 'mapa' && (
+          <div className="rounded-xl border border-slate-800 bg-[#0e1726] p-4">
+            <h2 className="mb-3 text-sm font-semibold text-slate-200">
+              Saúde por OLT · {olts.length}
+            </h2>
+            {olts.length === 0 ? (
+              <p className="py-8 text-center text-sm text-slate-500">
+                Nenhuma OLT com CPEs gerenciados.
+              </p>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+                  {olts.map((cell) => (
+                    <div
+                      key={cell.oltId}
+                      className="flex aspect-square flex-col justify-between rounded-lg p-2 text-white"
+                      style={{ background: oltCellColor(cell) }}
+                      title={`${cell.oltName} · ${cell.degraded}/${cell.total} degradados`}
+                    >
+                      <span className="truncate text-[11px] font-medium opacity-90">
+                        {cell.oltName}
+                      </span>
+                      <span className="font-mono text-sm font-semibold">
+                        {cell.degraded}/{cell.total}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 flex items-center gap-2 text-[11px] text-slate-400">
+                  <span>Saudável</span>
+                  <div
+                    className="h-2 flex-1 rounded-full"
+                    style={{
+                      background:
+                        'linear-gradient(90deg,#12b886,#74c69d,#f59f00,#fa5252)',
+                    }}
+                  />
+                  <span>Degradado</span>
+                </div>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Right rail — sintomas */}
         <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">

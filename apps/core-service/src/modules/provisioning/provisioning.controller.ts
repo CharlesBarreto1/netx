@@ -31,6 +31,7 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   CreateOltRequestSchema,
+  CreateTr069DeviceNoteSchema,
   CreateTr069ProfileSchema,
   FirmwareUpgradeRequestSchema,
   InstallCustomerRequestSchema,
@@ -42,11 +43,15 @@ import {
   MigrateOltOntsRequestSchema,
   OntSwapSchema,
   PingRequestSchema,
+  SetRouterSettingsSchema,
+  SetWifiRadioSchema,
   SpeedTestRequestSchema,
+  Tr069ProbeRequestSchema,
   UpdateOltRequestSchema,
   UpdateTr069ProfileSchema,
   type AuthenticatedPrincipal,
   type CreateOltRequest,
+  type CreateTr069DeviceNote,
   type CreateTr069Profile,
   type FirmwareUpgradeRequest,
   type InstallCustomerRequest,
@@ -58,7 +63,10 @@ import {
   type ListWifiCoverageQuery,
   type OntSwap,
   type PingRequest,
+  type SetRouterSettings,
+  type SetWifiRadio,
   type SpeedTestRequest,
+  type Tr069ProbeRequest,
   type UpdateOltRequest,
   type UpdateTr069Profile,
 } from '@netx/shared';
@@ -396,6 +404,129 @@ export class Tr069Controller {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     return this.diag.listDeviceParameters(user.tenantId, id);
+  }
+
+  /**
+   * Edita tuning de rádio Wi-Fi (canal/potência/criptografia) — SET direto no
+   * CPE. SSID/senha continuam vindo do contrato; o reconciliador ignora estes.
+   */
+  @Post('devices/:id/wifi')
+  @HttpCode(200)
+  @RequirePermissions('tr069.admin')
+  setWifi(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(SetWifiRadioSchema) input: SetWifiRadio,
+  ) {
+    return this.diag.setWifiRadio(user.tenantId, id, user.sub, input);
+  }
+
+  /**
+   * Edita toggles de roteador (fuso/NTP + band steering) — SET direto no CPE.
+   * UPnP/EasyMesh não são expostos via TR-069 nesse firmware.
+   */
+  @Post('devices/:id/router')
+  @HttpCode(200)
+  @RequirePermissions('tr069.admin')
+  setRouter(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(SetRouterSettingsSchema) input: SetRouterSettings,
+  ) {
+    return this.diag.setRouterSettings(user.tenantId, id, user.sub, input);
+  }
+
+  /** Dispara o scan de vizinhança Wi-Fi (heatmap de canais 2.4G). */
+  @Post('devices/:id/wifi-scan')
+  @HttpCode(200)
+  @RequirePermissions('tr069.admin')
+  requestWifiScan(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.diag.requestWifiScan(user.tenantId, id, user.sub);
+  }
+
+  /** Resultado do scan de vizinhança (redes + ocupação por canal 2.4G). */
+  @Get('devices/:id/wifi-scan')
+  @RequirePermissions('tr069.admin')
+  getWifiScan(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.diag.getWifiScan(user.tenantId, id);
+  }
+
+  /**
+   * Probe de data model — enfileira um GET com caminhos arbitrários (ferramenta
+   * de bancada pra descobrir os paths Huawei reais antes de codar SET).
+   */
+  @Post('devices/:id/probe')
+  @HttpCode(200)
+  @RequirePermissions('tr069.admin')
+  probe(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(Tr069ProbeRequestSchema) input: Tr069ProbeRequest,
+  ) {
+    return this.diag.enqueueProbe(user.tenantId, id, user.sub, input.names);
+  }
+
+  /** Resultado de um probe (status + params do GET). */
+  @Get('devices/:id/probe/:taskId')
+  @RequirePermissions('tr069.admin')
+  probeResult(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('taskId', new ParseUUIDPipe()) taskId: string,
+  ) {
+    return this.diag.getProbeResult(user.tenantId, id, taskId);
+  }
+
+  /** Histórico do device: reboots/quedas (14d), disponibilidade (30d), timeline. */
+  @Get('devices/:id/history')
+  @RequirePermissions('tr069.admin')
+  deviceHistory(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.diag.getDeviceHistory(user.tenantId, id);
+  }
+
+  // ── Notas do device (atendimento N1) ───────────────────────────────────────
+
+  /** Lista as notas livres do device. */
+  @Get('devices/:id/notes')
+  @RequirePermissions('tr069.admin')
+  listNotes(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.diag.listNotes(user.tenantId, id);
+  }
+
+  /** Cria uma nota livre no device. */
+  @Post('devices/:id/notes')
+  @HttpCode(201)
+  @RequirePermissions('tr069.admin')
+  createNote(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(CreateTr069DeviceNoteSchema) input: CreateTr069DeviceNote,
+  ) {
+    return this.diag.createNote(user.tenantId, id, user, input.body);
+  }
+
+  /** Remove (soft-delete) uma nota do device. */
+  @Delete('devices/:id/notes/:noteId')
+  @HttpCode(204)
+  @RequirePermissions('tr069.admin')
+  async deleteNote(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('noteId', new ParseUUIDPipe()) noteId: string,
+  ): Promise<void> {
+    await this.diag.deleteNote(user.tenantId, id, noteId, user.sub);
   }
 
   /** Ranking de cobertura Wi-Fi (piores RSSI médios) — proativo / venda de mesh. */

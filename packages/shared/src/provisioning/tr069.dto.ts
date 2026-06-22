@@ -199,6 +199,13 @@ export interface Tr069DiagnosticDto {
   wifiChannel5: number | null;
   wifiWorstRssi: number | null;
   wifiClients: Tr069WifiClient[];
+  /** Recursos do CPE (DeviceInfo): % CPU, % memória, temperatura (°C). */
+  cpuUsage: number | null;
+  memUsage: number | null;
+  deviceTemp: number | null;
+  /** Contadores de bytes da WAN PPPoE (cumulativos) — base do throughput. */
+  wanRxBytes: number | null;
+  wanTxBytes: number | null;
 }
 
 export interface Tr069AlertDto {
@@ -243,6 +250,7 @@ export interface Tr069DeviceDetailResponse {
   ont: {
     id: string;
     snGpon: string;
+    macAddress: string | null;
     contractId: string;
     status: string;
     lastRxPower: string | null;
@@ -266,6 +274,182 @@ export interface Tr069DeviceDetailResponse {
 export interface Tr069RefreshResponse {
   taskId: string;
   message: string;
+}
+
+// =============================================================================
+// Notas do device (anotações livres do atendimento N1)
+// =============================================================================
+export const CreateTr069DeviceNoteSchema = z.object({
+  body: z.string().trim().min(1).max(2000),
+});
+export type CreateTr069DeviceNote = z.infer<typeof CreateTr069DeviceNoteSchema>;
+
+export interface Tr069DeviceNoteDto {
+  id: string;
+  body: string;
+  createdById: string | null;
+  createdByEmail: string | null;
+  createdAt: string;
+}
+
+// =============================================================================
+// Edição de rádio Wi-Fi (canal/potência/criptografia — SET direto no CPE)
+// =============================================================================
+export type Tr069WifiBand = '2.4G' | '5G';
+export type Tr069WifiSecurity = 'WPA2' | 'WPA_WPA2';
+export type Tr069WifiWidth = 'auto' | '20' | '40' | '80' | '160';
+
+/** Larguras de canal suportadas por banda (2.4G não faz 80/160). */
+export const TR069_WIFI_WIDTHS: Record<Tr069WifiBand, Tr069WifiWidth[]> = {
+  '2.4G': ['auto', '20', '40'],
+  '5G': ['auto', '20', '40', '80', '160'],
+};
+
+/** Potências (%) aceitas pelo EG8145X6 (TransmitPowerSupported). */
+export const TR069_WIFI_TX_POWER_LEVELS = [20, 40, 60, 80, 100] as const;
+
+/** Canais válidos por banda (PossibleChannels — regdomain PY). */
+export const TR069_WIFI_CHANNELS: Record<Tr069WifiBand, number[]> = {
+  '2.4G': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+  '5G': [
+    36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140,
+    144, 149, 153, 157, 161,
+  ],
+};
+
+export const SetWifiRadioSchema = z
+  .object({
+    band: z.enum(['2.4G', '5G']),
+    /** true = auto-canal; false = fixa o `channel`. */
+    autoChannel: z.boolean().optional(),
+    channel: z.coerce.number().int().min(1).max(196).optional(),
+    channelWidth: z.enum(['auto', '20', '40', '80', '160']).optional(),
+    txPower: z.coerce.number().int().refine((v) => [20, 40, 60, 80, 100].includes(v), {
+      message: 'Potência deve ser 20, 40, 60, 80 ou 100',
+    }).optional(),
+    security: z.enum(['WPA2', 'WPA_WPA2']).optional(),
+  })
+  .refine(
+    (v) =>
+      v.autoChannel !== undefined ||
+      v.channel !== undefined ||
+      v.channelWidth !== undefined ||
+      v.txPower !== undefined ||
+      v.security !== undefined,
+    { message: 'Informe ao menos um campo pra alterar' },
+  )
+  .refine((v) => !(v.autoChannel === false && v.channel === undefined), {
+    message: 'Canal manual exige escolher o canal',
+    path: ['channel'],
+  });
+export type SetWifiRadio = z.infer<typeof SetWifiRadioSchema>;
+
+// =============================================================================
+// Toggles do roteador (TimeZone + BandSteering — SET direto no CPE)
+// =============================================================================
+/** Offsets de fuso comuns na operação (BR/PY). */
+export const TR069_ROUTER_TZ_OFFSETS = ['-02:00', '-03:00', '-04:00', '-05:00'] as const;
+
+export const SetRouterSettingsSchema = z
+  .object({
+    /** Liga/desliga o cliente de horário (NTP) do CPE. */
+    timeEnable: z.boolean().optional(),
+    /** Offset do fuso, ex. "-04:00". */
+    timeZoneOffset: z
+      .string()
+      .regex(/^[+-]\d{2}:\d{2}$/, 'Use o formato ±HH:MM (ex.: -04:00)')
+      .optional(),
+    /** Rótulo do fuso (cosmético no WebUI). */
+    timeZoneName: z.string().min(1).max(64).optional(),
+    /** Servidor NTP primário. */
+    ntpServer: z.string().min(1).max(128).optional(),
+    /** Liga/desliga band steering (2.4G/5G unificado). */
+    bandSteering: z.boolean().optional(),
+  })
+  .refine(
+    (v) =>
+      v.timeEnable !== undefined ||
+      v.timeZoneOffset !== undefined ||
+      v.timeZoneName !== undefined ||
+      v.ntpServer !== undefined ||
+      v.bandSteering !== undefined,
+    { message: 'Informe ao menos um campo pra alterar' },
+  );
+export type SetRouterSettings = z.infer<typeof SetRouterSettingsSchema>;
+
+// =============================================================================
+// Scan de vizinhança Wi-Fi (heatmap de ocupação de canais 2.4G)
+// =============================================================================
+export interface Tr069WifiNeighbor {
+  ssid: string | null;
+  bssid: string | null;
+  channel: number | null;
+  /** "2.4GHz" | "5GHz" */
+  band: string | null;
+  /** Sinal recebido (dBm). */
+  signal: number | null;
+  bandwidth: string | null;
+  security: string | null;
+}
+
+export interface Tr069WifiScanResponse {
+  /** DiagnosticsState do CPE: None | Requested | Complete | Error_... */
+  state: string | null;
+  /** Quando a leitura da subárvore foi concluída (task GET). */
+  scannedAt: string | null;
+  /** Há uma leitura (GET) ainda pendente — UI segue fazendo polling. */
+  pending: boolean;
+  neighbors: Tr069WifiNeighbor[];
+  /** Ocupação por canal 2.4G (1–13): nº de redes vizinhas. */
+  channels24: Array<{ channel: number; count: number }>;
+}
+
+// =============================================================================
+// Probe de data model (ferramenta de bancada — descobrir paths Huawei reais)
+// =============================================================================
+/**
+ * Enfileira um GetParameterValues com caminhos ARBITRÁRIOS (parciais ou
+ * completos) numa ONT de bancada pra descobrir os paths reais do firmware antes
+ * de codar SET. ⚠️ Huawei devolve fault no GET INTEIRO se UM nome não existir —
+ * prove um caminho parcial por vez (terminando em ".").
+ */
+export const Tr069ProbeRequestSchema = z.object({
+  names: z.array(z.string().min(3).max(255)).min(1).max(20),
+});
+export type Tr069ProbeRequest = z.infer<typeof Tr069ProbeRequestSchema>;
+
+export interface Tr069ProbeResultDto {
+  taskId: string;
+  /** PENDING | RUNNING | DONE | FAILED | CANCELLED */
+  status: string;
+  error: string | null;
+  /** Caminhos pedidos no probe (payload.names). */
+  names: string[];
+  /** name→value do GetParameterValuesResponse (null enquanto não respondido). */
+  params: Array<{ name: string; value: string }> | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+// =============================================================================
+// Histórico do device (aba Histórico — derivado de tasks + alertas, sem coletor novo)
+// =============================================================================
+export type Tr069TimelineSeverity = 'ok' | 'warn' | 'crit' | 'info';
+
+export interface Tr069DeviceHistoryResponse {
+  /** Reboots e quedas por dia — janela de 14 dias, do mais antigo pro mais novo. */
+  daily: Array<{ date: string; reboots: number; outages: number }>;
+  /** Disponibilidade por dia (30 dias, antigo→novo) — verde/âmbar/vermelho. */
+  availability: Array<'ok' | 'warn' | 'crit'>;
+  /** % de dias OK na janela de 30 dias. */
+  availabilityPct: number;
+  /** Linha do tempo de eventos (alertas + tasks), mais recentes primeiro. */
+  timeline: Array<{
+    at: string;
+    severity: Tr069TimelineSeverity;
+    title: string;
+    description: string | null;
+  }>;
 }
 
 // =============================================================================
@@ -438,8 +622,19 @@ export interface Tr069DashboardQueueItem {
   lastInformAt: string | null;
 }
 
+/** Célula do "Mapa OLT" — saúde agregada dos CPEs de uma OLT. */
+export interface Tr069DashboardOltCell {
+  oltId: string;
+  oltName: string;
+  total: number;
+  /** CPEs degradados (offline ou com alerta aberto). */
+  degraded: number;
+}
+
 export interface Tr069DashboardResponse {
   kpis: { online: number; offline: number; alerta: number; naoConformes: number };
   queue: Tr069DashboardQueueItem[];
   symptoms: Array<{ type: Tr069AlertType; count: number }>;
+  /** Saúde por OLT (modo "Mapa OLT" do dashboard). */
+  olts: Tr069DashboardOltCell[];
 }

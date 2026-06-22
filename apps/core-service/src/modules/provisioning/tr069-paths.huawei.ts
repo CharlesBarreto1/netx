@@ -31,9 +31,9 @@ export const HUAWEI_EG8145_PATHS = {
     'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.PreSharedKey',
   pwd50:
     'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.PreSharedKey.1.PreSharedKey',
-  // Security mode (WPA2-PSK)
-  sec24: 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.X_HW_SecurityMode',
-  sec50: 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.X_HW_SecurityMode',
+  // ⚠️ Segurança Wi-Fi NÃO é X_HW_SecurityMode (esse param não existe no
+  // firmware do EG8145X6 — dava fault). É BeaconType + IEEE11i*/WPA* — ver
+  // huaweiWlanSecurityParams() abaixo. Confirmado por probe ao vivo (jun/2026).
   // Inform interval — reduzir após primeira config pra próxima sessão ser rápida
   informInterval: 'InternetGatewayDevice.ManagementServer.PeriodicInformInterval',
   // Credenciais de Connection Request — o NetX define valores conhecidos pra
@@ -86,6 +86,105 @@ export function ssid5gFor(
   mode: 'BAND_STEERING' | 'DUAL_BAND',
 ): string {
   return mode === 'DUAL_BAND' ? `${ssid}-5G` : ssid;
+}
+
+// =============================================================================
+// Edição de rádio Wi-Fi (canal/potência/criptografia) — SET direto no CPE.
+// Paths/domínios confirmados por probe ao vivo no EG8145X6 (jun/2026).
+// =============================================================================
+export type HuaweiWifiBand = '2.4G' | '5G';
+export type HuaweiWifiSecurity = 'WPA2' | 'WPA_WPA2';
+export type HuaweiWifiWidth = 'auto' | '20' | '40' | '80' | '160';
+
+/**
+ * Largura de canal → valor do enum vendor `X_HW_HT20`. Mapeado por SET-probe ao
+ * vivo no EG8145X6 (jun/2026): 0=Auto, 1=20, 2=40, 3=80, 4=160MHz.
+ */
+export const HUAWEI_WIFI_WIDTH_CODE: Record<HuaweiWifiWidth, string> = {
+  auto: '0',
+  '20': '1',
+  '40': '2',
+  '80': '3',
+  '160': '4',
+};
+
+/** Larguras suportadas por banda (2.4G não faz 80/160). */
+export const HUAWEI_WIFI_WIDTHS: Record<HuaweiWifiBand, HuaweiWifiWidth[]> = {
+  '2.4G': ['auto', '20', '40'],
+  '5G': ['auto', '20', '40', '80', '160'],
+};
+
+/** Índice da WLANConfiguration por banda (1=2.4G/ath0, 5=5G/ath4). */
+export const HUAWEI_WLAN_INDEX: Record<HuaweiWifiBand, number> = { '2.4G': 1, '5G': 5 };
+
+/** Potências aceitas (%) — TransmitPowerSupported. */
+export const HUAWEI_TX_POWER_LEVELS = [20, 40, 60, 80, 100] as const;
+
+/** Canais válidos por banda (PossibleChannels do EG8145X6, regdomain PY). */
+export const HUAWEI_WIFI_CHANNELS: Record<HuaweiWifiBand, number[]> = {
+  '2.4G': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+  '5G': [
+    36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140,
+    144, 149, 153, 157, 161,
+  ],
+};
+
+/** Monta os paths de uma WLANConfiguration por banda. */
+export function huaweiWlanPaths(band: HuaweiWifiBand) {
+  const p = `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${HUAWEI_WLAN_INDEX[band]}`;
+  return {
+    channel: `${p}.Channel`,
+    autoChannel: `${p}.AutoChannelEnable`,
+    txPower: `${p}.TransmitPower`,
+    beaconType: `${p}.BeaconType`,
+    ieee11iAuth: `${p}.IEEE11iAuthenticationMode`,
+    ieee11iEnc: `${p}.IEEE11iEncryptionModes`,
+    wpaAndIiAuth: `${p}.X_HW_WPAand11iAuthenticationMode`,
+    wpaAndIiEnc: `${p}.X_HW_WPAand11iEncryptionModes`,
+    // Largura (enum vendor X_HW_HT20) — enum ainda não mapeado; expor depois.
+    htMode: `${p}.X_HW_HT20`,
+  } as const;
+}
+
+// =============================================================================
+// Toggles do roteador (TimeZone + BandSteering) — SET direto no CPE.
+// Paths confirmados por probe ao vivo no EG8145X6 (jun/2026). UPnP e EasyMesh
+// NÃO são expostos via TR-069 nesse firmware (2 rodadas de probe deram fault).
+// =============================================================================
+export const HUAWEI_ROUTER_PATHS = {
+  timeEnable: 'InternetGatewayDevice.Time.Enable',
+  timeZoneOffset: 'InternetGatewayDevice.Time.LocalTimeZone',
+  timeZoneName: 'InternetGatewayDevice.Time.LocalTimeZoneName',
+  ntpServer1: 'InternetGatewayDevice.Time.NTPServer1',
+  // BandSteering: BandSteeringPolicy dobra como liga/desliga (0=off, 1=on);
+  // BandSteeringCapability (read) indica suporte.
+  bandSteeringPolicy:
+    'InternetGatewayDevice.LANDevice.1.WiFi.X_HW_GlobalConfig.BandSteeringPolicy',
+} as const;
+
+/**
+ * Params de criptografia (SET) por modo. Só WPA2 ou WPA/WPA2 misto — nunca
+ * abrir a rede (None/WEP). Confirmado: BeaconType=11i (WPA2) ou WPAand11i
+ * (misto) + os modos de auth/encryption correspondentes.
+ */
+export function huaweiWlanSecurityParams(
+  band: HuaweiWifiBand,
+  security: HuaweiWifiSecurity,
+): Array<{ name: string; value: string; type: string }> {
+  const w = huaweiWlanPaths(band);
+  if (security === 'WPA2') {
+    return [
+      { name: w.beaconType, value: '11i', type: 'xsd:string' },
+      { name: w.ieee11iAuth, value: 'PSKAuthentication', type: 'xsd:string' },
+      { name: w.ieee11iEnc, value: 'AESEncryption', type: 'xsd:string' },
+    ];
+  }
+  // WPA/WPA2 misto (TKIP+AES) — compatibilidade com dispositivos antigos.
+  return [
+    { name: w.beaconType, value: 'WPAand11i', type: 'xsd:string' },
+    { name: w.wpaAndIiAuth, value: 'PSKAuthentication', type: 'xsd:string' },
+    { name: w.wpaAndIiEnc, value: 'TKIPandAESEncryption', type: 'xsd:string' },
+  ];
 }
 
 // =============================================================================
@@ -171,6 +270,19 @@ export const HUAWEI_PPP_PATHS = {
   uptime: `${pppPrefix}.Uptime`,
 } as const;
 
+/**
+ * Contadores de bytes da WAN PPPoE (cumulativos) — base do throughput WAN.
+ * Params padrão TR-098 (.Stats) na conexão de internet. A vazão é calculada
+ * pelo delta entre duas leituras da série de diagnóstico.
+ */
+export const HUAWEI_WAN_STATS_PATHS = {
+  rxBytes: `${pppPrefix}.Stats.EthernetBytesReceived`,
+  txBytes: `${pppPrefix}.Stats.EthernetBytesSent`,
+} as const;
+
+/** Habilita a coleta dos contadores de bytes da WAN (throughput). */
+export const HUAWEI_WAN_STATS_ENABLED = (process.env.TR069_WAN_STATS_ENABLED ?? '1') !== '0';
+
 /** Caminho PARCIAL da tabela de hosts (dispositivos na LAN do cliente). */
 export const HUAWEI_HOSTS_PATH = 'InternetGatewayDevice.LANDevice.1.Hosts.Host.';
 
@@ -204,6 +316,32 @@ export const HUAWEI_WIFI_ASSOC_PATHS = {
 /** Habilita a enumeração por cliente Wi-Fi (RSSI/MAC/taxa) no diagnóstico. */
 export const HUAWEI_WIFI_CLIENTS_ENABLED =
   (process.env.TR069_WIFI_CLIENTS_ENABLED ?? '1') !== '0';
+
+/**
+ * Recursos do CPE (DeviceInfo) — % CPU, % memória e temperatura da placa.
+ * Params escalares (NÃO pedir a tabela ProcessStatus.Process inteira). Confirmados
+ * ao vivo no EG8145X6. Desligue com TR069_DEVICE_RESOURCES_ENABLED=0 se algum
+ * firmware der fault.
+ */
+export const HUAWEI_DEVICE_RESOURCE_PATHS = {
+  cpuUsed: 'InternetGatewayDevice.DeviceInfo.X_HW_CpuUsed',
+  memUsed: 'InternetGatewayDevice.DeviceInfo.X_HW_MemUsed',
+  deviceTemp: 'InternetGatewayDevice.DeviceInfo.TemperatureStatus.TemperatureSensor.1.Value',
+} as const;
+
+/** Habilita a coleta de recursos do CPE (CPU/mem/temp) no diagnóstico. */
+export const HUAWEI_DEVICE_RESOURCES_ENABLED =
+  (process.env.TR069_DEVICE_RESOURCES_ENABLED ?? '1') !== '0';
+
+/**
+ * Scan de vizinhança Wi-Fi (NeighboringWiFiDiagnostic) — base do heatmap de
+ * ocupação de canais. É um diagnóstico a pedido: seta DiagnosticsState=Requested
+ * e depois lê a subárvore Result.{i}. Confirmado ao vivo no EG8145X6.
+ */
+export const HUAWEI_WIFI_SCAN = {
+  state: 'InternetGatewayDevice.LANDevice.1.WiFi.NeighboringWiFiDiagnostic.DiagnosticsState',
+  subtree: 'InternetGatewayDevice.LANDevice.1.WiFi.NeighboringWiFiDiagnostic.',
+} as const;
 
 // =============================================================================
 // TR-143 — diagnósticos a pedido (speed test / ping). Nomes padrão TR-098,
@@ -272,8 +410,10 @@ export function huaweiDiagnosticParamNames(): string[] {
     HUAWEI_GPON_STATUS_PATH,
     ...Object.values(HUAWEI_GPON_STATS_PATHS),
     ...(HUAWEI_PPP_DIAG_ENABLED ? Object.values(HUAWEI_PPP_PATHS) : []),
+    ...(HUAWEI_WAN_STATS_ENABLED ? Object.values(HUAWEI_WAN_STATS_PATHS) : []),
     ...Object.values(HUAWEI_WIFI_DIAG_PATHS),
     ...(HUAWEI_WIFI_CLIENTS_ENABLED ? Object.values(HUAWEI_WIFI_ASSOC_PATHS) : []),
     ...(HUAWEI_HOSTS_ENABLED ? [HUAWEI_HOSTS_PATH] : []),
+    ...(HUAWEI_DEVICE_RESOURCES_ENABLED ? Object.values(HUAWEI_DEVICE_RESOURCE_PATHS) : []),
   ];
 }

@@ -47,6 +47,11 @@ const PPP_PATHS = {
   lastError: `${PPP_PREFIX}.LastConnectionError`,
   uptime: `${PPP_PREFIX}.Uptime`,
 };
+// Contadores de bytes da WAN PPPoE (base do throughput) — mesmos do core-service.
+const WAN_STATS_PATHS = {
+  rxBytes: `${PPP_PREFIX}.Stats.EthernetBytesReceived`,
+  txBytes: `${PPP_PREFIX}.Stats.EthernetBytesSent`,
+};
 // Regex de host da LAN: ...Hosts.Host.{i}.{campo}
 const HOST_RE = /Hosts\.Host\.(\d+)\.(.+)$/;
 
@@ -152,6 +157,14 @@ const WIFI_PATHS = {
   channel5: `${WLAN_50}.Channel`,
 };
 
+// Recursos do CPE (DeviceInfo) — % CPU/mem + temperatura da placa. Mesmos paths
+// escalares do core-service (tr069-paths.huawei.ts).
+const RESOURCE_PATHS = {
+  cpuUsed: 'InternetGatewayDevice.DeviceInfo.X_HW_CpuUsed',
+  memUsed: 'InternetGatewayDevice.DeviceInfo.X_HW_MemUsed',
+  deviceTemp: 'InternetGatewayDevice.DeviceInfo.TemperatureStatus.TemperatureSensor.1.Value',
+};
+
 // ── Limiares ópticos (cópia de @netx/shared OPTICAL_RX_THRESHOLDS) ────────────
 export const RX_THRESHOLDS = { critHigh: -5, warnHigh: -8, warnLow: -25, critLow: -27 } as const;
 export const TX_THRESHOLDS = { min: 0.0, max: 7.0 } as const;
@@ -211,6 +224,11 @@ export interface ExtractedDiagnostics {
   wifiClients: WifiClient[];
   wifiWorstRssi: number | null;
   wifiAvgRssi: number | null;
+  cpuUsage: number | null;
+  memUsage: number | null;
+  deviceTemp: number | null;
+  wanRxBytes: number | null;
+  wanTxBytes: number | null;
   raw: Record<string, string>;
   /** Algum parâmetro óptico veio preenchido — define se vale persistir. */
   hasOptical: boolean;
@@ -392,6 +410,11 @@ export function extractDiagnostics(params: Record<string, string>): ExtractedDia
     wifiClients,
     wifiWorstRssi,
     wifiAvgRssi,
+    cpuUsage: intOrNull(params[RESOURCE_PATHS.cpuUsed]),
+    memUsage: intOrNull(params[RESOURCE_PATHS.memUsed]),
+    deviceTemp: intOrNull(params[RESOURCE_PATHS.deviceTemp]),
+    wanRxBytes: intOrNull(params[WAN_STATS_PATHS.rxBytes]),
+    wanTxBytes: intOrNull(params[WAN_STATS_PATHS.txBytes]),
     raw: params,
     hasOptical,
   };

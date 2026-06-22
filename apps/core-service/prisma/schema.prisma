@@ -129,6 +129,7 @@ model Tenant {
   tr069DiagRuns        Tr069DiagnosticRun[]
   tr069Profiles        Tr069Profile[]
   tr069Drifts          Tr069Drift[]
+  tr069DeviceNotes     Tr069DeviceNote[]
   provisioningEvents   ProvisioningEvent[]
   ufinetServices       UfinetService[]
 
@@ -2987,6 +2988,7 @@ model Tr069Device {
   diagRuns                 Tr069DiagnosticRun[]
   profile                  Tr069Profile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
   drifts                   Tr069Drift[]
+  notes                    Tr069DeviceNote[]
 
   @@index([tenantId, status])
   @@index([tenantId, lastInformAt])
@@ -3115,6 +3117,9 @@ model Tr069Diagnostic {
   pppStatus     String?  @map("ppp_status") @db.VarChar(32)   // Connected/Disconnected/...
   pppLastError  String?  @map("ppp_last_error") @db.VarChar(64)
   wanUptime     Int?     @map("wan_uptime")   // segundos
+  // Contadores de bytes da WAN PPPoE (cumulativos) — base do throughput.
+  wanRxBytes    BigInt?  @map("wan_rx_bytes")
+  wanTxBytes    BigInt?  @map("wan_tx_bytes")
 
   // ── Hosts da LAN (dispositivos conectados na casa do cliente) ───────────────
   hostsCount    Int?     @map("hosts_count")
@@ -3131,6 +3136,11 @@ model Tr069Diagnostic {
   wifiAvgRssi   Int?     @map("wifi_avg_rssi")
   // Lista por cliente Wi-Fi associado: [{ mac, band, rssi, txRate, rxRate }].
   wifiClients   Json?    @map("wifi_clients")
+
+  // ── Recursos do CPE (DeviceInfo) ────────────────────────────────────────────
+  cpuUsage      Int?     @map("cpu_usage")    // % CPU (X_HW_CpuUsed)
+  memUsage      Int?     @map("mem_usage")    // % memória (X_HW_MemUsed)
+  deviceTemp    Int?     @map("device_temp")  // °C do CPE (TemperatureSensor)
 
   // Snapshot bruto dos parâmetros lidos (nome→valor) — debug e métricas futuras.
   raw           Json?
@@ -3344,6 +3354,33 @@ model Tr069Drift {
   @@index([tenantId, status])
   @@map("tr069_drifts")
 }
+
+// =============================================================================
+// TR069_DEVICE_NOTE — anotações livres do atendimento N1 sobre um CPE
+// =============================================================================
+// Notas operacionais do atendente (ex.: "cliente trocou de cômodo", "fibra
+// reterminada em 18/06"). Soft-delete pra preservar histórico. Autor é
+// referência solta ao User (sem FK) com email cacheado pra render sem join.
+model Tr069DeviceNote {
+  id             String      @id @default(uuid()) @db.Uuid
+  tenantId       String      @map("tenant_id") @db.Uuid
+  deviceId       String      @map("device_id") @db.Uuid
+
+  body           String      @db.Text
+  createdById    String?     @map("created_by_id") @db.Uuid
+  createdByEmail String?     @map("created_by_email") @db.VarChar(255)
+
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+  deletedAt      DateTime?   @map("deleted_at")
+
+  tenant         Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  device         Tr069Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, deviceId, deletedAt])
+  @@map("tr069_device_notes")
+}
+
 
 // =============================================================================
 // PROVISIONING_EVENT — trilha de auditoria do orquestrador
