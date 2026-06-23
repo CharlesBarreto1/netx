@@ -197,8 +197,9 @@ export interface InstallFieldsInput {
   ponSlot?: number;
   macAddress?: string | null;
   serialPhysical?: string | null;
-  ssid: string;
-  wifiPassword: string;
+  /** Wi-Fi — opcional: herda do contrato (definido no cadastro). */
+  ssid?: string | null;
+  wifiPassword?: string | null;
   wifiBandMode?: 'BAND_STEERING' | 'DUAL_BAND';
   pppoeVlan?: number;
   notes?: string | null;
@@ -250,8 +251,9 @@ export interface OntSwapInput {
   newSnGpon?: string | null;
   allowStockBypass?: boolean;
   returnLocationId: string;
-  ssid: string;
-  wifiPassword: string;
+  /** Wi-Fi — opcional: a troca mantém o nome/senha do contrato. */
+  ssid?: string | null;
+  wifiPassword?: string | null;
   wifiBandMode?: 'BAND_STEERING' | 'DUAL_BAND';
 }
 

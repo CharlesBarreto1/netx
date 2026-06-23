@@ -31,16 +31,6 @@ import {
 import { stockApi, type ComodatoAvailableSerial } from '@/lib/stock-api';
 import { opticalApi } from '@/lib/optical-api';
 
-function generatePassword(): string {
-  // 10 chars, sem ambíguos (0/O, 1/l) — fácil de ditar no campo
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  let out = '';
-  const arr = new Uint8Array(10);
-  crypto.getRandomValues(arr);
-  for (let i = 0; i < arr.length; i++) out += alphabet[arr[i] % alphabet.length];
-  return out;
-}
-
 function statusBadgeColor(status: InstallTimelineEvent['status']): string {
   switch (status) {
     case 'SUCCESS': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
@@ -80,8 +70,6 @@ export default function InstallPage() {
   const [ponSlot, setPonSlot] = useState('1');
   const [macAddress, setMacAddress] = useState('');
   const [serialPhysical, setSerialPhysical] = useState('');
-  const [ssid, setSsid] = useState('');
-  const [wifiPassword, setWifiPassword] = useState('');
   // VLAN da WAN PPPoE — preset da OLT já vem com 1010; reaplicado via TR-069.
   const [pppoeVlan, setPppoeVlan] = useState('1010');
   // Modo Wi-Fi — depende do modelo da ONT (band steering x dual band).
@@ -166,8 +154,7 @@ export default function InstallPage() {
         ponSlot: ponSlot ? Number(ponSlot) : null,
         macAddress: macAddress.trim() || null,
         serialPhysical: serialPhysical.trim() || null,
-        ssid: ssid.trim(),
-        wifiPassword,
+        // Wi-Fi vem do contrato (definido no cadastro) — técnico não digita.
         pppoeVlan: Number(pppoeVlan) || 1010,
         wifiBandMode,
         notes: notes.trim() || null,
@@ -441,49 +428,9 @@ export default function InstallPage() {
             </p>
           </div>
 
-          <div>
-            <Label htmlFor="ssid">{t('wifi.ssid')}</Label>
-            <Input
-              id="ssid"
-              required
-              maxLength={32}
-              value={ssid}
-              onChange={(e) => setSsid(e.target.value)}
-              placeholder="Silva-Casa"
-            />
-            {wifiBandMode === 'DUAL_BAND' && ssid.trim() && (
-              <p className="mt-1 text-xs text-slate-500">
-                2.4 GHz: <code>{ssid.trim()}</code> · 5 GHz:{' '}
-                <code>5G-{ssid.trim()}</code>
-              </p>
-            )}
-          </div>
-
-          <div>
-            <Label htmlFor="wifiPassword">{t('wifi.password')}</Label>
-            <div className="flex gap-2">
-              <Input
-                id="wifiPassword"
-                required
-                minLength={8}
-                maxLength={63}
-                value={wifiPassword}
-                onChange={(e) => setWifiPassword(e.target.value)}
-                placeholder={t('wifi.passwordPlaceholder')}
-                className="flex-1"
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => setWifiPassword(generatePassword())}
-              >
-                {t('wifi.generate')}
-              </Button>
-            </div>
-            <p className="mt-1 text-xs text-slate-500">
-              {t('wifi.passwordHelp')}
-            </p>
-          </div>
+          <p className="rounded-md bg-slate-50 p-2 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+            {t('wifi.fromContract')}
+          </p>
 
           <div>
             <Label htmlFor="pppoeVlan">{t('wifi.pppoeVlan')}</Label>

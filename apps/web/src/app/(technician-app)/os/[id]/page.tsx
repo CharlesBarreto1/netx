@@ -55,14 +55,6 @@ type OltOption = {
   providerMode: string;
 };
 
-function genPassword() {
-  const chars = 'abcdefghijkmnpqrstuvwxyz23456789';
-  let out = '';
-  for (let i = 0; i < 10; i++)
-    out += chars[Math.floor(Math.random() * chars.length)];
-  return out;
-}
-
 export default function OsDetailPage() {
   const t = useTranslations('technician');
   const params = useParams<{ id: string }>();
@@ -106,8 +98,6 @@ export default function OsDetailPage() {
   const [enclosureId, setEnclosureId] = useState(''); // CTO importada (Ufinet/própria)
   const [selectedCto, setSelectedCto] = useState<ComboboxOption | null>(null);
   const [portNumber, setPortNumber] = useState(''); // porta da CTO escolhida
-  const [ssid, setSsid] = useState('');
-  const [wifiPassword, setWifiPassword] = useState('');
   const [returnLocationId, setReturnLocationId] = useState('');
   const [swappedOnt, setSwappedOnt] = useState(false); // suporte: trocou ONT?
   const [closeDescription, setCloseDescription] = useState('');
@@ -296,8 +286,7 @@ export default function OsDetailPage() {
     const ontFields = () => {
       if (bypass && !snGpon.trim()) return t('errors.snGponRequired');
       if (!bypass && !serialItemId) return t('errors.ontStockRequired');
-      if (!ssid.trim()) return t('errors.ssidRequired');
-      if (wifiPassword.trim().length < 8) return t('errors.wifiMin');
+      // Wi-Fi vem do contrato (definido no cadastro) — técnico não digita.
       return null;
     };
 
@@ -313,8 +302,6 @@ export default function OsDetailPage() {
           mode: 'INSTALLATION',
           install: {
             oltId,
-            ssid: ssid.trim(),
-            wifiPassword: wifiPassword.trim(),
             ...(bypass
               ? { allowStockBypass: true, snGpon: snGpon.trim() }
               : { serialItemId }),
@@ -343,8 +330,6 @@ export default function OsDetailPage() {
           mode: 'SUPPORT_SWAP',
           swap: {
             returnLocationId,
-            ssid: ssid.trim(),
-            wifiPassword: wifiPassword.trim(),
             ...(bypass
               ? { allowStockBypass: true, newSnGpon: snGpon.trim() }
               : { newSerialItemId: serialItemId }),
@@ -551,7 +536,6 @@ export default function OsDetailPage() {
         <SwapOntModal
           loadOntOptions={loadOntOptions}
           locations={locations ?? []}
-          initialSsid={ssid}
           onClose={() => setSwapOpen(false)}
           onSwap={async (payload) => {
             const res = await provisioningApi.swapOnt(so.contractId, payload);
@@ -763,41 +747,11 @@ export default function OsDetailPage() {
             </div>
           )}
 
-          {/* Wi-Fi (instalação + troca) */}
+          {/* Wi-Fi herda do contrato (definido no cadastro) — técnico não digita. */}
           {needsOnt && (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <div>
-                <Label htmlFor="ssid" required>
-                  {t('detail.ssid')}
-                </Label>
-                <Input
-                  id="ssid"
-                  value={ssid}
-                  onChange={(e) => setSsid(e.target.value)}
-                  maxLength={32}
-                />
-              </div>
-              <div>
-                <Label htmlFor="wifi" required>
-                  {t('detail.wifiPassword')}
-                </Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="wifi"
-                    value={wifiPassword}
-                    onChange={(e) => setWifiPassword(e.target.value)}
-                    className="font-mono"
-                  />
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => setWifiPassword(genPassword())}
-                  >
-                    {t('detail.generate')}
-                  </Button>
-                </div>
-              </div>
-            </div>
+            <p className="rounded-md bg-slate-50 p-2 text-xs text-text-muted dark:bg-slate-800">
+              {t('detail.wifiFromContract')}
+            </p>
           )}
 
           {/* Materiais (instalação + suporte, opcional) */}
@@ -1088,22 +1042,19 @@ function ProvisionConfirmation({
 interface SwapPayload {
   newSerialItemId: string;
   returnLocationId: string;
-  ssid: string;
-  wifiPassword: string;
 }
 
-/** Modal de troca de ONT na confirmação: nova ONT (busca) + devolução + Wi-Fi. */
+/** Modal de troca de ONT na confirmação: nova ONT (busca) + devolução. O Wi-Fi
+ *  herda do contrato (definido no cadastro). */
 function SwapOntModal({
   loadOntOptions,
   locations,
-  initialSsid,
   onClose,
   onSwap,
   t,
 }: {
   loadOntOptions: (q: string) => Promise<ComboboxOption[]>;
   locations: StockLocation[];
-  initialSsid: string;
   onClose: () => void;
   onSwap: (payload: SwapPayload) => Promise<void>;
   t: TFn;
@@ -1111,13 +1062,10 @@ function SwapOntModal({
   const [serialItemId, setSerialItemId] = useState('');
   const [selected, setSelected] = useState<ComboboxOption | null>(null);
   const [returnLocationId, setReturnLocationId] = useState('');
-  const [ssid, setSsid] = useState(initialSsid);
-  const [wifiPassword, setWifiPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const valid =
-    !!serialItemId && !!returnLocationId && ssid.trim().length >= 1 && wifiPassword.length >= 8;
+  const valid = !!serialItemId && !!returnLocationId;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -1128,8 +1076,6 @@ function SwapOntModal({
       await onSwap({
         newSerialItemId: serialItemId,
         returnLocationId,
-        ssid: ssid.trim(),
-        wifiPassword,
       });
     } catch (err) {
       setError(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
@@ -1167,21 +1113,9 @@ function SwapOntModal({
             ))}
           </Select>
         </div>
-        <div>
-          <Label required>SSID</Label>
-          <Input value={ssid} onChange={(e) => setSsid(e.target.value)} maxLength={32} required />
-        </div>
-        <div>
-          <Label required>{t('detail.wifiPassword')}</Label>
-          <Input
-            value={wifiPassword}
-            onChange={(e) => setWifiPassword(e.target.value)}
-            minLength={8}
-            maxLength={63}
-            required
-            placeholder={t('confirm.swapWifiPlaceholder')}
-          />
-        </div>
+        <p className="rounded-md bg-slate-50 p-2 text-xs text-text-muted dark:bg-slate-800">
+          {t('detail.wifiFromContract')}
+        </p>
         {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         <div className="flex justify-end gap-2 border-t border-border pt-3">
           <Button type="button" variant="ghost" onClick={onClose} disabled={busy}>

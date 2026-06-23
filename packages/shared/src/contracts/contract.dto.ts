@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { SsidSchema, WifiPasswordSchema } from '../provisioning/types';
+
 // -----------------------------------------------------------------------------
 // Enums (espelho do schema.prisma)
 // -----------------------------------------------------------------------------
@@ -86,6 +88,12 @@ const commonContractFields = {
   latitude: z.coerce.number().min(-90).max(90).nullish(),
   longitude: z.coerce.number().min(-180).max(180).nullish(),
   notes: z.string().max(10_000).nullish(),
+  // Wi-Fi do cliente — capturado no CADASTRO (antes era só na instalação, pelo
+  // técnico). O provisionamento (install/troca/O.S) lê daqui em vez de pedir ao
+  // técnico. Opcional no schema (back-compat de API e contratos sem Wi-Fi), mas
+  // o formulário web torna obrigatório. A senha é cifrada at-rest no service.
+  ssid: SsidSchema.nullish(),
+  wifiPassword: WifiPasswordSchema.nullish(),
 };
 
 // Bloco PPPoE.

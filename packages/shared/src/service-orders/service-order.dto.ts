@@ -283,8 +283,10 @@ export const OntSwapSchema = z.object({
   newSnGpon: z.string().max(64).nullish(),
   allowStockBypass: z.boolean().default(false),
   returnLocationId: z.string().uuid(),
-  ssid: z.string().min(1).max(32),
-  wifiPassword: z.string().min(8).max(63),
+  // Wi-Fi OPCIONAL: a troca mantém o mesmo nome/senha do contrato. O service
+  // herda do contrato; estes campos só sobrescrevem se enviados (legado).
+  ssid: z.string().min(1).max(32).nullish(),
+  wifiPassword: z.string().min(8).max(63).nullish(),
   wifiBandMode: z.enum(['BAND_STEERING', 'DUAL_BAND']).default('BAND_STEERING'),
 });
 export type OntSwap = z.infer<typeof OntSwapSchema>;

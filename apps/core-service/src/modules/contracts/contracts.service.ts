@@ -250,6 +250,12 @@ export class ContractsService {
             // Geolocalização (módulo Mapeamento).
             latitude: input.latitude ?? null,
             longitude: input.longitude ?? null,
+            // Wi-Fi capturado no cadastro. O provisionamento aplica via TR-069
+            // lendo daqui (técnico não digita mais). Senha cifrada at-rest.
+            ssid: input.ssid ?? null,
+            wifiPasswordEnc: input.wifiPassword
+              ? this.crypto.encrypt(input.wifiPassword)
+              : null,
             status: isPending
               ? PrismaContractStatus.PENDING_INSTALL
               : PrismaContractStatus.ACTIVE,

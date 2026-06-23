@@ -389,6 +389,14 @@ export class ProvisioningService {
 
     // ── 4. TX atômica: atualiza Ont + Contract + radius + tr069 task ───────
     const effectiveMac = authResult.data.macAddress ?? input.macAddress ?? null;
+
+    // Wi-Fi: vem do CONTRATO (definido no cadastro). input.ssid/wifiPassword são
+    // só fallback de clientes legados — se o contrato já tem, ignora o input.
+    const effectiveSsid = contract.ssid ?? input.ssid ?? null;
+    const effectiveWifiPassword = contract.wifiPasswordEnc
+      ? this.crypto.decrypt(contract.wifiPasswordEnc)
+      : input.wifiPassword ?? null;
+    const hasWifi = !!(effectiveSsid && effectiveWifiPassword);
     let updatedContract: Contract | null = null;
     try {
       updatedContract = await this.prisma.$transaction(async (tx) => {
@@ -406,14 +414,18 @@ export class ProvisioningService {
           },
         });
 
-        // 4.2 Atualiza Contract: status ACTIVE, salva Wi-Fi (encrypted)
+        // 4.2 Atualiza Contract: status ACTIVE. O Wi-Fi normalmente já veio do
+        // cadastro; só persiste aqui se o contrato ainda não tiver (fallback do
+        // input legado).
         const c = await tx.contract.update({
           where: { id: contract.id },
           data: {
             status: PrismaContractStatus.ACTIVE,
             activatedAt: contract.activatedAt ?? new Date(),
-            ssid: input.ssid,
-            wifiPasswordEnc: this.crypto.encrypt(input.wifiPassword),
+            ...(!contract.ssid && effectiveSsid ? { ssid: effectiveSsid } : {}),
+            ...(!contract.wifiPasswordEnc && effectiveWifiPassword
+              ? { wifiPasswordEnc: this.crypto.encrypt(effectiveWifiPassword) }
+              : {}),
             // Se IPoE e MAC veio do driver, atualiza identificador RADIUS
             ...(contract.authMethod === 'IPOE' && effectiveMac
               ? { macAddress: effectiveMac }
@@ -482,7 +494,16 @@ export class ProvisioningService {
     // Fora da TX porque a tabela tr069_tasks tem cascade no device, e device
     // upsert lê do mesmo DB. Mantemos sequencial — falha aqui não rola back
     // a ativação RADIUS (Wi-Fi é nice-to-have, técnico pode config manual).
-    try {
+    //
+    // Sem Wi-Fi no contrato → pula (a ONT fica no SSID de fábrica; atendimento
+    // pode definir depois pelo card de Wi-Fi). Não bloqueia a ativação.
+    if (!hasWifi) {
+      pushEvent(
+        'TR069_TASK_ENQUEUE',
+        'SUCCESS',
+        'Sem Wi-Fi definido no contrato — etapa pulada (defina pelo card de Wi-Fi)',
+      );
+    } else try {
       // ZTP PPPoE: quando o contrato é PPPoE, injetamos a credencial do
       // contrato na WAN da ONT junto com o Wi-Fi — a ONG disca PPPoE
       // sozinha, técnico não toca em config de rede.
@@ -504,8 +525,8 @@ export class ProvisioningService {
         contractId,
         resolvedSnGpon,
         {
-          ssid: input.ssid,
-          password: input.wifiPassword,
+          ssid: effectiveSsid!,
+          password: effectiveWifiPassword!,
           bothBands: true,
           wifiBandMode: ont.wifiBandMode,
           pppoe,
@@ -520,7 +541,7 @@ export class ProvisioningService {
         status: 'SUCCESS',
         payload: {
           taskId,
-          ssid: input.ssid,
+          ssid: effectiveSsid,
           bands: ['2.4', '5'],
           pppoeInjected: !!pppoe,
         },
@@ -748,8 +769,9 @@ export class ProvisioningService {
       newSnGpon?: string | null;
       allowStockBypass?: boolean;
       returnLocationId: string;
-      ssid: string;
-      wifiPassword: string;
+      // Wi-Fi opcional — a troca mantém o do contrato; input só sobrescreve.
+      ssid?: string | null;
+      wifiPassword?: string | null;
       wifiBandMode?: 'BAND_STEERING' | 'DUAL_BAND';
     },
   ): Promise<{ status: 'OK' | 'PARTIAL' | 'FAILED' }> {
@@ -759,6 +781,16 @@ export class ProvisioningService {
         'Contrato sem ONT atual pra trocar — use uma O.S de instalação.',
       );
     }
+
+    // Wi-Fi herdado do contrato (definido no cadastro). input só sobrescreve.
+    const contractWifi = await this.prisma.contract.findFirst({
+      where: { id: contractId, tenantId },
+      select: { ssid: true, wifiPasswordEnc: true },
+    });
+    const effectiveSsid = contractWifi?.ssid ?? input.ssid ?? null;
+    const effectiveWifiPassword = contractWifi?.wifiPasswordEnc
+      ? this.crypto.decrypt(contractWifi.wifiPasswordEnc)
+      : input.wifiPassword ?? null;
     const olt = await this.prisma.olt.findFirst({
       where: { id: ont.oltId, tenantId, deletedAt: null },
     });
@@ -824,12 +856,14 @@ export class ProvisioningService {
         where: { id: ont.id },
         data: { snGpon: newSn, status: 'PENDING_AUTH' },
       });
-      await this.tr069.enqueueSetWifi(tenantId, ont.id, contractId, newSn, {
-        ssid: input.ssid,
-        password: input.wifiPassword,
-        bothBands: true,
-        wifiBandMode: input.wifiBandMode ?? 'BAND_STEERING',
-      });
+      if (effectiveSsid && effectiveWifiPassword) {
+        await this.tr069.enqueueSetWifi(tenantId, ont.id, contractId, newSn, {
+          ssid: effectiveSsid,
+          password: effectiveWifiPassword,
+          bothBands: true,
+          wifiBandMode: input.wifiBandMode ?? 'BAND_STEERING',
+        });
+      }
       await this.audit.log({
         tenantId,
         userId: actorUserId,
@@ -864,8 +898,10 @@ export class ProvisioningService {
       serialItemId: input.newSerialItemId ?? null,
       allowStockBypass: input.allowStockBypass ?? false,
       snGpon: newSn,
-      ssid: input.ssid,
-      wifiPassword: input.wifiPassword,
+      // installCustomer já lê o Wi-Fi do contrato; passamos o efetivo só como
+      // fallback (idempotente — não sobrescreve o que o contrato já tem).
+      ssid: effectiveSsid,
+      wifiPassword: effectiveWifiPassword,
       wifiBandMode: input.wifiBandMode ?? 'BAND_STEERING',
       pppoeVlan: 1010,
     } as InstallCustomerRequest);
