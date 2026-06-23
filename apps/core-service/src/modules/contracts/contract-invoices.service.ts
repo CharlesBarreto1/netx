@@ -33,6 +33,8 @@ import { AuditService } from '../audit/audit.service';
 import { CashMovementsService } from '../finance/cash-movements.service';
 import { CashRegistersService } from '../finance/cash-registers.service';
 import { ContractsService } from './contracts.service';
+import { EventBusPublisher } from '../events/event-bus.publisher';
+import { ERP_INVOICE_PAID, type InvoicePaidPayload } from '../events/event-types';
 
 type InvoiceWithContract = Prisma.ContractInvoiceGetPayload<{
   include: {
@@ -52,6 +54,7 @@ export class ContractInvoicesService {
     private readonly contracts: ContractsService,
     private readonly registers: CashRegistersService,
     private readonly movements: CashMovementsService,
+    private readonly bus: EventBusPublisher,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -298,6 +301,17 @@ export class ContractInvoicesService {
         });
       }
     }
+
+    // Bus de eventos (Fase 3): fatura paga (baixa manual).
+    await this.bus.emit<InvoicePaidPayload>(ERP_INVOICE_PAID, tenantId, {
+      invoiceId: updated.id,
+      contractId: existing.contractId,
+      customerId: updated.contract.customerId,
+      paidAmount,
+      paidAt: paidAt.toISOString(),
+      paidVia: input.paidVia ?? null,
+    });
+
     return toInvoiceResponse(updated);
   }
 
@@ -481,6 +495,16 @@ export class ContractInvoicesService {
         });
       }
     }
+
+    // Bus de eventos (Fase 3): fatura paga (baixa automática via gateway).
+    await this.bus.emit<InvoicePaidPayload>(ERP_INVOICE_PAID, tenantId, {
+      invoiceId,
+      contractId: existing.contractId,
+      customerId: existing.contract.customerId,
+      paidAmount: input.paidAmount,
+      paidAt: input.paidAt.toISOString(),
+      paidVia: input.paidVia,
+    });
   }
 
   // ---------------------------------------------------------------------------

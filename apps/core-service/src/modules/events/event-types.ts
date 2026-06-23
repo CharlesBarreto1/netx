@@ -9,6 +9,7 @@ export const ERP_CONTRACT_SUSPENDED = 'netx-erp.contract.suspended';
 export const ERP_CONTRACT_REACTIVATED = 'netx-erp.contract.reactivated';
 export const ERP_CONTRACT_PLAN_CHANGED = 'netx-erp.contract.plan-changed';
 export const ERP_CONTRACT_CANCELLED = 'netx-erp.contract.cancelled';
+export const ERP_INVOICE_PAID = 'netx-erp.invoice.paid';
 
 /**
  * Registra no manifesto do módulo o que o ERP EMITE (Fase 3). Side-effect de
@@ -22,6 +23,7 @@ defineModule('netx-erp', {
     ERP_CONTRACT_REACTIVATED,
     ERP_CONTRACT_PLAN_CHANGED,
     ERP_CONTRACT_CANCELLED,
+    ERP_INVOICE_PAID,
   ],
 });
 
@@ -64,4 +66,16 @@ export interface ContractCancelledPayload {
   customerId: string;
   /** true = cancelado antes de instalar (PENDING_INSTALL → CANCELLED). */
   wasPendingInstall: boolean;
+}
+
+/** Payload de `netx-erp.invoice.paid` (version 1). Cobre baixa manual e gateway. */
+export interface InvoicePaidPayload {
+  invoiceId: string;
+  contractId: string;
+  customerId: string;
+  paidAmount: number;
+  /** ISO 8601. */
+  paidAt: string;
+  /** Forma de pagamento (ContractInvoicePaidVia). null se não informado. */
+  paidVia: string | null;
 }
