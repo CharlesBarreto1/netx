@@ -1,6 +1,15 @@
-# Fase 0 do ecossistema modular: NMS e Hub foram importados via git subtree
-# como código-fonte, mas NÃO entram no build/grafo do Nx nem nos processos de
-# produção do NetX (têm tooling próprio: NMS=pnpm, Hub=npm isolado).
-# Ver docs/ecosystem/ECOSYSTEM-MODULAR-PLAN.md (Fase 0).
+# Ecossistema modular: NMS e Hub foram importados via git subtree como
+# código-fonte com tooling próprio (NMS=pnpm; Hub=npm isolado).
+#
+# Hub: ainda totalmente dormente — fora do grafo Nx (ver ECOSYSTEM-MODULAR-PLAN.md).
 apps/hub
-apps/nms
+
+# NMS: agora ORQUESTRADO pelo Nx via apps/nms/project.json (targets run-commands
+# -> pnpm). O project.json fica visível, mas os inner trees do sub-build (apps
+# api/web/device-gateway, packages e node_modules pnpm) NÃO entram no grafo —
+# senão o Nx inferiria projetos duplicados dos package.json aninhados.
+# Ver docs/ecosystem/INTEGRATION-RUNBOOK.md §A.1.
+apps/nms/apps
+apps/nms/packages
+apps/nms/node_modules
+apps/nms/dist

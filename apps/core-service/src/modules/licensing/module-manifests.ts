@@ -37,6 +37,19 @@ defineModule('netx-cpe', { apiPrefixes: ['/olts', '/provisioning', '/tr069', '/o
 // Mapas de rede — gateado por netx-maps.
 defineModule('netx-maps', { apiPrefixes: ['/mapping'] });
 
-// NMS — app importado (apps/nms), ainda dormente. Fronteira-alvo pra quando for
-// ligado de verdade (roadmap item "wire NMS/Hub").
-defineModule('netx-nms', { apiPrefixes: ['/nms'] });
+// NMS — módulo vivo (apps/nms), sub-build pnpm isolado atrás do gateway em /nms.
+// Canais ligados: SSO (valida JWT do Core), entitlement (este gating),
+// eventos (consome do bus) e HTTP (/nms via api-gateway). Dono exclusivo do
+// schema Postgres `nms` (invariante 3). Ver INTEGRATION-RUNBOOK.md §A.
+defineModule('netx-nms', {
+  apiPrefixes: ['/nms'],
+  ownedTables: ['nms.*'],
+  // Ainda não publica no bus; só consome (canal 3). emits entra quando o NMS
+  // formalizar eventos próprios (ex.: netx-nms.device.unreachable).
+  consumes: [
+    'netx-erp.contract.created',
+    'netx-erp.contract.installed',
+    'netx-erp.contract.cancelled',
+    'netx-cpe.ont.swapped',
+  ],
+});

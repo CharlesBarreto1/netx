@@ -301,3 +301,24 @@ expand-contract, e só faz merge quando comprovadamente reversível.
   - Manifestos: `apiPrefixes` por módulo (erp/rh/cpe/maps/nms) + `GET /license/modules`.
   - **Resto do item NMS/Hub e go-live do Hub**: dependem de infra/segredos —
     runbook em `docs/ecosystem/INTEGRATION-RUNBOOK.md`.
+- 2026-06-23 — **NMS vivo (Parte A do runbook concluída para o NMS):** o NMS
+  deixou de ser dormente. Decisões: **single-tenant** (1 instância por operador)
+  e **dev/compose-profile** (fora dos 4 units de prod). Detalhe completo no
+  runbook (§A, bloco "O que foi feito pro NMS"). Resumo:
+  - **A.1 Tooling**: `apps/nms/project.json` (Nx `run-commands` → pnpm);
+    `.nxignore` só ignora inner trees; `apps/nms/.npmrc` com
+    `verify-deps-before-run=false`; agregados da raiz com `--exclude=nms`
+    (caminho de prod intacto — 10 projetos); DB próprio via `?schema=nms`
+    (+ schema em `init.sql`).
+  - **A.2 Processo**: `nms-api` no compose sob `profiles: ['ecosystem']`.
+  - **A.3 4 canais**: SSO (NMS valida o JWT HS256 do Core via `CORE_JWT_SECRET`,
+    mapeando RBAC→papel), entitlement (`netx-nms` gateado no **edge**/gateway,
+    fail-open, lendo `/v1/license/modules`), eventos (consumidor amqplib do
+    `netx.events`, OFF por default, bindings explícitos + idempotência), HTTP
+    (`/api/v1/nms/*` → NMS no api-gateway, Bearer preservado; `nmsService` no
+    `@netx/config`).
+  - **A.4 Manifesto**: `netx-nms` declara `consumes` + `ownedTables: ['nms.*']`.
+  - **Aditivo e seguro**: tudo OFF/fail-open por default; build agregado 10/10
+    verde + `nx build nms` verde. Prod não afetada.
+  - **Follow-ups** (no runbook §A): device-gateway Python + TimescaleDB, NMS web
+    e WS do terminal atrás do gateway, NMS publicar `emits`, promover pra prod.

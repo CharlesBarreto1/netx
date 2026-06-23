@@ -23,6 +23,21 @@ export class ProxyService {
    */
   async forwardToCore(req: Request, targetPath: string): Promise<ProxyResult> {
     const base = `http://${this.config.coreService.host}:${this.config.coreService.port}`;
+    return this.forward(req, base, targetPath);
+  }
+
+  /**
+   * Forward to the NMS module (apps/nms — canal 4 do ecossistema). Mesmo
+   * tratamento de headers/stream do Core; só muda o destino. O Bearer do
+   * operador é preservado (não está no STRIP), então o SSO do NMS valida o
+   * mesmo token (canal 1).
+   */
+  async forwardToNms(req: Request, targetPath: string): Promise<ProxyResult> {
+    const base = `http://${this.config.nmsService.host}:${this.config.nmsService.port}`;
+    return this.forward(req, base, targetPath);
+  }
+
+  private async forward(req: Request, base: string, targetPath: string): Promise<ProxyResult> {
     const url = `${base}${targetPath}`;
 
     // Headers que NÃO repassamos pro core-service:

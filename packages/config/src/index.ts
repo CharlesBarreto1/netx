@@ -34,6 +34,11 @@ const baseSchema = z.object({
   CORE_SERVICE_PORT: z.coerce.number().int().positive().default(3101),
   CORE_SERVICE_HOST: z.string().default('0.0.0.0'),
 
+  // NMS (módulo do ecossistema, apps/nms). O gateway repassa /api/nms/* pra cá
+  // (canal 4). Sub-build pnpm isolado; em dev roda em :3300 (PORT do NMS).
+  NMS_SERVICE_HOST: z.string().default('127.0.0.1'),
+  NMS_SERVICE_PORT: z.coerce.number().int().positive().default(3300),
+
   // Database
   DATABASE_URL: z.string().url(),
 
@@ -112,6 +117,10 @@ export interface Config {
     port: number;
     host: string;
   };
+  nmsService: {
+    port: number;
+    host: string;
+  };
   database: { url: string };
   redis: { url: string };
   rabbitmq: { url: string };
@@ -178,6 +187,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
       globalPrefix: e.API_GATEWAY_GLOBAL_PREFIX,
     },
     coreService: { port: e.CORE_SERVICE_PORT, host: e.CORE_SERVICE_HOST },
+    nmsService: { port: e.NMS_SERVICE_PORT, host: e.NMS_SERVICE_HOST },
     database: { url: e.DATABASE_URL },
     redis: { url: e.REDIS_URL },
     rabbitmq: { url: e.RABBITMQ_URL },

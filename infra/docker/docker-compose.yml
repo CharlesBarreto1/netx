@@ -135,3 +135,51 @@ services:
       - traccar_logs:/opt/traccar/logs
     networks:
       - netx
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # NMS — módulo do ecossistema (apps/nms). Sob o profile `ecosystem`, então a
+  # stack de prod (4 units) NÃO o sobe por default. Suba com:
+  #   docker compose --profile ecosystem -f infra/docker/docker-compose.yml up -d nms-api
+  #
+  # Conecta na MESMA infra (postgres/redis/rabbitmq) mas é DONO do schema `nms`
+  # (invariante 3). SSO: CORE_JWT_SECRET = JWT_ACCESS_SECRET do Core (canal 1).
+  # Eventos LIGADOS aqui (canal 3) pra fechar o round-trip em dev.
+  #
+  # Nota: features de equipamento (SSH/SNMP) exigem o device-gateway Python +
+  # TimescaleDB — esses ficam no compose próprio do NMS (apps/nms/infra). Aqui
+  # subimos só a API pra exercitar os 4 canais de integração.
+  nms-api:
+    profiles: ['ecosystem']
+    build:
+      context: ../../apps/nms
+      dockerfile: apps/api/Dockerfile
+    container_name: netx-nms-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-netx}:${POSTGRES_PASSWORD:-netx_dev_password}@postgres:5432/${POSTGRES_DB:-netx}?schema=nms
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://${RABBITMQ_USER:-netx}:${RABBITMQ_PASSWORD:-netx_dev_password}@rabbitmq:5672
+      # SSO (canal 1): aceitar o JWT de operador do Core.
+      CORE_JWT_SECRET: ${JWT_ACCESS_SECRET:-changeme_dev_access_secret_min_32_chars}
+      CORE_JWT_ISSUER: netx
+      CORE_JWT_AUDIENCE: netx-api
+      # Segredo nativo do NMS (login próprio) — dev.
+      JWT_SECRET: ${NMS_JWT_SECRET:-changeme_dev_nms_secret_min_32_chars_xx}
+      # Eventos (canal 3): LIGADO em dev pra fechar o round-trip.
+      EVENTBUS_CONSUME: 'true'
+      EVENTBUS_EXCHANGE: netx.events
+      ADMIN_USERNAME: ${NMS_ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${NMS_ADMIN_PASSWORD:-}
+    ports:
+      - '3300:3000'   # host 3300 → NMS_SERVICE_PORT do gateway aponta pra cá
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - netx

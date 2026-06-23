@@ -13,6 +13,7 @@ import { PlaybooksModule } from './playbooks/playbooks.module.js';
 import { BackupModule } from './backup/backup.module.js';
 import { LlmModule } from './ai/llm.module.js';
 import { AiModule } from './ai/ai.module.js';
+import { EventsModule } from './events/events.module.js';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { AiModule } from './ai/ai.module.js';
     PlaybooksModule,
     BackupModule,
     AiModule,
+    EventsModule,
   ],
 })
 export class AppModule {}

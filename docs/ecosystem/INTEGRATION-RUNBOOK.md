@@ -7,8 +7,14 @@
 
 ## Parte A — Ligar NMS e Hub "de verdade" (resto do item 4)
 
-Hoje `apps/nms` e `apps/hub` estão importados via subtree mas **dormentes**
-(isolados dos workspaces npm e do grafo Nx). Para virarem módulos vivos:
+> **Status NMS: CONCLUÍDA (2026-06-23).** O NMS deixou de ser dormente e agora é
+> um módulo **vivo** do ecossistema (single-tenant, dev/compose-profile). Os 4
+> canais estão ligados (A.3) e o sub-build pnpm é orquestrado pelo Nx (A.1).
+> O **Hub** segue dormente (Parte B). Detalhe do que foi feito no fim desta Parte A.
+
+Hoje `apps/hub` está importado via subtree mas **dormente** (isolado dos
+workspaces npm e do grafo Nx). Para virar módulo vivo, seguir os mesmos passos
+abaixo (o NMS já está feito):
 
 ### A.1 Reconciliar tooling (NMS é pnpm, Hub é npm; NetX é npm/Nx)
 - **Hub** (`apps/hub`, NestJS único, npm): caminho mais curto. Reescrever o
@@ -42,6 +48,80 @@ Hoje `apps/nms` e `apps/hub` estão importados via subtree mas **dormentes**
 ### A.4 Manifesto
 - `apiPrefixes` do NMS já declarado (`netx-nms → /nms`). Quando ligado, declarar
   `emits`/`consumes` reais e `ownedTables` (schema próprio do NMS — invariante 3).
+
+---
+
+### ✅ O que foi feito pro NMS (2026-06-23) — referência pra replicar no Hub
+
+**Decisões:** NMS **single-tenant** (1 instância por operador, coerente com o
+deploy do NetX — 1 VPS por ISP) e **dev/compose-profile** (não entra nos 4 units
+de prod ainda).
+
+**A.1 — Tooling (sub-build pnpm orquestrado por Nx):**
+- `apps/nms/project.json` (novo): projeto Nx `nms` com targets `nx:run-commands`
+  que chamam `pnpm -C apps/nms …` (install/build/dev/typecheck/test/lint +
+  `prisma-generate`/`prisma-deploy`). O Python (device-gateway) fica fora do Node.
+- `.nxignore`: passou a ignorar só os inner trees (`apps/nms/apps`,
+  `apps/nms/packages`, `apps/nms/node_modules`, `apps/nms/dist`) — o `project.json`
+  fica visível, sem o Nx inferir projetos duplicados dos package.json aninhados.
+- `apps/nms/.npmrc`: `verify-deps-before-run=false` (pnpm 11 disparava um
+  `install` implícito a cada script e quebrava no monorepo).
+- Raiz `package.json`: os agregados (`build`/`test`/`lint`/`dev`) ganham
+  `--exclude=nms` → o caminho de prod segue **idêntico** (10 projetos, sem
+  acoplar ao pnpm); o NMS builda deliberado via `nx build nms` (+ atalhos
+  `nms:build`/`nms:dev`/`nms:prisma:*`).
+- DB próprio (invariante 3): NMS conecta com `?schema=nms` na MESMA instância
+  Postgres do NetX; schema criado em `infra/docker/postgres/init.sql`.
+
+**A.2 — Processo:** serviço `nms-api` no `infra/docker/docker-compose.yml` sob
+`profiles: ['ecosystem']` (prod não sobe). Suba com
+`docker compose --profile ecosystem … up -d nms-api`. Features de equipamento
+(device-gateway Python + TimescaleDB) ficam no compose próprio do NMS.
+
+**A.3 — 4 canais:**
+1. **SSO** — `apps/nms/apps/api/src/auth/auth.service.ts` aceita, além do login
+   nativo, o **JWT de operador do Core** (mesmo HS256) quando `CORE_JWT_SECRET`
+   está setado. Mapeia RBAC do Core → papel do NMS (`mapCoreRole`). Identidade
+   sintética `core:<userId>` (sem linha em `app_user`), vira o actor da auditoria.
+2. **Entitlement** — gate no **edge**: `apps/api-gateway/.../entitlement.service.ts`
+   consulta `GET /v1/license/modules` do Core (cache 60s) e barra `/nms/*` se
+   `netx-nms` não estiver habilitado. **FAIL-OPEN** (espelha o guard do Core).
+3. **Eventos** — `apps/nms/apps/api/src/events/` (consumidor amqplib): fila
+   durável `netx.events.nms` ligada à exchange topic `netx.events`, bindings
+   explícitos (`netx-erp.contract.{created,installed,cancelled}`,
+   `netx-cpe.ont.swapped`), idempotente por `envelope.id`. **OFF por default**
+   (liga com `EVENTBUS_CONSUME=true` + `RABBITMQ_URL`). `dispatch()` é o ponto de
+   extensão pros handlers de negócio.
+4. **HTTP /nms** — `apps/api-gateway/.../nms-proxy.controller.ts`: repassa
+   `/api/v1/nms/*` → NMS (`forwardToNms`), preservando o Bearer (SSO). Registrado
+   ANTES do catch-all do Core. `@netx/config` ganhou `nmsService` (host/port,
+   default `127.0.0.1:3300`).
+
+**A.4 — Manifesto:** `module-manifests.ts` do `netx-nms` declara `consumes`
+(os 4 bindings) e `ownedTables: ['nms.*']`. `emits` fica vazio até o NMS publicar
+eventos próprios (ex.: `netx-nms.device.unreachable`).
+
+**Como rodar em dev:**
+```
+npm run nms:install            # pnpm install do NMS (1x)
+npm run nms:prisma:generate    # gera o Prisma client do NMS
+# .env do NMS: cp apps/nms/apps/api/.env.example apps/nms/apps/api/.env
+#   PORT=3300, DATABASE_URL …?schema=nms, CORE_JWT_SECRET=<JWT_ACCESS_SECRET do Core>
+npm run nms:prisma:deploy      # cria as tabelas em nms.*
+npm run nms:dev                # sobe o NMS (api+web) em :3300
+```
+Depois, com o gateway de pé, `GET /api/v1/nms/health` deve responder via NMS.
+
+**Pendências do NMS (follow-ups, fora desta leva):**
+- **device-gateway (Python)** + TimescaleDB não foram integrados (features de
+  SSH/SNMP exigem; rodam pelo compose próprio do NMS). Python local é 3.9; o
+  gateway quer 3.12.
+- **NMS web atrás do gateway** (Vite/React) e **proxy WebSocket** do terminal
+  (xterm) pelo gateway — hoje só HTTP. O terminal usa WS direto.
+- **NMS publicar eventos** (`emits`) — só consome por ora.
+- **Resolver nome humano** do actor `core:<id>` (hoje fica o userId) se a
+  auditoria precisar de display name.
+- **Promover pra prod** (systemd units + installer) — adiado de propósito.
 
 ## Parte B — Go-live do Hub (item 5) — **precisa de você/infra**
 

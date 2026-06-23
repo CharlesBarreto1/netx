@@ -59,7 +59,8 @@ Front (`apps/web`) redesenhado em 5 fases:
 | Core-SDK, manifestos, entitlement | ✅ no código, builda. Guard **fail-open** (não bloqueia nada até o Hub emitir token com `modules`). |
 | Event bus | ✅ no código, **OFF por default** (`EVENTBUS_ENABLED`/`EVENTBUS_CONSUME`). Publica no-op até ligar. |
 | Gating de UI (upsell) | ✅ fail-open. Só aparece quando há módulo travado (= Hub emitindo token restritivo). |
-| NMS / Hub | ⚠️ importados, **dormentes** (não buildam/rodam). |
+| NMS | ✅ **vivo** (2026-06-23): builda via `nx build nms` (pnpm), 4 canais ligados (SSO/entitlement/eventos/HTTP `/nms`), schema próprio `nms`, **single-tenant**, **dev/compose-profile** (fora dos 4 units de prod). Eventos OFF + entitlement fail-open por default. Falta device-gateway Python, web/WS atrás do gateway, prod. Ver runbook §A. |
+| Hub | ⚠️ importado, **dormente** (não builda/roda). |
 | Redesign (NEXUS, dark, cockpit, palette) | ✅ pronto. **Dashboard usa dados MOCK.** Feed do NEXUS é timer mock. |
 | RabbitMQ | ✅ provisionado pelo instalador (APT). |
 
@@ -97,13 +98,14 @@ EVENTBUS_CONSUME=true     # consome (fecha o round-trip)
 `apps/core-service/src/modules/events/event-consumer.ts` (hoje só loga) — registre
 um provider `{ provide: EVENT_HANDLERS, useClass: SeuHandler, multi: true }`.
 
-### 3.3 🔌 NMS e Hub rodando de verdade (esforço grande — `INTEGRATION-RUNBOOK.md` §A)
-- Reconciliar tooling (NMS = pnpm/Docker; NetX = npm/bare-metal): rodar o NMS como
-  sub-build isolado via `pnpm -C apps/nms`; Hub via Nx.
-- Subir como processos com **profile próprio** no Compose (não nos 4 units de prod).
-- Falar os **4 canais**: SSO unificado (validar o JWT do Core), entitlement
-  (`@RequiresModule('netx-nms')`), eventos (publicar/consumir `netx.events`),
-  HTTP atrás de `/nms` (já no manifesto) via `apps/api-gateway`.
+### 3.3 🔌 NMS rodando de verdade — ✅ FEITO (2026-06-23); Hub ainda falta
+- **NMS**: concluído (Parte A do runbook). Sub-build pnpm orquestrado por Nx,
+  schema próprio `nms`, 4 canais ligados (SSO via `CORE_JWT_SECRET`, entitlement
+  fail-open no gateway, eventos OFF por default, HTTP `/api/v1/nms/*`). Como rodar
+  em dev e follow-ups (device-gateway Python, web/WS no gateway, prod):
+  `INTEGRATION-RUNBOOK.md` §A.
+- **Hub**: ainda dormente — replicar os mesmos passos (é npm, caminho mais curto
+  que o NMS) + go-live da Parte B.
 
 ### 3.4 Follow-ups do redesign (antes de atualizar PRODUÇÃO)
 - **Dashboard com dados reais**: `apps/web/src/app/(protected)/dashboard/page.tsx`

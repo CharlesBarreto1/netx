@@ -12,6 +12,26 @@ const EnvSchema = z.object({
   JWT_SECRET: z.string().min(32, 'JWT_SECRET deve ter ≥32 caracteres'),
   /** Validade do token de sessão (formato do jsonwebtoken, ex.: 12h, 7d). */
   JWT_TTL: z.string().default('12h'),
+
+  // ── SSO do ecossistema (canal 1) ──────────────────────────────────────────
+  // Quando o NMS roda DENTRO do NetX, ele aceita o JWT de operador emitido pelo
+  // Core (mesmo HS256), além do login nativo. OPCIONAL: sem CORE_JWT_SECRET, só
+  // o login próprio do NMS funciona (modo standalone). O segredo é o
+  // JWT_ACCESS_SECRET do Core; issuer/audience espelham os defaults do Core.
+  CORE_JWT_SECRET: z.string().min(32).optional(),
+  CORE_JWT_ISSUER: z.string().default('netx'),
+  CORE_JWT_AUDIENCE: z.string().default('netx-api'),
+
+  // ── Bus de eventos do ecossistema (canal 3) ───────────────────────────────
+  // Consumidor de `netx.events` (RabbitMQ topic), espelhando o core: OFF por
+  // default. Liga só com EVENTBUS_CONSUME=true E RABBITMQ_URL presente.
+  RABBITMQ_URL: z.string().url().optional(),
+  EVENTBUS_CONSUME: z
+    .enum(['true', 'false', '1', '0'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+  /** Exchange topic do bus (espelha o core). */
+  EVENTBUS_EXCHANGE: z.string().default('netx.events'),
   /** Seed do 1º admin no boot (só cria se não houver nenhum usuário). */
   ADMIN_USERNAME: z.string().default('admin'),
   /** Senha do seed admin. Se vazia, o boot gera uma aleatória e a imprime UMA vez no log. */

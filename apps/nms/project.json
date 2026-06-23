@@ -1,0 +1,53 @@
+{
+  "name": "nms",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "apps/nms/apps",
+  "tags": ["ecosystem", "scope:nms"],
+  "// nota": "NMS é um sub-build pnpm ISOLADO (Nest 10 + Prisma 5 + React/Vite + device-gateway Python). O grafo Nx só o orquestra via run-commands -> pnpm. Inner trees ficam fora do grafo (.nxignore). Ver docs/ecosystem/INTEGRATION-RUNBOOK.md §A.1.",
+  "targets": {
+    "install": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "pnpm -C apps/nms install" }
+    },
+    "prisma-generate": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "pnpm -C apps/nms/apps/api exec prisma generate" }
+    },
+    "prisma-deploy": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "pnpm -C apps/nms/apps/api exec prisma migrate deploy" }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "pnpm -C apps/nms build" }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "pnpm -C apps/nms typecheck" }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "pnpm -C apps/nms test" }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": { "command": "pnpm -C apps/nms lint" }
+    },
+    "dev": {
+      "executor": "nx:run-commands",
+      "options": { "command": "pnpm -C apps/nms dev" }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "options": { "command": "pnpm -C apps/nms dev" }
+    }
+  }
+}

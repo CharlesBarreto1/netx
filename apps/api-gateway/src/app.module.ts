@@ -7,7 +7,9 @@ import { ClsModule } from 'nestjs-cls';
 import { LoggerModule } from 'nestjs-pino';
 
 import { HealthController } from './health/health.controller';
+import { NmsProxyController } from './proxy/nms-proxy.controller';
 import { ProxyController } from './proxy/proxy.controller';
+import { EntitlementService } from './proxy/entitlement.service';
 import { ProxyService } from './proxy/proxy.service';
 
 @Module({
@@ -36,9 +38,12 @@ import { ProxyService } from './proxy/proxy.service';
 
     HttpModule.register({ timeout: 15_000, maxRedirects: 0 }),
   ],
-  controllers: [HealthController, ProxyController],
+  // NmsProxyController ANTES do ProxyController (catch-all): rotas /nms/* têm
+  // prioridade de match sobre o '*' genérico do Core.
+  controllers: [HealthController, NmsProxyController, ProxyController],
   providers: [
     ProxyService,
+    EntitlementService,
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
