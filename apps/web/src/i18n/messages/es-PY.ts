@@ -227,7 +227,7 @@ const messages = {
     activate: 'Activar',
   },
   copilot: {
-    title: 'Copilot NetX',
+    title: 'NEXUS',
     subtitle: 'Consejera · sugiere, vos decidís',
     neverActsAlone: 'Nunca actúa sola — toda acción requiere tu confirmación.',
     suggestionsLabel: 'Sugerencias de la IA',
@@ -240,8 +240,8 @@ const messages = {
     appliedNote: 'ahora · registrado en el log de auditoría',
     liveEvents: 'Eventos en vivo',
     realtime: 'tiempo real',
-    collapse: 'Plegar copiloto',
-    expand: 'Abrir copiloto',
+    collapse: 'Plegar NEXUS',
+    expand: 'Abrir NEXUS',
   },
   customers: {
     title: 'Clientes',
