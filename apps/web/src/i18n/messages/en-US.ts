@@ -223,6 +223,8 @@ const messages = {
       portal: 'Employee portal',
       settings: 'Settings',
     },
+    available: 'Available',
+    activate: 'Activate',
   },
   customers: {
     title: 'Customers',

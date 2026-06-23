@@ -345,3 +345,37 @@ export function visibleMenuGroups(
     }))
     .filter((g) => g.items.length > 0);
 }
+
+/** Um módulo licenciável NÃO habilitado — vira oferta "Disponível · ativar". */
+export interface UpsellModule {
+  key: string;
+  /** Chave i18n do nome do grupo/módulo (namespace `nav`). */
+  labelKey: string;
+  requiredModules: ModuleCode[];
+}
+
+/**
+ * Módulos gateados por licença que NÃO estão habilitados — em vez de sumir da
+ * nav (como `visibleMenuGroups` faz), aparecem como UPSELL ("Disponível ·
+ * ativar"). Independe de permissão (é oferta de produto, não navegação).
+ *
+ * FAIL-OPEN: sem `entitledModules` (licença carregando, off, ou legado ⇒ tudo
+ * habilitado) não há nada a ofertar — retorna vazio.
+ */
+export function upsellMenuGroups(
+  country: string | null | undefined,
+  entitledModules: readonly ModuleCode[] | null | undefined,
+): UpsellModule[] {
+  if (!entitledModules) return [];
+  return MENU_GROUPS.filter(
+    (g) =>
+      g.requiredModules &&
+      g.requiredModules.length > 0 &&
+      !g.requiredModules.some((m) => entitledModules.includes(m)) &&
+      (country === undefined || matchesCountry(g, country)),
+  ).map((g) => ({
+    key: g.key,
+    labelKey: g.labelKey ?? g.key,
+    requiredModules: g.requiredModules as ModuleCode[],
+  }));
+}

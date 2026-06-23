@@ -34,6 +34,7 @@ import {
   KanbanSquare,
   LayoutDashboard,
   ListChecks,
+  Lock,
   LogOut,
   Map,
   MapPin,
@@ -67,7 +68,13 @@ import { Toaster } from '@/components/ui/sonner';
 import { SimpleTooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/cn';
 import { DensityProvider } from '@/lib/density';
-import { visibleMenuGroups, type MenuDef, type MenuGroup } from '@/lib/menus';
+import {
+  upsellMenuGroups,
+  visibleMenuGroups,
+  type MenuDef,
+  type MenuGroup,
+  type UpsellModule,
+} from '@/lib/menus';
 import { authApi } from '@/lib/auth-api';
 import { licenseApi } from '@/lib/license-api';
 import { clearSession, displayName, type Session } from '@/lib/session';
@@ -215,6 +222,13 @@ export function AppShell({
     [session.user.permissions, session.user.menuAccess, tenantCountry, entitledModules, tNav],
   );
 
+  // Módulos licenciáveis NÃO habilitados → upsell "Disponível · ativar" (não
+  // somem da nav). Painel único: o que não foi comprado vira oferta in-app.
+  const upsell = useMemo<UpsellModule[]>(
+    () => upsellMenuGroups(tenantCountry, entitledModules),
+    [tenantCountry, entitledModules],
+  );
+
   async function logout() {
     // Invalida session no backend ANTES de limpar sessão local. Sem isso, o
     // refresh token continua válido até expirar mesmo após "Sair" — atacante
@@ -320,6 +334,7 @@ export function AppShell({
                   pathname={pathname}
                   collapsed={!expanded}
                 />
+                <UpsellSection modules={upsell} collapsed={!expanded} />
               </div>
               <button
                 type="button"
@@ -363,6 +378,7 @@ export function AppShell({
                   pathname={pathname}
                   collapsed={false}
                 />
+                <UpsellSection modules={upsell} collapsed={false} />
               </aside>
             </div>
           )}
@@ -558,6 +574,49 @@ function SidebarNav({
         );
       })}
     </nav>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Seção "DISPONÍVEL" — módulos licenciáveis ainda não comprados, como upsell
+// in-app (painel único: o que não foi comprado vira oferta, não some).
+function UpsellSection({
+  modules,
+  collapsed,
+}: {
+  modules: UpsellModule[];
+  collapsed: boolean;
+}) {
+  const tNav = useTranslations('nav');
+  if (collapsed || modules.length === 0) return null;
+  return (
+    <div className="mt-2 px-2.5 pb-2">
+      <div className="border-t border-border px-1 pb-1 pt-3 text-2xs font-semibold uppercase tracking-wider text-text-subtle">
+        {tNav('available')}
+      </div>
+      <div className="flex flex-col gap-1">
+        {modules.map((m) => (
+          <button
+            key={m.key}
+            type="button"
+            title={tNav('activate')}
+            className="group flex w-full items-center justify-between gap-2 rounded-md border border-dashed border-border-strong/70 px-2.5 py-2 text-left transition-colors hover:border-accent/60"
+          >
+            <span className="flex min-w-0 items-center gap-2.5">
+              <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md bg-surface text-text-subtle">
+                <Lock className="h-3 w-3" />
+              </span>
+              <span className="truncate text-sm font-medium text-text-subtle group-hover:text-text">
+                {tNav(m.labelKey as 'dashboard')}
+              </span>
+            </span>
+            <span className="shrink-0 rounded-md bg-accent-muted px-1.5 py-0.5 text-2xs font-semibold text-accent-strong dark:text-accent-foreground">
+              {tNav('activate')}
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

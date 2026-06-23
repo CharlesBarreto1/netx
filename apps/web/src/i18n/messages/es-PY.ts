@@ -223,6 +223,8 @@ const messages = {
       portal: 'Portal del colaborador',
       settings: 'Configuración',
     },
+    available: 'Disponible',
+    activate: 'Activar',
   },
   customers: {
     title: 'Clientes',
