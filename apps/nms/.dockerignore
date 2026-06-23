@@ -1,0 +1,20 @@
+# Não enviar para o build context (imagens são montadas a partir da raiz do repo).
+**/node_modules
+**/dist
+**/build
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.mypy_cache
+**/.ruff_cache
+**/.pytest_cache
+**/*.tsbuildinfo
+.git
+.github
+**/.env
+**/.env.*
+!**/.env.example
+infra/config-backups
+infra/telegraf/telegraf.d/snmp-*.conf
+infra/telegraf/mibs
+**/.DS_Store

@@ -1,0 +1,2 @@
+# Configs SNMP por device são geradas aqui pelo device-gateway (ADR 0003).
+# Os arquivos snmp-*.conf NÃO entram no git (contêm a community em claro).

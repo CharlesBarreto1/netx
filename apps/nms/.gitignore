@@ -1,0 +1,39 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+build/
+*.tsbuildinfo
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# env / secrets — NUNCA commitar credenciais
+.env
+.env.*
+!.env.example
+
+# prisma
+apps/api/prisma/*.db
+
+# config backups versionados em runtime (repo git separado, fora do código)
+infra/config-backups/
+
+# editor / os
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Configs SNMP geradas em runtime pelo gateway (contêm segredo)
+infra/telegraf/telegraf.d/snmp-*.conf
+
+# MIBs baixadas (artefatos; rode infra/telegraf/fetch-mibs.sh)
+infra/telegraf/mibs/

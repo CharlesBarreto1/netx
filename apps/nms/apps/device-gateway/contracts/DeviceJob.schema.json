@@ -1,0 +1,341 @@
+{
+  "$ref": "#/definitions/DeviceJob",
+  "definitions": {
+    "DeviceJob": {
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "jobId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "deviceId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "requestedBy": {
+              "type": "string",
+              "minLength": 1
+            },
+            "requestedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "accessMode": {
+              "type": "string",
+              "enum": [
+                "read",
+                "write"
+              ],
+              "default": "read"
+            },
+            "approvedBy": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kind": {
+              "type": "string",
+              "const": "connectivity-test"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "mgmtIp": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "username": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "passwordEnc": {
+                  "type": "string"
+                },
+                "snmpCommunityEnc": {
+                  "type": "string"
+                },
+                "sshPort": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "default": 22
+                },
+                "netconfPort": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "default": 830
+                }
+              },
+              "required": [
+                "mgmtIp",
+                "username"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "jobId",
+            "deviceId",
+            "requestedBy",
+            "requestedAt",
+            "kind",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jobId": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/jobId"
+            },
+            "deviceId": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/deviceId"
+            },
+            "requestedBy": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/requestedBy"
+            },
+            "requestedAt": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/requestedAt"
+            },
+            "accessMode": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/accessMode"
+            },
+            "approvedBy": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/approvedBy"
+            },
+            "kind": {
+              "type": "string",
+              "const": "store-credential"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "username": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "password": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sshKey": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "snmpCommunity": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": [
+                "username"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "jobId",
+            "deviceId",
+            "requestedBy",
+            "requestedAt",
+            "kind",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jobId": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/jobId"
+            },
+            "deviceId": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/deviceId"
+            },
+            "requestedBy": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/requestedBy"
+            },
+            "requestedAt": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/requestedAt"
+            },
+            "accessMode": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/accessMode"
+            },
+            "approvedBy": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/approvedBy"
+            },
+            "kind": {
+              "type": "string",
+              "const": "sync-snmp-config"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "mgmtIp": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "snmpCommunityEnc": {
+                  "type": "string"
+                },
+                "snmpVersion": {
+                  "type": "integer",
+                  "default": 2
+                }
+              },
+              "required": [
+                "mgmtIp"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "jobId",
+            "deviceId",
+            "requestedBy",
+            "requestedAt",
+            "kind",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jobId": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/jobId"
+            },
+            "deviceId": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/deviceId"
+            },
+            "requestedBy": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/requestedBy"
+            },
+            "requestedAt": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/requestedAt"
+            },
+            "accessMode": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/accessMode"
+            },
+            "approvedBy": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/approvedBy"
+            },
+            "kind": {
+              "type": "string",
+              "const": "run-playbook"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "mgmtIp": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "username": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "passwordEnc": {
+                  "type": "string"
+                },
+                "netconfPort": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "default": 830
+                },
+                "playbookId": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "command": {
+                  "type": "string",
+                  "pattern": "^show\\s"
+                }
+              },
+              "required": [
+                "mgmtIp",
+                "username",
+                "playbookId",
+                "command"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "jobId",
+            "deviceId",
+            "requestedBy",
+            "requestedAt",
+            "kind",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jobId": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/jobId"
+            },
+            "deviceId": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/deviceId"
+            },
+            "requestedBy": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/requestedBy"
+            },
+            "requestedAt": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/requestedAt"
+            },
+            "accessMode": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/accessMode"
+            },
+            "approvedBy": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/approvedBy"
+            },
+            "kind": {
+              "type": "string",
+              "const": "backup-config"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "mgmtIp": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "username": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "passwordEnc": {
+                  "type": "string"
+                },
+                "netconfPort": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "default": 830
+                }
+              },
+              "required": [
+                "mgmtIp",
+                "username"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "jobId",
+            "deviceId",
+            "requestedBy",
+            "requestedAt",
+            "kind",
+            "params"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
