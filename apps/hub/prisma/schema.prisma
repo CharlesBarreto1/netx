@@ -1,0 +1,230 @@
+// NetX Hub — modelo de dados do licenciamento (lado NetX/nós).
+// Postgres próprio do Hub, separado do banco de cada NetX cliente.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum LicenseStatus {
+  ACTIVE
+  BLOCKED
+  SUSPENDED
+}
+
+enum BlockMode {
+  UI_ONLY            // bloqueia o painel de operador (padrão)
+  UI_AND_PROVISIONING // + bloqueia ativar clientes novos
+}
+
+enum InvoiceStatus {
+  OPEN
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+/// Licenciado = a empresa (ISP) que contratou o NetX. Plano e faturamento
+/// vivem aqui; pode ter mais de uma instância (ex.: produção + staging).
+model Licensee {
+  id           String     @id @default(uuid())
+  name         String
+  taxId        String?    @map("tax_id") // CNPJ/RUC
+  taxIdType    String?    @map("tax_id_type") // CNPJ | RUC | ...
+  contactEmail String?    @map("contact_email")
+  phone        String?
+  addressLine  String?    @map("address_line")
+  city         String?
+  state        String?
+  country      String     @default("BR")
+  currency     String     @default("BRL")
+
+  /// Rótulo do plano (ex.: "per-contract").
+  plan         String     @default("per-contract")
+  /// Teto de contratos ativos (0 = ilimitado). Informativo no cliente.
+  maxContracts Int        @default(0) @map("max_contracts")
+  /// Códigos de módulo habilitados (catálogo do ecossistema). Vazio = todos
+  /// habilitados no cliente (legado). Carimbado no token via issue().
+  modules      String[]   @default([])
+  /// Valor por contrato ativo (centavos) — base do faturamento por uso.
+  pricePerContractCents Int @default(0) @map("price_per_contract_cents")
+  /// Dia de vencimento das faturas mensais (1–28).
+  billingDay   Int        @default(10) @map("billing_day")
+  /// Cobrança ativa? (false = não gera fatura nem bloqueia — cortesia/trial)
+  billingActive Boolean   @default(true) @map("billing_active")
+
+  notes        String?
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  instances    Instance[]
+  users        HubUser[]
+  invoices     Invoice[]
+  trustUnlocks TrustUnlock[]
+
+  @@map("licensees")
+}
+
+/// Público-alvo de um artigo da wiki.
+enum WikiAudience {
+  INTERNAL // equipe NetX (painel admin)
+  CLIENT   // o ISP (central de ajuda no portal)
+}
+
+/// Artigo de wiki. Editável pelo painel admin. `audience` decide onde aparece:
+/// INTERNAL (só admin) ou CLIENT (central de ajuda do portal, read-only).
+model WikiArticle {
+  id             String       @id @default(uuid())
+  slug           String       @unique
+  title          String
+  category       String       @default("Geral")
+  audience       WikiAudience @default(INTERNAL)
+  content        String       @db.Text // markdown
+  orderIndex     Int          @default(0) @map("order_index")
+  updatedByEmail String?      @map("updated_by_email")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  @@index([audience, category, orderIndex])
+  @@map("wiki_articles")
+}
+
+/// Usuário da equipe NetX (acesso ao painel admin). Login e-mail+senha.
+/// Substitui o antigo HUB_ADMIN_TOKEN único.
+model HubAdmin {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  name         String?
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@map("hub_admins")
+}
+
+/// Usuário da central do cliente (staff do ISP). Login e-mail+senha.
+model HubUser {
+  id           String   @id @default(uuid())
+  licenseeId   String   @map("licensee_id")
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  name         String?
+  isActive     Boolean  @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  licensee     Licensee @relation(fields: [licenseeId], references: [id], onDelete: Cascade)
+
+  @@index([licenseeId])
+  @@map("hub_users")
+}
+
+/// Fatura mensal de um licenciado (por contrato ativo × preço).
+model Invoice {
+  id              String        @id @default(uuid())
+  licenseeId      String        @map("licensee_id")
+  /// Período cobrado (mês de referência).
+  periodStart     DateTime      @map("period_start")
+  periodEnd       DateTime      @map("period_end")
+  /// Snapshot da base de cálculo.
+  activeContracts Int           @map("active_contracts")
+  unitPriceCents  Int           @map("unit_price_cents")
+  amountCents     Int           @map("amount_cents")
+  currency        String        @default("BRL")
+  dueDate         DateTime      @map("due_date")
+  status          InvoiceStatus @default(OPEN)
+  issuedAt        DateTime      @default(now()) @map("issued_at")
+
+  paidAt          DateTime?     @map("paid_at")
+  paidAmountCents Int?          @map("paid_amount_cents")
+  paymentMethod   String?       @map("payment_method") // PIX | CARD | MANUAL
+  paymentRef      String?       @map("payment_ref")    // e2eid/charge id do gateway
+  proofStorageKey String?       @map("proof_storage_key")
+
+  // Cobrança Pix (EFI) vigente desta fatura — pra idempotência e match do webhook.
+  pixTxid         String?       @unique @map("pix_txid")
+  pixCopiaECola   String?       @map("pix_copia_e_cola")
+  pixQrImage      String?       @map("pix_qr_image") @db.Text
+  pixExpiresAt    DateTime?     @map("pix_expires_at")
+
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  licensee        Licensee      @relation(fields: [licenseeId], references: [id], onDelete: Cascade)
+  trustUnlocks    TrustUnlock[]
+
+  @@unique([licenseeId, periodStart])
+  @@index([licenseeId, status])
+  @@index([status, dueDate])
+  @@map("invoices")
+}
+
+/// Desbloqueio em confiança: o cliente bloqueado por atraso libera por um
+/// prazo curto, em autoatendimento, limitado por fatura. Enquanto
+/// grantedUntil > agora, o heartbeat trata como ACTIVE apesar da inadimplência.
+model TrustUnlock {
+  id           String   @id @default(uuid())
+  licenseeId   String   @map("licensee_id")
+  invoiceId    String?  @map("invoice_id")
+  grantedUntil DateTime @map("granted_until")
+  /// Quem disparou (e-mail do HubUser) — auditoria.
+  grantedBy    String?  @map("granted_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  licensee     Licensee @relation(fields: [licenseeId], references: [id], onDelete: Cascade)
+  invoice      Invoice? @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+
+  @@index([licenseeId, grantedUntil])
+  @@index([invoiceId])
+  @@map("trust_unlocks")
+}
+
+/// Instância = uma instalação do NetX numa VPS. `id` é o NETX_INSTANCE_ID
+/// gerado no enrollment do installer (= claim `sub` do token).
+model Instance {
+  id           String        @id // = NETX_INSTANCE_ID (uuid gerado no cliente)
+  licenseeId   String        @map("licensee_id")
+  label        String?       // ex.: "Produção PY"
+  /// sha256(licenseKey) em hex. A key em claro é mostrada 1x na criação.
+  keyHash      String        @unique @map("key_hash")
+
+  status       LicenseStatus @default(ACTIVE)
+  blockMode    BlockMode     @default(UI_ONLY) @map("block_mode")
+
+  // Telemetria do último heartbeat
+  lastVersion         String?   @map("last_version")
+  lastActiveContracts Int?      @map("last_active_contracts")
+  lastHeartbeatAt     DateTime? @map("last_heartbeat_at")
+  lastIp              String?   @map("last_ip")
+
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  licensee     Licensee      @relation(fields: [licenseeId], references: [id], onDelete: Cascade)
+  heartbeats   HeartbeatLog[]
+
+  @@index([licenseeId])
+  @@index([status])
+  @@map("instances")
+}
+
+/// Histórico de heartbeats — base pra faturamento por contrato ativo e
+/// auditoria de contato. Uma linha por heartbeat recebido.
+model HeartbeatLog {
+  id              String   @id @default(uuid())
+  instanceId      String   @map("instance_id")
+  version         String?
+  activeContracts Int      @default(0) @map("active_contracts")
+  ip              String?
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  instance        Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  @@index([instanceId, createdAt])
+  @@map("heartbeat_logs")
+}

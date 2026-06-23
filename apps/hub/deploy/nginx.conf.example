@@ -1,0 +1,35 @@
+# NetX Hub — nginx reverse proxy.
+#   /v1/*, /health  → API   (porta 4000)
+#   resto           → Web    (porta 4100, Next)
+# Troque hub.netx.com.br pelo seu domínio. HTTPS via certbot (ver DEPLOY.md).
+
+server {
+    listen 80;
+    server_name hub.netx.com.br;
+
+    # API NestJS (inclui o webhook EFI em /v1/efi/webhook/pix/<token>)
+    location /v1/ {
+        proxy_pass http://127.0.0.1:4000;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+    location = /health {
+        proxy_pass http://127.0.0.1:4000;
+    }
+
+    # Web (Next)
+    location / {
+        proxy_pass http://127.0.0.1:4100;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# Atenção EFI: o webhook Pix (/v1/efi/webhook/pix/<token>) deve ser acessível
+# pela EFI. A EFI faz mTLS no webhook — configure o certificado/cliente no
+# proxy se for exigir validação de cliente, ou mantenha o token aleatório no
+# path como camada de proteção (mínimo).

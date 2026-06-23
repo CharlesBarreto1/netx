@@ -1,0 +1,11 @@
+[Unit]
+Description=NetX Hub — backup diário do Postgres
+
+[Timer]
+# Todo dia às 03:30 (horário do servidor). Persistent: roda no boot se o
+# horário passou com a VPS desligada.
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

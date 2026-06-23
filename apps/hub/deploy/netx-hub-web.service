@@ -1,0 +1,18 @@
+[Unit]
+Description=NetX Hub — Web (painel admin + central do cliente)
+After=network.target netx-hub-api.service
+
+[Service]
+Type=simple
+User=netxhub
+WorkingDirectory=/opt/netx-hub/web
+# NEXT_PUBLIC_HUB_API é embutido no BUILD, não aqui. Veja DEPLOY.md.
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/npm run start
+Restart=on-failure
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
