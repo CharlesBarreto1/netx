@@ -255,14 +255,22 @@ expand-contract, e só faz merge quando comprovadamente reversível.
   - `tsconfig.base.json`: alias `@netx/core-sdk`. tsconfig do pacote zera `paths`
     p/ consumir @netx/shared compilado (evita TS6059 de rootDir).
   - Verificação: `nx build @netx/core-sdk` verde. Commit: `1d178f9`.
-- 2026-06-22 — **Fase 3 iniciada** (bus de eventos, 1ª costura):
-  - `apps/core-service/src/modules/events/`: `EventBusModule` global (DESLIGADO
-    por default; só liga o `AmqpEventPublisher` com `EVENTBUS_ENABLED=true|1`),
-    adaptador AMQP (amqp-connection-manager, exchange topic `netx.events`),
-    `event-types.ts` (ERP_CONTRACT_CREATED + registro do emit no manifesto).
-  - `contracts.service.create()`: publica `netx-erp.contract.created` após o
-    commit, fire-and-forget (nunca quebra a criação).
+- 2026-06-22 — **Fase 3 em andamento** (bus de eventos):
+  - Infra: `apps/core-service/src/modules/events/`: `EventBusModule` global
+    (DESLIGADO por default; só liga o `AmqpEventPublisher` com
+    `EVENTBUS_ENABLED=true|1`), adaptador AMQP (amqp-connection-manager, exchange
+    topic `netx.events`), `EventBusPublisher` (wrapper injetável e resiliente:
+    monta envelope, no-op se off, nunca lança), `event-types.ts` (catálogo de
+    eventos + emits registrados no manifesto).
   - deps: `@netx/core-sdk` + `@types/amqplib` (lockfile sincronizado).
-  - Verificação: `nx run-many -t build` verde (10 projetos). Commit: `2803780`.
-  - **Próximo**: migrar mais costuras (ex.: contrato cancelado/suspenso, ONT
-    trocada, fatura paga) e, quando houver consumidor, um ConsumerModule.
+  - Costuras migradas (todas fire-and-forget, após commit):
+    - `contracts.service`: `netx-erp.contract.created`, `.suspended`
+      (cobre cron e manual via applySuspend), `.reactivated`, `.plan-changed`,
+      `.cancelled`.
+    - `contract-invoices.service`: `netx-erp.invoice.paid` (baixa manual `pay()`
+      e webhook EFI `registerGatewayPayment()`).
+  - Verificação: `nx run-many -t build` verde (10 projetos). Commits: `2803780`,
+    `f7c81b0`, `5f7a01a`.
+  - **Próximo**: costuras de outros domínios (ex.: ONT trocada → `netx-cpe.*`,
+    O.S concluída) e, quando houver consumidor, um ConsumerModule que assina a
+    exchange e reage (idempotente pelo `envelope.id`).
