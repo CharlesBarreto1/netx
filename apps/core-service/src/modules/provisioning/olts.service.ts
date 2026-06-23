@@ -11,6 +11,8 @@
  *
  * @provenance Y2hhcmxlc2JhcnJldG86MDg0NzI5Njg5MDE=
  */
+import { execFile } from 'node:child_process';
+
 import {
   BadRequestException,
   ConflictException,
@@ -145,6 +147,9 @@ export class OltsService {
         resource: 'olts',
         resourceId: created.id,
       });
+      // Fase 3: aponta syslog/NTP da OLT pros endpoints do NetX. Best-effort,
+      // fora do caminho da resposta (segue o padrão `void syncInfra()`).
+      void this.applyOltBaseline(created);
       return toResponse(created);
     } catch (err) {
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
@@ -285,7 +290,93 @@ export class OltsService {
       resource: 'olts',
       resourceId: id,
     });
+    void this.applyOltBaseline(updated);
     return toResponse(updated);
+  }
+
+  /**
+   * Fase 3 — aponta syslog + NTP da OLT pros endpoints do NetX, lendo os
+   * destinos do ambiente (NETX_OLT_SYSLOG_HOST / NETX_OLT_NTP_SERVER /
+   * NETX_OLT_TIMEZONE). Só roda em OLT DIRECT cujo driver implementa o
+   * baseline e quando há ao menos um endpoint configurado. NUNCA propaga erro
+   * (best-effort): a OLT já foi salva; falha aqui só vira log + lastError.
+   */
+  private async applyOltBaseline(olt: OltRow): Promise<void> {
+    try {
+      if (olt.providerMode !== 'DIRECT') return;
+
+      // 1. Allowlist do NetX (chrony NTP + UFW 123/514) pra OLT alcançar o
+      //    NetX. Os scripts já leem a tabela `olts`; aqui só disparamos o
+      //    re-sync, igual o NetworkEquipmentService faz no cadastro de BNG.
+      if (olt.managementIp) this.syncOltInfra();
+
+      const driver = this.drivers.resolve(olt.vendor, olt.providerMode);
+      if (!driver.applyManagementBaseline) return;
+
+      // 2. Endpoints que a OLT vai apontar. NetX é o NTP (chrony local) e o
+      //    coletor de syslog — ambos no mesmo IP de gerência. NETX_MANAGEMENT_IP
+      //    é o default dos dois; pode sobrescrever cada um individualmente.
+      const netxIp = process.env.NETX_MANAGEMENT_IP?.trim() || null;
+      const syslogHost = process.env.NETX_OLT_SYSLOG_HOST?.trim() || netxIp;
+      const ntpServer = process.env.NETX_OLT_NTP_SERVER?.trim() || netxIp;
+      const timezone = process.env.NETX_OLT_TIMEZONE?.trim() || null;
+      if (!syslogHost && !ntpServer && !timezone) return; // nada configurado
+
+      const syslogLevelRaw = process.env.NETX_OLT_SYSLOG_LEVEL?.trim();
+      const ctx = buildConnectionContext(olt, this.crypto);
+      const r = await driver.applyManagementBaseline(ctx, {
+        syslogHost,
+        syslogLevel: syslogLevelRaw ? Number(syslogLevelRaw) : undefined,
+        ntpServer,
+        timezone,
+      });
+      if (r.success) {
+        this.logger.log(
+          `[olt-baseline] ${olt.name}: aplicado=[${r.data.applied.join(', ') || '∅'}] ` +
+            `pulado=[${r.data.skipped.join(', ')}]`,
+        );
+        if (r.data.applied.length) {
+          await this.prisma.olt
+            .update({ where: { id: olt.id }, data: { lastError: null } })
+            .catch(() => undefined);
+        }
+      } else {
+        this.logger.warn(`[olt-baseline] ${olt.name} falhou: ${r.error}`);
+        await this.prisma.olt
+          .update({ where: { id: olt.id }, data: { lastError: `baseline: ${r.error}` } })
+          .catch(() => undefined);
+      }
+    } catch (err) {
+      this.logger.warn(
+        `[olt-baseline] erro inesperado em ${olt.name}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
+
+  /**
+   * Re-sincroniza a allowlist de NTP (chrony) + UFW pra incluir as OLTs
+   * DIRECT, via os mesmos scripts sudo do installer que o NetworkEquipment
+   * usa pros BNGs (sync-ntp.sh + sync-firewall.sh — ambos já leem a tabela
+   * `olts`). Non-blocking e best-effort: falha só loga (operador pode rodar
+   * `sudo .../sync-ntp.sh` manual). Caminhos overridáveis por env.
+   */
+  private syncOltInfra(): void {
+    const scripts = [
+      process.env.NETX_SYNC_NTP_SCRIPT ?? '/opt/netx/infra/installer/scripts/sync-ntp.sh',
+      process.env.NETX_SYNC_FIREWALL_SCRIPT ??
+        '/opt/netx/infra/installer/scripts/sync-firewall.sh',
+    ];
+    for (const script of scripts) {
+      execFile('sudo', ['-n', script], { timeout: 8000 }, (err, _out, stderr) => {
+        if (err) {
+          this.logger.warn(
+            `[olt-infra-sync] ${script} falhou: ${err.message} ${stderr?.slice(0, 160) ?? ''}`,
+          );
+        }
+      });
+    }
   }
 
   async remove(tenantId: string, actorUserId: string, id: string): Promise<void> {

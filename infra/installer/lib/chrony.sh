@@ -63,16 +63,20 @@ chrony_sync_allowlist() {
     return 0
   fi
 
+  # Clients NTP = equipamentos de rede (BNG/Router/Switch) + OLTs DIRECT. As
+  # OLTs ficam na tabela `olts` (management_ip é inet → host() tira o /prefixo).
   local ips
   ips=$(PGPASSWORD="${NETX_DB_PASSWORD}" psql \
     -h "${NETX_DB_HOST}" -p "${NETX_DB_PORT}" \
     -U "${NETX_DB_USER}" -d "${NETX_DB_NAME}" \
-    -t -A -c "SELECT DISTINCT ip_address FROM network_equipment WHERE deleted_at IS NULL AND is_active = true" \
+    -t -A -c "SELECT ip_address AS ip FROM network_equipment WHERE deleted_at IS NULL AND is_active = true
+              UNION
+              SELECT host(management_ip) FROM olts WHERE deleted_at IS NULL AND provider_mode = 'DIRECT' AND management_ip IS NOT NULL" \
     2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || true)
 
   {
     echo "# Auto-gerado por chrony_sync_allowlist - NÃO EDITAR MANUALMENTE."
-    echo "# Lista populada a partir de network_equipment.ip_address."
+    echo "# Lista populada a partir de network_equipment + olts (DIRECT)."
     echo "# Re-gerar via: sudo /opt/netx/infra/installer/scripts/sync-ntp.sh"
     echo ""
     # Default deny pra clients NTP (chrony só serve com 'allow' explícito).

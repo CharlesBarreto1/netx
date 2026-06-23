@@ -24,6 +24,8 @@ import {
   type AuthorizeOntInput,
   type AuthorizedOntResult,
   type OltConnectionContext,
+  type ManagementBaselineInput,
+  type ManagementBaselineResult,
   type OltDriver,
   type OltDriverResult,
   type OntStatusResult,
@@ -220,6 +222,74 @@ export class ZyxelZynosDriver implements OltDriver {
     });
   }
 
+  /**
+   * Aponta syslog + NTP da OLT pros endpoints do NetX (Fase 3). Idempotente:
+   * lê `show timesync` e só reconfigura o NTP se divergir; o syslog é
+   * (re)aplicado quando há host configurado. Só dá `write memory` se mudou algo.
+   */
+  async applyManagementBaseline(
+    ctx: OltConnectionContext,
+    input: ManagementBaselineInput,
+  ): Promise<OltDriverResult<ManagementBaselineResult>> {
+    return runDriverCall(async () => {
+      const applied: string[] = [];
+      const skipped: string[] = [];
+      const cmds: string[] = ['configure'];
+
+      // ── Syslog → coletor do NetX ──────────────────────────────────────────
+      if (input.syslogHost) {
+        const host = sanitizeHost(input.syslogHost);
+        const level = clampLevel(input.syslogLevel);
+        cmds.push('syslog'); // habilita o syslog remoto
+        cmds.push(`syslog server ${host} level ${level}`);
+        applied.push(`syslog→${host} (level ${level})`);
+      } else {
+        skipped.push('syslog (NETX_OLT_SYSLOG_HOST não configurado)');
+      }
+
+      // ── NTP / timezone ────────────────────────────────────────────────────
+      const client = await this.open(ctx);
+      try {
+        let current = '';
+        if (input.ntpServer || input.timezone) {
+          current = await client.exec('show timesync');
+        }
+        if (input.ntpServer) {
+          const ntp = sanitizeHost(input.ntpServer);
+          const already =
+            new RegExp(`Time Server IP Address\\s*:\\s*${ntp.replace(/\./g, '\\.')}`).test(current) &&
+            /Time Sync Mode\s*:\s*NTP/i.test(current);
+          if (already) {
+            skipped.push(`ntp (já aponta ${ntp})`);
+          } else {
+            cmds.push(`timesync server ${ntp}`, 'timesync ntp');
+            applied.push(`ntp→${ntp}`);
+          }
+        } else {
+          skipped.push('ntp (NETX_OLT_NTP_SERVER não configurado)');
+        }
+        if (input.timezone) {
+          const tz = sanitizeTz(input.timezone);
+          if (new RegExp(`Time Zone\\s*:\\s*${tz}`).test(current)) {
+            skipped.push(`timezone (já ${tz})`);
+          } else {
+            cmds.push(`time timezone ${tz}`);
+            applied.push(`timezone→${tz}`);
+          }
+        }
+
+        if (applied.length === 0) {
+          return { applied, skipped };
+        }
+        cmds.push('exit', 'write memory');
+        await client.execSequence(cmds, { timeoutMs: 30_000 });
+        return { applied, skipped };
+      } finally {
+        await client.close();
+      }
+    });
+  }
+
   // ───────────────────────────────────────────────────────────────────────
 
   private async open(ctx: OltConnectionContext): Promise<ZynosSshClient> {
@@ -328,6 +398,30 @@ function nextFreeOntId(allOnts: string, slot: number, pon: number): number | nul
   while ((m = re.exec(allOnts)) !== null) used.add(Number(m[1]));
   for (let i = 1; i <= 128; i++) if (!used.has(i)) return i;
   return null;
+}
+
+/** Host/IP pra comando ZyNOS — só dígitos, ponto, hex e ':' (IPv4/IPv6/hostname). */
+function sanitizeHost(h: string): string {
+  const clean = h.trim();
+  if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(clean)) {
+    throw new Error(`Host inválido pra comando ZyNOS: ${JSON.stringify(h)}`);
+  }
+  return clean;
+}
+
+/** Nível de syslog do ZyNOS: 0..7 (default 6 = informational). */
+function clampLevel(level: number | undefined): number {
+  const n = Number.isFinite(level) ? Math.trunc(level as number) : 6;
+  return Math.min(7, Math.max(0, n));
+}
+
+/** Timezone offset ZyNOS: [+-]HHMM, ex "-0300". */
+function sanitizeTz(tz: string): string {
+  const clean = tz.trim();
+  if (!/^[+-]?\d{3,4}$/.test(clean)) {
+    throw new Error(`Timezone inválida pra ZyNOS (esperado [+-]HHMM): ${JSON.stringify(tz)}`);
+  }
+  return clean;
 }
 
 /** SN GPON: só hex/alfanumérico (o schema já valida; aqui é defesa anti-injeção). */

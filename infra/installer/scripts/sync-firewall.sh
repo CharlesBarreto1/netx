@@ -38,6 +38,8 @@ fi
 source "${INSTALLER_DIR}/lib/firewall.sh"
 
 firewall_sync_radius_nas
+# OLTs DIRECT: abre 123 (NTP) + 514 (syslog) pras OLTs cadastradas em `olts`.
+firewall_sync_olts
 
 # CRÍTICO: abrir UFW sozinho NÃO basta — FreeRADIUS carrega a lista de clients
 # (radius.nas) do SQL **só no startup**. E aqui está a pegadinha que já nos

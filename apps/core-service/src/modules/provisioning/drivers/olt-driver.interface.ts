@@ -114,6 +114,30 @@ export interface OntStatusResult {
   raw?: unknown;                // payload original pra debug
 }
 
+/**
+ * Baseline de gerência aplicado na OLT (Fase 3): aponta syslog + NTP do
+ * equipamento pros endpoints do NetX, pra receber eventos de queda
+ * (dying-gasp/LOS) em tempo real e manter o relógio sincronizado. Campos
+ * vazios/null são pulados (NetX não força o que não está configurado).
+ */
+export interface ManagementBaselineInput {
+  /** Host/IP que a OLT alcança pra mandar syslog (coletor do NetX). */
+  syslogHost?: string | null;
+  /** Nível do syslog server no ZyNOS (0..7). */
+  syslogLevel?: number;
+  /** Servidor NTP a apontar na OLT (se o NetX expõe um). */
+  ntpServer?: string | null;
+  /** Offset de timezone no formato ZyNOS, ex "-0300" (BR), "-0400" (PY). */
+  timezone?: string | null;
+}
+
+export interface ManagementBaselineResult {
+  /** Itens efetivamente configurados (pra audit/UI). */
+  applied: string[];
+  /** Itens pulados (já corretos ou não configurados no NetX). */
+  skipped: string[];
+}
+
 export type OltDriverResult<T> =
   | { success: true; data: T; durationMs: number; raw?: unknown }
   | { success: false; error: string; durationMs: number; raw?: unknown };
@@ -133,6 +157,15 @@ export interface OltDriver {
     ctx: OltConnectionContext,
     snGpon: string,
   ): Promise<OltDriverResult<OntStatusResult>>;
+  /**
+   * Opcional (Fase 3): aponta syslog + NTP da OLT pros endpoints do NetX.
+   * Só drivers DIRECT por CLI implementam (ex: ZyxelZynosDriver). O
+   * OltsService chama best-effort após salvar a OLT.
+   */
+  applyManagementBaseline?(
+    ctx: OltConnectionContext,
+    input: ManagementBaselineInput,
+  ): Promise<OltDriverResult<ManagementBaselineResult>>;
 }
 
 /**

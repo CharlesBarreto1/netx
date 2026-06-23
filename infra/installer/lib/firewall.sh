@@ -159,3 +159,29 @@ firewall_sync_radius_nas() {
     log_dim "  ✓ ${ip}"
   done
 }
+
+# Lê olts (DIRECT) e abre 123/udp (NTP) + 514/udp (syslog) pras OLTs. As OLTs
+# não são NASes (não estão em radius.nas), mas usam o NetX como NTP e mandam
+# syslog de alarmes (dying-gasp/LOS) pro coletor. Idempotente; comment
+# "netx-olt:<IP>" permite cleanup seletivo.
+firewall_sync_olts() {
+  if ! command -v ufw >/dev/null 2>&1; then
+    return 0
+  fi
+  local olt_ips
+  olt_ips=$(PGPASSWORD="${NETX_DB_PASSWORD}" psql \
+    -h "${NETX_DB_HOST}" -p "${NETX_DB_PORT}" \
+    -U "${NETX_DB_USER}" -d "${NETX_DB_NAME}" \
+    -t -A -c "SELECT host(management_ip) FROM olts WHERE deleted_at IS NULL AND provider_mode = 'DIRECT' AND management_ip IS NOT NULL" \
+    2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || true)
+  if [[ -z "${olt_ips}" ]]; then
+    return 0
+  fi
+  log_info "Liberando 123 (NTP) + 514 (syslog) pra OLTs cadastradas"
+  local ip
+  for ip in ${olt_ips}; do
+    ufw allow from "${ip}" to any port 123 proto udp comment "netx-olt:${ip} ntp" >/dev/null 2>&1 || true
+    ufw allow from "${ip}" to any port 514 proto udp comment "netx-olt:${ip} syslog" >/dev/null 2>&1 || true
+    log_dim "  ✓ ${ip}"
+  done
+}

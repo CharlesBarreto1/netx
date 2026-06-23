@@ -14,6 +14,10 @@ export const ERP_INVOICE_PAID = 'netx-erp.invoice.paid';
 
 /** Eventos do domínio CPE/TR-069 (source `netx-cpe`). */
 export const CPE_ONT_SWAPPED = 'netx-cpe.ont.swapped';
+/** ONT caiu (detectado via syslog da OLT — dying-gasp ou perda de sinal). */
+export const CPE_ONT_DOWN = 'netx-cpe.ont.down';
+/** ONT voltou (alarme limpo via syslog da OLT). */
+export const CPE_ONT_UP = 'netx-cpe.ont.up';
 
 /**
  * Registra no manifesto do módulo o que o ERP EMITE (Fase 3). Side-effect de
@@ -33,7 +37,7 @@ defineModule('netx-erp', {
 });
 
 // O domínio CPE/TR-069 é dono dos eventos de equipamento (ex.: troca de ONT).
-defineModule('netx-cpe', { emits: [CPE_ONT_SWAPPED] });
+defineModule('netx-cpe', { emits: [CPE_ONT_SWAPPED, CPE_ONT_DOWN, CPE_ONT_UP] });
 
 /** Payload de `netx-erp.contract.created` (version 1). */
 export interface ContractCreatedPayload {
@@ -106,4 +110,23 @@ export interface OntSwappedPayload {
   network: 'ufinet' | 'own';
   /** Status do provisionamento da nova ONT. */
   status: string;
+}
+
+/** Motivo da queda da ONT, derivado do alarme GPON no syslog da OLT. */
+export type OntDownReason = 'POWER_LOSS' | 'LINK_LOSS' | 'UNKNOWN';
+
+/** Payload de `netx-cpe.ont.down` / `netx-cpe.ont.up` (version 1). */
+export interface OntAlarmPayload {
+  ontId: string;
+  oltId: string;
+  contractId: string | null;
+  snGpon: string;
+  /** AID na OLT (ex "ont-3-1-1"). */
+  aid: string;
+  /** POWER_LOSS (dying-gasp) vs LINK_LOSS (LOS); só em `down`. */
+  reason?: OntDownReason;
+  /** Alarme cru que disparou (ex "DGi", "LOSi"). */
+  alarm: string;
+  /** ISO 8601 — carimbado no NetX (o relógio da OLT não é confiável). */
+  at: string;
 }

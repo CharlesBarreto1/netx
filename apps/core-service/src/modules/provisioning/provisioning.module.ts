@@ -13,6 +13,7 @@ import { OltDriverFactory } from './drivers/olt-driver.factory';
 import { UfinetOrchestratorDriver } from './drivers/ufinet.driver';
 import { ZyxelZynosDriver } from './drivers/zyxel-zynos.driver';
 import { OltProvisioningProfilesService } from './olt-provisioning-profiles.service';
+import { OltSyslogCollector } from './olt-syslog.collector';
 import { OltsService } from './olts.service';
 import {
   ProvisioningController,
@@ -45,6 +46,7 @@ import { Tr069TasksService } from './tr069-tasks.service';
     // Services
     OltsService,
     OltProvisioningProfilesService,
+    OltSyslogCollector,
     Tr069TasksService,
     Tr069DiagnosticsService,
     Tr069ReconcileService,
