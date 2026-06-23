@@ -98,7 +98,9 @@ netx_app_clone_or_update() {
   if [[ -d "${NETX_HOME}/.git" ]]; then
     log_info "Atualizando repo (${NETX_REPO_BRANCH})"
     git -C "${NETX_HOME}" fetch --depth=1 origin "${NETX_REPO_BRANCH}"
-    git -C "${NETX_HOME}" reset --hard "origin/${NETX_REPO_BRANCH}"
+    # FETCH_HEAD (tip recém-buscado), não origin/<branch>: o clone é
+    # --single-branch, então o ref de tracking de outro branch não existe.
+    git -C "${NETX_HOME}" reset --hard FETCH_HEAD
   elif [[ -d "${NETX_HOME}" && -n "$(ls -A "${NETX_HOME}" 2>/dev/null)" ]]; then
     log_dim "Diretório ${NETX_HOME} existe e não é git — assumindo cópia local"
   else

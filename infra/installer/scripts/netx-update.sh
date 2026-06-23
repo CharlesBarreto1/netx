@@ -91,7 +91,10 @@ git config --global --add safe.directory "${NETX_HOME}" 2>/dev/null || true
 
 CURRENT_SHA=$(git -C "${NETX_HOME}" rev-parse HEAD 2>/dev/null || echo "unknown")
 git -C "${NETX_HOME}" fetch --depth=1 origin "${NETX_REPO_BRANCH}"
-git -C "${NETX_HOME}" reset --hard "origin/${NETX_REPO_BRANCH}"
+# Reset pro tip recém-buscado (FETCH_HEAD), não pro ref de tracking
+# origin/<branch>: o clone é --single-branch (só main), então origin/<outro>
+# não existe e o reset falharia. FETCH_HEAD funciona pra QUALQUER branch.
+git -C "${NETX_HOME}" reset --hard FETCH_HEAD
 NEW_SHA=$(git -C "${NETX_HOME}" rev-parse HEAD)
 chown -R "${NETX_USER}:${NETX_USER}" "${NETX_HOME}"
 
