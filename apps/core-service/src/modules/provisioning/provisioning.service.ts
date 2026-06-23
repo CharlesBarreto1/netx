@@ -67,6 +67,8 @@ import { UfinetOrdersService } from '../ufinet/ufinet-orders.service';
 import { OltDriverFactory } from './drivers/olt-driver.factory';
 import { buildConnectionContext } from './olt-context.util';
 import { Tr069TasksService } from './tr069-tasks.service';
+import { EventBusPublisher } from '../events/event-bus.publisher';
+import { CPE_ONT_SWAPPED, type OntSwappedPayload } from '../events/event-types';
 
 @Injectable()
 export class ProvisioningService {
@@ -82,6 +84,7 @@ export class ProvisioningService {
     private readonly comodato: ComodatoService,
     private readonly ufinet: UfinetOrdersService,
     private readonly invoiceGen: InvoiceGeneratorService,
+    private readonly bus: EventBusPublisher,
   ) {}
 
   /**
@@ -819,6 +822,12 @@ export class ProvisioningService {
         resourceId: ont.id,
         metadata: { oldSn, newSn, network: 'ufinet' },
       });
+      await this.bus.emit<OntSwappedPayload>(
+        CPE_ONT_SWAPPED,
+        tenantId,
+        { contractId, ontId: ont.id, oldSn, newSn, network: 'ufinet', status: 'OK' },
+        'netx-cpe',
+      );
       return { status: 'OK' };
     }
 
@@ -852,6 +861,12 @@ export class ProvisioningService {
       resourceId: ont.id,
       metadata: { oldSn, newSn, network: 'own' },
     });
+    await this.bus.emit<OntSwappedPayload>(
+      CPE_ONT_SWAPPED,
+      tenantId,
+      { contractId, ontId: ont.id, oldSn, newSn, network: 'own', status: res.status },
+      'netx-cpe',
+    );
     return { status: res.status };
   }
 

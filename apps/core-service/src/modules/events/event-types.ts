@@ -11,6 +11,9 @@ export const ERP_CONTRACT_PLAN_CHANGED = 'netx-erp.contract.plan-changed';
 export const ERP_CONTRACT_CANCELLED = 'netx-erp.contract.cancelled';
 export const ERP_INVOICE_PAID = 'netx-erp.invoice.paid';
 
+/** Eventos do domínio CPE/TR-069 (source `netx-cpe`). */
+export const CPE_ONT_SWAPPED = 'netx-cpe.ont.swapped';
+
 /**
  * Registra no manifesto do módulo o que o ERP EMITE (Fase 3). Side-effect de
  * import: mantém o manifesto (@netx/core-sdk) coerente com as costuras
@@ -26,6 +29,9 @@ defineModule('netx-erp', {
     ERP_INVOICE_PAID,
   ],
 });
+
+// O domínio CPE/TR-069 é dono dos eventos de equipamento (ex.: troca de ONT).
+defineModule('netx-cpe', { emits: [CPE_ONT_SWAPPED] });
 
 /** Payload de `netx-erp.contract.created` (version 1). */
 export interface ContractCreatedPayload {
@@ -78,4 +84,16 @@ export interface InvoicePaidPayload {
   paidAt: string;
   /** Forma de pagamento (ContractInvoicePaidVia). null se não informado. */
   paidVia: string | null;
+}
+
+/** Payload de `netx-cpe.ont.swapped` (version 1). Troca de ONT (manual ou O.S). */
+export interface OntSwappedPayload {
+  contractId: string;
+  ontId: string;
+  oldSn: string | null;
+  newSn: string;
+  /** Rede da OLT: 'ufinet' (orquestrador) ou 'own' (rede própria). */
+  network: 'ufinet' | 'own';
+  /** Status do provisionamento da nova ONT. */
+  status: string;
 }

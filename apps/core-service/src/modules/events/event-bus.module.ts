@@ -5,6 +5,7 @@ import { EVENT_PUBLISHER, NoopEventPublisher, type EventPublisher } from '@netx/
 
 import { AmqpEventPublisher } from './amqp-event-publisher';
 import { EventBusPublisher } from './event-bus.publisher';
+import { EventConsumer } from './event-consumer';
 
 /**
  * Bus de eventos do ecossistema (Fase 3). Registra o provider global
@@ -40,7 +41,7 @@ export class EventBusModule {
     return {
       module: EventBusModule,
       global: true,
-      providers: [publisher, EventBusPublisher],
+      providers: [publisher, EventBusPublisher, EventConsumer],
       exports: [publisher, EventBusPublisher],
     };
   }
