@@ -286,9 +286,18 @@ expand-contract, e só faz merge quando comprovadamente reversível.
     se/quando o consumidor virar crítico.
 - 2026-06-22 — **Testes do core-sdk** (`packages/core-sdk/src/*.spec.ts`):
   licensing (entitlement), manifesto (defineModule/resolveLoadOrder), envelope
-  (makeEnvelope/Noop). Type-checados via `nx build @netx/core-sdk` (verde).
-  **BLOQUEIO conhecido (pré-existente, fora do ecossistema)**: o runner jest está
-  quebrado no monorepo inteiro — `apps/mobile` (react-native) puxa `jest-mock@29`
-  que é hasteado e conflita com o `jest@30` do backend
-  (`clearMocksOnScope is not a function`). `nx test @netx/shared` falha igual.
-  Os specs rodam quando o toolchain for alinhado (tarefa separada).
+  (makeEnvelope/Noop). O runner jest estava quebrado no monorepo (conflito
+  `jest-mock` 29 do mobile × 30 do backend); RESOLVIDO fixando `jest-mock@30.4.1`
+  +`jest-environment-node@30.4.1` nas devDeps raiz. **`nx test @netx/core-sdk`
+  verde: 17/17.**
+- 2026-06-22 — **Espalhar enforcement + gating de UI + mais costuras + manifestos:**
+  - `@RequiresModule` em CPE (provisioning/optical) e Maps (mapping). `network`
+    deixado sem gatear (fronteira a decidir). 
+  - Gating de sidebar por módulo (web): `entitledModules` no `GET /license/status`
+    + `requiredModules` em MenuDef/MenuGroup, fail-open. Grupos mapping/hr/portal/
+    provisioning anotados.
+  - Costuras novas: `netx-erp.contract.installed` (1ª ativação) + `dispatch()`
+    plugável por `EVENT_HANDLERS`.
+  - Manifestos: `apiPrefixes` por módulo (erp/rh/cpe/maps/nms) + `GET /license/modules`.
+  - **Resto do item NMS/Hub e go-live do Hub**: dependem de infra/segredos —
+    runbook em `docs/ecosystem/INTEGRATION-RUNBOOK.md`.
