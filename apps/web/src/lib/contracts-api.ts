@@ -158,6 +158,12 @@ interface CommonContractInput {
    * /provisioning/install/:contractId. Sem fatura/RADIUS até ativação.
    */
   initialStatus?: 'ACTIVE' | 'PENDING_INSTALL';
+  /**
+   * Wi-Fi do cliente — capturado no cadastro. O provisionamento aplica via
+   * TR-069 lendo do contrato (técnico não digita mais). Opcional na API.
+   */
+  ssid?: string | null;
+  wifiPassword?: string | null;
 }
 
 export type CreateContractInput =

@@ -119,8 +119,9 @@ export interface InstallCustomerRequest {
   ponSlot?: number | null;
   macAddress?: string | null;
   serialPhysical?: string | null;
-  ssid: string;
-  wifiPassword: string;
+  /** Wi-Fi — opcional: o padrão é herdar do contrato (definido no cadastro). */
+  ssid?: string | null;
+  wifiPassword?: string | null;
   /** VLAN da WAN PPPoE (default 1010). */
   pppoeVlan?: number;
   /** Modo Wi-Fi do modelo da ONT (default BAND_STEERING). */
@@ -139,8 +140,9 @@ export interface OntSwapRequest {
   allowStockBypass?: boolean;
   /** Local de estoque onde devolver a ONT antiga. */
   returnLocationId: string;
-  ssid: string;
-  wifiPassword: string;
+  /** Wi-Fi — opcional: a troca mantém o nome/senha do contrato. */
+  ssid?: string | null;
+  wifiPassword?: string | null;
   wifiBandMode?: 'BAND_STEERING' | 'DUAL_BAND';
 }
 

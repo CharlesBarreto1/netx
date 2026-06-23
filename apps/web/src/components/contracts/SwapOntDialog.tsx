@@ -51,8 +51,6 @@ export function SwapOntDialog({
   const [serialItemId, setSerialItemId] = useState('');
   const [snGpon, setSnGpon] = useState('');
   const [returnLocationId, setReturnLocationId] = useState('');
-  const [ssid, setSsid] = useState('');
-  const [wifiPassword, setWifiPassword] = useState('');
   const [wifiBandMode, setWifiBandMode] = useState<'BAND_STEERING' | 'DUAL_BAND'>(
     'BAND_STEERING',
   );
@@ -65,13 +63,10 @@ export function SwapOntDialog({
     if (useManual ? !snGpon.trim() : !serialItemId)
       return setError(t('swapOnt.selectEquipmentError'));
     if (!returnLocationId) return setError(t('swapOnt.selectLocationError'));
-    if (ssid.trim().length < 1) return setError(t('swapOnt.ssidError'));
-    if (wifiPassword.length < 8) return setError(t('swapOnt.wifiPasswordError'));
 
     const body: OntSwapRequest = {
       returnLocationId,
-      ssid: ssid.trim(),
-      wifiPassword,
+      // Wi-Fi herda do contrato (definido no cadastro) — não pede aqui.
       wifiBandMode,
       ...(useManual
         ? { newSnGpon: snGpon.trim(), allowStockBypass: true }
@@ -167,22 +162,10 @@ export function SwapOntDialog({
           </Select>
         </div>
 
-        {/* Wi-Fi da ONT nova */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div>
-            <Label required>{t('swapOnt.ssid')}</Label>
-            <Input value={ssid} onChange={(e) => setSsid(e.target.value)} maxLength={32} />
-          </div>
-          <div>
-            <Label required>{t('swapOnt.wifiPassword')}</Label>
-            <Input
-              value={wifiPassword}
-              onChange={(e) => setWifiPassword(e.target.value)}
-              minLength={8}
-              maxLength={63}
-            />
-          </div>
-        </div>
+        {/* Wi-Fi herda do contrato — não pede nome/senha aqui. */}
+        <p className="rounded-md bg-slate-50 p-2 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+          {t('swapOnt.wifiFromContract')}
+        </p>
 
         <div>
           <Label>{t('swapOnt.bandMode')}</Label>

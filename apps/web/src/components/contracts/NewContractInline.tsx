@@ -69,6 +69,16 @@ export interface NewContractInlineProps {
  */
 const DEFAULT_PPPOE_PASSWORD = '1234';
 
+/** Gera uma senha Wi-Fi de 10 chars sem ambíguos (0/O, 1/l) — fácil de ditar. */
+function generateWifiPassword(): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  const arr = new Uint8Array(10);
+  crypto.getRandomValues(arr);
+  let out = '';
+  for (let i = 0; i < arr.length; i++) out += alphabet[arr[i] % alphabet.length];
+  return out;
+}
+
 export function NewContractInline({
   lockedCustomerId,
   initial,
@@ -136,6 +146,9 @@ export function NewContractInline({
     // Comuns
     installationAddress: initial?.installationAddress ?? '',
     installationMapsUrl: initial?.installationMapsUrl ?? '',
+    // Wi-Fi do cliente — capturado aqui (antes era na instalação, pelo técnico).
+    ssid: '',
+    wifiPassword: '',
     planId: '',
     monthlyValue:
       initial?.monthlyValue !== undefined ? String(initial.monthlyValue) : '',
@@ -268,6 +281,15 @@ export function NewContractInline({
 
     if (!form.installationAddress || form.installationAddress.length < 5)
       e.installationAddress = t('newContract.errors.installationAddress');
+
+    // Wi-Fi obrigatório no cadastro (o técnico não digita mais em campo).
+    const ssid = form.ssid.trim();
+    if (!ssid) e.ssid = t('newContract.errors.ssidRequired');
+    else if (ssid.length > 32 || !/^[\x20-\x7E]+$/u.test(ssid))
+      e.ssid = t('newContract.errors.ssidInvalid');
+    if (!form.wifiPassword) e.wifiPassword = t('newContract.errors.wifiPasswordRequired');
+    else if (form.wifiPassword.length < 8 || form.wifiPassword.length > 63)
+      e.wifiPassword = t('newContract.errors.wifiPasswordLen');
     if (form.installationMapsUrl) {
       const normalized = normalizeMapsUrl(form.installationMapsUrl);
       try {
@@ -318,6 +340,9 @@ export function NewContractInline({
       notes: form.notes || null,
       firstDueDate: form.firstDueDate || undefined,
       initialStatus,
+      // Wi-Fi — o provisionamento aplica via TR-069 lendo do contrato.
+      ssid: form.ssid.trim(),
+      wifiPassword: form.wifiPassword,
     };
 
     const payload: CreateContractInput =
@@ -630,6 +655,51 @@ export function NewContractInline({
         <FieldHelp>
           {t('newContract.mapsUrlHelp')}
         </FieldHelp>
+      </div>
+
+      {/* ─── Wi-Fi do cliente ──────────────────────────────────────────── */}
+      <div className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
+        <p className="mb-2 text-sm font-semibold">{t('newContract.wifiHeading')}</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="contract-ssid" required>
+              {t('newContract.ssid')}
+            </Label>
+            <Input
+              id="contract-ssid"
+              value={form.ssid}
+              onChange={(e) => update('ssid', e.target.value)}
+              maxLength={32}
+              placeholder={t('newContract.ssidPlaceholder')}
+            />
+            <FieldError>{errors.ssid}</FieldError>
+          </div>
+          <div>
+            <Label htmlFor="contract-wifiPassword" required>
+              {t('newContract.wifiPassword')}
+            </Label>
+            <div className="flex gap-2">
+              <Input
+                id="contract-wifiPassword"
+                value={form.wifiPassword}
+                onChange={(e) => update('wifiPassword', e.target.value)}
+                minLength={8}
+                maxLength={63}
+                placeholder={t('newContract.wifiPasswordPlaceholder')}
+                className="flex-1"
+              />
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => update('wifiPassword', generateWifiPassword())}
+              >
+                {t('newContract.wifiGenerate')}
+              </Button>
+            </div>
+            <FieldError>{errors.wifiPassword}</FieldError>
+          </div>
+        </div>
+        <FieldHelp>{t('newContract.wifiHelp')}</FieldHelp>
       </div>
 
       {/* ─── Modo de cobrança ─────────────────────────────────────────── */}

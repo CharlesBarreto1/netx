@@ -54,9 +54,14 @@ export const InstallCustomerRequestSchema = z
     /** Serial físico opcional (inventário). */
     serialPhysical: z.string().max(64).nullish(),
 
-    /** Wi-Fi pra TR-069 aplicar via SetParameterValues (Fase 3). */
-    ssid: SsidSchema,
-    wifiPassword: WifiPasswordSchema,
+    /**
+     * Wi-Fi pra TR-069 aplicar via SetParameterValues (Fase 3).
+     * AGORA OPCIONAL: o padrão é o Wi-Fi vir do CONTRATO (definido no cadastro);
+     * o service usa esses campos só como fallback (clientes legados). A UI do
+     * técnico não pede mais nome/senha.
+     */
+    ssid: SsidSchema.nullish(),
+    wifiPassword: WifiPasswordSchema.nullish(),
     /**
      * Modo de Wi-Fi — depende do modelo da ONT:
      *   BAND_STEERING (EG8145X6/X10) — SSID único nas 2 bandas.
