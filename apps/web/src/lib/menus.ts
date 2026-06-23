@@ -220,6 +220,7 @@ export const MENU_GROUPS: MenuGroup[] = [
     items: [
       { key: 'provisioningPending', href: '/provisioning/pending', labelKey: 'provisioningPending', permission: 'provisioning.read' },
       { key: 'olts', href: '/olts', labelKey: 'olts', permission: 'olts.admin' },
+      { key: 'oltTemplates', href: '/olt-templates', labelKey: 'oltTemplates', permission: 'olts.admin' },
       { key: 'tr069Dashboard', href: '/tr069', labelKey: 'tr069Dashboard', permission: 'tr069.admin' },
       { key: 'tr069Devices', href: '/tr069/devices', labelKey: 'tr069Devices', permission: 'tr069.admin' },
       { key: 'tr069Alerts', href: '/tr069/alerts', labelKey: 'tr069Alerts', permission: 'tr069.admin' },

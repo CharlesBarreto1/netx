@@ -11,6 +11,7 @@ export type OltVendor =
   | 'FIBERHOME'
   | 'PARKS'
   | 'NOKIA'
+  | 'ZYXEL'
   | 'UFINET'
   | 'OTHER';
 export type OltProviderMode = 'DIRECT' | 'ORCHESTRATOR' | 'EXTERNAL';

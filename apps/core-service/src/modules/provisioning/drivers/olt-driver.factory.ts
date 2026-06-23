@@ -8,6 +8,7 @@
  *                                                  NMS de terceiros, etc)
  *   providerMode=ORCHESTRATOR + vendor=UFINET    → UfinetOrchestratorDriver
  *   providerMode=ORCHESTRATOR + vendor=GENERIC   → MockOltDriver (dev/test)
+ *   providerMode=DIRECT       + vendor=ZYXEL     → ZyxelZynosDriver (ZyNOS SSH)
  *   providerMode=DIRECT       + vendor=HUAWEI    → HuaweiSshDriver (futuro)
  *   providerMode=DIRECT       + vendor=GENERIC   → MockOltDriver
  *   demais combinações                            → throw (pra forçar
@@ -23,6 +24,7 @@ import { MockOltDriver } from './mock-olt.driver';
 import { NoOpOltDriver } from './noop-olt.driver';
 import type { OltDriver } from './olt-driver.interface';
 import { UfinetOrchestratorDriver } from './ufinet.driver';
+import { ZyxelZynosDriver } from './zyxel-zynos.driver';
 
 @Injectable()
 export class OltDriverFactory {
@@ -31,6 +33,7 @@ export class OltDriverFactory {
     private readonly noop: NoOpOltDriver,
     private readonly ufinet: UfinetOrchestratorDriver,
     private readonly huawei: HuaweiSshDriver,
+    private readonly zyxel: ZyxelZynosDriver,
   ) {}
 
   resolve(vendor: OltVendor, providerMode: OltProviderMode): OltDriver {
@@ -47,6 +50,7 @@ export class OltDriverFactory {
       );
     }
     // DIRECT
+    if (vendor === 'ZYXEL') return this.zyxel;
     if (vendor === 'HUAWEI') return this.huawei;
     if (vendor === 'GENERIC') return this.mock;
     throw new Error(

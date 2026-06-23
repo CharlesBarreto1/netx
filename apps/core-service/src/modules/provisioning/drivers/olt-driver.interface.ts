@@ -54,6 +54,44 @@ export interface AuthorizeOntInput {
   vlanId?: number | null;
   /** Identificador único do contrato (pra logs/audit no provider). */
   contractRef: string;
+  /**
+   * Template de provisionamento resolvido (Plan ?? OLT default). Drivers que
+   * provisionam por CLI estruturado (ex: ZyxelZynosDriver) usam isto pra
+   * renderizar o bloco. Drivers que ignoram (mock/Ufinet) não precisam.
+   */
+  provisioningProfile?: ResolvedProvisioningProfile | null;
+}
+
+/** Uma VLAN do serviço dentro de um template resolvido. */
+export interface ProvisioningProfileVlan {
+  vid: number;
+  role: 'DATA' | 'MGMT';
+  /** txtag tag (true) | untag (false). */
+  tagged: boolean;
+  /** pvid do uniport aponta pra esta VLAN. */
+  isPvid: boolean;
+  /** gera `protocol-based <proto> vlan <vid>`. */
+  isProtocolBased: boolean;
+}
+
+/**
+ * Template de provisionamento já resolvido (sem campos de DB) que o
+ * ProvisioningService passa pro driver. Espelha OltProvisioningProfile +
+ * vlans, mas é um tipo de domínio puro pra não acoplar drivers ao Prisma.
+ */
+export interface ResolvedProvisioningProfile {
+  ontPassword: string;
+  fullBridge: boolean;
+  bwUpProfileName: string;
+  bwDownProfileName: string;
+  bwGroupId: number;
+  uniPort: string;
+  serviceProtocol: 'PPPOE' | 'IPOE' | 'BRIDGE';
+  queueTc: number;
+  queuePriority: number;
+  queueWeight: number;
+  ingressProfile: string;
+  vlans: ProvisioningProfileVlan[];
 }
 
 export interface AuthorizedOntResult {

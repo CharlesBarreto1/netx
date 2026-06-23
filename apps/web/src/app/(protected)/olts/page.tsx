@@ -35,6 +35,7 @@ const LocationPicker = dynamic(
 );
 import {
   oltsApi,
+  provisioningProfilesApi,
   type CreateOltRequest,
   type Olt,
   type OltProviderMode,
@@ -43,8 +44,19 @@ import {
 } from '@/lib/provisioning-api';
 
 const VENDORS: OltVendor[] = [
-  'HUAWEI', 'ZTE', 'DATACOM', 'FIBERHOME', 'NOKIA', 'PARKS', 'UFINET', 'GENERIC',
+  'HUAWEI', 'ZTE', 'DATACOM', 'FIBERHOME', 'NOKIA', 'PARKS', 'ZYXEL', 'UFINET', 'GENERIC',
 ];
+
+// Modelos conhecidos por vendor — viram sugestões no campo "Modelo" (datalist),
+// sem travar texto livre pros que ainda não mapeamos. Selecionar ZYXEL/OLT2406
+// já roteia o ZyxelZynosDriver no backend (factory por vendor + providerMode).
+const MODELS_BY_VENDOR: Partial<Record<OltVendor, string[]>> = {
+  ZYXEL: ['OLT2406', 'OLT1408A', 'OLT2412'],
+  HUAWEI: ['MA5800-X7', 'MA5800-X2', 'MA5800-X17', 'MA5608T', 'EA5800'],
+  ZTE: ['C320', 'C300', 'C600', 'C610', 'C650'],
+  PARKS: ['OLT 4830-G', 'OLT 4840-G'],
+  FIBERHOME: ['AN5516-01', 'AN5516-04', 'AN5516-06'],
+};
 
 function statusColor(s: OltStatus): string {
   switch (s) {
@@ -353,7 +365,13 @@ function OltFormModal({ olt, onClose, onSaved }: OltFormModalProps) {
     serviceVlanId: olt?.serviceVlanId ?? null,
     defaultUpProfile: olt?.defaultUpProfile ?? null,
     defaultDownProfile: olt?.defaultDownProfile ?? null,
+    defaultProvisioningProfileId: olt?.defaultProvisioningProfileId ?? null,
   });
+  // Templates de provisionamento disponíveis (pro seletor de default).
+  const { data: profilesData } = useSWR('olt-provisioning-profiles', () =>
+    provisioningProfilesApi.list({ pageSize: 100 }),
+  );
+  const profiles = profilesData?.data ?? [];
   // Geolocalização — null se ainda não marcada no mapa.
   const [location, setLocation] = useState<LatLng | null>(
     olt?.latitude != null && olt?.longitude != null
@@ -446,7 +464,19 @@ function OltFormModal({ olt, onClose, onSaved }: OltFormModalProps) {
           </div>
           <div>
             <Label htmlFor="model">{t('fieldModel')}</Label>
-            <Input id="model" required value={form.model} onChange={(e) => set('model', e.target.value)} placeholder="MA5800-X7" />
+            <Input
+              id="model"
+              required
+              list="olt-model-options"
+              value={form.model}
+              onChange={(e) => set('model', e.target.value)}
+              placeholder={MODELS_BY_VENDOR[form.vendor]?.[0] ?? 'MA5800-X7'}
+            />
+            <datalist id="olt-model-options">
+              {(MODELS_BY_VENDOR[form.vendor] ?? []).map((m) => (
+                <option key={m} value={m} />
+              ))}
+            </datalist>
           </div>
           <div className="sm:col-span-2">
             <Label htmlFor="providerMode">{t('fieldMode')}</Label>
@@ -484,6 +514,23 @@ function OltFormModal({ olt, onClose, onSaved }: OltFormModalProps) {
               <div>
                 <Label htmlFor="sshPassword">{olt ? t('passwordKeep') : t('passwordRequired')}</Label>
                 <Input id="sshPassword" type="password" required={!olt} value={form.sshPassword ?? ''} onChange={(e) => set('sshPassword', e.target.value)} />
+              </div>
+              <div className="sm:col-span-2">
+                <Label htmlFor="defaultProfile">Template de provisionamento (padrão)</Label>
+                <Select
+                  id="defaultProfile"
+                  value={form.defaultProvisioningProfileId ?? ''}
+                  onChange={(e) => set('defaultProvisioningProfileId', e.target.value || null)}
+                >
+                  <option value="">— nenhum —</option>
+                  {profiles.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </Select>
+                <p className="mt-1 text-xs text-slate-500">
+                  Usado ao autorizar ONTs nesta OLT. Um plano pode sobrescrever.{' '}
+                  <a href="/olt-templates" className="underline">Gerenciar templates</a>
+                </p>
               </div>
             </>
           ) : (

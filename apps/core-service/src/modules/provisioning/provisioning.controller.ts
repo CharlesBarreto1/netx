@@ -31,6 +31,9 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   CreateOltRequestSchema,
+  CreateProvisioningProfileRequestSchema,
+  ListProvisioningProfilesQuerySchema,
+  UpdateProvisioningProfileRequestSchema,
   CreateTr069DeviceNoteSchema,
   CreateTr069ProfileSchema,
   FirmwareUpgradeRequestSchema,
@@ -51,6 +54,9 @@ import {
   UpdateTr069ProfileSchema,
   type AuthenticatedPrincipal,
   type CreateOltRequest,
+  type CreateProvisioningProfileRequest,
+  type ListProvisioningProfilesQuery,
+  type UpdateProvisioningProfileRequest,
   type CreateTr069DeviceNote,
   type CreateTr069Profile,
   type FirmwareUpgradeRequest,
@@ -82,6 +88,7 @@ const DeactivateInstallSchema = z.object({
   returnLocationId: z.string().uuid(),
 });
 
+import { OltProvisioningProfilesService } from './olt-provisioning-profiles.service';
 import { OltsService } from './olts.service';
 import { ProvisioningService } from './provisioning.service';
 import { Tr069DiagnosticsService } from './tr069-diagnostics.service';
@@ -168,6 +175,65 @@ export class OltsController {
     @ZodBody(MigrateOltOntsRequestSchema) body: MigrateOltOntsRequest,
   ) {
     return this.svc.migrateOnts(user.tenantId, user.sub, id, body.targetOltId);
+  }
+}
+
+// =============================================================================
+// /v1/olt-provisioning-profiles — CRUD de templates de provisionamento (Fase 2)
+// =============================================================================
+@ApiTags('olt-provisioning-profiles')
+@ApiBearerAuth()
+@RequiresModule('netx-cpe')
+@Controller('olt-provisioning-profiles')
+export class OltProvisioningProfilesController {
+  constructor(private readonly svc: OltProvisioningProfilesService) {}
+
+  @Get()
+  @RequirePermissions('olts.admin')
+  list(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Query(new ZodValidationPipe(ListProvisioningProfilesQuerySchema))
+    q: ListProvisioningProfilesQuery,
+  ) {
+    return this.svc.list(user.tenantId, q);
+  }
+
+  @Get(':id')
+  @RequirePermissions('olts.admin')
+  findOne(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.svc.findById(user.tenantId, id);
+  }
+
+  @Post()
+  @RequirePermissions('olts.admin')
+  create(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @ZodBody(CreateProvisioningProfileRequestSchema) input: CreateProvisioningProfileRequest,
+  ) {
+    return this.svc.create(user.tenantId, user.sub, input);
+  }
+
+  @Patch(':id')
+  @RequirePermissions('olts.admin')
+  update(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(UpdateProvisioningProfileRequestSchema) input: UpdateProvisioningProfileRequest,
+  ) {
+    return this.svc.update(user.tenantId, user.sub, id, input);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  @RequirePermissions('olts.admin')
+  async remove(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<void> {
+    await this.svc.remove(user.tenantId, user.sub, id);
   }
 }
 

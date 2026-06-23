@@ -12,13 +12,14 @@ import useSWR from 'swr';
 
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog, Modal } from '@/components/ui/Modal';
-import { FieldError, FieldHelp, Input, Label, Textarea } from '@/components/ui/Input';
+import { FieldError, FieldHelp, Input, Label, Select, Textarea } from '@/components/ui/Input';
 import { PageLoader } from '@/components/ui/Spinner';
 import { Badge } from '@/components/ui/Badge';
 import { ApiError } from '@/lib/api';
 import { hasPermission } from '@/lib/session';
 import { useFormatMoney } from '@/lib/use-money';
 import { plansApi, type CreatePlanInput, type Plan } from '@/lib/plans-api';
+import { provisioningProfilesApi } from '@/lib/provisioning-api';
 
 export default function PlansPage() {
   const t = useTranslations('settings.plans');
@@ -170,9 +171,15 @@ function PlanFormModal({ plan, onClose, onSaved }: PlanFormModalProps) {
     blockAfterDays: plan?.blockAfterDays ?? 5,
     isActive: plan?.isActive ?? true,
     order: plan?.order ?? 0,
+    provisioningProfileId: plan?.provisioningProfileId ?? null,
   });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Templates de provisionamento (override por plano — vence o default da OLT).
+  const { data: profilesData } = useSWR('olt-provisioning-profiles', () =>
+    provisioningProfilesApi.list({ pageSize: 100 }),
+  );
+  const profiles = profilesData?.data ?? [];
 
   const set = <K extends keyof CreatePlanInput>(k: K, v: CreatePlanInput[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
@@ -287,6 +294,23 @@ function PlanFormModal({ plan, onClose, onSaved }: PlanFormModalProps) {
             onChange={(e) => set('description', e.target.value)}
           />
         </div>
+
+        {profiles.length > 0 && (
+          <div>
+            <Label htmlFor="plan-provisioning-profile">Template de provisionamento (override)</Label>
+            <Select
+              id="plan-provisioning-profile"
+              value={form.provisioningProfileId ?? ''}
+              onChange={(e) => set('provisioningProfileId', e.target.value || null)}
+            >
+              <option value="">— usar o padrão da OLT —</option>
+              {profiles.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </Select>
+            <FieldHelp>Se definido, vence o template padrão da OLT ao autorizar a ONT.</FieldHelp>
+          </div>
+        )}
 
         <label className="flex items-center gap-2 text-sm">
           <input

@@ -20,6 +20,9 @@ export interface Plan {
   blockAfterDays: number;
   isActive: boolean;
   order: number;
+  /** Override de template de provisionamento de OLT (Fase 2 — Zyxel). */
+  provisioningProfileId: string | null;
+  provisioningProfileName?: string | null;
   contractCount?: number;
   createdAt: string;
   updatedAt: string;
@@ -35,6 +38,7 @@ export interface CreatePlanInput {
   blockAfterDays?: number;
   isActive?: boolean;
   order?: number;
+  provisioningProfileId?: string | null;
 }
 
 export type UpdatePlanInput = Partial<CreatePlanInput>;

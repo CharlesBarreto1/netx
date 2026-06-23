@@ -65,6 +65,7 @@ import { ComodatoService } from '../stock/comodato.service';
 import { UfinetOrdersService } from '../ufinet/ufinet-orders.service';
 
 import { OltDriverFactory } from './drivers/olt-driver.factory';
+import { OltProvisioningProfilesService } from './olt-provisioning-profiles.service';
 import { buildConnectionContext } from './olt-context.util';
 import { Tr069TasksService } from './tr069-tasks.service';
 import { EventBusPublisher } from '../events/event-bus.publisher';
@@ -90,6 +91,7 @@ export class ProvisioningService {
     private readonly ufinet: UfinetOrdersService,
     private readonly invoiceGen: InvoiceGeneratorService,
     private readonly bus: EventBusPublisher,
+    private readonly profiles: OltProvisioningProfilesService,
   ) {}
 
   /**
@@ -330,6 +332,14 @@ export class ProvisioningService {
         : `Autorizando SN ${resolvedSnGpon} na OLT ${olt.name}`,
     );
 
+    // Template de provisionamento (Plan ?? OLT default). Drivers que renderizam
+    // CLI estruturado (Zyxel) usam isto; mock/Ufinet/EXTERNAL ignoram.
+    const provisioningProfile = await this.profiles.resolveForInstall(
+      tenantId,
+      contract.planId,
+      olt.id,
+    );
+
     const authResult = await driver.authorizeOnt(ctx, {
       snGpon: resolvedSnGpon,
       macAddress: input.macAddress ?? null,
@@ -338,6 +348,7 @@ export class ProvisioningService {
       bandwidthMbps: contract.bandwidthMbps,
       vlanId: olt.serviceVlanId,
       contractRef: contract.code ?? contract.id,
+      provisioningProfile,
     });
 
     await this.persistEvent({

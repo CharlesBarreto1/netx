@@ -122,6 +122,7 @@ model Tenant {
   // Provisionamento (Fase 1 — OLT/ONT + TR-069 ACS Fase 3)
   olts                 Olt[]
   onts                 Ont[]
+  oltProvisioningProfiles OltProvisioningProfile[]
   tr069Devices         Tr069Device[]
   tr069Tasks           Tr069Task[]
   tr069Diagnostics     Tr069Diagnostic[]
@@ -1140,8 +1141,13 @@ model Plan {
   updatedAt     DateTime  @updatedAt @map("updated_at")
   deletedAt     DateTime? @map("deleted_at")
 
+  // Override de template de provisionamento por plano (Fase 2 — Zyxel ZyNOS).
+  // Quando setado, vence o Olt.defaultProvisioningProfileId na hora de autorizar.
+  provisioningProfileId String? @map("provisioning_profile_id") @db.Uuid
+
   tenant        Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   contracts     Contract[]
+  provisioningProfile OltProvisioningProfile? @relation(fields: [provisioningProfileId], references: [id], onDelete: SetNull)
 
   @@unique([tenantId, name])
   @@index([tenantId, isActive])
@@ -2702,6 +2708,7 @@ enum OltVendor {
   FIBERHOME    // AN5516-01/04/06 — SSH CLI
   NOKIA        // 7360 FX, ISAM — NETCONF
   PARKS        // OLT 4830-G, 4840-G — SSH CLI
+  ZYXEL        // OLT2406 e família — ZyNOS SSH CLI (driver DIRECT)
   UFINET       // rede neutra PY — API orquestrador, não OLT direta
   GENERIC      // fallback / dev
 }
@@ -2759,6 +2766,9 @@ model Olt {
   serviceVlanId       Int?            @map("service_vlan_id")
   defaultUpProfile    String?         @map("default_up_profile") @db.VarChar(64)
   defaultDownProfile  String?         @map("default_down_profile") @db.VarChar(64)
+  // Template de provisionamento padrão da OLT (Fase 2 — Zyxel ZyNOS). É o
+  // fallback quando o plano do contrato não tem override próprio.
+  defaultProvisioningProfileId String? @map("default_provisioning_profile_id") @db.Uuid
 
   // ── Telemetria ───────────────────────────────────────────────────────────
   status              OltStatus       @default(UNKNOWN)
@@ -2779,6 +2789,7 @@ model Olt {
 
   tenant              Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   pop                 NetworkPop?     @relation(fields: [popId], references: [id], onDelete: SetNull)
+  defaultProvisioningProfile OltProvisioningProfile? @relation("OltDefaultProfile", fields: [defaultProvisioningProfileId], references: [id], onDelete: SetNull)
   onts                Ont[]
   ponPorts            PonPort[]
   enclosures          OpticalEnclosure[]
@@ -2921,6 +2932,85 @@ model Ont {
   @@index([tenantId, status])
   @@index([tenantId, macAddress])
   @@map("onts")
+}
+
+// =============================================================================
+// Templates de provisionamento de OLT (Fase 2 — Zyxel ZyNOS)
+// =============================================================================
+// O operador cadastra UM template estruturado (perfis de banda por NOME +
+// lista de VLANs com papel + protocolo) e o driver renderiza o bloco CLI
+// (configure → remote ont → remote uniport → write memory). Resolução na
+// hora de autorizar: Plan.provisioningProfile ?? Olt.defaultProvisioningProfile.
+// Perfis de banda (usbwprofname/dsbwprofname) precisam JÁ existir na OLT —
+// o NetX referencia por nome, não cria.
+
+enum ServiceProtocol {
+  PPPOE
+  IPOE
+  BRIDGE
+}
+
+// Papel de cada VLAN do serviço: DATA = tráfego do cliente (PPPoE/IPoE);
+// MGMT = gerência (ex. VLAN do TR-069/ACS).
+enum ProfileVlanRole {
+  DATA
+  MGMT
+}
+
+model OltProvisioningProfile {
+  id                String          @id @default(uuid()) @db.Uuid
+  tenantId          String          @map("tenant_id") @db.Uuid
+  name              String          @db.VarChar(120)
+  description       String?         @db.VarChar(500)
+  // Por ora ZYXEL; o campo permite render multi-vendor no futuro.
+  vendor            OltVendor       @default(ZYXEL)
+
+  // ── nível ONT (remote ont <aid>) ─────────────────────────────────────────
+  ontPassword       String          @default("DEFAULT") @map("ont_password") @db.VarChar(64)
+  fullBridge        Boolean         @default(false) @map("full_bridge")
+  bwUpProfileName   String          @map("bw_up_profile_name") @db.VarChar(64)   // ex ZUX-MAX-US
+  bwDownProfileName String          @map("bw_down_profile_name") @db.VarChar(64) // ex ZUX-MAX-DS
+  bwGroupId         Int             @default(1) @map("bw_group_id")
+
+  // ── nível UNI (remote uniport uniport-<aid>-<uniPort>) ───────────────────
+  uniPort           String          @default("2-1") @map("uni_port") @db.VarChar(16)
+  serviceProtocol   ServiceProtocol @default(PPPOE) @map("service_protocol")
+  queueTc           Int             @default(1) @map("queue_tc")
+  queuePriority     Int             @default(0) @map("queue_priority")
+  queueWeight       Int             @default(0) @map("queue_weight")
+  ingressProfile    String          @default("DEFVAL") @map("ingress_profile") @db.VarChar(64)
+
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+  deletedAt         DateTime?       @map("deleted_at")
+
+  tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vlans             OltProfileVlan[]
+  defaultForOlts    Olt[]           @relation("OltDefaultProfile")
+  plans             Plan[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, vendor])
+  @@map("olt_provisioning_profiles")
+}
+
+model OltProfileVlan {
+  id              String          @id @default(uuid()) @db.Uuid
+  profileId       String          @map("profile_id") @db.Uuid
+  vid             Int                                              // 1..4094
+  role            ProfileVlanRole @default(DATA)
+  // txtag tag (true) | untag (false)
+  tagged          Boolean         @default(true)
+  // pvid do uniport aponta pra esta VLAN (só 1 deve ser true, tipicamente DATA)
+  isPvid          Boolean         @default(false) @map("is_pvid")
+  // gera `protocol-based <serviceProtocol> vlan <vid>` (a VLAN de dados)
+  isProtocolBased Boolean         @default(false) @map("is_protocol_based")
+  order           Int             @default(0)
+
+  profile         OltProvisioningProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([profileId])
+  @@map("olt_profile_vlans")
 }
 
 // =============================================================================

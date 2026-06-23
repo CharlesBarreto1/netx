@@ -11,8 +11,15 @@ import { MockOltDriver } from './drivers/mock-olt.driver';
 import { NoOpOltDriver } from './drivers/noop-olt.driver';
 import { OltDriverFactory } from './drivers/olt-driver.factory';
 import { UfinetOrchestratorDriver } from './drivers/ufinet.driver';
+import { ZyxelZynosDriver } from './drivers/zyxel-zynos.driver';
+import { OltProvisioningProfilesService } from './olt-provisioning-profiles.service';
 import { OltsService } from './olts.service';
-import { ProvisioningController, OltsController, Tr069Controller } from './provisioning.controller';
+import {
+  ProvisioningController,
+  OltsController,
+  OltProvisioningProfilesController,
+  Tr069Controller,
+} from './provisioning.controller';
 import { ProvisioningService } from './provisioning.service';
 import { Tr069DiagnosticsService } from './tr069-diagnostics.service';
 import { Tr069ProfilesService } from './tr069-profiles.service';
@@ -21,16 +28,23 @@ import { Tr069TasksService } from './tr069-tasks.service';
 
 @Module({
   imports: [AuditModule, CryptoModule, ContractsModule, StockModule, UfinetModule],
-  controllers: [ProvisioningController, OltsController, Tr069Controller],
+  controllers: [
+    ProvisioningController,
+    OltsController,
+    OltProvisioningProfilesController,
+    Tr069Controller,
+  ],
   providers: [
     // Drivers
     MockOltDriver,
     NoOpOltDriver,
     UfinetOrchestratorDriver,
     HuaweiSshDriver,
+    ZyxelZynosDriver,
     OltDriverFactory,
     // Services
     OltsService,
+    OltProvisioningProfilesService,
     Tr069TasksService,
     Tr069DiagnosticsService,
     Tr069ReconcileService,
@@ -40,6 +54,7 @@ import { Tr069TasksService } from './tr069-tasks.service';
   exports: [
     ProvisioningService,
     OltsService,
+    OltProvisioningProfilesService,
     Tr069TasksService,
     Tr069DiagnosticsService,
     Tr069ReconcileService,

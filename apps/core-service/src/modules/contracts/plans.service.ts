@@ -25,7 +25,12 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 
-type PlanRow = Prisma.PlanGetPayload<{ include: { _count: { select: { contracts: true } } } }>;
+const PLAN_INCLUDE = {
+  _count: { select: { contracts: true } },
+  provisioningProfile: { select: { id: true, name: true } },
+} satisfies Prisma.PlanInclude;
+
+type PlanRow = Prisma.PlanGetPayload<{ include: typeof PLAN_INCLUDE }>;
 
 function toResponse(p: PlanRow): PlanResponse {
   return {
@@ -39,6 +44,8 @@ function toResponse(p: PlanRow): PlanResponse {
     blockAfterDays: p.blockAfterDays,
     isActive: p.isActive,
     order: p.order,
+    provisioningProfileId: p.provisioningProfileId,
+    provisioningProfileName: p.provisioningProfile?.name ?? null,
     contractCount: p._count.contracts,
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
@@ -59,7 +66,7 @@ export class PlansService {
         deletedAt: null,
         ...(q.includeInactive ? {} : { isActive: true }),
       },
-      include: { _count: { select: { contracts: true } } },
+      include: PLAN_INCLUDE,
       orderBy: [{ order: 'asc' }, { name: 'asc' }],
     });
     return rows.map(toResponse);
@@ -68,7 +75,7 @@ export class PlansService {
   async findById(tenantId: string, id: string): Promise<PlanResponse> {
     const row = await this.prisma.plan.findFirst({
       where: { id, tenantId, deletedAt: null },
-      include: { _count: { select: { contracts: true } } },
+      include: PLAN_INCLUDE,
     });
     if (!row) throw new NotFoundException('Plano não encontrado');
     return toResponse(row);
@@ -91,8 +98,9 @@ export class PlansService {
           blockAfterDays: input.blockAfterDays,
           isActive: input.isActive,
           order: input.order,
+          provisioningProfileId: input.provisioningProfileId ?? null,
         },
-        include: { _count: { select: { contracts: true } } },
+        include: PLAN_INCLUDE,
       });
       await this.audit.log({
         tenantId,
@@ -131,12 +139,17 @@ export class PlansService {
     if (input.blockAfterDays !== undefined) data.blockAfterDays = input.blockAfterDays;
     if (input.isActive !== undefined) data.isActive = input.isActive;
     if (input.order !== undefined) data.order = input.order;
+    if (input.provisioningProfileId !== undefined) {
+      data.provisioningProfile = input.provisioningProfileId
+        ? { connect: { id: input.provisioningProfileId } }
+        : { disconnect: true };
+    }
 
     try {
       const updated = await this.prisma.plan.update({
         where: { id },
         data,
-        include: { _count: { select: { contracts: true } } },
+        include: PLAN_INCLUDE,
       });
       await this.audit.log({
         tenantId,
@@ -157,7 +170,7 @@ export class PlansService {
   async remove(tenantId: string, actorUserId: string, id: string): Promise<void> {
     const existing = await this.prisma.plan.findFirst({
       where: { id, tenantId, deletedAt: null },
-      include: { _count: { select: { contracts: true } } },
+      include: PLAN_INCLUDE,
     });
     if (!existing) throw new NotFoundException('Plano não encontrado');
     if (existing._count.contracts > 0) {

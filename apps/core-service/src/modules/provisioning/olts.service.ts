@@ -40,6 +40,7 @@ import { buildConnectionContext } from './olt-context.util';
 type OltRow = Prisma.OltGetPayload<{
   include: {
     pop: { select: { id: true; name: true; code: true } };
+    defaultProvisioningProfile: { select: { id: true; name: true } };
     _count: { select: { onts: true } };
   };
 }>;
@@ -47,6 +48,7 @@ type OltRow = Prisma.OltGetPayload<{
 // Include padrão pra todas as leituras de OLT — pop + contagem de ONTs.
 const OLT_INCLUDE = {
   pop: { select: { id: true, name: true, code: true } },
+  defaultProvisioningProfile: { select: { id: true, name: true } },
   _count: { select: { onts: true } },
 } as const;
 
@@ -71,6 +73,8 @@ function toResponse(o: OltRow): OltResponse {
     serviceVlanId: o.serviceVlanId,
     defaultUpProfile: o.defaultUpProfile,
     defaultDownProfile: o.defaultDownProfile,
+    defaultProvisioningProfileId: o.defaultProvisioningProfileId,
+    defaultProvisioningProfileName: o.defaultProvisioningProfile?.name ?? null,
     status: o.status,
     lastSeenAt: o.lastSeenAt?.toISOString() ?? null,
     lastError: o.lastError,
@@ -127,6 +131,7 @@ export class OltsService {
           serviceVlanId: input.serviceVlanId ?? null,
           defaultUpProfile: input.defaultUpProfile ?? null,
           defaultDownProfile: input.defaultDownProfile ?? null,
+          defaultProvisioningProfileId: input.defaultProvisioningProfileId ?? null,
           latitude: input.latitude ?? null,
           longitude: input.longitude ?? null,
           popId: input.popId ?? null,
@@ -253,6 +258,11 @@ export class OltsService {
       data.defaultUpProfile = input.defaultUpProfile ?? null;
     if (input.defaultDownProfile !== undefined)
       data.defaultDownProfile = input.defaultDownProfile ?? null;
+    if (input.defaultProvisioningProfileId !== undefined) {
+      data.defaultProvisioningProfile = input.defaultProvisioningProfileId
+        ? { connect: { id: input.defaultProvisioningProfileId } }
+        : { disconnect: true };
+    }
     if (input.latitude !== undefined) data.latitude = input.latitude ?? null;
     if (input.longitude !== undefined) data.longitude = input.longitude ?? null;
     // Pop usa relação Prisma (não popId direto). connect = vincular,

@@ -56,6 +56,8 @@ export const CreateOltRequestSchema = z
     serviceVlanId: z.coerce.number().int().min(1).max(4094).nullish(),
     defaultUpProfile: optionalString(64),
     defaultDownProfile: optionalString(64),
+    /** Template de provisionamento padrão (Fase 2 — Zyxel). Override por plano. */
+    defaultProvisioningProfileId: z.string().uuid().nullish(),
 
     // Geolocalização pro mapa de Rede (módulo OSP). Pode diferir do POP
     // — admin marca no LocationPicker dentro do form de OLT.
@@ -109,6 +111,7 @@ export const UpdateOltRequestSchema = z
     serviceVlanId: z.coerce.number().int().min(1).max(4094).nullish().optional(),
     defaultUpProfile: optionalString(64).optional(),
     defaultDownProfile: optionalString(64).optional(),
+    defaultProvisioningProfileId: z.string().uuid().nullish().optional(),
     latitude: z.coerce.number().min(-90).max(90).nullish().optional(),
     longitude: z.coerce.number().min(-180).max(180).nullish().optional(),
     popId: z.string().uuid().nullish().optional(),
@@ -163,6 +166,9 @@ export interface OltResponse {
   serviceVlanId: number | null;
   defaultUpProfile: string | null;
   defaultDownProfile: string | null;
+  defaultProvisioningProfileId: string | null;
+  /** Nome do template default (conveniência pra UI; null se não vinculado). */
+  defaultProvisioningProfileName?: string | null;
   status: OltStatus;
   lastSeenAt: string | null;
   lastError: string | null;

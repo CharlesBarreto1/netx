@@ -33,6 +33,11 @@ export const CreatePlanRequestSchema = z.object({
   blockAfterDays: z.coerce.number().int().min(0).max(60).default(5),
   isActive: z.coerce.boolean().default(true),
   order: z.coerce.number().int().min(0).default(0),
+  /**
+   * Override do template de provisionamento de OLT (Fase 2 — Zyxel). Quando
+   * setado, vence o default da OLT na hora de autorizar a ONT.
+   */
+  provisioningProfileId: z.string().uuid().nullish(),
 });
 export type CreatePlanRequest = z.infer<typeof CreatePlanRequestSchema>;
 
@@ -65,6 +70,9 @@ export interface PlanResponse {
   blockAfterDays: number;
   isActive: boolean;
   order: number;
+  /** Override de template de provisionamento (Fase 2 — Zyxel). */
+  provisioningProfileId: string | null;
+  provisioningProfileName?: string | null;
   /** Quantos contratos usam este plano (pra UI avisar antes de desativar). */
   contractCount?: number;
   createdAt: string;

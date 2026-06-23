@@ -177,6 +177,7 @@ const messages = {
     stockReport: 'Report',
     provisioningPending: 'Pending installs',
     olts: 'OLTs',
+    oltTemplates: 'Provisioning templates',
     tr069Dashboard: 'Diagnostics queue',
     tr069Devices: 'TR-069 devices',
     tr069Alerts: 'TR-069 alerts',

@@ -28,6 +28,7 @@ export type OltVendor =
   | 'FIBERHOME'
   | 'NOKIA'
   | 'PARKS'
+  | 'ZYXEL'
   | 'UFINET'
   | 'GENERIC';
 
@@ -62,6 +63,8 @@ export interface Olt {
   serviceVlanId: number | null;
   defaultUpProfile: string | null;
   defaultDownProfile: string | null;
+  defaultProvisioningProfileId: string | null;
+  defaultProvisioningProfileName?: string | null;
   status: OltStatus;
   lastSeenAt: string | null;
   lastError: string | null;
@@ -90,11 +93,70 @@ export interface CreateOltRequest {
   serviceVlanId?: number | null;
   defaultUpProfile?: string | null;
   defaultDownProfile?: string | null;
+  defaultProvisioningProfileId?: string | null;
   latitude?: number | null;
   longitude?: number | null;
 }
 
 export type UpdateOltRequest = Partial<CreateOltRequest>;
+
+// ── Templates de provisionamento (Fase 2 — Zyxel ZyNOS) ─────────────────────
+export type ServiceProtocol = 'PPPOE' | 'IPOE' | 'BRIDGE';
+export type ProfileVlanRole = 'DATA' | 'MGMT';
+
+export interface ProfileVlan {
+  id?: string;
+  vid: number;
+  role: ProfileVlanRole;
+  tagged: boolean;
+  isPvid: boolean;
+  isProtocolBased: boolean;
+  order: number;
+}
+
+export interface ProvisioningProfile {
+  id: string;
+  tenantId: string;
+  name: string;
+  description: string | null;
+  vendor: OltVendor;
+  ontPassword: string;
+  fullBridge: boolean;
+  bwUpProfileName: string;
+  bwDownProfileName: string;
+  bwGroupId: number;
+  uniPort: string;
+  serviceProtocol: ServiceProtocol;
+  queueTc: number;
+  queuePriority: number;
+  queueWeight: number;
+  ingressProfile: string;
+  vlans: ProfileVlan[];
+  defaultForOltsCount?: number;
+  plansCount?: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateProvisioningProfileRequest {
+  name: string;
+  description?: string | null;
+  vendor?: OltVendor;
+  ontPassword?: string;
+  fullBridge?: boolean;
+  bwUpProfileName: string;
+  bwDownProfileName: string;
+  bwGroupId?: number;
+  uniPort?: string;
+  serviceProtocol?: ServiceProtocol;
+  queueTc?: number;
+  queuePriority?: number;
+  queueWeight?: number;
+  ingressProfile?: string;
+  vlans: Array<Omit<ProfileVlan, 'id'>>;
+}
+
+export type UpdateProvisioningProfileRequest = Partial<CreateProvisioningProfileRequest>;
 
 export interface PendingInstallItem {
   contractId: string;
@@ -640,6 +702,18 @@ export const oltsApi = {
   /** Migra todas as ONTs desta OLT pra outra (rede própria). */
   migrateOnts: (id: string, targetOltId: string) =>
     api.post<{ migrated: number }>(`/v1/olts/${id}/migrate-onts`, { targetOltId }),
+};
+
+/** CRUD de templates de provisionamento (Fase 2 — Zyxel ZyNOS). */
+export const provisioningProfilesApi = {
+  list: (params?: { page?: number; pageSize?: number; vendor?: OltVendor; search?: string }) =>
+    api.get<Paginated<ProvisioningProfile>>(`/v1/olt-provisioning-profiles${qs(params)}`),
+  get: (id: string) => api.get<ProvisioningProfile>(`/v1/olt-provisioning-profiles/${id}`),
+  create: (body: CreateProvisioningProfileRequest) =>
+    api.post<ProvisioningProfile>('/v1/olt-provisioning-profiles', body),
+  update: (id: string, body: UpdateProvisioningProfileRequest) =>
+    api.patch<ProvisioningProfile>(`/v1/olt-provisioning-profiles/${id}`, body),
+  remove: (id: string) => api.delete<void>(`/v1/olt-provisioning-profiles/${id}`),
 };
 
 // =============================================================================

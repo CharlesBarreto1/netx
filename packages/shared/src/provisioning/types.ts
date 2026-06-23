@@ -13,11 +13,21 @@ export const OLT_VENDORS = [
   'FIBERHOME',
   'NOKIA',
   'PARKS',
+  'ZYXEL',
   'UFINET',
   'GENERIC',
 ] as const;
 export const OltVendorSchema = z.enum(OLT_VENDORS);
 export type OltVendor = z.infer<typeof OltVendorSchema>;
+
+// Template de provisionamento (Fase 2 — OLT Zyxel ZyNOS).
+export const SERVICE_PROTOCOLS = ['PPPOE', 'IPOE', 'BRIDGE'] as const;
+export const ServiceProtocolSchema = z.enum(SERVICE_PROTOCOLS);
+export type ServiceProtocol = z.infer<typeof ServiceProtocolSchema>;
+
+export const PROFILE_VLAN_ROLES = ['DATA', 'MGMT'] as const;
+export const ProfileVlanRoleSchema = z.enum(PROFILE_VLAN_ROLES);
+export type ProfileVlanRole = z.infer<typeof ProfileVlanRoleSchema>;
 
 export const OLT_PROVIDER_MODES = ['DIRECT', 'ORCHESTRATOR', 'EXTERNAL'] as const;
 export const OltProviderModeSchema = z.enum(OLT_PROVIDER_MODES);
