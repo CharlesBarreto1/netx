@@ -75,6 +75,7 @@ import { z } from 'zod';
 
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { ZodBody, ZodValidationPipe } from '../../common/zod.pipe';
+import { RequiresModule } from '../licensing/license.decorators';
 
 /** Corpo do "desfazer instalação": local onde o comodato volta. */
 const DeactivateInstallSchema = z.object({
@@ -92,6 +93,7 @@ import { Tr069TasksService } from './tr069-tasks.service';
 // =============================================================================
 @ApiTags('olts')
 @ApiBearerAuth()
+@RequiresModule('netx-cpe')
 @Controller('olts')
 export class OltsController {
   constructor(private readonly svc: OltsService) {}
@@ -174,6 +176,7 @@ export class OltsController {
 // =============================================================================
 @ApiTags('provisioning')
 @ApiBearerAuth()
+@RequiresModule('netx-cpe')
 @Controller('provisioning')
 export class ProvisioningController {
   constructor(private readonly svc: ProvisioningService) {}
@@ -263,6 +266,7 @@ export class ProvisioningController {
 // =============================================================================
 @ApiTags('tr069')
 @ApiBearerAuth()
+@RequiresModule('netx-cpe')
 @Controller('tr069')
 export class Tr069Controller {
   constructor(

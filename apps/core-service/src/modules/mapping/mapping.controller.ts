@@ -17,11 +17,13 @@ import {
 
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { ZodQueryPipe } from '../crm/zod-query.pipe';
+import { RequiresModule } from '../licensing/license.decorators';
 import { CustomerMapService } from './customer-map.service';
 import { NetworkMapService } from './network-map.service';
 
 @ApiTags('mapping')
 @ApiBearerAuth()
+@RequiresModule('netx-maps')
 @Controller('mapping')
 export class MappingController {
   constructor(

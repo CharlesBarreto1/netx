@@ -79,6 +79,7 @@ import {
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { ZodBody } from '../../common/zod.pipe';
 import { ZodQueryPipe } from '../crm/zod-query.pipe';
+import { RequiresModule } from '../licensing/license.decorators';
 import { EnclosureTopologyService } from './enclosure-topology.service';
 import { FiberCablesService } from './fiber-cables.service';
 import { FiberEventsService } from './fiber-events.service';
@@ -93,6 +94,7 @@ import { PowerBudgetTraversalService } from './power-budget-traversal.service';
 
 @ApiTags('optical')
 @ApiBearerAuth()
+@RequiresModule('netx-cpe')
 @Controller('optical')
 export class OpticalController {
   constructor(
