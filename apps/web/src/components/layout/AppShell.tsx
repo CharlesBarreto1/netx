@@ -61,6 +61,7 @@ import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 
 import { CommandPalette } from '@/components/layout/CommandPalette';
+import { CopilotRail } from '@/components/layout/CopilotRail';
 import { LicenseBanner } from '@/components/layout/LicenseBanner';
 import { LocaleSwitcher } from '@/components/layout/LocaleSwitcher';
 import { ThemeToggle } from '@/components/layout/ThemeToggle';
@@ -390,6 +391,9 @@ export function AppShell({
             </div>
             <AppFooter />
           </main>
+
+          {/* ============ RAIL DIREITO — Copiloto IA "Conselheira" ============ */}
+          <CopilotRail />
         </div>
 
         <Toaster />
