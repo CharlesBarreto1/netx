@@ -6,6 +6,8 @@ import { LicenseGuard } from './license.guard';
 import { LicensingController } from './licensing.controller';
 import { LicensingService } from './licensing.service';
 import { ModuleEntitlementGuard } from './module-entitlement.guard';
+// Side-effect: popula o registry de manifestos (apiPrefixes) no boot.
+import './module-manifests';
 
 /**
  * Licenciamento — valida a licença DESTA instalação com o Hub da NetX.

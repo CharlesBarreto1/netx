@@ -7,26 +7,26 @@ describe('module manifest', () => {
     expect(m.code).toBe('netx-erp');
     expect(m.name).toBe('ERP base');
     expect(m.hardDeps).toEqual([]);
-    expect(m.apiPrefix).toBeUndefined();
+    expect(m.apiPrefixes).toBeUndefined();
     expect(m.emits).toBeUndefined();
   });
 
   it('defineModule anexa metadados de runtime (aditivo)', () => {
-    const m = defineModule('netx-rh', { apiPrefix: '/hr', emits: ['netx-rh.x.y'] });
-    expect(m.apiPrefix).toBe('/hr');
+    const m = defineModule('netx-rh', { apiPrefixes: ['/hr'], emits: ['netx-rh.x.y'] });
+    expect(m.apiPrefixes).toEqual(['/hr']);
     expect(m.emits).toEqual(['netx-rh.x.y']);
     // base do catálogo preservada
     expect(m.code).toBe('netx-rh');
     expect(m.softDeps).toEqual(['netx-erp']);
     // persiste no registry
-    expect(getManifest('netx-rh').apiPrefix).toBe('/hr');
+    expect(getManifest('netx-rh').apiPrefixes).toEqual(['/hr']);
   });
 
   it('defineModule faz merge das chamadas sucessivas', () => {
-    defineModule('netx-cpe', { apiPrefix: '/tr069' });
+    defineModule('netx-cpe', { apiPrefixes: ['/tr069'] });
     defineModule('netx-cpe', { emits: ['netx-cpe.ont.swapped'] });
     const m = getManifest('netx-cpe');
-    expect(m.apiPrefix).toBe('/tr069');
+    expect(m.apiPrefixes).toEqual(['/tr069']);
     expect(m.emits).toEqual(['netx-cpe.ont.swapped']);
   });
 

@@ -18,8 +18,12 @@ import { MODULE_CATALOG, MODULE_CODES, type ModuleCode, type ModuleDescriptor } 
 
 /** Metadados de runtime de um módulo, somados ao descritor de catálogo. */
 export interface ModuleRuntimeMeta {
-  /** Prefixo HTTP sob o qual as rotas do módulo vivem. `undefined` = sem rotas próprias. */
-  apiPrefix?: string;
+  /**
+   * Prefixos HTTP sob os quais as rotas do módulo vivem (invariante 2d).
+   * `undefined`/vazio = sem rotas próprias. Um módulo pode expor mais de um
+   * prefixo (ex.: netx-cpe → olts, provisioning, tr069).
+   */
+  apiPrefixes?: string[];
   /** Tabelas Postgres das quais este módulo é DONO exclusivo (sem escrita cross-módulo). */
   ownedTables?: string[];
   /** Tipos de evento que o módulo PUBLICA no bus (convenção `<módulo>.<entidade>.<ação>`). */
