@@ -5,13 +5,25 @@ import { defineModule } from '@netx/core-sdk';
  * `<módulo>.<entidade>.<ação>`). Ver docs/ecosystem/ECOSYSTEM-MODULAR-PLAN.md.
  */
 export const ERP_CONTRACT_CREATED = 'netx-erp.contract.created';
+export const ERP_CONTRACT_SUSPENDED = 'netx-erp.contract.suspended';
+export const ERP_CONTRACT_REACTIVATED = 'netx-erp.contract.reactivated';
+export const ERP_CONTRACT_PLAN_CHANGED = 'netx-erp.contract.plan-changed';
+export const ERP_CONTRACT_CANCELLED = 'netx-erp.contract.cancelled';
 
 /**
  * Registra no manifesto do módulo o que o ERP EMITE (Fase 3). Side-effect de
  * import: mantém o manifesto (@netx/core-sdk) coerente com as costuras
  * realmente ligadas, sem inventar contrato de evento solto.
  */
-defineModule('netx-erp', { emits: [ERP_CONTRACT_CREATED] });
+defineModule('netx-erp', {
+  emits: [
+    ERP_CONTRACT_CREATED,
+    ERP_CONTRACT_SUSPENDED,
+    ERP_CONTRACT_REACTIVATED,
+    ERP_CONTRACT_PLAN_CHANGED,
+    ERP_CONTRACT_CANCELLED,
+  ],
+});
 
 /** Payload de `netx-erp.contract.created` (version 1). */
 export interface ContractCreatedPayload {
@@ -20,4 +32,36 @@ export interface ContractCreatedPayload {
   code: string | null;
   status: string;
   authMethod: string;
+}
+
+/** Payload de `netx-erp.contract.suspended` (version 1). */
+export interface ContractSuspendedPayload {
+  contractId: string;
+  customerId: string;
+  /** Motivo da suspensão (ContractSuspendReason). */
+  reason: string;
+  /** true = ação manual de operador; false = cron (inadimplência). */
+  manual: boolean;
+}
+
+/** Payload de `netx-erp.contract.reactivated` (version 1). */
+export interface ContractReactivatedPayload {
+  contractId: string;
+  customerId: string;
+}
+
+/** Payload de `netx-erp.contract.plan-changed` (version 1). */
+export interface ContractPlanChangedPayload {
+  contractId: string;
+  customerId: string;
+  fromPlanId: string | null;
+  toPlanId: string;
+}
+
+/** Payload de `netx-erp.contract.cancelled` (version 1). */
+export interface ContractCancelledPayload {
+  contractId: string;
+  customerId: string;
+  /** true = cancelado antes de instalar (PENDING_INSTALL → CANCELLED). */
+  wasPendingInstall: boolean;
 }

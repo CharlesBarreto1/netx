@@ -60,7 +60,18 @@ import { InvoiceGeneratorService } from './invoice-generator.service';
 import { RadacctService } from '../radius/radacct.service';
 import { RadiusSyncService } from './radius-sync.service';
 import { EVENT_PUBLISHER, makeEnvelope, type EventPublisher } from '@netx/core-sdk';
-import { ERP_CONTRACT_CREATED, type ContractCreatedPayload } from '../events/event-types';
+import {
+  ERP_CONTRACT_CREATED,
+  ERP_CONTRACT_SUSPENDED,
+  ERP_CONTRACT_REACTIVATED,
+  ERP_CONTRACT_PLAN_CHANGED,
+  ERP_CONTRACT_CANCELLED,
+  type ContractCreatedPayload,
+  type ContractSuspendedPayload,
+  type ContractReactivatedPayload,
+  type ContractPlanChangedPayload,
+  type ContractCancelledPayload,
+} from '../events/event-types';
 
 /**
  * Versão non-throwing de `radiusIdentifier()` — retorna null se identificador
@@ -122,6 +133,21 @@ export class ContractsService {
       this.logger.warn(
         `[ufinet] falha no teardown de ${contractId} — cancel mantido. ` +
           `erro: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
+   * Publica um evento do bus de forma resiliente (Fase 3). É fire-and-forget: o
+   * publisher é no-op por default (bus desligado) e uma falha de publicação
+   * NUNCA propaga — apenas loga. Nenhuma costura de negócio depende disso.
+   */
+  private async publishEvent<T>(type: string, tenantId: string, payload: T): Promise<void> {
+    try {
+      await this.events.publish(makeEnvelope<T>({ type, source: 'netx-erp', tenantId, payload }));
+    } catch (err) {
+      this.logger.warn(
+        `[eventbus] falha ao publicar ${type}: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
   }
@@ -317,30 +343,14 @@ export class ContractsService {
       },
     });
 
-    // Bus de eventos (Fase 3): publica contract.created após o commit. É
-    // fire-and-forget — o publisher é no-op por default (bus desligado) e uma
-    // falha de publicação NUNCA quebra a criação do contrato.
-    try {
-      await this.events.publish(
-        makeEnvelope<ContractCreatedPayload>({
-          type: ERP_CONTRACT_CREATED,
-          source: 'netx-erp',
-          tenantId,
-          payload: {
-            contractId: created.id,
-            customerId: created.customerId,
-            code: created.code,
-            status: created.status,
-            authMethod: created.authMethod,
-          },
-        }),
-      );
-    } catch (err) {
-      this.logger.warn(
-        `[eventbus] falha ao publicar ${ERP_CONTRACT_CREATED} de ${created.id}: ` +
-          `${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
+    // Bus de eventos (Fase 3): publica contract.created após o commit.
+    await this.publishEvent<ContractCreatedPayload>(ERP_CONTRACT_CREATED, tenantId, {
+      contractId: created.id,
+      customerId: created.customerId,
+      code: created.code,
+      status: created.status,
+      authMethod: created.authMethod,
+    });
 
     // Rede neutra Ufinet (PY): a ALTA (reserva de porta) NÃO é mais disparada
     // na criação. Ela sai na INSTALAÇÃO (ProvisioningService.install), quando a
@@ -650,6 +660,12 @@ export class ContractsService {
         coaKicked: coaResults.kicked,
       },
     });
+    await this.publishEvent<ContractSuspendedPayload>(ERP_CONTRACT_SUSPENDED, tenantId, {
+      contractId: updated.id,
+      customerId: updated.customerId,
+      reason,
+      manual: opts.manual ?? false,
+    });
     return toContractResponse(updated, { includePassword: true });
   }
 
@@ -719,6 +735,10 @@ export class ContractsService {
       resource: 'contracts',
       resourceId: updated.id,
       metadata: { note: opts.note ?? null, coaKicked: coaResults.kicked },
+    });
+    await this.publishEvent<ContractReactivatedPayload>(ERP_CONTRACT_REACTIVATED, tenantId, {
+      contractId: updated.id,
+      customerId: updated.customerId,
     });
     return toContractResponse(updated, { includePassword: true });
   }
@@ -1045,6 +1065,13 @@ export class ContractsService {
       },
     });
 
+    await this.publishEvent<ContractPlanChangedPayload>(ERP_CONTRACT_PLAN_CHANGED, tenantId, {
+      contractId: updated.id,
+      customerId: updated.customerId,
+      fromPlanId: contract.planId,
+      toPlanId: newPlan.id,
+    });
+
     return toContractResponse(updated, { includePassword: true });
   }
 
@@ -1236,6 +1263,11 @@ export class ContractsService {
       resource: 'contracts',
       resourceId: updated.id,
       metadata: { note: input.note ?? null, coaKicked: coaResults.kicked },
+    });
+    await this.publishEvent<ContractCancelledPayload>(ERP_CONTRACT_CANCELLED, tenantId, {
+      contractId: updated.id,
+      customerId: updated.customerId,
+      wasPendingInstall,
     });
     return toContractResponse(updated, { includePassword: true });
   }
