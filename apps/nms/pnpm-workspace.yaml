@@ -2,6 +2,11 @@ packages:
   - 'apps/api'
   - 'apps/web'
   - 'packages/*'
+# pnpm 11: NÃO rodar um `install` implícito a cada `run`/`exec`. O NMS é um
+# sub-build isolado cujas deps são geridas pelo target Nx `nms:install`; sem
+# isto, `nms:prisma-deploy`/`build` disparam install e quebram em máquina limpa.
+# (Config canônica do pnpm 11 fica aqui; o .npmrc não é honrado em sub-pacote.)
+verifyDepsBeforeRun: false
 onlyBuiltDependencies:
   - '@nestjs/core'
   - '@prisma/client'

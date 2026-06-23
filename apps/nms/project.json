@@ -9,7 +9,8 @@
     "install": {
       "executor": "nx:run-commands",
       "cache": false,
-      "options": { "command": "pnpm -C apps/nms install" }
+      "// nota": "dangerouslyAllowAllBuilds: numa store/máquina limpa o pnpm 11 ignora os build scripts (prisma engines, esbuild) e sai com erro, mesmo com onlyBuiltDependencies declarado. Liberamos no contexto controlado do install (deps fixas, verificadas pelo lockfile) — mesma abordagem do Dockerfile do NMS.",
+      "options": { "command": "pnpm -C apps/nms install --config.dangerouslyAllowAllBuilds=true" }
     },
     "prisma-generate": {
       "executor": "nx:run-commands",
