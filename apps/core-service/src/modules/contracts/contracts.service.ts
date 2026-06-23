@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -58,6 +59,8 @@ import { recalcCustomerStatus } from './customer-status';
 import { InvoiceGeneratorService } from './invoice-generator.service';
 import { RadacctService } from '../radius/radacct.service';
 import { RadiusSyncService } from './radius-sync.service';
+import { EVENT_PUBLISHER, makeEnvelope, type EventPublisher } from '@netx/core-sdk';
+import { ERP_CONTRACT_CREATED, type ContractCreatedPayload } from '../events/event-types';
 
 /**
  * Versão non-throwing de `radiusIdentifier()` — retorna null se identificador
@@ -102,6 +105,7 @@ export class ContractsService {
     private readonly crypto: CryptoService,
     private readonly ufinet: UfinetOrdersService,
     private readonly radacct: RadacctService,
+    @Inject(EVENT_PUBLISHER) private readonly events: EventPublisher,
   ) {}
 
   /** Dispara baja/cancelación Ufinet no cancelamento do contrato (best-effort). */
@@ -312,6 +316,31 @@ export class ContractsService {
         bandwidthMbps: created.bandwidthMbps,
       },
     });
+
+    // Bus de eventos (Fase 3): publica contract.created após o commit. É
+    // fire-and-forget — o publisher é no-op por default (bus desligado) e uma
+    // falha de publicação NUNCA quebra a criação do contrato.
+    try {
+      await this.events.publish(
+        makeEnvelope<ContractCreatedPayload>({
+          type: ERP_CONTRACT_CREATED,
+          source: 'netx-erp',
+          tenantId,
+          payload: {
+            contractId: created.id,
+            customerId: created.customerId,
+            code: created.code,
+            status: created.status,
+            authMethod: created.authMethod,
+          },
+        }),
+      );
+    } catch (err) {
+      this.logger.warn(
+        `[eventbus] falha ao publicar ${ERP_CONTRACT_CREATED} de ${created.id}: ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
 
     // Rede neutra Ufinet (PY): a ALTA (reserva de porta) NÃO é mais disparada
     // na criação. Ela sai na INSTALAÇÃO (ProvisioningService.install), quando a
