@@ -5,50 +5,78 @@
   "sourceRoot": "apps/nms/apps",
   "tags": ["ecosystem", "scope:nms"],
   "// nota": "NMS é um sub-build pnpm ISOLADO (Nest 10 + Prisma 5 + React/Vite + device-gateway Python). O grafo Nx só o orquestra via run-commands -> pnpm. Inner trees ficam fora do grafo (.nxignore). Ver docs/ecosystem/INTEGRATION-RUNBOOK.md §A.1.",
+  "// env": "npm_config_verify_deps_before_run=false desliga o `install` implícito que o pnpm 11 dispara antes de CADA run/exec (e que quebra em store limpa por causa dos build scripts). É setado via ENV (não .npmrc/yaml/CLI) porque é a única forma que PROPAGA pros pnpm aninhados — ex.: o script `dev` chama outro pnpm. Os engines/esbuild são construídos de verdade só no target `install` (dangerouslyAllowAllBuilds).",
   "targets": {
     "install": {
       "executor": "nx:run-commands",
       "cache": false,
-      "// nota": "dangerouslyAllowAllBuilds: numa store/máquina limpa o pnpm 11 ignora os build scripts (prisma engines, esbuild) e sai com erro, mesmo com onlyBuiltDependencies declarado. Liberamos no contexto controlado do install (deps fixas, verificadas pelo lockfile) — mesma abordagem do Dockerfile do NMS.",
-      "options": { "command": "pnpm -C apps/nms install --config.dangerouslyAllowAllBuilds=true" }
+      "options": {
+        "command": "pnpm -C apps/nms install --config.dangerouslyAllowAllBuilds=true",
+        "env": { "npm_config_verify_deps_before_run": "false" }
+      }
     },
     "prisma-generate": {
       "executor": "nx:run-commands",
       "cache": false,
-      "options": { "command": "pnpm -C apps/nms/apps/api exec prisma generate" }
+      "options": {
+        "command": "pnpm -C apps/nms/apps/api exec prisma generate",
+        "env": { "npm_config_verify_deps_before_run": "false" }
+      }
     },
     "prisma-deploy": {
       "executor": "nx:run-commands",
       "cache": false,
-      "options": { "command": "pnpm -C apps/nms/apps/api exec prisma migrate deploy" }
+      "options": {
+        "command": "pnpm -C apps/nms/apps/api exec prisma migrate deploy",
+        "env": { "npm_config_verify_deps_before_run": "false" }
+      }
     },
     "build": {
       "executor": "nx:run-commands",
       "cache": false,
-      "options": { "command": "pnpm -C apps/nms build" }
+      "options": {
+        "command": "pnpm -C apps/nms build",
+        "env": { "npm_config_verify_deps_before_run": "false" }
+      }
     },
     "typecheck": {
       "executor": "nx:run-commands",
       "cache": false,
-      "options": { "command": "pnpm -C apps/nms typecheck" }
+      "options": {
+        "command": "pnpm -C apps/nms typecheck",
+        "env": { "npm_config_verify_deps_before_run": "false" }
+      }
     },
     "test": {
       "executor": "nx:run-commands",
       "cache": false,
-      "options": { "command": "pnpm -C apps/nms test" }
+      "options": {
+        "command": "pnpm -C apps/nms test",
+        "env": { "npm_config_verify_deps_before_run": "false" }
+      }
     },
     "lint": {
       "executor": "nx:run-commands",
       "cache": false,
-      "options": { "command": "pnpm -C apps/nms lint" }
+      "options": {
+        "command": "pnpm -C apps/nms lint",
+        "env": { "npm_config_verify_deps_before_run": "false" }
+      }
     },
     "dev": {
       "executor": "nx:run-commands",
-      "options": { "command": "pnpm -C apps/nms dev" }
+      "// nota": "O script `dev` só roda os apps/* (watch); o pacote interno @netx-nms/shared NÃO tem dev e precisa estar COMPILADO (dist+.d.ts) antes, senão o tsc do api/web não acha '@netx-nms/shared'. Buildamos o shared primeiro (mesma ordem do Dockerfile).",
+      "options": {
+        "command": "pnpm -C apps/nms --filter @netx-nms/shared build && pnpm -C apps/nms dev",
+        "env": { "npm_config_verify_deps_before_run": "false" }
+      }
     },
     "serve": {
       "executor": "nx:run-commands",
-      "options": { "command": "pnpm -C apps/nms dev" }
+      "options": {
+        "command": "pnpm -C apps/nms --filter @netx-nms/shared build && pnpm -C apps/nms dev",
+        "env": { "npm_config_verify_deps_before_run": "false" }
+      }
     }
   }
 }

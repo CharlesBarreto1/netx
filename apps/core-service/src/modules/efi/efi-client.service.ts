@@ -154,6 +154,46 @@ export class EfiClientService {
     return json.access_token;
   }
 
+  /**
+   * Tenta obter um token OAuth e devolve o resultado estruturado — SEM lançar e
+   * SEM cachear. Usado pelo diagnóstico "Testar conexão" (espelha o tokenProbe
+   * do BTG): `api='pix'` valida também o certificado .p12 (mTLS); `api='cobrancas'`
+   * valida só o par clientId/secret (Basic) da API de boleto.
+   */
+  async probeToken(
+    cfg: EfiResolvedConfig,
+    api: 'pix' | 'cobrancas',
+  ): Promise<{ ok: boolean; status: number; body: unknown }> {
+    const isPix = api === 'pix';
+    if (isPix && !cfg.certificate) {
+      return { ok: false, status: 0, body: { mensagem: 'Certificado .p12 ausente' } };
+    }
+    const base = isPix ? EFI_PIX_BASE[cfg.environment] : EFI_COBRANCAS_BASE[cfg.environment];
+    const url = isPix ? `${base}/oauth/token` : `${base}/v1/authorize`;
+    const body = JSON.stringify({ grant_type: 'client_credentials' });
+    try {
+      const res = await this.httpsJson({
+        method: 'POST',
+        url,
+        headers: {
+          Authorization: this.basicAuth(cfg),
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'Content-Length': String(Buffer.byteLength(body)),
+        },
+        body,
+        pfx: isPix ? cfg.certificate!.pfx : undefined,
+        passphrase: isPix ? cfg.certificate!.passphrase : undefined,
+        timeoutMs: TOKEN_TIMEOUT_MS,
+      });
+      const json = (res.json ?? {}) as { access_token?: string };
+      const ok = res.status >= 200 && res.status < 300 && !!json.access_token;
+      return { ok, status: res.status, body: res.json };
+    } catch (e) {
+      return { ok: false, status: 0, body: { mensagem: e instanceof Error ? e.message : String(e) } };
+    }
+  }
+
   /** Invalida o cache de token (usado quando as credenciais mudam). */
   clearTokenCache(clientId?: string): void {
     if (!clientId) {

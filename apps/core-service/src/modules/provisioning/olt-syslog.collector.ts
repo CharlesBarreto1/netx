@@ -30,6 +30,8 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
+import { AlarmStream } from '../alarms/alarm-stream.service';
+import { IncidentCorrelator } from '../alarms/incident-correlator.service';
 import { EventBusPublisher } from '../events/event-bus.publisher';
 import {
   CPE_ONT_DOWN,
@@ -117,6 +119,8 @@ export class OltSyslogCollector implements OnApplicationBootstrap, OnModuleDestr
   constructor(
     private readonly prisma: PrismaService,
     private readonly bus: EventBusPublisher,
+    private readonly correlator: IncidentCorrelator,
+    private readonly stream: AlarmStream,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -209,6 +213,54 @@ export class OltSyslogCollector implements OnApplicationBootstrap, OnModuleDestr
     }
 
     const at = new Date();
+
+    // F0 — registra o evento bruto na trilha append-only (alimenta o motor de
+    // correlação da Central de Alarmes). Best-effort: nunca derruba o coletor.
+    const eventKind =
+      ev.alarm === 'LowTxOpticalPower' ? 'DEGRADED' : ev.action === 'clear' ? 'UP' : 'DOWN';
+    const rawReason =
+      ev.alarm === 'DGi' ? 'POWER_LOSS' : ev.alarm === 'LOSi' ? 'LINK_LOSS' : null;
+    const alarmEvent = await this.prisma.alarmEvent
+      .create({
+        data: {
+          tenantId: olt.tenantId,
+          ontId: ont.id,
+          oltId: olt.id,
+          contractId: ont.contractId,
+          kind: eventKind,
+          reason: rawReason,
+          alarm: ev.alarm,
+          aid: ev.aid,
+          ponSlot: pos.slot,
+          ponFrame: pos.pon,
+          source: 'syslog',
+          at,
+        },
+        select: { id: true },
+      })
+      .catch((err) => {
+        this.logger.warn(`[syslog] falha ao gravar alarm_event: ${err?.message}`);
+        return null;
+      });
+
+    // F3 — real-time pro painel/mobile (tela "caixa ao vivo").
+    this.stream.publish(olt.tenantId, 'ont', {
+      ontId: ont.id,
+      oltId: olt.id,
+      aid: ev.aid,
+      kind: eventKind,
+      reason: rawReason,
+      at: at.toISOString(),
+    });
+
+    // F1 — dispara a correlação (best-effort, fora do caminho crítico).
+    void this.correlator.ingest({
+      tenantId: olt.tenantId,
+      ontId: ont.id,
+      eventId: alarmEvent?.id,
+      kind: eventKind,
+      at,
+    });
 
     // Degradação óptica: não muda up/down, só registra (alerta proativo).
     if (ev.alarm === 'LowTxOpticalPower') {

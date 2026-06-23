@@ -187,6 +187,7 @@ const messages = {
     stockReport: 'Relatório',
     provisioningPending: 'Instalações pendentes',
     olts: 'OLTs',
+    alarms: 'Central de Alarmes',
     oltTemplates: 'Templates de provisionamento',
     tr069Dashboard: 'Fila de diagnóstico',
     tr069Devices: 'Dispositivos TR-069',

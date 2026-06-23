@@ -202,6 +202,84 @@ export class EfiConfigService {
     return { url: urls.pix };
   }
 
+  /**
+   * DIAGNÓSTICO — "Testar conexão" (espelha o /btg/config/diagnostics).
+   * Faz OAuth client_credentials nas DUAS APIs do EFI sem emitir cobrança:
+   *   - cobrancas: valida clientId/secret (boleto), sem certificado.
+   *   - pix: valida clientId/secret + o certificado .p12 (mTLS).
+   * Não exige `enabled` (permite testar antes de ligar a integração).
+   */
+  async diagnose(tenantId: string): Promise<{
+    environment: string;
+    clientId: string;
+    hasCertificate: boolean;
+    pixKey: string | null;
+    webhookBaseConfigured: boolean;
+    webhookUrls: { pix: string | null; boleto: string | null };
+    probes: Array<{ api: 'pix' | 'cobrancas'; ok: boolean; status: number; hint: string; body: unknown }>;
+  }> {
+    const cfg = await this.findRaw(tenantId);
+    if (!cfg) throw new BadRequestException('Configure o EFI antes de diagnosticar');
+    const creds = this.readCreds(cfg);
+    if (!creds) throw new BadRequestException('Credenciais do EFI não configuradas');
+
+    let certificate: EfiResolvedConfig['certificate'] = null;
+    if (cfg.certificateEnc) {
+      const base64 = this.crypto.decrypt(cfg.certificateEnc);
+      certificate = {
+        pfx: Buffer.from(base64, 'base64'),
+        passphrase: this.crypto.decryptOptional(cfg.certificatePassEnc) ?? '',
+      };
+    }
+    const resolved: EfiResolvedConfig = {
+      environment: cfg.environment,
+      credentials: creds,
+      certificate,
+      pixKey: cfg.pixKey,
+      expirationDays: cfg.expirationDays,
+      finePercent: cfg.finePercent != null ? Number(cfg.finePercent) : null,
+      interestPercent: cfg.interestPercent != null ? Number(cfg.interestPercent) : null,
+    };
+
+    const apis: Array<'cobrancas' | 'pix'> = ['cobrancas', 'pix'];
+    const probes = await Promise.all(
+      apis.map(async (api) => {
+        const r = await this.client.probeToken(resolved, api);
+        let hint: string;
+        if (r.ok) {
+          hint =
+            api === 'pix'
+              ? 'OAuth Pix + certificado .p12 (mTLS) VÁLIDOS ✅'
+              : 'OAuth Cobranças (boleto) VÁLIDO ✅';
+        } else if (api === 'pix' && !certificate) {
+          hint = 'certificado .p12 não enviado ❌';
+        } else if (r.status === 401) {
+          hint = 'clientId/secret inválidos (401) ❌';
+        } else if (api === 'pix' && r.status === 0) {
+          hint = 'falha de mTLS/certificado ou de conexão ❌';
+        } else {
+          hint = `falhou (${r.status}) ❌`;
+        }
+        return { api, ok: r.ok, status: r.status, hint, body: r.body };
+      }),
+    );
+
+    this.logger.log(
+      `[efi-diagnose] tenant=${tenantId} env=${cfg.environment} clientId=${creds.clientId} ` +
+        probes.map((p) => `${p.api}:${p.status}`).join(' '),
+    );
+
+    return {
+      environment: cfg.environment,
+      clientId: creds.clientId,
+      hasCertificate: !!certificate,
+      pixKey: cfg.pixKey,
+      webhookBaseConfigured: !!process.env.EFI_PUBLIC_WEBHOOK_BASE,
+      webhookUrls: this.buildWebhookUrls(cfg.webhookToken ?? null),
+      probes,
+    };
+  }
+
   /** Resolve config a partir do token do webhook (rota pública). */
   async findByWebhookToken(token: string): Promise<EfiConfig | null> {
     if (!token) return null;

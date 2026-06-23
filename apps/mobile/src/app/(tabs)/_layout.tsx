@@ -18,6 +18,7 @@ export default function TabsLayout() {
           // Fase 1: tabBarIcon (instalar @expo/vector-icons primeiro)
         }}
       />
+      <Tabs.Screen name="alarms" options={{ title: 'Alarmes' }} />
     </Tabs>
   );
 }

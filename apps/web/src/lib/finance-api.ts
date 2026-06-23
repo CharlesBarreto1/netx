@@ -475,10 +475,32 @@ export interface GenerateEfiChargeInput {
   force?: boolean;
 }
 
+export interface EfiDiagnosticsProbe {
+  api: 'pix' | 'cobrancas';
+  ok: boolean;
+  status: number;
+  hint: string;
+  body: unknown;
+}
+
+export interface EfiDiagnostics {
+  environment: 'PRODUCTION' | 'SANDBOX';
+  clientId: string;
+  hasCertificate: boolean;
+  pixKey: string | null;
+  webhookBaseConfigured: boolean;
+  webhookUrls: { pix: string | null; boleto: string | null };
+  probes: EfiDiagnosticsProbe[];
+}
+
 export const efiApi = {
   configPath: () => `/v1/efi/config`,
   getConfig() {
     return api.get<EfiConfigView>(this.configPath());
+  },
+  // Diagnóstico "Testar conexão": OAuth Pix (mTLS) + Cobranças, sem emitir nada.
+  diagnostics() {
+    return api.get<EfiDiagnostics>('/v1/efi/config/diagnostics');
   },
   // Cobrança (ativa/mais recente) de uma fatura — null quando ainda não existe.
   invoiceChargePath: (invoiceId: string) => `/v1/efi/invoices/${invoiceId}/charge`,

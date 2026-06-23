@@ -26,6 +26,7 @@ import { PortalModule } from './modules/portal/portal.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
 import { MobileModule } from './modules/mobile/mobile.module';
 import { ProvisioningModule } from './modules/provisioning/provisioning.module';
+import { AlarmsModule } from './modules/alarms/alarms.module';
 import { RadiusModule } from './modules/radius/radius.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { MappingModule } from './modules/mapping/mapping.module';
@@ -110,6 +111,7 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
     HrModule,
     UfinetModule,
     ProvisioningModule,
+    AlarmsModule,
     MobileModule,
     WhatsappModule,
   ],

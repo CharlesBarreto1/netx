@@ -1,5 +1,4 @@
 import {
-  Body,
   Controller,
   Get,
   Param,
@@ -56,6 +55,13 @@ export class EfiController {
     @ZodBody(UpsertEfiConfigRequestSchema) body: UpsertEfiConfigRequest,
   ) {
     return this.config.upsert(user.tenantId, user.sub, body);
+  }
+
+  /** "Testar conexão" — OAuth nas APIs Pix (mTLS) e Cobranças sem emitir nada. */
+  @Get('config/diagnostics')
+  @RequirePermissions('efi.config.read')
+  diagnostics(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.config.diagnose(user.tenantId);
   }
 
   @Post('config/register-webhook')

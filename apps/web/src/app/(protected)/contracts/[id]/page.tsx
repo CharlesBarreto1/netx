@@ -39,6 +39,7 @@ import { SwapOntDialog } from '@/components/contracts/SwapOntDialog';
 import { DeactivateInstallDialog } from '@/components/contracts/DeactivateInstallDialog';
 import { NewInvoiceDialog } from '@/components/contracts/NewInvoiceDialog';
 import { PaymentDialog } from '@/components/finance/PaymentDialog';
+import { EfiChargeDialog } from '@/components/finance/EfiChargeDialog';
 import { chargesApi, type OneTimeCharge } from '@/lib/finance-api';
 
 import { StatusBadge } from '../_components/StatusBadge';
@@ -60,6 +61,7 @@ export default function ContractDetailPage() {
   const canProvision = hasPermission('provisioning.write');
   const canReverse = hasPermission('cash_registers.manage');
   const canEmitSifen = hasPermission('sifen.emit');
+  const canEfiCharge = hasPermission('efi.charges.write');
   const tenantConfig = useTenantConfig();
   const tenantCountry = tenantConfig?.tenant?.country ?? null;
   const formatMoney = useFormatMoney();
@@ -120,6 +122,7 @@ export default function ContractDetailPage() {
 
   // --- Estados de modais ---------------------------------------------------
   const [payInvoice, setPayInvoice] = useState<ContractInvoice | null>(null);
+  const [efiCharging, setEfiCharging] = useState<ContractInvoice | null>(null);
   const [newInvoiceOpen, setNewInvoiceOpen] = useState(false);
   const [payCharge, setPayCharge] = useState<OneTimeCharge | null>(null);
   const [cancelCharge, setCancelCharge] = useState<OneTimeCharge | null>(null);
@@ -716,6 +719,17 @@ export default function ContractDetailPage() {
                             </Button>
                           </>
                         )}
+                        {(inv.status === 'OPEN' || inv.status === 'OVERDUE') &&
+                          canEfiCharge && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setEfiCharging(inv)}
+                              title="Gerar cobrança Pix/Boleto no EFI"
+                            >
+                              Pix/Boleto
+                            </Button>
+                          )}
                         {inv.status === 'PAID' && canReverse && (
                           <Button
                             size="sm"
@@ -916,6 +930,21 @@ export default function ContractDetailPage() {
             await refresh();
             window.open(`/receipts/invoice/${invId}`, '_blank');
           }}
+        />
+      )}
+
+      {/* -------------------- Cobrança Pix/Boleto (EFI) -------------------- */}
+      {efiCharging && (
+        <EfiChargeDialog
+          open={!!efiCharging}
+          onOpenChange={(v) => !v && setEfiCharging(null)}
+          invoiceId={efiCharging.id}
+          amount={efiCharging.amount}
+          description={
+            efiCharging.reference
+              ? `${efiCharging.reference} · ${formatDate(efiCharging.dueDate)}`
+              : formatMoney(efiCharging.amount)
+          }
         />
       )}
 

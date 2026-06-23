@@ -23,7 +23,12 @@ import { FieldHelp, Input, Label } from '@/components/ui/Input';
 import { PageLoader } from '@/components/ui/Spinner';
 import { toast } from '@/components/ui/sonner';
 import { ApiError } from '@/lib/api';
-import { efiApi, type EfiChargeKind, type EfiConfigView } from '@/lib/finance-api';
+import {
+  efiApi,
+  type EfiChargeKind,
+  type EfiConfigView,
+  type EfiDiagnostics,
+} from '@/lib/finance-api';
 import { hasPermission } from '@/lib/session';
 
 export default function EfiSettingsPage() {
@@ -45,6 +50,7 @@ export default function EfiSettingsPage() {
 
       <StatusCard config={config} canWrite={canWrite} onSaved={() => mutate()} />
       <CredentialsCard config={config} canWrite={canWrite} onSaved={() => mutate()} />
+      <DiagnosticsCard />
       <ChargingCard config={config} canWrite={canWrite} onSaved={() => mutate()} />
       <WebhookCard config={config} canWrite={canWrite} onSaved={() => mutate()} />
     </div>
@@ -490,6 +496,89 @@ function ChargingCard({
         </div>
       )}
     </Section>
+  );
+}
+
+// =============================================================================
+// Diagnóstico — "Testar conexão" (espelha o /settings/btg)
+// =============================================================================
+function DiagnosticsCard() {
+  const [running, setRunning] = useState(false);
+  const [diag, setDiag] = useState<EfiDiagnostics | null>(null);
+
+  async function run() {
+    setRunning(true);
+    try {
+      setDiag(await efiApi.diagnostics());
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
+      toast.error(`Falha ao testar conexão: ${msg}`);
+    } finally {
+      setRunning(false);
+    }
+  }
+
+  return (
+    <Section title="Testar conexão">
+      <p className="mb-3 text-xs text-text-muted">
+        Faz o login OAuth nas APIs do EFI sem emitir cobrança. A linha <b>Pix</b>{' '}
+        valida também o certificado .p12 (mTLS); a linha <b>Cobranças</b> valida o
+        boleto.
+      </p>
+      <div className="flex justify-end">
+        <Button onClick={run} loading={running} variant="outline">
+          Testar conexão
+        </Button>
+      </div>
+
+      {diag && (
+        <div className="mt-4 space-y-3">
+          <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+            <Fact label="Ambiente" value={diag.environment} />
+            <Fact label="clientId" value={diag.clientId} mono />
+            <Fact label="Certificado .p12" value={diag.hasCertificate ? 'enviado' : 'ausente'} />
+            <Fact label="Chave Pix" value={diag.pixKey ?? '—'} mono />
+            <Fact
+              label="EFI_PUBLIC_WEBHOOK_BASE"
+              value={diag.webhookBaseConfigured ? 'configurada' : 'NÃO configurada'}
+            />
+          </div>
+
+          <div className="space-y-2">
+            {diag.probes.map((p) => (
+              <div
+                key={p.api}
+                className="flex items-center justify-between gap-3 rounded-md border border-border bg-surface-muted px-3 py-2 text-xs"
+              >
+                <span className="font-medium text-text">
+                  {p.api === 'pix' ? 'Pix (mTLS)' : 'Cobranças (boleto)'}
+                </span>
+                <Badge tone={p.ok ? 'success' : 'danger'}>
+                  {p.hint} {p.status ? `· HTTP ${p.status}` : ''}
+                </Badge>
+              </div>
+            ))}
+          </div>
+
+          <pre className="max-h-48 overflow-auto rounded-md border border-border bg-surface-muted p-3 text-[11px] leading-snug text-text-muted">
+            {JSON.stringify(
+              diag.probes.map((p) => ({ api: p.api, status: p.status, body: p.body })),
+              null,
+              2,
+            )}
+          </pre>
+        </div>
+      )}
+    </Section>
+  );
+}
+
+function Fact({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="rounded-md border border-border bg-surface-muted px-3 py-2">
+      <div className="text-text-muted">{label}</div>
+      <div className={`truncate text-text ${mono ? 'font-mono' : ''}`}>{value}</div>
+    </div>
   );
 }
 

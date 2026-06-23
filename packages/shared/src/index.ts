@@ -18,6 +18,7 @@ export * from './sifen';
 export * from './network';
 export * from './stock';
 export * from './provisioning';
+export * from './alarms';
 export * from './mapping';
 export * from './mobile';
 export * from './fleet';

@@ -123,6 +123,9 @@ model Tenant {
   olts                 Olt[]
   onts                 Ont[]
   oltProvisioningProfiles OltProvisioningProfile[]
+  alarmEvents          AlarmEvent[]
+  incidents            Incident[]
+  alarmPolicy          AlarmPolicy?
   tr069Devices         Tr069Device[]
   tr069Tasks           Tr069Task[]
   tr069Diagnostics     Tr069Diagnostic[]
@@ -2924,6 +2927,7 @@ model Ont {
   // Restrict tb na OLT — não dá pra deletar OLT com ONTs vinculadas.
   olt                 Olt          @relation(fields: [oltId], references: [id], onDelete: Restrict)
   tr069Device         Tr069Device?
+  alarmEvents         AlarmEvent[]
 
   // SN único por OLT (não global — duas OLTs podem ter SNs iguais em
   // ambientes de teste, embora real-world seja improvável).
@@ -3011,6 +3015,154 @@ model OltProfileVlan {
 
   @@index([profileId])
   @@map("olt_profile_vlans")
+}
+
+// =============================================================================
+// Central de Alarmes (CPE/OLT) — correlação de quedas por PON/CTO/cabo/OLT/geo
+// =============================================================================
+// Duas camadas: AlarmEvent (bruto, append-only — todo down/up/degraded de ONT)
+// alimenta o motor de correlação, que abre Incident agregado no escopo mais
+// alto que bate o limiar do tenant (AlarmPolicy), suprimindo os filhos. O
+// `reason` (POWER_LOSS=dying-gasp / LINK_LOSS=LOS) discrimina energia vs
+// rompimento. A camada de IA (Fase 4) preenche aiSummary/aiRootCause depois.
+
+enum AlarmEventKind {
+  DOWN
+  UP
+  DEGRADED
+}
+
+// Escopo de agregação de um incidente, do mais específico ao mais amplo.
+enum AlarmScope {
+  ONT
+  PON
+  CTO
+  CABLE
+  OLT
+  GEO
+}
+
+enum IncidentStatus {
+  OPEN
+  ACK
+  RESOLVED
+}
+
+enum IncidentSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+// Causa-raiz inferida (determinística pela mistura de reason; IA refina).
+enum AlarmRootCause {
+  POWER_OUTAGE      // dying-gasp em massa → queda de energia (bairro/CTO)
+  FIBER_CUT         // LOS em massa no mesmo cabo/PON → rompimento
+  OPTICAL_DEGRADED  // potência óptica baixa subindo (pré-falha)
+  ISOLATED          // 1 ONT isolada (provável problema do cliente)
+  UNKNOWN
+}
+
+model AlarmEvent {
+  id            String         @id @default(uuid()) @db.Uuid
+  tenantId      String         @map("tenant_id") @db.Uuid
+  ontId         String?        @map("ont_id") @db.Uuid
+  oltId         String?        @map("olt_id") @db.Uuid
+  contractId    String?        @map("contract_id") @db.Uuid
+  kind          AlarmEventKind
+  // Bruto do syslog: reason POWER_LOSS|LINK_LOSS, alarm DGi|LOSi|LowTxOpticalPower.
+  reason        String?        @db.VarChar(32)
+  alarm         String?        @db.VarChar(32)
+  aid           String?        @db.VarChar(32)
+  // Snapshot da posição PON pra correlação sem join pesado.
+  ponSlot       Int?           @map("pon_slot")
+  ponFrame      Int?           @map("pon_frame")
+  source        String         @default("syslog") @db.VarChar(24)
+  // Incident que agregou este evento (null enquanto na janela de debounce).
+  incidentId    String?        @map("incident_id") @db.Uuid
+  // Carimbado no RECEBIMENTO (relógio da OLT não é confiável).
+  at            DateTime
+  createdAt     DateTime       @default(now()) @map("created_at")
+
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  ont           Ont?           @relation(fields: [ontId], references: [id], onDelete: SetNull)
+  incident      Incident?      @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, at])
+  @@index([tenantId, ontId])
+  @@index([incidentId])
+  @@map("alarm_events")
+}
+
+model Incident {
+  id                String           @id @default(uuid()) @db.Uuid
+  tenantId          String           @map("tenant_id") @db.Uuid
+  scope             AlarmScope
+  // Id da entidade do escopo (CTO/cabo/OLT). null pra GEO (cluster sem FK).
+  scopeRefId        String?          @map("scope_ref_id") @db.Uuid
+  scopeLabel        String           @map("scope_label") @db.VarChar(120)
+  severity          IncidentSeverity @default(WARNING)
+  status            IncidentStatus   @default(OPEN)
+  rootCause         AlarmRootCause   @default(UNKNOWN) @map("root_cause")
+  affectedCount     Int              @default(0) @map("affected_count")
+  totalInScope      Int              @default(0) @map("total_in_scope")
+  affectedPct       Decimal          @default(0) @map("affected_pct") @db.Decimal(5, 2)
+  // Incidente-pai que suprime este (ex: rompimento de cabo engloba as CTOs).
+  parentIncidentId  String?          @map("parent_incident_id") @db.Uuid
+  // Ganchos da Fase 4 (IA) — preenchidos assíncronos, nunca no caminho crítico.
+  aiSummary         String?          @map("ai_summary") @db.Text
+  aiRootCause       String?          @map("ai_root_cause") @db.VarChar(120)
+  firstEventAt      DateTime         @map("first_event_at")
+  lastEventAt       DateTime         @map("last_event_at")
+  acknowledgedAt    DateTime?        @map("acknowledged_at")
+  acknowledgedById  String?          @map("acknowledged_by_id") @db.Uuid
+  resolvedAt        DateTime?        @map("resolved_at")
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+
+  tenant            Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent            Incident?        @relation("IncidentChildren", fields: [parentIncidentId], references: [id], onDelete: SetNull)
+  children          Incident[]       @relation("IncidentChildren")
+  events            AlarmEvent[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, scope, scopeRefId])
+  @@index([tenantId, createdAt])
+  @@map("incidents")
+}
+
+model AlarmPolicy {
+  id                String   @id @default(uuid()) @db.Uuid
+  tenantId          String   @unique @map("tenant_id") @db.Uuid
+
+  // Limiares de agregação por escopo: alarma quando % afetado ≥ pct E
+  // afetados ≥ minCount (o mínimo absoluto evita falso-positivo em escopo
+  // pequeno, ex: CTO com 2 clientes).
+  ctoPctThreshold   Int      @default(60) @map("cto_pct_threshold")
+  ctoMinCount       Int      @default(3) @map("cto_min_count")
+  ponPctThreshold   Int      @default(50) @map("pon_pct_threshold")
+  ponMinCount       Int      @default(4) @map("pon_min_count")
+  cablePctThreshold Int      @default(50) @map("cable_pct_threshold")
+  cableMinCount     Int      @default(2) @map("cable_min_count")
+  oltMinCount       Int      @default(10) @map("olt_min_count")
+  geoMinCount       Int      @default(5) @map("geo_min_count")
+
+  // Janela de debounce (s) pra agregar quedas quase-simultâneas.
+  debounceSeconds   Int      @default(45) @map("debounce_seconds")
+
+  // RSSI (dBm): limiares de sinal ruim/saturado pros relatórios e alertas.
+  rxLowDbm          Decimal  @default(-27) @map("rx_low_dbm") @db.Decimal(6, 2)
+  rxHighDbm         Decimal  @default(-8) @map("rx_high_dbm") @db.Decimal(6, 2)
+
+  // Mapa causa→severidade (override do default). JSON: {"FIBER_CUT":"CRITICAL"}.
+  severityMap       Json?    @map("severity_map")
+
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  tenant            Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("alarm_policies")
 }
 
 // =============================================================================

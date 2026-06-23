@@ -177,6 +177,7 @@ const messages = {
     stockReport: 'Reporte',
     provisioningPending: 'Instalaciones pendientes',
     olts: 'OLTs',
+    alarms: 'Central de Alarmas',
     oltTemplates: 'Plantillas de aprovisionamiento',
     tr069Dashboard: 'Cola de diagnóstico',
     tr069Devices: 'Dispositivos TR-069',
