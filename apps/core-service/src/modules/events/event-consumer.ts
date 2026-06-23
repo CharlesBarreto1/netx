@@ -1,6 +1,8 @@
 import {
+  Inject,
   Injectable,
   Logger,
+  Optional,
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
 } from '@nestjs/common';
@@ -11,6 +13,7 @@ import { loadConfig } from '@netx/config';
 import type { EventEnvelope } from '@netx/core-sdk';
 
 import { EVENTS_EXCHANGE } from './amqp-event-publisher';
+import { EVENT_HANDLERS, eventMatches, type EventHandler } from './event-handler';
 
 /** Fila durável que recebe tudo da exchange (espelho de auditoria/round-trip). */
 const INBOX_QUEUE = 'netx.events.inbox';
@@ -34,6 +37,10 @@ export class EventConsumer implements OnApplicationBootstrap, OnApplicationShutd
   private channel?: ChannelWrapper;
   private readonly seen = new Set<string>();
   private readonly seenOrder: string[] = [];
+
+  constructor(
+    @Optional() @Inject(EVENT_HANDLERS) private readonly handlers: EventHandler[] = [],
+  ) {}
 
   private static enabled(): boolean {
     const v = process.env.EVENTBUS_CONSUME;
@@ -60,7 +67,7 @@ export class EventConsumer implements OnApplicationBootstrap, OnApplicationShutd
     this.logger.log(`consumo LIGADO — fila "${INBOX_QUEUE}" ligada a "${EVENTS_EXCHANGE}" (#)`);
   }
 
-  private onMessage(ch: ConfirmChannel, msg: ConsumeMessage | null): void {
+  private async onMessage(ch: ConfirmChannel, msg: ConsumeMessage | null): Promise<void> {
     if (!msg) return;
     let env: EventEnvelope;
     try {
@@ -80,15 +87,28 @@ export class EventConsumer implements OnApplicationBootstrap, OnApplicationShutd
       return;
     }
     this.remember(env.id);
-    this.dispatch(env);
+    await this.dispatch(env);
     ch.ack(msg);
   }
 
-  /** Ponto de extensão: aqui entram os handlers de negócio por tipo de evento. */
-  private dispatch(env: EventEnvelope): void {
+  /** Despacha o evento aos handlers registrados (EVENT_HANDLERS) cujo pattern casa. */
+  private async dispatch(env: EventEnvelope): Promise<void> {
     this.logger.log(
       `consumido ${env.type} id=${env.id} tenant=${env.tenantId} source=${env.source}`,
     );
+    for (const h of this.handlers) {
+      if (!eventMatches(h.pattern, env.type)) continue;
+      try {
+        await h.handle(env);
+      } catch (err) {
+        // Handler falhou: loga e segue (ack mesmo assim — evita poison loop).
+        // Handler que precise de retry deve cuidar da própria reentrega.
+        this.logger.warn(
+          `handler ${h.constructor.name} falhou em ${env.type} id=${env.id}: ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
   }
 
   private remember(id: string): void {

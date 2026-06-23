@@ -68,7 +68,12 @@ import { OltDriverFactory } from './drivers/olt-driver.factory';
 import { buildConnectionContext } from './olt-context.util';
 import { Tr069TasksService } from './tr069-tasks.service';
 import { EventBusPublisher } from '../events/event-bus.publisher';
-import { CPE_ONT_SWAPPED, type OntSwappedPayload } from '../events/event-types';
+import {
+  CPE_ONT_SWAPPED,
+  ERP_CONTRACT_INSTALLED,
+  type OntSwappedPayload,
+  type ContractInstalledPayload,
+} from '../events/event-types';
 
 @Injectable()
 export class ProvisioningService {
@@ -596,6 +601,17 @@ export class ProvisioningService {
         bandwidthMbps: contract.bandwidthMbps,
       },
     });
+
+    // Bus (Fase 3): contrato ativado em campo. Só na transição REAL
+    // PENDING_INSTALL → ACTIVE — re-provision de contrato já ACTIVE não republica.
+    if (contract.status === PrismaContractStatus.PENDING_INSTALL) {
+      await this.bus.emit<ContractInstalledPayload>(ERP_CONTRACT_INSTALLED, tenantId, {
+        contractId,
+        customerId: updatedContract.customerId,
+        ontId: ont.id,
+        oltId: olt.id,
+      });
+    }
 
     return {
       contractId,
