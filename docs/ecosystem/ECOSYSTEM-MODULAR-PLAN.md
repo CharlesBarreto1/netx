@@ -121,9 +121,10 @@ resolve; só adiciona dívida de fork.
   `@netx/core-sdk`: fachada de licensing/entitlement + manifesto de módulo +
   envelope de evento. Empacotamento; aditivo. Ver §10. (auth/config seguem
   pacotes próprios, reexportáveis depois — sem ganho de comportamento agora.)
-- **Fase 3 — Bus de eventos nas costuras.** ← **EM ANDAMENTO** (2026-06-22):
-  bus opcional ligado, 1ª costura migrada (`netx-erp.contract.created`).
-  DESLIGADO por default. Próximas costuras: migrar uma a uma. Ver §10.
+- **Fase 3 — Bus de eventos nas costuras.** ← **FUNDAÇÃO CONCLUÍDA** (2026-06-22);
+  costuras seguem incrementais. Bus opcional (DESLIGADO por default), publisher
+  resiliente, consumidor idempotente (round-trip fechado) e eventos de 2 domínios
+  (ERP + CPE) já migrados. Ver §10.
 - **Fase 4 (adiada) — Separação física de schema por módulo.** Expand-contract,
   só quando um módulo for vendido standalone.
 
@@ -269,8 +270,17 @@ expand-contract, e só faz merge quando comprovadamente reversível.
       `.cancelled`.
     - `contract-invoices.service`: `netx-erp.invoice.paid` (baixa manual `pay()`
       e webhook EFI `registerGatewayPayment()`).
+  - Costura CPE (1º evento não-ERP): `provisioning.service.swapOnt()` publica
+    `netx-cpe.ont.swapped` (source `netx-cpe`) nos dois ramos (Ufinet e rede
+    própria) — cobre troca manual e O.S SUPPORT_SWAP.
+  - **Consumidor** (`event-consumer.ts`): `EventConsumer` DESLIGADO por default
+    (liga com `EVENTBUS_CONSUME=true|1`). Fila durável `netx.events.inbox` ligada
+    à exchange (`#`), processamento IDEMPOTENTE (dedup por `envelope.id`), ack;
+    poison → ack sem requeue. `dispatch()` é o ponto de extensão p/ handlers de
+    negócio reais. Fecha o round-trip publish→broker→consume.
   - Verificação: `nx run-many -t build` verde (10 projetos). Commits: `2803780`,
-    `f7c81b0`, `5f7a01a`.
-  - **Próximo**: costuras de outros domínios (ex.: ONT trocada → `netx-cpe.*`,
-    O.S concluída) e, quando houver consumidor, um ConsumerModule que assina a
-    exchange e reage (idempotente pelo `envelope.id`).
+    `f7c81b0`, `5f7a01a`, `4c4be1e`.
+  - **Próximo** (incremental): handlers de negócio no `dispatch()` (ex.: ao
+    receber `netx-erp.contract.created`, o NMS reserva recursos), mais costuras
+    conforme a necessidade, e persistir o dedup de idempotência (hoje em memória)
+    se/quando o consumidor virar crítico.
