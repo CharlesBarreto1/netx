@@ -19,21 +19,17 @@
 import { Command } from 'cmdk';
 import {
   ArrowRight,
-  Building2,
   FileText,
-  LayoutDashboard,
   Moon,
   Plus,
-  Receipt,
   Rows2,
   Rows3,
   Rows4,
   Search,
-  Settings,
+  Server,
   Sun,
   User,
   Users,
-  Wrench,
 } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
@@ -50,15 +46,8 @@ import useSWR from 'swr';
 import { swrFetcher } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { useDensity } from '@/lib/density';
+import { visibleMenus } from '@/lib/menus';
 import { getSession } from '@/lib/session';
-
-interface SearchResult {
-  id: string;
-  type: 'customer' | 'contract' | 'invoice';
-  title: string;
-  subtitle?: string;
-  href: string;
-}
 
 interface ApiCustomer {
   id: string;
@@ -151,23 +140,19 @@ export function CommandPalette() {
 
             {session && (
               <Suspense fallback={null}>
-                <ServerSearch
-                  query={search}
-                  tenantId={session.tenant.id}
-                  onSelect={go}
-                />
+                <ServerSearch query={search} onSelect={go} />
               </Suspense>
             )}
 
-            <Group heading={t('groupNavigation')}>
-              <Item icon={LayoutDashboard} label={t('navDashboard')} hint="g d" onSelect={() => go('/dashboard')} />
-              <Item icon={Users} label={t('navCustomers')} hint="g c" onSelect={() => go('/customers')} />
-              <Item icon={FileText} label={t('navContracts')} hint="g k" onSelect={() => go('/contracts')} />
-              <Item icon={Receipt} label={t('navCharges')} onSelect={() => go('/finance/charges')} />
-              <Item icon={Wrench} label={t('navServiceOrders')} onSelect={() => go('/service-orders')} />
-              <Item icon={Building2} label={t('navPops')} onSelect={() => go('/network/pops')} />
-              <Item icon={Settings} label={t('navSettings')} onSelect={() => go('/settings/tenant')} />
-            </Group>
+            {session && (
+              <NavGroup
+                heading={t('groupNavigation')}
+                permissions={session.user.permissions}
+                menuAccess={session.user.menuAccess ?? null}
+                query={search}
+                onSelect={go}
+              />
+            )}
 
             <Group heading={t('groupActions')}>
               <Item icon={Plus} label={t('newCustomer')} onSelect={() => go('/customers/new')} />
@@ -186,56 +171,137 @@ export function CommandPalette() {
 
 // ---------------------------------------------------------------------------
 
-interface SearchResponse {
-  data: ApiCustomer[];
+interface ApiContract {
+  id: string;
+  code?: string | null;
+  pppoeUsername?: string | null;
+  customer?: { displayName?: string };
+}
+interface ApiOlt {
+  id: string;
+  name?: string;
+  vendor?: string;
 }
 
-/** Search server-side debounced por SWR — só dispara se query >= 2 chars. */
-function ServerSearch({
-  query,
-  tenantId,
-  onSelect,
-}: {
-  query: string;
-  tenantId: string;
-  onSelect: (href: string) => void;
-}) {
+const MIN_QUERY = 2;
+const SWR_OPTS = { keepPreviousData: true, revalidateOnFocus: false, dedupingInterval: 250 } as const;
+const goHint = <ArrowRight className="h-3.5 w-3.5 text-text-subtle" />;
+
+/**
+ * Busca server-side (debounce via SWR, >= 2 chars) em clientes, contratos e
+ * equipamentos (OLTs) — endpoints que suportam `?search=`. Faturas ficam de
+ * fora até o backend expor busca textual em contract-invoices.
+ */
+function ServerSearch({ query, onSelect }: { query: string; onSelect: (href: string) => void }) {
   const t = useTranslations('components.commandPalette');
-  const trimmed = query.trim();
-  const key =
-    trimmed.length >= 2
-      ? `/v1/customers?search=${encodeURIComponent(trimmed)}&pageSize=${HIGHLIGHT_LIMIT}`
-      : null;
-  const { data } = useSWR<SearchResponse>(key, swrFetcher, {
-    keepPreviousData: true,
-    revalidateOnFocus: false,
-    dedupingInterval: 250,
-  });
+  const q = query.trim();
+  const on = q.length >= MIN_QUERY;
+  const enc = encodeURIComponent(q);
 
-  const results: SearchResult[] = useMemo(() => {
-    if (!data?.data) return [];
-    return data.data.map((c) => ({
-      id: c.id,
-      type: 'customer',
-      title: c.fullName ?? c.companyName ?? t('noName'),
-      subtitle: c.taxId,
-      href: `/customers/${c.id}`,
-    }));
-  }, [data, tenantId, t]);
+  const { data: cust } = useSWR<{ data: ApiCustomer[] }>(
+    on ? `/v1/customers?search=${enc}&pageSize=${HIGHLIGHT_LIMIT}` : null,
+    swrFetcher,
+    SWR_OPTS,
+  );
+  const { data: contr } = useSWR<{ data: ApiContract[] }>(
+    on ? `/v1/contracts?search=${enc}&pageSize=${HIGHLIGHT_LIMIT}` : null,
+    swrFetcher,
+    SWR_OPTS,
+  );
+  const { data: olts } = useSWR<{ data: ApiOlt[] }>(
+    on ? `/v1/olts?search=${enc}` : null,
+    swrFetcher,
+    SWR_OPTS,
+  );
 
-  if (!key || results.length === 0) return null;
+  if (!on) return null;
+  const customers = cust?.data ?? [];
+  const contracts = contr?.data ?? [];
+  const oltList = (olts?.data ?? []).slice(0, HIGHLIGHT_LIMIT);
 
   return (
-    <Group heading={t('groupCustomers')}>
-      {results.map((r) => (
-        <Item
-          key={r.id}
-          icon={Users}
-          label={r.title}
-          sub={r.subtitle}
-          onSelect={() => onSelect(r.href)}
-          rightHint={<ArrowRight className="h-3.5 w-3.5 text-text-subtle" />}
-        />
+    <>
+      {customers.length > 0 && (
+        <Group heading={t('groupCustomers')}>
+          {customers.map((c) => (
+            <Item
+              key={c.id}
+              icon={Users}
+              label={c.fullName ?? c.companyName ?? t('noName')}
+              sub={c.taxId}
+              onSelect={() => onSelect(`/customers/${c.id}`)}
+              rightHint={goHint}
+            />
+          ))}
+        </Group>
+      )}
+      {contracts.length > 0 && (
+        <Group heading={t('groupContracts')}>
+          {contracts.map((c) => (
+            <Item
+              key={c.id}
+              icon={FileText}
+              label={c.code ?? c.customer?.displayName ?? t('noName')}
+              sub={c.customer?.displayName ?? c.pppoeUsername ?? undefined}
+              onSelect={() => onSelect(`/contracts/${c.id}`)}
+              rightHint={goHint}
+            />
+          ))}
+        </Group>
+      )}
+      {oltList.length > 0 && (
+        <Group heading={t('groupEquipment')}>
+          {oltList.map((o) => (
+            <Item
+              key={o.id}
+              icon={Server}
+              label={o.name ?? o.id}
+              sub={o.vendor}
+              onSelect={() => onSelect(`/olts/${o.id}`)}
+              rightHint={goHint}
+            />
+          ))}
+        </Group>
+      )}
+    </>
+  );
+}
+
+/**
+ * Grupo "Ir para" derivado do menus.ts (RBAC + menuAccess do usuário), filtrado
+ * pela busca. Sem query, mostra os primeiros itens; com query, todos os que
+ * casam. Substitui a lista de navegação que antes era hardcoded.
+ */
+function NavGroup({
+  heading,
+  permissions,
+  menuAccess,
+  query,
+  onSelect,
+}: {
+  heading: string;
+  permissions: string[];
+  menuAccess: string[] | null;
+  query: string;
+  onSelect: (href: string) => void;
+}) {
+  const tNav = useTranslations('nav');
+  const q = query.trim().toLowerCase();
+  const items = useMemo(() => {
+    const all = visibleMenus(permissions, menuAccess).map((m) => ({
+      key: m.key,
+      href: m.href,
+      label: tNav(m.labelKey as 'dashboard'),
+    }));
+    const matched = q ? all.filter((m) => m.label.toLowerCase().includes(q)) : all;
+    return q ? matched : matched.slice(0, 8);
+  }, [permissions, menuAccess, q, tNav]);
+
+  if (items.length === 0) return null;
+  return (
+    <Group heading={heading}>
+      {items.map((m) => (
+        <Item key={m.key} icon={ArrowRight} label={m.label} onSelect={() => onSelect(m.href)} />
       ))}
     </Group>
   );

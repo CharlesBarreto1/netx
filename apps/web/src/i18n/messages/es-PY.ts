@@ -3524,6 +3524,8 @@ const messages = {
       groupNavigation: 'Navegación',
       groupActions: 'Acciones',
       groupCustomers: 'Clientes',
+      groupContracts: 'Contratos',
+      groupEquipment: 'Equipos',
       groupDensity: 'Densidad',
       groupAppearance: 'Apariencia',
       navDashboard: 'Panel',
