@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "declaration": true,
+    // Limpa os aliases de source do tsconfig.base: o core-sdk consome @netx/shared
+    // como dependência COMPILADA (dist/.d.ts via node_modules), não recompila o
+    // source dele (senão `rootDir` reclama de arquivos fora de src — TS6059).
+    "paths": {}
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist"]
+}
