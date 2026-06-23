@@ -111,11 +111,12 @@ resolve; só adiciona dívida de fork.
 
 ## 7. Roadmap de fases
 
-- **Fase 0 — Trazer para dentro (sem mexer em runtime).** Importar NMS e Hub no
-  Nx via subtree como apps novas; alinhar tooling (NMS é pnpm; NetX é npm/Nx).
-  Apps novas **não** entram na lista de processos da produção.
-- **Fase 1 — Reconciliar o contrato de licença/entitlement.** ← **EM ANDAMENTO**.
-  Ver §8.
+- **Fase 0 — Trazer para dentro (sem mexer em runtime).** ← **CONCLUÍDA** (branch
+  `ecosystem/monorepo-integration`, 2026-06-22). NMS e Hub importados via
+  `git subtree --squash` em `apps/nms` e `apps/hub`; isolados dos workspaces npm
+  (`!apps/nms`, `!apps/hub`) e do grafo do Nx (`.nxignore`). Não entram em runtime.
+- **Fase 1 — Reconciliar o contrato de licença/entitlement.** ← **CONCLUÍDA**
+  (1.a + 1.b + 1.c). Ver §8 / §10.
 - **Fase 2 — Extrair `core-sdk`.** Promover `packages/shared/licensing` + auth +
   config + manifesto de módulo + envelope de evento a uma lib `core-sdk`.
   Refactor de empacotamento; comportamento idêntico.
@@ -216,3 +217,32 @@ expand-contract, e só faz merge quando comprovadamente reversível.
   - Verificação: `npm run build -w @netx/shared` verde; `npm run test:signing`
     8/8 verde; `tsc --noEmit` do Hub verde. **Hub ainda NÃO emite** `modules`
     (Fase 1.b) e **NÃO há enforcement** ainda (Fase 1.c).
+- 2026-06-22 — **Fase 1.b concluída** (Hub emite o claim):
+  - `prisma/schema.prisma`: `Licensee.modules String[]` (+ migration baseline).
+  - `admin/admin.dto.ts`: `modules` opcional no CRUD de licenciado.
+  - `signing/signing.service.ts`: `issue()` carimba `modules` só quando há valor.
+  - `instances/instances.service.ts`: heartbeat propaga `licensee.modules`.
+  - Verificação: `tsc --noEmit` + `prisma generate` + `test:signing` 8/8 verdes.
+  - Commit Hub: `f2c30c4` (branch `ecosystem/monorepo-integration`). Migration
+    pendente de `prisma migrate deploy` — mas o Hub nunca subiu, sem impacto.
+- 2026-06-22 — **Fase 1.c concluída** (enforcement no NetX, default-permissivo):
+  - `licensing/license.decorators.ts`: `@RequiresModule(code)` + metadata key.
+  - `licensing/module-entitlement.guard.ts` (novo): guard global; sem claim
+    `modules` no token → libera tudo (comportamento idêntico ao atual).
+  - `licensing/licensing.service.ts`: `entitledModules()`.
+  - `licensing/licensing.module.ts`: registra o guard via `APP_GUARD`.
+  - `hr/hr.controller.ts`: `netx-rh` anotado como módulo de referência (7 rotas).
+  - Verificação: `nx build core-service` verde.
+  - Commit NetX: `47c72dd` (branch `ecosystem/monorepo-integration`).
+- 2026-06-22 — **Fase 0 concluída** (monorepo unificado, sem mexer em runtime):
+  - NMS importado via `git subtree --squash` (main, `4c08603`) em `apps/nms`.
+  - Hub importado via `git subtree --squash` (`f2c30c4`) em `apps/hub`.
+  - Isolamento de tooling: `package.json` exclui `!apps/nms`/`!apps/hub` dos
+    workspaces npm; `.nxignore` mantém ambas fora do grafo do Nx.
+  - Verificação: `nx show projects` não lista hub/nms; `nx build core-service`
+    verde após o import. Commit de tooling: `e5521b4`.
+  - **Pendências da Fase 0** (deixadas para depois, fora de runtime): NMS é pnpm
+    e Hub é npm isolado — reconciliação de build/deps de cada app importada ainda
+    não foi feita (não é necessária enquanto não entram em produção). As mudanças
+    de "Wi-Fi no cadastro" seguem **não commitadas** no working tree (não fazem
+    parte deste esforço).
