@@ -159,6 +159,7 @@ export class LicensingService implements OnModuleInit {
         expiresAt: null,
         lastHeartbeatAt: null,
         lastError: null,
+        entitledModules: this.entitledModules(),
       };
     }
     const d = this.currentDecision();
@@ -169,6 +170,7 @@ export class LicensingService implements OnModuleInit {
       expiresAt: d?.expiresAt ? new Date(d.expiresAt * 1000).toISOString() : null,
       lastHeartbeatAt: this.lastHeartbeatAt?.toISOString() ?? null,
       lastError: this.lastError,
+      entitledModules: this.entitledModules(),
     };
   }
 }

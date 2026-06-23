@@ -57,6 +57,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { useTranslations } from 'next-intl';
+import useSWR from 'swr';
 
 import { CommandPalette } from '@/components/layout/CommandPalette';
 import { LicenseBanner } from '@/components/layout/LicenseBanner';
@@ -68,6 +69,7 @@ import { cn } from '@/lib/cn';
 import { DensityProvider } from '@/lib/density';
 import { visibleMenuGroups, type MenuDef, type MenuGroup } from '@/lib/menus';
 import { authApi } from '@/lib/auth-api';
+import { licenseApi } from '@/lib/license-api';
 import { clearSession, displayName, type Session } from '@/lib/session';
 import { useTenantConfig } from '@/lib/tenant-config';
 
@@ -184,12 +186,22 @@ export function AppShell({
   const tenantConfig = useTenantConfig();
   const tenantCountry = tenantConfig?.tenant?.country ?? null;
 
+  // Entitlement por módulo (licença) pro gating da sidebar. FAIL-OPEN: enquanto
+  // não carrega (ou endpoint off), entitledModules é undefined ⇒ mostra tudo.
+  const { data: licenseStatus } = useSWR(
+    licenseApi.statusPath(),
+    () => licenseApi.status(),
+    { revalidateOnFocus: false, shouldRetryOnError: false },
+  );
+  const entitledModules = licenseStatus?.entitledModules;
+
   const allowedGroups = useMemo<NavGroup[]>(
     () =>
       visibleMenuGroups(
         session.user.permissions,
         session.user.menuAccess ?? null,
         tenantCountry,
+        entitledModules,
       ).map((g: MenuGroup) => ({
         key: g.key,
         label: g.labelKey ? tNav(g.labelKey as 'dashboard') : undefined,
@@ -200,7 +212,7 @@ export function AppShell({
           permission: m.permission,
         })),
       })),
-    [session.user.permissions, session.user.menuAccess, tenantCountry, tNav],
+    [session.user.permissions, session.user.menuAccess, tenantCountry, entitledModules, tNav],
   );
 
   async function logout() {

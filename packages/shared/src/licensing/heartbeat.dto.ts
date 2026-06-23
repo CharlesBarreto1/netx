@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import type { ModuleCode } from './modules';
+
 /**
  * Contrato do heartbeat entre o NetX (cliente) e o Hub (netx-hub).
  * Compartilhado pra os dois lados validarem o mesmo shape.
@@ -31,4 +33,10 @@ export interface LicenseStatusResponse {
   expiresAt: string | null; // ISO
   lastHeartbeatAt: string | null; // ISO
   lastError: string | null;
+  /**
+   * Módulos do catálogo habilitados pela licença (ver entitledModules()).
+   * Ausente/legado ⇒ o front trata como "todos habilitados" (fail-open, igual
+   * ao guard default-permissivo do backend). Usado pro gating de UI por módulo.
+   */
+  entitledModules?: ModuleCode[];
 }

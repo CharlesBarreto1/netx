@@ -24,6 +24,8 @@
  *     (cabeçalho não aparece).
  */
 
+import type { ModuleCode } from '@netx/shared';
+
 export interface MenuDef {
   key: string;
   href: string;
@@ -35,6 +37,12 @@ export interface MenuDef {
    * Útil pra módulos exclusivos de um país (fiscal/SIFEN só faz sentido no PY).
    */
   visibleIfCountry?: string[];
+  /**
+   * Módulos do ecossistema que habilitam este item (entitlement da licença).
+   * O item aparece se QUALQUER um da lista estiver habilitado. Ausente = item
+   * do ERP base, sempre visível. Espelha o `@RequiresModule` do backend.
+   */
+  requiredModules?: ModuleCode[];
 }
 
 export interface MenuGroup {
@@ -44,6 +52,11 @@ export interface MenuGroup {
   items: MenuDef[];
   /** Mesmo conceito de `MenuDef.visibleIfCountry`, mas filtra o grupo inteiro. */
   visibleIfCountry?: string[];
+  /**
+   * Mesmo conceito de `MenuDef.requiredModules`, mas filtra o grupo inteiro
+   * (atalho quando o grupo mapeia 1:1 a um módulo do ecossistema).
+   */
+  requiredModules?: ModuleCode[];
 }
 
 // -----------------------------------------------------------------------------
@@ -100,6 +113,7 @@ export const MENU_GROUPS: MenuGroup[] = [
   {
     key: 'mapping',
     labelKey: 'group.mapping',
+    requiredModules: ['netx-maps'],
     items: [
       { key: 'mappingCustomers',   href: '/mapping/customers',   labelKey: 'mappingCustomers',   permission: 'mapping.read' },
       { key: 'mappingNetwork',     href: '/mapping/network',     labelKey: 'mappingNetwork',     permission: 'mapping.read' },
@@ -126,6 +140,7 @@ export const MENU_GROUPS: MenuGroup[] = [
   {
     key: 'hr',
     labelKey: 'group.hr',
+    requiredModules: ['netx-rh'],
     items: [
       { key: 'hrEmployees',  href: '/hr/employees',  labelKey: 'hrEmployees',  permission: 'hr.read' },
       { key: 'hrTimeclock',  href: '/hr/timeclock',  labelKey: 'hrTimeclock',  permission: 'hr.read' },
@@ -140,6 +155,7 @@ export const MENU_GROUPS: MenuGroup[] = [
   {
     key: 'portal',
     labelKey: 'group.portal',
+    requiredModules: ['netx-rh'],
     items: [
       { key: 'meHome',      href: '/me',             labelKey: 'meHome',      permission: 'self.read' },
       { key: 'meTimeclock', href: '/me/ponto',       labelKey: 'meTimeclock', permission: 'self.read' },
@@ -200,6 +216,7 @@ export const MENU_GROUPS: MenuGroup[] = [
   {
     key: 'provisioning',
     labelKey: 'group.provisioning',
+    requiredModules: ['netx-cpe'],
     items: [
       { key: 'provisioningPending', href: '/provisioning/pending', labelKey: 'provisioningPending', permission: 'provisioning.read' },
       { key: 'olts', href: '/olts', labelKey: 'olts', permission: 'olts.admin' },
@@ -273,15 +290,31 @@ function matchesCountry(
  * (mostra tudo que passa em perm/menuAccess). Callers que querem o filtro
  * passam tenant.country.
  */
+/**
+ * Gating por módulo (entitlement da licença). FAIL-OPEN: sem `entitledModules`
+ * (licença ainda carregando, endpoint off, ou instância legada) ⇒ libera, igual
+ * ao guard default-permissivo do backend. Item sem `requiredModules` ⇒ ERP base,
+ * sempre liberado. Caso contrário, basta UM módulo da lista estar habilitado.
+ */
+function moduleAllowed(
+  m: { requiredModules?: ModuleCode[] },
+  entitled: readonly string[] | null | undefined,
+): boolean {
+  if (!m.requiredModules || !entitled) return true;
+  return m.requiredModules.some((mod) => entitled.includes(mod));
+}
+
 export function visibleMenus(
   permissions: string[],
   menuAccess: string[] | null | undefined,
   country?: string | null,
+  entitledModules?: readonly ModuleCode[] | null,
 ): MenuDef[] {
   return MENU_CATALOG.filter((m) => {
     if (m.permission && !permissions.includes(m.permission)) return false;
     if (Array.isArray(menuAccess) && !menuAccess.includes(m.key)) return false;
     if (country !== undefined && !matchesCountry(m, country)) return false;
+    if (!moduleAllowed(m, entitledModules)) return false;
     return true;
   });
 }
@@ -295,15 +328,18 @@ export function visibleMenuGroups(
   permissions: string[],
   menuAccess: string[] | null | undefined,
   country?: string | null,
+  entitledModules?: readonly ModuleCode[] | null,
 ): MenuGroup[] {
   return MENU_GROUPS
     .filter((g) => country === undefined || matchesCountry(g, country))
+    .filter((g) => moduleAllowed(g, entitledModules))
     .map((g) => ({
       ...g,
       items: g.items.filter((m) => {
         if (m.permission && !permissions.includes(m.permission)) return false;
         if (Array.isArray(menuAccess) && !menuAccess.includes(m.key)) return false;
         if (country !== undefined && !matchesCountry(m, country)) return false;
+        if (!moduleAllowed(m, entitledModules)) return false;
         return true;
       }),
     }))
