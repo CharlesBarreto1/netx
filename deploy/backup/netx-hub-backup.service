@@ -1,0 +1,9 @@
+[Unit]
+Description=NetX Hub — backup do Postgres
+After=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/netx-hub/deploy/backup/netx-hub-backup.sh
+# Roda como root (lê /etc/netx-hub/.env, escreve em /var/backups/netx-hub)
+User=root

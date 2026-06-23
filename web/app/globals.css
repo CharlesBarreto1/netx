@@ -1,0 +1,29 @@
+@import 'tailwindcss';
+
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+/* Render de markdown da wiki (sem plugin de typography) */
+.md {
+  @apply text-sm leading-relaxed text-slate-700;
+}
+.md h1 { @apply mb-3 mt-6 text-2xl font-bold text-slate-900; }
+.md h2 { @apply mb-2 mt-6 text-lg font-semibold text-slate-900; }
+.md h3 { @apply mb-2 mt-4 text-base font-semibold text-slate-900; }
+.md p { @apply my-3; }
+.md ul { @apply my-3 list-disc pl-6; }
+.md ol { @apply my-3 list-decimal pl-6; }
+.md li { @apply my-1; }
+.md a { @apply text-blue-700 underline; }
+.md strong { @apply font-semibold text-slate-900; }
+.md code { @apply rounded bg-slate-100 px-1 py-0.5 font-mono text-xs text-slate-800; }
+.md pre { @apply my-3 overflow-x-auto rounded-lg bg-slate-900 p-4 text-xs text-slate-100; }
+.md pre code { @apply bg-transparent p-0 text-slate-100; }
+.md blockquote { @apply my-3 border-l-4 border-slate-200 pl-4 text-slate-500; }
+.md table { @apply my-3 w-full border-collapse text-xs; }
+.md th, .md td { @apply border border-slate-200 px-2 py-1 text-left; }

@@ -1,0 +1,37 @@
+{
+  "name": "netx-hub",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NetX Hub — plataforma de licenciamento (assina tokens, controla instâncias, fatura).",
+  "scripts": {
+    "build": "nest build",
+    "dev": "nest start --watch",
+    "start": "node dist/main.js",
+    "lint": "tsc -p tsconfig.json --noEmit",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev",
+    "seed": "ts-node src/seed.ts",
+    "create-admin": "ts-node src/create-admin.ts",
+    "keygen": "node scripts/keygen.mjs",
+    "test:signing": "ts-node test/signing.e2e.ts"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.0.0",
+    "@nestjs/core": "^11.0.0",
+    "@nestjs/platform-express": "^11.0.0",
+    "@nestjs/schedule": "^6.1.3",
+    "@prisma/client": "^6.19.3",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "zod": "^4.0.5"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^11.0.0",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.0.0",
+    "prisma": "^6.19.3",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.0"
+  }
+}

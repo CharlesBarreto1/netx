@@ -1,0 +1,19 @@
+[Unit]
+Description=NetX Hub — API (licenciamento + cobrança)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=netxhub
+WorkingDirectory=/opt/netx-hub
+EnvironmentFile=/etc/netx-hub/.env
+ExecStart=/usr/bin/node dist/main.js
+Restart=on-failure
+RestartSec=3
+# Logs vão pro journald (journalctl -u netx-hub-api)
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
