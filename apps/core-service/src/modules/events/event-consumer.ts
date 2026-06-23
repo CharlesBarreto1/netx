@@ -12,7 +12,7 @@ import type { ConfirmChannel, ConsumeMessage } from 'amqplib';
 import { loadConfig } from '@netx/config';
 import type { EventEnvelope } from '@netx/core-sdk';
 
-import { EVENTS_EXCHANGE } from './amqp-event-publisher';
+import { assertEventsExchange, EVENTS_EXCHANGE } from './amqp-event-publisher';
 import { EVENT_HANDLERS, eventMatches, type EventHandler } from './event-handler';
 
 /** Fila durável que recebe tudo da exchange (espelho de auditoria/round-trip). */
@@ -57,7 +57,7 @@ export class EventConsumer implements OnApplicationBootstrap, OnApplicationShutd
     this.channel = this.connection.createChannel({
       json: false,
       setup: async (ch: ConfirmChannel) => {
-        await ch.assertExchange(EVENTS_EXCHANGE, 'topic', { durable: true });
+        await assertEventsExchange(ch);
         await ch.assertQueue(INBOX_QUEUE, { durable: true });
         await ch.bindQueue(INBOX_QUEUE, EVENTS_EXCHANGE, '#');
         await ch.prefetch(20);

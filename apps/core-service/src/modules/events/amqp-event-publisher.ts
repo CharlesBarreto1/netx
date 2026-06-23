@@ -8,6 +8,18 @@ import type { EventEnvelope, EventPublisher } from '@netx/core-sdk';
 export const EVENTS_EXCHANGE = 'netx.events';
 
 /**
+ * Declara a exchange do bus (topic, durável). FONTE ÚNICA do contrato da
+ * exchange — publisher e consumer chamam isto no setup do canal, pra nunca
+ * divergirem no nome/tipo/durabilidade.
+ */
+export async function assertEventsExchange(
+  ch: ConfirmChannel,
+  exchange: string = EVENTS_EXCHANGE,
+): Promise<void> {
+  await ch.assertExchange(exchange, 'topic', { durable: true });
+}
+
+/**
  * Adaptador AMQP da porta `EventPublisher` (Fase 3). Usa amqp-connection-manager
  * (reconexão automática e em background): se o broker cair, publicar não derruba
  * o serviço — a conexão se restabelece sozinha. Só é instanciado quando o bus
@@ -31,7 +43,7 @@ export class AmqpEventPublisher implements EventPublisher {
     );
     this.channel = this.connection.createChannel({
       json: false,
-      setup: (ch: ConfirmChannel) => ch.assertExchange(this.exchange, 'topic', { durable: true }),
+      setup: (ch: ConfirmChannel) => assertEventsExchange(ch, this.exchange),
     });
   }
 

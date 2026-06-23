@@ -57,6 +57,11 @@ export class ContractInvoicesService {
     private readonly bus: EventBusPublisher,
   ) {}
 
+  /** Publica `netx-erp.invoice.paid` — fonte única do evento das duas baixas (manual e gateway). */
+  private emitInvoicePaid(tenantId: string, payload: InvoicePaidPayload): Promise<void> {
+    return this.bus.emit<InvoicePaidPayload>(ERP_INVOICE_PAID, tenantId, payload);
+  }
+
   // ---------------------------------------------------------------------------
   // READ
   // ---------------------------------------------------------------------------
@@ -303,7 +308,7 @@ export class ContractInvoicesService {
     }
 
     // Bus de eventos (Fase 3): fatura paga (baixa manual).
-    await this.bus.emit<InvoicePaidPayload>(ERP_INVOICE_PAID, tenantId, {
+    await this.emitInvoicePaid(tenantId, {
       invoiceId: updated.id,
       contractId: existing.contractId,
       customerId: updated.contract.customerId,
@@ -497,7 +502,7 @@ export class ContractInvoicesService {
     }
 
     // Bus de eventos (Fase 3): fatura paga (baixa automática via gateway).
-    await this.bus.emit<InvoicePaidPayload>(ERP_INVOICE_PAID, tenantId, {
+    await this.emitInvoicePaid(tenantId, {
       invoiceId,
       contractId: existing.contractId,
       customerId: existing.contract.customerId,
