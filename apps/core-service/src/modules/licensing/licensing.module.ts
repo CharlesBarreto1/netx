@@ -5,6 +5,7 @@ import { HeartbeatService } from './heartbeat.service';
 import { LicenseGuard } from './license.guard';
 import { LicensingController } from './licensing.controller';
 import { LicensingService } from './licensing.service';
+import { ModuleEntitlementGuard } from './module-entitlement.guard';
 
 /**
  * Licenciamento — valida a licença DESTA instalação com o Hub da NetX.
@@ -19,6 +20,7 @@ import { LicensingService } from './licensing.service';
     LicensingService,
     HeartbeatService,
     { provide: APP_GUARD, useClass: LicenseGuard },
+    { provide: APP_GUARD, useClass: ModuleEntitlementGuard },
   ],
   exports: [LicensingService],
 })

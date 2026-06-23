@@ -1,5 +1,6 @@
 import { createPublicKey, verify as edVerify } from 'node:crypto';
 
+import type { ModuleCode } from './modules';
 import { LICENSE_PUBLIC_KEY_SPKI_B64 } from './public-key';
 
 /**
@@ -32,6 +33,12 @@ export interface LicenseClaims {
   exp: number; // epoch segundos
   /** Até quando mostrar só banner antes de travar de fato (epoch s). */
   graceUntil?: number;
+  /**
+   * Códigos de módulo habilitados (catálogo em modules.ts). Ausente/vazio ⇒
+   * catálogo inteiro habilitado (instância legada tudo-ligada). Ver
+   * entitledModules() e docs/ecosystem/ECOSYSTEM-MODULAR-PLAN.md.
+   */
+  modules?: ModuleCode[];
 }
 
 export interface LicenseVerifyOk {
@@ -75,7 +82,10 @@ function isClaims(v: unknown): v is LicenseClaims {
     typeof c.maxContracts === 'number' &&
     (c.blockMode === 'UI_ONLY' || c.blockMode === 'UI_AND_PROVISIONING') &&
     typeof c.iat === 'number' &&
-    typeof c.exp === 'number'
+    typeof c.exp === 'number' &&
+    // `modules` é opcional (compat legado): se vier, precisa ser array de strings.
+    (c.modules === undefined ||
+      (Array.isArray(c.modules) && c.modules.every((m) => typeof m === 'string')))
   );
 }
 

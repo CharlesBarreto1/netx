@@ -1,10 +1,12 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { loadConfig } from '@netx/config';
 import {
+  entitledModules as resolveEntitledModules,
   licenseDecision,
   verifyLicenseToken,
   type LicenseDecision,
   type LicenseStatusResponse,
+  type ModuleCode,
 } from '@netx/shared';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -133,6 +135,18 @@ export class LicensingService implements OnModuleInit {
       create: { id: SINGLETON_ID, ...common },
       update: common,
     });
+  }
+
+  /**
+   * Módulos do ecossistema habilitados nesta instalação, derivados do token
+   * vigente. FAIL-OPEN: licenciamento desligado ⇒ catálogo inteiro. Token sem o
+   * claim `modules` (instância legada) ⇒ catálogo inteiro. Usado pelo
+   * ModuleEntitlementGuard.
+   */
+  entitledModules(): ModuleCode[] {
+    if (!this.isEnabled()) return resolveEntitledModules(null);
+    const verify = this.cachedToken ? verifyLicenseToken(this.cachedToken) : null;
+    return resolveEntitledModules(verify?.ok ? verify.claims : null);
   }
 
   /** Snapshot pro endpoint GET /v1/license/status e pro front. */

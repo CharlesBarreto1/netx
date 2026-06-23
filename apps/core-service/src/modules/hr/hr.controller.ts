@@ -57,6 +57,7 @@ import {
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { ZodBody } from '../../common/zod.pipe';
 
+import { RequiresModule } from '../licensing/license.decorators';
 import { CompanyPostsService } from './company-posts.service';
 import { EmployeeDocumentsService } from './employee-documents.service';
 import { EmployeesService } from './employees.service';
@@ -76,6 +77,7 @@ function clientIp(req: Request): string | null {
 // ─────────────────────────────────────────────────────────────────────────────
 @ApiTags('hr')
 @ApiBearerAuth()
+@RequiresModule('netx-rh')
 @Controller('hr/employees')
 export class EmployeesController {
   constructor(private readonly employees: EmployeesService) {}
@@ -133,6 +135,7 @@ export class EmployeesController {
 // ─────────────────────────────────────────────────────────────────────────────
 @ApiTags('hr')
 @ApiBearerAuth()
+@RequiresModule('netx-rh')
 @Controller('hr/employees/:employeeId/documents')
 export class EmployeeDocumentsController {
   constructor(private readonly documents: EmployeeDocumentsService) {}
@@ -224,6 +227,7 @@ export class EmployeeDocumentsController {
 // ─────────────────────────────────────────────────────────────────────────────
 @ApiTags('hr')
 @ApiBearerAuth()
+@RequiresModule('netx-rh')
 @Controller('hr/timeclock')
 export class TimeclockController {
   constructor(private readonly timeclock: TimeclockService) {}
@@ -310,6 +314,7 @@ export class TimeclockController {
 // ─────────────────────────────────────────────────────────────────────────────
 @ApiTags('hr')
 @ApiBearerAuth()
+@RequiresModule('netx-rh')
 @Controller('hr/payroll')
 export class PayrollController {
   constructor(private readonly payroll: PayrollService) {}
@@ -405,6 +410,7 @@ export class PayrollController {
 // ─────────────────────────────────────────────────────────────────────────────
 @ApiTags('hr')
 @ApiBearerAuth()
+@RequiresModule('netx-rh')
 @Controller('hr/posts')
 export class CompanyPostsController {
   constructor(private readonly posts: CompanyPostsService) {}
@@ -462,6 +468,7 @@ export class CompanyPostsController {
 // ─────────────────────────────────────────────────────────────────────────────
 @ApiTags('hr')
 @ApiBearerAuth()
+@RequiresModule('netx-rh')
 @Controller('hr/reports')
 export class HrReportsController {
   constructor(private readonly reports: HrReportsService) {}
@@ -481,6 +488,7 @@ export class HrReportsController {
 // ─────────────────────────────────────────────────────────────────────────────
 @ApiTags('hr')
 @ApiBearerAuth()
+@RequiresModule('netx-rh')
 @Controller('hr/me')
 export class HrSelfController {
   constructor(private readonly self: HrSelfService) {}
