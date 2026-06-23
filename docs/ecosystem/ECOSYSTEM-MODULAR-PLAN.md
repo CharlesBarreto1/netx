@@ -117,11 +117,13 @@ resolve; só adiciona dívida de fork.
   (`!apps/nms`, `!apps/hub`) e do grafo do Nx (`.nxignore`). Não entram em runtime.
 - **Fase 1 — Reconciliar o contrato de licença/entitlement.** ← **CONCLUÍDA**
   (1.a + 1.b + 1.c). Ver §8 / §10.
-- **Fase 2 — Extrair `core-sdk`.** Promover `packages/shared/licensing` + auth +
-  config + manifesto de módulo + envelope de evento a uma lib `core-sdk`.
-  Refactor de empacotamento; comportamento idêntico.
-- **Fase 3 — Bus de eventos nas costuras.** Ativar RabbitMQ ao lado das chamadas
-  diretas; migrar costura a costura.
+- **Fase 2 — Extrair `core-sdk`.** ← **CONCLUÍDA** (2026-06-22). Lib
+  `@netx/core-sdk`: fachada de licensing/entitlement + manifesto de módulo +
+  envelope de evento. Empacotamento; aditivo. Ver §10. (auth/config seguem
+  pacotes próprios, reexportáveis depois — sem ganho de comportamento agora.)
+- **Fase 3 — Bus de eventos nas costuras.** ← **EM ANDAMENTO** (2026-06-22):
+  bus opcional ligado, 1ª costura migrada (`netx-erp.contract.created`).
+  DESLIGADO por default. Próximas costuras: migrar uma a uma. Ver §10.
 - **Fase 4 (adiada) — Separação física de schema por módulo.** Expand-contract,
   só quando um módulo for vendido standalone.
 
@@ -243,6 +245,24 @@ expand-contract, e só faz merge quando comprovadamente reversível.
     verde após o import. Commit de tooling: `e5521b4`.
   - **Pendências da Fase 0** (deixadas para depois, fora de runtime): NMS é pnpm
     e Hub é npm isolado — reconciliação de build/deps de cada app importada ainda
-    não foi feita (não é necessária enquanto não entram em produção). As mudanças
-    de "Wi-Fi no cadastro" seguem **não commitadas** no working tree (não fazem
-    parte deste esforço).
+    não foi feita (não é necessária enquanto não entram em produção). (As
+    mudanças de "Wi-Fi no cadastro", que estavam soltas no working tree, foram
+    commitadas à parte em `feat/wifi-no-cadastro` e mergeadas na `main`.)
+- 2026-06-22 — **Fase 2 concluída** (`@netx/core-sdk`, aditivo):
+  - `packages/core-sdk` (novo): `licensing.ts` (fachada de @netx/shared/licensing),
+    `manifest.ts` (ModuleManifest + defineModule/getManifest/resolveLoadOrder),
+    `events.ts` (EventEnvelope + makeEnvelope + porta EventPublisher + Noop).
+  - `tsconfig.base.json`: alias `@netx/core-sdk`. tsconfig do pacote zera `paths`
+    p/ consumir @netx/shared compilado (evita TS6059 de rootDir).
+  - Verificação: `nx build @netx/core-sdk` verde. Commit: `1d178f9`.
+- 2026-06-22 — **Fase 3 iniciada** (bus de eventos, 1ª costura):
+  - `apps/core-service/src/modules/events/`: `EventBusModule` global (DESLIGADO
+    por default; só liga o `AmqpEventPublisher` com `EVENTBUS_ENABLED=true|1`),
+    adaptador AMQP (amqp-connection-manager, exchange topic `netx.events`),
+    `event-types.ts` (ERP_CONTRACT_CREATED + registro do emit no manifesto).
+  - `contracts.service.create()`: publica `netx-erp.contract.created` após o
+    commit, fire-and-forget (nunca quebra a criação).
+  - deps: `@netx/core-sdk` + `@types/amqplib` (lockfile sincronizado).
+  - Verificação: `nx run-many -t build` verde (10 projetos). Commit: `2803780`.
+  - **Próximo**: migrar mais costuras (ex.: contrato cancelado/suspenso, ONT
+    trocada, fatura paga) e, quando houver consumidor, um ConsumerModule.
