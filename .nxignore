@@ -1,0 +1,6 @@
+# Fase 0 do ecossistema modular: NMS e Hub foram importados via git subtree
+# como código-fonte, mas NÃO entram no build/grafo do Nx nem nos processos de
+# produção do NetX (têm tooling próprio: NMS=pnpm, Hub=npm isolado).
+# Ver docs/ecosystem/ECOSYSTEM-MODULAR-PLAN.md (Fase 0).
+apps/hub
+apps/nms
