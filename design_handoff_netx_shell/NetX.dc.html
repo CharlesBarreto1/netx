@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:#0a0a0b;overflow:hidden}
+  ::selection{background:color-mix(in oklch, oklch(0.62 0.17 250) 40%, transparent)}
+  .nx-scroll::-webkit-scrollbar{width:10px;height:10px}
+  .nx-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.09);border-radius:8px;border:3px solid transparent;background-clip:padding-box}
+  .nx-scroll::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,0.16);background-clip:padding-box}
+  .nx-scroll::-webkit-scrollbar-track{background:transparent}
+  @keyframes nxLivePulse{0%{box-shadow:0 0 0 0 color-mix(in oklch, oklch(0.74 0.16 150) 60%, transparent)}70%{box-shadow:0 0 0 5px transparent}100%{box-shadow:0 0 0 0 transparent}}
+  @keyframes nxEventIn{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+  @keyframes nxFadeIn{from{opacity:0}to{opacity:1}}
+  @keyframes nxScaleIn{from{opacity:0;transform:translateY(8px) scale(0.99)}to{opacity:1;transform:none}}
+</style>
+</helmet>
+
+<div style="position:fixed;inset:0;display:flex;flex-direction:column;background:#0a0a0b;color:#ededef;font-family:Geist,system-ui,sans-serif;font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;letter-spacing:-0.006em">
+
+  <!-- ===================== TOP BAR ===================== -->
+  <header style="height:54px;flex:none;display:flex;align-items:center;gap:14px;padding:0 16px;background:#0c0c0e;border-bottom:1px solid rgba(255,255,255,0.07);z-index:30">
+    <!-- logo slot -->
+    <div title="Seu logo aqui" style="display:flex;align-items:center;gap:9px;padding:5px 11px 5px 9px;border:1px dashed rgba(255,255,255,0.14);border-radius:9px;height:34px">
+      <div style="width:20px;height:20px;border-radius:6px;background:oklch(0.62 0.17 250);display:grid;place-items:center;flex:none">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+      </div>
+      <span style="font-size:15px;font-weight:600;letter-spacing:-0.02em">Net<span style="color:oklch(0.7 0.16 250)">X</span></span>
+    </div>
+
+    <!-- instance switcher -->
+    <button style="display:flex;align-items:center;gap:9px;padding:6px 9px;background:transparent;border:1px solid transparent;border-radius:9px;cursor:pointer;color:inherit;font-family:inherit" style-hover="background:rgba(255,255,255,0.05)">
+      <div style="width:24px;height:24px;border-radius:7px;background:#1c1c20;display:grid;place-items:center;font-size:10px;font-weight:600;color:#cfcfd6;flex:none">AT</div>
+      <div style="text-align:left;line-height:1.15;white-space:nowrap">
+        <div style="font-size:12.5px;font-weight:550">ASU Telecom</div>
+        <div style="font-size:10.5px;color:#6e6e77">Asunción · PY</div>
+      </div>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#6e6e77" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left:1px"><path d="m6 9 6 6 6-6"/></svg>
+    </button>
+
+    <!-- global search trigger -->
+    <button onClick="{{ openPalette }}" style="flex:1;max-width:440px;display:flex;align-items:center;gap:10px;height:34px;padding:0 11px;background:#0f0f12;border:1px solid rgba(255,255,255,0.08);border-radius:9px;cursor:pointer;color:#6e6e77;font-family:inherit;font-size:13px" style-hover="border-color:rgba(255,255,255,0.16);background:#121215">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <span style="flex:1;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Buscar assinante, equipamento, fatura…</span>
+      <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#8a8a93;border:1px solid rgba(255,255,255,0.12);border-radius:5px;padding:1px 6px">⌘K</span>
+    </button>
+
+    <div style="flex:1"></div>
+
+    <!-- network status -->
+    <div style="display:flex;align-items:center;gap:8px;padding:5px 11px;background:color-mix(in oklch, oklch(0.74 0.16 150) 11%, transparent);border:1px solid color-mix(in oklch, oklch(0.74 0.16 150) 24%, transparent);border-radius:8px">
+      <span style="width:7px;height:7px;border-radius:50%;background:oklch(0.74 0.16 150);animation:nxLivePulse 2.4s infinite"></span>
+      <span style="font-size:12px;font-weight:550;color:oklch(0.84 0.13 150)">Rede operacional</span>
+      <span style="font-family:'Geist Mono',monospace;font-size:11px;color:oklch(0.72 0.1 150)">99,2%</span>
+    </div>
+
+    <!-- notifications -->
+    <button style="position:relative;width:34px;height:34px;display:grid;place-items:center;background:transparent;border:1px solid rgba(255,255,255,0.08);border-radius:9px;cursor:pointer;color:#b6b6bd" style-hover="background:rgba(255,255,255,0.05)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+      <span style="position:absolute;top:6px;right:7px;width:6px;height:6px;border-radius:50%;background:oklch(0.64 0.2 22);border:1.5px solid #0c0c0e"></span>
+    </button>
+
+    <!-- profile -->
+    <button style="display:flex;align-items:center;gap:8px;padding:3px 4px 3px 4px;background:transparent;border:none;cursor:pointer;color:inherit;font-family:inherit">
+      <div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,oklch(0.62 0.17 250),oklch(0.55 0.16 280));display:grid;place-items:center;font-size:11px;font-weight:600;color:#fff">JG</div>
+    </button>
+  </header>
+
+  <div style="flex:1;display:flex;min-height:0">
+
+    <!-- ===================== LEFT NAV ===================== -->
+    <nav class="nx-scroll" style="width:236px;flex:none;background:#0b0b0d;border-right:1px solid rgba(255,255,255,0.07);overflow-y:auto;padding:14px 12px 18px;display:flex;flex-direction:column;gap:3px">
+
+      <!-- NÚCLEO -->
+      <div style="font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#56565e;padding:4px 8px 7px">Núcleo</div>
+      <a href="#" style="display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:8px;text-decoration:none;color:#ededef;background:color-mix(in oklch, oklch(0.62 0.17 250) 14%, transparent);box-shadow:inset 2px 0 0 oklch(0.62 0.17 250);font-size:13px;font-weight:550">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="oklch(0.72 0.15 250)" stroke-width="1.9"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        Dashboard
+      </a>
+      <a href="#" style="display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:8px;text-decoration:none;color:#b6b6bd;font-size:13px;font-weight:500" style-hover="background:rgba(255,255,255,0.045);color:#ededef">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0" stroke-linecap="round"/><path d="M16 6.2a3.2 3.2 0 0 1 0 6M18 20a5.5 5.5 0 0 0-3.2-5" stroke-linecap="round"/></svg>
+        Assinantes
+      </a>
+      <a href="#" style="display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:8px;text-decoration:none;color:#b6b6bd;font-size:13px;font-weight:500" style-hover="background:rgba(255,255,255,0.045);color:#ededef">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="6" rx="1.6"/><rect x="3" y="14" width="18" height="6" rx="1.6"/><path d="M7 7h.01M7 17h.01" stroke-linecap="round"/></svg>
+        Elementos de rede
+      </a>
+      <a href="#" style="display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:8px;text-decoration:none;color:#b6b6bd;font-size:13px;font-weight:500" style-hover="background:rgba(255,255,255,0.045);color:#ededef">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 12h4l2-6 4 12 2-6h4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Eventos
+      </a>
+
+      <!-- MÓDULOS -->
+      <div style="font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#56565e;padding:16px 8px 7px">Módulos</div>
+
+      <!-- ERP -->
+      <button onClick="{{ toggleErp }}" style="display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:8px;background:transparent;border:none;cursor:pointer;color:#cfcfd6;font-family:inherit;font-size:13px;font-weight:550;width:100%;text-align:left" style-hover="background:rgba(255,255,255,0.045)">
+        <span style="width:22px;height:22px;border-radius:6px;background:#161619;display:grid;place-items:center;flex:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="oklch(0.78 0.13 250)" stroke-width="1.9"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h4" stroke-linecap="round"/></svg></span>
+        ERP
+        <span style="flex:1"></span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#56565e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate({{ erpRot }});transition:transform .15s"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
+      <sc-if value="{{ exp.erp }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:1px;padding-left:11px;margin-left:10px;border-left:1px solid rgba(255,255,255,0.07)">
+          <sc-for list="{{ erpItems }}" as="it" hint-placeholder-count="4">
+            <a href="#" style="padding:6px 9px;border-radius:7px;text-decoration:none;color:#9b9ba3;font-size:12.5px;font-weight:450" style-hover="background:rgba(255,255,255,0.04);color:#ededef">{{ it }}</a>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <!-- NMS -->
+      <button onClick="{{ toggleNms }}" style="display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:8px;background:transparent;border:none;cursor:pointer;color:#cfcfd6;font-family:inherit;font-size:13px;font-weight:550;width:100%;text-align:left" style-hover="background:rgba(255,255,255,0.045)">
+        <span style="width:22px;height:22px;border-radius:6px;background:#161619;display:grid;place-items:center;flex:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="oklch(0.78 0.13 250)" stroke-width="1.9"><circle cx="12" cy="12" r="2.4"/><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="m6.6 7.4 3.7 3.4M17.4 7.4l-3.7 3.4M6.6 16.6l3.7-3.4M17.4 16.6l-3.7-3.4" stroke-linecap="round"/></svg></span>
+        NMS
+        <span style="flex:1"></span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#56565e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate({{ nmsRot }});transition:transform .15s"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
+      <sc-if value="{{ exp.nms }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:1px;padding-left:11px;margin-left:10px;border-left:1px solid rgba(255,255,255,0.07)">
+          <sc-for list="{{ nmsItems }}" as="it" hint-placeholder-count="3">
+            <a href="#" style="padding:6px 9px;border-radius:7px;text-decoration:none;color:#9b9ba3;font-size:12.5px;font-weight:450" style-hover="background:rgba(255,255,255,0.04);color:#ededef">{{ it }}</a>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <!-- Monitor -->
+      <button onClick="{{ toggleMonitor }}" style="display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:8px;background:transparent;border:none;cursor:pointer;color:#cfcfd6;font-family:inherit;font-size:13px;font-weight:550;width:100%;text-align:left" style-hover="background:rgba(255,255,255,0.045)">
+        <span style="width:22px;height:22px;border-radius:6px;background:#161619;display:grid;place-items:center;flex:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="oklch(0.78 0.13 250)" stroke-width="1.9"><path d="M3 12h3l2-7 4 14 2-7h7" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        Monitor
+        <span style="flex:1"></span>
+        <span style="font-family:'Geist Mono',monospace;font-size:10px;color:oklch(0.82 0.14 80);background:color-mix(in oklch, oklch(0.8 0.14 80) 14%, transparent);border-radius:5px;padding:1px 5px">3</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#56565e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate({{ monitorRot }});transition:transform .15s"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
+      <sc-if value="{{ exp.monitor }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:1px;padding-left:11px;margin-left:10px;border-left:1px solid rgba(255,255,255,0.07)">
+          <sc-for list="{{ monitorItems }}" as="it" hint-placeholder-count="2">
+            <a href="#" style="padding:6px 9px;border-radius:7px;text-decoration:none;color:#9b9ba3;font-size:12.5px;font-weight:450" style-hover="background:rgba(255,255,255,0.04);color:#ededef">{{ it }}</a>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <!-- CPE -->
+      <button onClick="{{ toggleCpe }}" style="display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:8px;background:transparent;border:none;cursor:pointer;color:#cfcfd6;font-family:inherit;font-size:13px;font-weight:550;width:100%;text-align:left" style-hover="background:rgba(255,255,255,0.045)">
+        <span style="width:22px;height:22px;border-radius:6px;background:#161619;display:grid;place-items:center;flex:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="oklch(0.78 0.13 250)" stroke-width="1.9"><rect x="3" y="13" width="18" height="6" rx="1.6"/><path d="M7 16h.01M11 16h6" stroke-linecap="round"/><path d="M8 9.5a5 5 0 0 1 8 0M11 12a2 2 0 0 1 2 0" stroke-linecap="round"/></svg></span>
+        CPE
+        <span style="flex:1"></span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#56565e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate({{ cpeRot }});transition:transform .15s"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
+      <sc-if value="{{ exp.cpe }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:1px;padding-left:11px;margin-left:10px;border-left:1px solid rgba(255,255,255,0.07)">
+          <sc-for list="{{ cpeItems }}" as="it" hint-placeholder-count="2">
+            <a href="#" style="padding:6px 9px;border-radius:7px;text-decoration:none;color:#9b9ba3;font-size:12.5px;font-weight:450" style-hover="background:rgba(255,255,255,0.04);color:#ededef">{{ it }}</a>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <!-- Call -->
+      <button onClick="{{ toggleCall }}" style="display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:8px;background:transparent;border:none;cursor:pointer;color:#cfcfd6;font-family:inherit;font-size:13px;font-weight:550;width:100%;text-align:left" style-hover="background:rgba(255,255,255,0.045)">
+        <span style="width:22px;height:22px;border-radius:6px;background:#161619;display:grid;place-items:center;flex:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="oklch(0.78 0.13 250)" stroke-width="1.9"><path d="M4 11a8 8 0 0 1 16 0v5" stroke-linecap="round"/><rect x="3" y="11" width="3.5" height="6" rx="1.5"/><rect x="17.5" y="11" width="3.5" height="6" rx="1.5"/><path d="M20 16v1a3 3 0 0 1-3 3h-3" stroke-linecap="round"/></svg></span>
+        Call
+        <span style="flex:1"></span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#56565e" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate({{ callRot }});transition:transform .15s"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
+      <sc-if value="{{ exp.call }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:1px;padding-left:11px;margin-left:10px;border-left:1px solid rgba(255,255,255,0.07)">
+          <sc-for list="{{ callItems }}" as="it" hint-placeholder-count="3">
+            <a href="#" style="padding:6px 9px;border-radius:7px;text-decoration:none;color:#9b9ba3;font-size:12.5px;font-weight:450" style-hover="background:rgba(255,255,255,0.04);color:#ededef">{{ it }}</a>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <div style="flex:1;min-height:18px"></div>
+
+      <!-- DISPONÍVEL · ATIVAR -->
+      <div style="display:flex;align-items:center;gap:7px;padding:4px 8px 7px">
+        <span style="font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#56565e">Disponível</span>
+        <span style="height:1px;flex:1;background:rgba(255,255,255,0.06)"></span>
+      </div>
+      <button style="display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:8px;background:transparent;border:1px dashed rgba(255,255,255,0.1);cursor:pointer;color:#6e6e77;font-family:inherit;font-size:13px;font-weight:500;width:100%;text-align:left;margin-bottom:5px" style-hover="border-color:color-mix(in oklch, oklch(0.62 0.17 250) 40%, rgba(255,255,255,0.1));color:#cfcfd6">
+        <span style="width:22px;height:22px;border-radius:6px;background:#0f0f12;display:grid;place-items:center;flex:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11Z"/><circle cx="12" cy="10" r="2.4"/></svg></span>
+        Maps
+        <span style="flex:1"></span>
+        <span style="font-size:10.5px;font-weight:600;color:oklch(0.7 0.16 250);background:color-mix(in oklch, oklch(0.62 0.17 250) 12%, transparent);border-radius:6px;padding:2px 7px">Ativar</span>
+      </button>
+      <button style="display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:8px;background:transparent;border:1px dashed rgba(255,255,255,0.1);cursor:pointer;color:#6e6e77;font-family:inherit;font-size:13px;font-weight:500;width:100%;text-align:left" style-hover="border-color:color-mix(in oklch, oklch(0.62 0.17 250) 40%, rgba(255,255,255,0.1));color:#cfcfd6">
+        <span style="width:22px;height:22px;border-radius:6px;background:#0f0f12;display:grid;place-items:center;flex:none"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="7.5" r="3.2"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0" stroke-linecap="round"/></svg></span>
+        RH
+        <span style="flex:1"></span>
+        <span style="font-size:10.5px;font-weight:600;color:oklch(0.7 0.16 250);background:color-mix(in oklch, oklch(0.62 0.17 250) 12%, transparent);border-radius:6px;padding:2px 7px">Ativar</span>
+      </button>
+    </nav>
+
+    <!-- ===================== MAIN CONTENT ===================== -->
+    <main class="nx-scroll" style="flex:1;min-width:0;overflow-y:auto;background:#0a0a0b">
+      <div style="max-width:1180px;margin:0 auto;padding:22px 26px 60px">
+
+        <!-- content header -->
+        <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:22px">
+          <div style="flex:1;min-width:200px">
+            <div style="display:flex;align-items:center;gap:9px;font-size:12px;color:#6e6e77;margin-bottom:5px">
+              <span>ASU Telecom</span>
+              <span style="opacity:0.5">/</span>
+              <span style="color:#9b9ba3">Dashboard</span>
+            </div>
+            <h1 style="margin:0;font-size:23px;font-weight:600;letter-spacing:-0.02em">{{ pageTitle }}</h1>
+            <p style="margin:5px 0 0;font-size:13px;color:#82828b">{{ pageSub }}</p>
+          </div>
+          <!-- lens switcher -->
+          <div>
+            <div style="font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#56565e;margin-bottom:6px;text-align:right">Lente</div>
+            <div style="display:flex;gap:2px;background:#0f0f12;border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:3px">
+              <sc-for list="{{ lensTabs }}" as="t" hint-placeholder-count="3">
+                <button onClick="{{ t.onClick }}" style="{{ t.style }};" style-hover="color:#ededef">
+                  <span style="display:block">{{ t.label }}</span>
+                </button>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <!-- KPI STRIP -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:12px;margin-bottom:16px">
+          <sc-for list="{{ kpis }}" as="k" hint-placeholder-count="6">
+            <div style="background:#0f0f12;border:1px solid rgba(255,255,255,0.07);border-radius:12px;padding:13px 14px">
+              <div style="display:flex;align-items:center;gap:7px;margin-bottom:9px">
+                <span style="width:6px;height:6px;border-radius:50%;background:{{ k.dot }}"></span>
+                <span style="font-size:11px;font-weight:500;color:#82828b;letter-spacing:-0.01em">{{ k.label }}</span>
+              </div>
+              <div style="display:flex;align-items:baseline;gap:7px;flex-wrap:wrap">
+                <span style="font-family:'Geist Mono',monospace;font-size:21px;font-weight:550;letter-spacing:-0.02em;color:#f4f4f6">{{ k.value }}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;margin-top:8px">
+                <span style="font-family:'Geist Mono',monospace;font-size:11px;font-weight:550;border-radius:5px;padding:1px 5px;{{ k.deltaStyle }}">{{ k.delta }}</span>
+                <span style="font-size:11px;color:#6e6e77">{{ k.sub }}</span>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+
+        <!-- ============ OPERADOR PANELS ============ -->
+        <sc-if value="{{ isOperador }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div style="display:grid;grid-template-columns:1.45fr 1fr;gap:16px">
+              <!-- saúde da rede -->
+              <div style="background:#0f0f12;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:18px">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+                  <div><div style="font-size:14px;font-weight:600">Saúde da rede</div><div style="font-size:12px;color:#6e6e77;margin-top:1px">Por região · tempo real</div></div>
+                  <span style="font-size:11px;color:oklch(0.7 0.16 250);font-weight:550;cursor:pointer">Ver topologia →</span>
+                </div>
+                <div style="display:flex;gap:22px;align-items:center">
+                  <div style="position:relative;width:128px;height:128px;flex:none;border-radius:50%;background:conic-gradient(oklch(0.74 0.16 150) 0turn 0.951turn, oklch(0.8 0.14 80) 0.951turn 0.984turn, oklch(0.64 0.2 22) 0.984turn 1turn);display:grid;place-items:center">
+                    <div style="width:100px;height:100px;border-radius:50%;background:#0f0f12;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px">
+                      <span style="font-family:'Geist Mono',monospace;font-size:25px;font-weight:600;color:oklch(0.84 0.13 150)">99,2%</span>
+                      <span style="font-size:10.5px;color:#6e6e77">2.341 nós</span>
+                    </div>
+                  </div>
+                  <div style="flex:1;display:flex;flex-direction:column;gap:11px">
+                    <sc-for list="{{ regions }}" as="r" hint-placeholder-count="4">
+                      <div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+                          <span style="font-size:12.5px;color:#cfcfd6">{{ r.name }}</span>
+                          <span style="font-family:'Geist Mono',monospace;font-size:11.5px;color:{{ r.color }}">{{ r.pct }}</span>
+                        </div>
+                        <div style="height:5px;border-radius:3px;background:rgba(255,255,255,0.06);overflow:hidden"><div style="height:100%;border-radius:3px;width:{{ r.pct }};background:{{ r.color }}"></div></div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+              <!-- faturamento do mês -->
+              <div style="background:#0f0f12;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:18px;display:flex;flex-direction:column">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+                  <div style="font-size:14px;font-weight:600">Faturamento do mês</div>
+                  <span style="font-family:'Geist Mono',monospace;font-size:11px;font-weight:550;border-radius:5px;padding:1px 6px;color:oklch(0.84 0.13 150);background:color-mix(in oklch, oklch(0.74 0.16 150) 14%, transparent)">+4,8%</span>
+                </div>
+                <div style="font-family:'Geist Mono',monospace;font-size:27px;font-weight:600;letter-spacing:-0.02em;margin-bottom:2px">R$ 1,84M</div>
+                <div style="font-size:12px;color:#6e6e77;margin-bottom:14px">Meta R$ 1,90M · 88% recebido</div>
+                <svg viewBox="0 0 280 70" preserveAspectRatio="none" style="width:100%;height:70px;margin-top:auto">
+                  <defs><linearGradient id="nxRev" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="oklch(0.62 0.17 250)" stop-opacity="0.32"/><stop offset="1" stop-color="oklch(0.62 0.17 250)" stop-opacity="0"/></linearGradient></defs>
+                  <path d="{{ revArea }}" fill="url(#nxRev)"/>
+                  <path d="{{ revLine }}" fill="none" stroke="oklch(0.7 0.16 250)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <div style="display:flex;justify-content:space-between;font-family:'Geist Mono',monospace;font-size:10px;color:#56565e;margin-top:6px"><span>jan</span><span>jun</span><span>dez</span></div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1.45fr;gap:16px">
+              <!-- crescimento de assinantes -->
+              <div style="background:#0f0f12;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:18px">
+                <div style="font-size:14px;font-weight:600;margin-bottom:2px">Base de assinantes</div>
+                <div style="font-size:12px;color:#6e6e77;margin-bottom:14px">Ativos vs. inadimplentes · 12 meses</div>
+                <div style="display:flex;align-items:baseline;gap:14px;margin-bottom:14px">
+                  <div><div style="font-family:'Geist Mono',monospace;font-size:22px;font-weight:600">18.432</div><div style="font-size:11px;color:oklch(0.78 0.13 150);display:flex;align-items:center;gap:5px;margin-top:2px"><span style="width:7px;height:7px;border-radius:2px;background:oklch(0.74 0.16 150)"></span>ativos</div></div>
+                  <div><div style="font-family:'Geist Mono',monospace;font-size:22px;font-weight:600;color:#cfcfd6">1.287</div><div style="font-size:11px;color:oklch(0.82 0.14 80);display:flex;align-items:center;gap:5px;margin-top:2px"><span style="width:7px;height:7px;border-radius:2px;background:oklch(0.8 0.14 80)"></span>inadimpl.</div></div>
+                </div>
+                <svg viewBox="0 0 280 64" preserveAspectRatio="none" style="width:100%;height:64px">
+                  <path d="{{ subLine }}" fill="none" stroke="oklch(0.74 0.16 150)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="{{ churnLine }}" fill="none" stroke="oklch(0.8 0.14 80)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="3 3"/>
+                </svg>
+              </div>
+              <!-- incidentes abertos -->
+              <div style="background:#0f0f12;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:18px">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+                  <div><div style="font-size:14px;font-weight:600">Incidentes abertos</div><div style="font-size:12px;color:#6e6e77;margin-top:1px">7 ativos · 3 críticos</div></div>
+                  <span style="font-size:11px;color:oklch(0.7 0.16 250);font-weight:550;cursor:pointer">Abrir NOC →</span>
+                </div>
+                <div style="display:flex;flex-direction:column">
+                  <div style="display:grid;grid-template-columns:1fr 92px 84px 60px;gap:10px;padding:0 0 9px;font-size:10.5px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#56565e;border-bottom:1px solid rgba(255,255,255,0.06)">
+                    <span>Incidente</span><span>Região</span><span>SLA</span><span style="text-align:right">Sev.</span>
+                  </div>
+                  <sc-for list="{{ incidents }}" as="i" hint-placeholder-count="5">
+                    <div style="display:grid;grid-template-columns:1fr 92px 84px 60px;gap:10px;padding:10px 0;align-items:center;border-bottom:1px solid rgba(255,255,255,0.045)">
+                      <div style="min-width:0"><div style="font-size:12.5px;font-weight:500;color:#ededef;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ i.title }}</div><div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#6e6e77">{{ i.id }}</div></div>
+                      <span style="font-size:12px;color:#9b9ba3">{{ i.region }}</span>
+                      <span style="font-family:'Geist Mono',monospace;font-size:12px;color:{{ i.slaColor }}">{{ i.sla }}</span>
+                      <span style="justify-self:end;font-size:10.5px;font-weight:600;border-radius:5px;padding:2px 7px;{{ i.sevStyle }}">{{ i.sev }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ============ NOC PANELS ============ -->
+        <sc-if value="{{ isNoc }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div style="display:grid;grid-template-columns:1.45fr 1fr;gap:16px">
+              <!-- tráfego agregado -->
+              <div style="background:#0f0f12;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:18px">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+                  <div style="font-size:14px;font-weight:600">Tráfego agregado</div>
+                  <div style="display:flex;gap:14px;font-size:11px">
+                    <span style="color:oklch(0.78 0.13 250);display:flex;align-items:center;gap:5px"><span style="width:7px;height:7px;border-radius:2px;background:oklch(0.62 0.17 250)"></span>Ingress</span>
+                    <span style="color:oklch(0.8 0.13 295);display:flex;align-items:center;gap:5px"><span style="width:7px;height:7px;border-radius:2px;background:oklch(0.66 0.17 295)"></span>Egress</span>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:14px"><span style="font-family:'Geist Mono',monospace;font-size:27px;font-weight:600">428,6</span><span style="font-size:13px;color:#9b9ba3">Gbps pico</span></div>
+                <svg viewBox="0 0 280 84" preserveAspectRatio="none" style="width:100%;height:84px">
+                  <defs><linearGradient id="nxIng" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="oklch(0.62 0.17 250)" stop-opacity="0.3"/><stop offset="1" stop-color="oklch(0.62 0.17 250)" stop-opacity="0"/></linearGradient></defs>
+                  <path d="{{ ingArea }}" fill="url(#nxIng)"/>
+                  <path d="{{ ingLine }}" fill="none" stroke="oklch(0.7 0.16 250)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+                  <path d="{{ egrLine }}" fill="none" stroke="oklch(0.72 0.15 295)" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+                </svg>
+                <div style="display:flex;justify-content:space-between;font-family:'Geist Mono',monospace;font-size:10px;color:#56565e;margin-top:6px"><span>00h</span><span>12h</span><span>agora</span></div>
+              </div>
+              <!-- alarmes ativos -->
+              <div style="background:#0f0f12;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:18px">
+                <div style="font-size:14px;font-weight:600;margin-bottom:2px">Alarmes ativos</div>
+                <div style="font-size:12px;color:#6e6e77;margin-bottom:14px">Últimos 30 min</div>
+                <div style="display:flex;flex-direction:column;gap:9px">
+                  <sc-for list="{{ alarms }}" as="a" hint-placeholder-count="4">
+                    <div style="display:flex;align-items:center;gap:11px;padding:9px 11px;background:#0b0b0d;border:1px solid rgba(255,255,255,0.06);border-left:2px solid {{ a.color }};border-radius:9px">
+                      <span style="width:7px;height:7px;border-radius:50%;background:{{ a.color }};flex:none"></span>
+                      <div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ a.text }}</div><div style="font-family:'Geist Mono',monospace;font-size:10.5px;color:#6e6e77">{{ a.node }}</div></div>
+                      <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#56565e">{{ a.ago }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+            <!-- elementos de rede -->
+            <div style="background:#0f0f12;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:18px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+                <div><div style="font-size:14px;font-weight:600">Elementos de rede</div><div style="font-size:12px;color:#6e6e77;margin-top:1px">Multivendor · NMS</div></div>
+                <span style="font-size:11px;color:oklch(0.7 0.16 250);font-weight:550;cursor:pointer">Ver todos (2.341) →</span>
+              </div>
+              <div style="display:grid;grid-template-columns:1.4fr 90px 80px 1fr 80px;gap:12px;padding:0 0 9px;font-size:10.5px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#56565e;border-bottom:1px solid rgba(255,255,255,0.06)">
+                <span>Elemento</span><span>Tipo</span><span>Status</span><span>Carga</span><span style="text-align:right">Uptime</span>
+              </div>
+              <sc-for list="{{ elements }}" as="e" hint-placeholder-count="5">
+                <div style="display:grid;grid-template-columns:1.4fr 90px 80px 1fr 80px;gap:12px;padding:11px 0;align-items:center;border-bottom:1px solid rgba(255,255,255,0.045)">
+                  <div style="display:flex;align-items:center;gap:9px;min-width:0"><span style="width:8px;height:8px;border-radius:2px;background:{{ e.color }};flex:none"></span><div style="min-width:0"><div style="font-family:'Geist Mono',monospace;font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ e.name }}</div><div style="font-size:10.5px;color:#6e6e77">{{ e.vendor }}</div></div></div>
+                  <span style="font-size:12px;color:#9b9ba3">{{ e.type }}</span>
+                  <span style="font-size:10.5px;font-weight:600;border-radius:5px;padding:2px 8px;justify-self:start;{{ e.statusStyle }}">{{ e.status }}</span>
+                  <div style="display:flex;align-items:center;gap:8px"><div style="flex:1;height:5px;border-radius:3px;background:rgba(255,255,255,0.06);overflow:hidden"><div style="height:100%;width:{{ e.load }};background:{{ e.loadColor }};border-radius:3px"></div></div><span style="font-family:'Geist Mono',monospace;font-size:11px;color:#9b9ba3;width:34px">{{ e.load }}</span></div>
+                  <span style="justify-self:end;font-family:'Geist Mono',monospace;font-size:12px;color:#cfcfd6">{{ e.uptime }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+        <!-- ============ FINANCEIRO PANELS ============ -->
+        <sc-if value="{{ isFin }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div style="display:grid;grid-template-columns:1.45fr 1fr;gap:16px">
+              <!-- faturamento 12m -->
+              <div style="background:#0f0f12;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:18px">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+                  <div style="font-size:14px;font-weight:600">Receita recorrente (MRR)</div>
+                  <span style="font-family:'Geist Mono',monospace;font-size:11px;font-weight:550;border-radius:5px;padding:1px 6px;color:oklch(0.84 0.13 150);background:color-mix(in oklch, oklch(0.74 0.16 150) 14%, transparent)">+4,8%</span>
+                </div>
+                <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:16px"><span style="font-family:'Geist Mono',monospace;font-size:27px;font-weight:600">R$ 1,84M</span><span style="font-size:13px;color:#9b9ba3">/ mês</span></div>
+                <div style="display:flex;align-items:flex-end;gap:6px;height:96px">
+                  <sc-for list="{{ revBars }}" as="b" hint-placeholder-count="12">
+                    <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:6px;height:100%">
+                      <div style="width:100%;border-radius:4px 4px 2px 2px;height:{{ b.h }};background:{{ b.color }}"></div>
+                      <span style="font-family:'Geist Mono',monospace;font-size:9px;color:#56565e">{{ b.m }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+              <!-- inadimplência por faixa -->
+              <div style="background:#0f0f12;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:18px">
+                <div style="font-size:14px;font-weight:600;margin-bottom:2px">Inadimplência por faixa</div>
+                <div style="font-size:12px;color:#6e6e77;margin-bottom:16px">R$ 218k em 1.287 contratos</div>
+                <div style="display:flex;flex-direction:column;gap:13px">
+                  <sc-for list="{{ aging }}" as="f" hint-placeholder-count="4">
+                    <div>
+                      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><span style="font-size:12.5px;color:#cfcfd6">{{ f.label }}</span><span style="font-family:'Geist Mono',monospace;font-size:12px;color:#ededef">{{ f.value }}</span></div>
+                      <div style="height:7px;border-radius:4px;background:rgba(255,255,255,0.06);overflow:hidden"><div style="height:100%;border-radius:4px;width:{{ f.pct }};background:{{ f.color }}"></div></div>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+            <!-- faturas recentes -->
+            <div style="background:#0f0f12;border:1px solid rgba(255,255,255,0.07);border-radius:14px;padding:18px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+                <div><div style="font-size:14px;font-weight:600">Faturas recentes</div><div style="font-size:12px;color:#6e6e77;margin-top:1px">Ciclo atual · ERP</div></div>
+                <span style="font-size:11px;color:oklch(0.7 0.16 250);font-weight:550;cursor:pointer">Ver financeiro →</span>
+              </div>
+              <div style="display:grid;grid-template-columns:1.3fr 1fr 100px 96px 90px;gap:12px;padding:0 0 9px;font-size:10.5px;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#56565e;border-bottom:1px solid rgba(255,255,255,0.06)">
+                <span>Assinante</span><span>Fatura</span><span>Venc.</span><span>Valor</span><span style="text-align:right">Status</span>
+              </div>
+              <sc-for list="{{ invoices }}" as="v" hint-placeholder-count="6">
+                <div style="display:grid;grid-template-columns:1.3fr 1fr 100px 96px 90px;gap:12px;padding:11px 0;align-items:center;border-bottom:1px solid rgba(255,255,255,0.045)">
+                  <div style="display:flex;align-items:center;gap:9px;min-width:0"><div style="width:24px;height:24px;border-radius:7px;background:#1c1c20;display:grid;place-items:center;font-size:9.5px;font-weight:600;color:#9b9ba3;flex:none">{{ v.ini }}</div><span style="font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ v.name }}</span></div>
+                  <span style="font-family:'Geist Mono',monospace;font-size:12px;color:#9b9ba3">{{ v.id }}</span>
+                  <span style="font-family:'Geist Mono',monospace;font-size:12px;color:#9b9ba3">{{ v.due }}</span>
+                  <span style="font-family:'Geist Mono',monospace;font-size:12.5px;color:#ededef">{{ v.amount }}</span>
+                  <span style="justify-self:end;font-size:10.5px;font-weight:600;border-radius:5px;padding:2px 8px;{{ v.statusStyle }}">{{ v.status }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+
+      </div>
+    </main>
+
+    <!-- ===================== RIGHT RAIL (AI COPILOT) ===================== -->
+    <sc-if value="{{ railOpen }}" hint-placeholder-val="{{ true }}">
+    <aside style="width:344px;flex:none;background:#0b0b0d;border-left:1px solid rgba(255,255,255,0.07);display:flex;flex-direction:column;min-height:0">
+      <!-- copilot header -->
+      <div style="flex:none;padding:15px 16px 14px;border-bottom:1px solid rgba(255,255,255,0.07)">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="width:28px;height:28px;border-radius:9px;background:color-mix(in oklch, oklch(0.66 0.17 295) 18%, transparent);border:1px solid color-mix(in oklch, oklch(0.66 0.17 295) 32%, transparent);display:grid;place-items:center;flex:none">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="oklch(0.8 0.13 295)" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3l1.9 4.9L19 9.8l-5.1 1.9L12 17l-1.9-5.3L5 9.8l5.1-1.9z"/><path d="M19 15l.7 1.8L21.5 17.5l-1.8.7L19 20l-.7-1.8L16.5 17.5l1.8-.7z" stroke-linecap="round"/></svg>
+          </span>
+          <div style="flex:1">
+            <div style="font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:7px">Copilot NetX</div>
+            <div style="font-size:11px;color:#82828b">Conselheira · sugere, você decide</div>
+          </div>
+          <button onClick="{{ toggleRail }}" style="width:26px;height:26px;display:grid;place-items:center;background:transparent;border:1px solid rgba(255,255,255,0.08);border-radius:7px;cursor:pointer;color:#82828b" style-hover="background:rgba(255,255,255,0.05)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:11px;padding:6px 9px;background:color-mix(in oklch, oklch(0.66 0.17 295) 9%, transparent);border-radius:8px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="oklch(0.8 0.13 295)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4"/><circle cx="12" cy="12" r="9"/><path d="M12 16h.01"/></svg>
+          <span style="font-size:11px;color:oklch(0.82 0.1 295);font-weight:500">Nunca age sozinha — toda ação exige sua confirmação.</span>
+        </div>
+      </div>
+
+      <!-- copilot body (scroll) -->
+      <div class="nx-scroll" style="flex:1;overflow-y:auto;min-height:0">
+
+        <!-- suggestions -->
+        <div style="padding:15px 16px 6px">
+          <div style="font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#56565e;margin-bottom:11px">Sugestões da IA · {{ lensLabel }}</div>
+          <div style="display:flex;flex-direction:column;gap:11px">
+            <sc-for list="{{ suggestions }}" as="s" hint-placeholder-count="2">
+              <div style="border:1px dashed color-mix(in oklch, oklch(0.66 0.17 295) 38%, rgba(255,255,255,0.1));background:color-mix(in oklch, oklch(0.66 0.17 295) 6%, #0b0b0d);border-radius:12px;padding:13px">
+                <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px">
+                  <span style="font-size:9.5px;font-weight:700;letter-spacing:0.05em;text-transform:uppercase;color:oklch(0.82 0.12 295);background:color-mix(in oklch, oklch(0.66 0.17 295) 16%, transparent);border-radius:5px;padding:2px 6px">Sugestão</span>
+                  <span style="font-size:10.5px;color:#6e6e77">{{ s.meta }}</span>
+                  <span style="flex:1"></span>
+                  <span style="font-family:'Geist Mono',monospace;font-size:10px;color:#82828b">{{ s.conf }}</span>
+                </div>
+                <div style="font-size:13px;font-weight:600;margin-bottom:5px;color:#f4f4f6;line-height:1.35">{{ s.title }}</div>
+                <div style="font-size:12px;color:#9b9ba3;line-height:1.5;margin-bottom:12px">{{ s.body }}</div>
+
+                <sc-if value="{{ s.isIdle }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;gap:8px">
+                    <button onClick="{{ s.onPropose }}" style="flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:8px;background:oklch(0.62 0.17 250);border:none;border-radius:8px;cursor:pointer;color:#fff;font-family:inherit;font-size:12.5px;font-weight:600" style-hover="background:oklch(0.66 0.16 250)">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+                      {{ s.cta }}
+                    </button>
+                    <button onClick="{{ s.onDismiss }}" style="padding:8px 12px;background:transparent;border:1px solid rgba(255,255,255,0.1);border-radius:8px;cursor:pointer;color:#9b9ba3;font-family:inherit;font-size:12.5px;font-weight:500" style-hover="background:rgba(255,255,255,0.05);color:#ededef">Dispensar</button>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ s.isConfirm }}" hint-placeholder-val="{{ false }}">
+                  <div style="background:#0a0a0b;border:1px solid color-mix(in oklch, oklch(0.8 0.14 80) 30%, transparent);border-radius:9px;padding:11px">
+                    <div style="display:flex;align-items:center;gap:7px;margin-bottom:9px">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="oklch(0.82 0.14 80)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+                      <span style="font-size:11.5px;font-weight:600;color:oklch(0.86 0.12 80)">Só você aplica esta ação</span>
+                    </div>
+                    <div style="font-size:11.5px;color:#9b9ba3;line-height:1.45;margin-bottom:11px">{{ s.confirmNote }}</div>
+                    <div style="display:flex;gap:8px">
+                      <button onClick="{{ s.onConfirm }}" style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:8px;background:oklch(0.74 0.16 150);border:none;border-radius:8px;cursor:pointer;color:#06140c;font-family:inherit;font-size:12.5px;font-weight:600" style-hover="background:oklch(0.78 0.15 150)">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                        Confirmar e aplicar
+                      </button>
+                      <button onClick="{{ s.onCancel }}" style="padding:8px 12px;background:transparent;border:1px solid rgba(255,255,255,0.1);border-radius:8px;cursor:pointer;color:#9b9ba3;font-family:inherit;font-size:12.5px;font-weight:500" style-hover="background:rgba(255,255,255,0.05)">Cancelar</button>
+                    </div>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ s.isDone }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex;align-items:center;gap:9px;padding:9px 11px;background:color-mix(in oklch, oklch(0.74 0.16 150) 9%, transparent);border:1px solid color-mix(in oklch, oklch(0.74 0.16 150) 24%, transparent);border-radius:9px">
+                    <span style="width:20px;height:20px;border-radius:50%;background:oklch(0.74 0.16 150);display:grid;place-items:center;flex:none"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#06140c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+                    <div style="flex:1"><div style="font-size:12px;font-weight:600;color:oklch(0.86 0.12 150)">Aplicado por você</div><div style="font-size:10.5px;color:#6e6e77">{{ s.doneNote }}</div></div>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <!-- live event feed -->
+        <div style="padding:16px 16px 20px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+            <span style="font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#56565e">Eventos ao vivo</span>
+            <span style="width:6px;height:6px;border-radius:50%;background:oklch(0.74 0.16 150);animation:nxLivePulse 2.4s infinite"></span>
+            <span style="flex:1"></span>
+            <span style="font-size:10.5px;color:#6e6e77">tempo real</span>
+          </div>
+          <div style="display:flex;flex-direction:column">
+            <sc-for list="{{ events }}" as="ev" hint-placeholder-count="6">
+              <div style="display:flex;gap:11px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,0.045);animation:nxEventIn .35s ease both">
+                <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:none;padding-top:2px">
+                  <span style="width:7px;height:7px;border-radius:50%;background:{{ ev.color }}"></span>
+                  <span style="width:1px;flex:1;background:rgba(255,255,255,0.07)"></span>
+                </div>
+                <div style="flex:1;min-width:0">
+                  <div style="display:flex;align-items:center;gap:7px;margin-bottom:2px">
+                    <span style="font-size:9.5px;font-weight:600;letter-spacing:0.03em;color:{{ ev.color }};background:{{ ev.tagBg }};border-radius:4px;padding:1px 5px">{{ ev.module }}</span>
+                    <span style="font-family:'Geist Mono',monospace;font-size:10px;color:#56565e">{{ ev.time }}</span>
+                  </div>
+                  <div style="font-size:12px;color:#cfcfd6;line-height:1.4" data-nx-html="{{ ev.text }}">{{ ev.text }}</div>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </aside>
+    </sc-if>
+
+    <!-- collapsed rail strip -->
+    <sc-if value="{{ railClosed }}" hint-placeholder-val="{{ false }}">
+    <aside style="width:52px;flex:none;background:#0b0b0d;border-left:1px solid rgba(255,255,255,0.07);display:flex;flex-direction:column;align-items:center;padding:14px 0;gap:14px">
+      <button onClick="{{ toggleRail }}" style="width:34px;height:34px;display:grid;place-items:center;background:color-mix(in oklch, oklch(0.66 0.17 295) 16%, transparent);border:1px solid color-mix(in oklch, oklch(0.66 0.17 295) 30%, transparent);border-radius:10px;cursor:pointer;position:relative" style-hover="background:color-mix(in oklch, oklch(0.66 0.17 295) 24%, transparent)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="oklch(0.8 0.13 295)" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3l1.9 4.9L19 9.8l-5.1 1.9L12 17l-1.9-5.3L5 9.8l5.1-1.9z"/></svg>
+        <span style="position:absolute;top:-3px;right:-3px;min-width:15px;height:15px;border-radius:8px;background:oklch(0.66 0.17 295);font-size:9px;font-weight:700;color:#fff;display:grid;place-items:center;padding:0 3px">2</span>
+      </button>
+      <span style="width:7px;height:7px;border-radius:50%;background:oklch(0.74 0.16 150);animation:nxLivePulse 2.4s infinite"></span>
+    </aside>
+    </sc-if>
+
+  </div>
+
+  <!-- ===================== COMMAND PALETTE ===================== -->
+  <sc-if value="{{ paletteOpen }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ closePalette }}" style="position:fixed;inset:0;background:rgba(0,0,0,0.55);backdrop-filter:blur(3px);z-index:90;display:flex;align-items:flex-start;justify-content:center;padding-top:13vh;animation:nxFadeIn .12s ease">
+    <div onClick="{{ stop }}" style="width:600px;max-width:92vw;background:#121215;border:1px solid rgba(255,255,255,0.12);border-radius:15px;box-shadow:0 24px 60px rgba(0,0,0,0.6);overflow:hidden;animation:nxScaleIn .16s ease">
+      <div style="display:flex;align-items:center;gap:12px;padding:15px 17px;border-bottom:1px solid rgba(255,255,255,0.08)">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#6e6e77" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input autofocus value="{{ paletteQuery }}" onInput="{{ onPaletteInput }}" placeholder="Buscar assinante, equipamento, fatura, chamado ou ação…" style="flex:1;background:transparent;border:none;outline:none;color:#ededef;font-family:inherit;font-size:15px"/>
+        <span style="font-family:'Geist Mono',monospace;font-size:11px;color:#6e6e77;border:1px solid rgba(255,255,255,0.12);border-radius:5px;padding:2px 6px">esc</span>
+      </div>
+      <div class="nx-scroll" style="max-height:52vh;overflow-y:auto;padding:8px">
+        <sc-for list="{{ paletteGroups }}" as="g" hint-placeholder-count="4">
+          <div style="padding:4px 0">
+            <div style="font-size:10px;font-weight:600;letter-spacing:0.07em;text-transform:uppercase;color:#56565e;padding:6px 10px 5px">{{ g.label }}</div>
+            <sc-for list="{{ g.items }}" as="it" hint-placeholder-count="3">
+              <div style="display:flex;align-items:center;gap:12px;padding:9px 10px;border-radius:9px;cursor:pointer" style-hover="background:rgba(255,255,255,0.06)">
+                <span style="width:28px;height:28px;border-radius:8px;background:{{ it.iconBg }};display:grid;place-items:center;flex:none;color:{{ it.iconColor }};font-family:'Geist Mono',monospace;font-size:11px;font-weight:600">{{ it.glyph }}</span>
+                <div style="flex:1;min-width:0"><div style="font-size:13px;color:#ededef;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.label }}</div><div style="font-size:11px;color:#6e6e77">{{ it.hint }}</div></div>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#56565e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+              </div>
+            </sc-for>
+          </div>
+        </sc-for>
+        <sc-if value="{{ paletteEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:28px;text-align:center;color:#6e6e77;font-size:13px">Nenhum resultado para "{{ paletteQuery }}"</div>
+        </sc-if>
+      </div>
+      <div style="display:flex;align-items:center;gap:16px;padding:10px 16px;border-top:1px solid rgba(255,255,255,0.07);background:#0e0e11;font-size:11px;color:#6e6e77">
+        <span style="display:flex;align-items:center;gap:5px"><span style="font-family:'Geist Mono',monospace;border:1px solid rgba(255,255,255,0.12);border-radius:4px;padding:0 5px">↑↓</span>navegar</span>
+        <span style="display:flex;align-items:center;gap:5px"><span style="font-family:'Geist Mono',monospace;border:1px solid rgba(255,255,255,0.12);border-radius:4px;padding:0 5px">↵</span>abrir</span>
+        <span style="flex:1"></span>
+        <span style="display:flex;align-items:center;gap:6px">Busca global NetX</span>
+      </div>
+    </div>
+  </div>
+  </sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    lens: 'operador',
+    railOpen: true,
+    paletteOpen: false,
+    paletteQuery: '',
+    exp: { erp: true, nms: false, monitor: false, cpe: false, call: false },
+    applied: {},
+    events: [],
+  };
+
+  componentDidMount() {
+    try {
+      const s = JSON.parse(localStorage.getItem('netx.ui') || '{}');
+      this.setState(st => ({
+        lens: s.lens || st.lens,
+        railOpen: s.railOpen === undefined ? st.railOpen : s.railOpen,
+      }));
+    } catch (e) {}
+    this.setState({ events: [0, 1, 2, 3, 4, 5].map(i => this.mkEvent(i)) });
+    this._iv = setInterval(() => {
+      this.setState(st => ({ events: [this.mkEvent(), ...st.events].slice(0, 22) }));
+    }, 4800);
+    this._key = (e) => {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        this.setState(s => ({ paletteOpen: !s.paletteOpen, paletteQuery: '' }));
+      }
+      if (e.key === 'Escape') this.setState({ paletteOpen: false });
+    };
+    window.addEventListener('keydown', this._key);
+  }
+  componentWillUnmount() {
+    clearInterval(this._iv);
+    window.removeEventListener('keydown', this._key);
+  }
+
+  TONE(t) {
+    const m = {
+      brand: ['oklch(0.74 0.14 250)', 'color-mix(in oklch, oklch(0.62 0.17 250) 16%, transparent)', 'oklch(0.62 0.17 250)'],
+      green: ['oklch(0.84 0.13 150)', 'color-mix(in oklch, oklch(0.74 0.16 150) 15%, transparent)', 'oklch(0.74 0.16 150)'],
+      amber: ['oklch(0.86 0.13 80)', 'color-mix(in oklch, oklch(0.8 0.14 80) 15%, transparent)', 'oklch(0.8 0.14 80)'],
+      red: ['oklch(0.8 0.16 22)', 'color-mix(in oklch, oklch(0.64 0.2 22) 17%, transparent)', 'oklch(0.64 0.2 22)'],
+      violet: ['oklch(0.82 0.12 295)', 'color-mix(in oklch, oklch(0.66 0.17 295) 15%, transparent)', 'oklch(0.66 0.17 295)'],
+      muted: ['#9b9ba3', 'rgba(255,255,255,0.06)', '#71717a'],
+    };
+    return m[t] || m.muted;
+  }
+  badge(t) { const c = this.TONE(t); return `color:${c[0]};background:${c[1]};`; }
+
+  mkEvent(i) {
+    const pool = [
+      { module: 'ERP', tone: 'brand', text: 'Assinante Marcos R. Oviedo criado · Plano 600MB' },
+      { module: 'CPE', tone: 'green', text: 'ONU HW-AC9F reconectada · Sector 3' },
+      { module: 'NMS', tone: 'amber', text: 'Switch SW-CORE-02 latência 24ms acima do normal' },
+      { module: 'Monitor', tone: 'red', text: 'OLT-ASU-01 sem resposta · porta PON 4' },
+      { module: 'ERP', tone: 'green', text: 'Fatura #84193 paga · R$ 119,90' },
+      { module: 'Call', tone: 'amber', text: 'Chamado #2210 aberto · cliente sem sinal' },
+      { module: 'NMS', tone: 'brand', text: 'Serviço ativado · provisionamento concluído' },
+      { module: 'CPE', tone: 'green', text: 'TR-069 firmware aplicado em 12 CPEs' },
+      { module: 'Monitor', tone: 'green', text: 'Anel Leste normalizado · SLA restabelecido' },
+      { module: 'Call', tone: 'brand', text: 'WhatsApp · novo atendimento na fila #84' },
+    ];
+    const e = i != null ? pool[i % pool.length] : pool[Math.floor(Math.random() * pool.length)];
+    const d = new Date(Date.now() - (i != null ? i * 41000 : 0));
+    const time = d.toTimeString().slice(0, 8);
+    const c = this.TONE(e.tone);
+    return { ...e, time, color: c[0], tagBg: c[1], id: Math.random().toString(36).slice(2) };
+  }
+
+  persist() {
+    try { localStorage.setItem('netx.ui', JSON.stringify({ lens: this.state.lens, railOpen: this.state.railOpen })); } catch (e) {}
+  }
+  setLens(l) { this.setState({ lens: l }, () => this.persist()); }
+  toggleRail() { this.setState(s => ({ railOpen: !s.railOpen }), () => this.persist()); }
+  toggleMod(k) { this.setState(s => ({ exp: { ...s.exp, [k]: !s.exp[k] } })); }
+  setApplied(id, v) { this.setState(s => ({ applied: { ...s.applied, [id]: v } })); }
+
+  spark(vals, w, h, pad) {
+    pad = pad || 3;
+    const min = Math.min(...vals), max = Math.max(...vals), r = (max - min) || 1;
+    const pts = vals.map((v, i) => [(i / (vals.length - 1)) * w, h - pad - ((v - min) / r) * (h - pad * 2)]);
+    const line = 'M' + pts.map(p => p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' L');
+    const area = line + ` L${w} ${h} L0 ${h} Z`;
+    return { line, area };
+  }
+
+  renderVals() {
+    const lens = this.state.lens;
+    const applied = this.state.applied;
+
+    const KPIS = {
+      operador: [
+        { label: 'Assinantes ativos', value: '18.432', delta: '+1,2%', tone: 'green', sub: '7 dias', dot: 'oklch(0.74 0.16 150)' },
+        { label: 'Inadimplentes', value: '1.287', delta: '6,5%', tone: 'amber', sub: 'da base', dot: 'oklch(0.8 0.14 80)' },
+        { label: 'Incidentes abertos', value: '7', delta: '+2', tone: 'red', sub: 'hoje', dot: 'oklch(0.64 0.2 22)' },
+        { label: 'Faturamento do mês', value: 'R$ 1,84M', delta: '+4,8%', tone: 'green', sub: 'vs. meta', dot: 'oklch(0.62 0.17 250)' },
+        { label: 'Saúde da rede', value: '99,2%', delta: 'estável', tone: 'green', sub: '2.341 nós', dot: 'oklch(0.74 0.16 150)' },
+        { label: 'Uptime médio', value: '99,98%', delta: '30 dias', tone: 'muted', sub: 'SLA ok', dot: '#71717a' },
+      ],
+      noc: [
+        { label: 'Dispositivos online', value: '2.329', delta: '99,5%', tone: 'green', sub: 'de 2.341', dot: 'oklch(0.74 0.16 150)' },
+        { label: 'Dispositivos down', value: '12', delta: '+4', tone: 'red', sub: '6 min', dot: 'oklch(0.64 0.2 22)' },
+        { label: 'Incidentes críticos', value: '3', delta: 'P1', tone: 'red', sub: 'ativos', dot: 'oklch(0.64 0.2 22)' },
+        { label: 'Latência média', value: '8,4ms', delta: '+0,6', tone: 'amber', sub: 'backbone', dot: 'oklch(0.8 0.14 80)' },
+        { label: 'Perda de pacotes', value: '0,12%', delta: 'normal', tone: 'green', sub: 'agregado', dot: 'oklch(0.74 0.16 150)' },
+        { label: 'SLA atual', value: '99,7%', delta: '−0,2', tone: 'amber', sub: 'mês', dot: 'oklch(0.8 0.14 80)' },
+      ],
+      financeiro: [
+        { label: 'MRR', value: 'R$ 1,84M', delta: '+4,8%', tone: 'green', sub: 'recorrente', dot: 'oklch(0.62 0.17 250)' },
+        { label: 'Recebido (mês)', value: 'R$ 1,62M', delta: '88%', tone: 'green', sub: 'do emitido', dot: 'oklch(0.74 0.16 150)' },
+        { label: 'Inadimplência', value: 'R$ 218k', delta: '+3,1%', tone: 'red', sub: 'em aberto', dot: 'oklch(0.64 0.2 22)' },
+        { label: 'Taxa inadimpl.', value: '6,5%', delta: '+0,4', tone: 'amber', sub: 'da base', dot: 'oklch(0.8 0.14 80)' },
+        { label: 'Faturas emitidas', value: '18.940', delta: 'ciclo', tone: 'muted', sub: 'mês', dot: '#71717a' },
+        { label: 'Ticket médio', value: 'R$ 99,80', delta: '+R$2', tone: 'green', sub: 'por contrato', dot: 'oklch(0.62 0.17 250)' },
+      ],
+    };
+    const kpis = KPIS[lens].map(k => ({ ...k, deltaStyle: this.badge(k.tone) }));
+
+    // ---- operador data ----
+    const rev = this.spark([1.18, 1.26, 1.3, 1.39, 1.45, 1.51, 1.55, 1.6, 1.66, 1.72, 1.79, 1.84], 280, 70);
+    const sub = this.spark([15.1, 15.4, 15.9, 16.3, 16.7, 17.0, 17.3, 17.6, 17.9, 18.1, 18.3, 18.43], 280, 60, 4);
+    const churn = this.spark([1.6, 1.55, 1.5, 1.48, 1.44, 1.4, 1.38, 1.36, 1.33, 1.31, 1.3, 1.29], 280, 60, 4);
+    const regions = [
+      { name: 'Asunción Centro', pct: '99,8%', color: 'oklch(0.74 0.16 150)' },
+      { name: 'Asunción Norte', pct: '97,4%', color: 'oklch(0.8 0.14 80)' },
+      { name: 'Central · Luque', pct: '99,9%', color: 'oklch(0.74 0.16 150)' },
+      { name: 'Encarnación', pct: '94,1%', color: 'oklch(0.64 0.2 22)' },
+    ];
+    const incidents = [
+      { title: 'OLT-ASU-01 sem resposta', id: 'INC-4821', region: 'ASU Norte', sla: '00:42', slaColor: 'oklch(0.8 0.16 22)', sev: 'P1', sevStyle: this.badge('red') },
+      { title: 'Degradação anel Leste', id: 'INC-4819', region: 'Central', sla: '02:10', slaColor: 'oklch(0.86 0.13 80)', sev: 'P2', sevStyle: this.badge('amber') },
+      { title: 'Pacotes perdidos SW-09', id: 'INC-4816', region: 'Encarnación', sla: '03:55', slaColor: 'oklch(0.86 0.13 80)', sev: 'P2', sevStyle: this.badge('amber') },
+      { title: 'CPE em massa offline', id: 'INC-4810', region: 'ASU Centro', sla: '05:20', slaColor: '#9b9ba3', sev: 'P3', sevStyle: this.badge('muted') },
+      { title: 'Lentidão plano corp.', id: 'INC-4807', region: 'Luque', sla: '06:48', slaColor: '#9b9ba3', sev: 'P3', sevStyle: this.badge('muted') },
+    ];
+
+    // ---- noc data ----
+    const ing = this.spark([210, 240, 260, 250, 280, 320, 360, 410, 428, 400, 380, 350, 330], 280, 84);
+    const egr = this.spark([90, 110, 120, 115, 130, 150, 170, 190, 205, 195, 180, 165, 150], 280, 84);
+    const alarms = [
+      { text: 'Link down · uplink primário', node: 'OLT-ASU-01 → SW-CORE-02', ago: '6m', color: 'oklch(0.64 0.2 22)' },
+      { text: 'Temperatura alta 71°C', node: 'SW-CORE-02 · chassi', ago: '14m', color: 'oklch(0.8 0.14 80)' },
+      { text: 'CPU 92% sustentado', node: 'RTR-BORDER-01', ago: '22m', color: 'oklch(0.8 0.14 80)' },
+      { text: 'BGP flap detectado', node: 'AS28000 peering', ago: '28m', color: 'oklch(0.64 0.2 22)' },
+    ];
+    const elements = [
+      { name: 'OLT-ASU-01', vendor: 'Huawei MA5800', type: 'OLT', status: 'Down', statusStyle: this.badge('red'), load: '0%', loadColor: 'oklch(0.64 0.2 22)', uptime: '—', color: 'oklch(0.64 0.2 22)' },
+      { name: 'SW-CORE-02', vendor: 'Mikrotik CCR', type: 'Switch', status: 'Alerta', statusStyle: this.badge('amber'), load: '88%', loadColor: 'oklch(0.8 0.14 80)', uptime: '142d', color: 'oklch(0.8 0.14 80)' },
+      { name: 'RTR-BORDER-01', vendor: 'Juniper MX', type: 'Router', status: 'Online', statusStyle: this.badge('green'), load: '64%', loadColor: 'oklch(0.74 0.16 150)', uptime: '311d', color: 'oklch(0.74 0.16 150)' },
+      { name: 'OLT-LUQ-03', vendor: 'ZTE C320', type: 'OLT', status: 'Online', statusStyle: this.badge('green'), load: '41%', loadColor: 'oklch(0.74 0.16 150)', uptime: '208d', color: 'oklch(0.74 0.16 150)' },
+      { name: 'SW-ACC-17', vendor: 'Datacom DM4', type: 'Switch', status: 'Online', statusStyle: this.badge('green'), load: '33%', loadColor: 'oklch(0.74 0.16 150)', uptime: '94d', color: 'oklch(0.74 0.16 150)' },
+    ];
+
+    // ---- financeiro data ----
+    const revVals = [1.18, 1.26, 1.3, 1.39, 1.45, 1.51, 1.55, 1.6, 1.66, 1.72, 1.79, 1.84];
+    const months = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+    const rmax = Math.max(...revVals);
+    const revBars = revVals.map((v, i) => ({
+      h: (38 + (v / rmax) * 58).toFixed(0) + 'px',
+      color: i === revVals.length - 1 ? 'oklch(0.62 0.17 250)' : 'color-mix(in oklch, oklch(0.62 0.17 250) 42%, #1c1c20)',
+      m: months[i],
+    }));
+    const aging = [
+      { label: '1–15 dias', value: 'R$ 89k', pct: '41%', color: 'oklch(0.8 0.14 80)' },
+      { label: '16–30 dias', value: 'R$ 61k', pct: '28%', color: 'oklch(0.74 0.16 60)' },
+      { label: '31–60 dias', value: 'R$ 43k', pct: '20%', color: 'oklch(0.68 0.18 40)' },
+      { label: '+60 dias', value: 'R$ 25k', pct: '11%', color: 'oklch(0.64 0.2 22)' },
+    ];
+    const invoices = [
+      { ini: 'MO', name: 'Marcos R. Oviedo', id: '#84193', due: '10/06', amount: 'R$ 119,90', status: 'Pago', statusStyle: this.badge('green') },
+      { ini: 'AB', name: 'Ana C. Benítez', id: '#84050', due: '10/06', amount: 'R$ 249,00', status: 'Pago', statusStyle: this.badge('green') },
+      { ini: 'LF', name: 'Logística Fariña SA', id: '#84021', due: '05/06', amount: 'R$ 1.890', status: 'Atraso', statusStyle: this.badge('red') },
+      { ini: 'RG', name: 'Rubén González', id: '#83998', due: '08/06', amount: 'R$ 99,90', status: 'Pendente', statusStyle: this.badge('amber') },
+      { ini: 'CV', name: 'Carmen Villalba', id: '#83977', due: '12/06', amount: 'R$ 159,90', status: 'Aberta', statusStyle: this.badge('muted') },
+      { ini: 'JD', name: 'JD Importações', id: '#83950', due: '03/06', amount: 'R$ 2.450', status: 'Atraso', statusStyle: this.badge('red') },
+    ];
+
+    // ---- suggestions per lens ----
+    const SUG = {
+      operador: [
+        { id: 'op1', meta: 'ERP × Call', conf: '92%', title: 'Recuperar inadimplência do ciclo 10', body: '47 assinantes do ciclo de vencimento 10 estão há 3 dias em atraso. O histórico indica 68% de recuperação com um lembrete via WhatsApp.', cta: 'Preparar lembrete (47)', confirmNote: 'Vou enfileirar 47 mensagens de cobrança no módulo Call (WhatsApp). Nada é enviado até você confirmar aqui.' },
+        { id: 'op2', meta: 'Monitor × NMS', conf: '74%', title: 'Possível degradação em Asunción Norte', body: 'A latência subiu 18% nas últimas 2h em 3 OLTs da região — ainda dentro do SLA, mas com tendência de piora.', cta: 'Abrir investigação', confirmNote: 'Vou criar um incidente P3 e correlacionar os 3 elementos afetados para a equipe de NOC.' },
+      ],
+      noc: [
+        { id: 'noc1', meta: '12 dispositivos afetados', conf: '96%', title: 'Causa raiz única — OLT-ASU-01', body: '4 alarmes device.down nos últimos 6 min compartilham o uplink SW-CORE-02. Provável incidente único, não 12 separados.', cta: 'Agrupar em 1 incidente', confirmNote: 'Vou consolidar os 4 alarmes em um incidente P1 com SW-CORE-02 como causa raiz. Você revisa antes de despachar.' },
+        { id: 'noc2', meta: 'anel Leste', conf: '81%', title: 'Janela de manutenção sugerida', body: 'O tráfego no anel Leste cai 82% entre 03:00–04:30. É a janela de menor impacto para o upgrade de firmware pendente.', cta: 'Agendar janela', confirmNote: 'Vou agendar a manutenção para hoje 03:00 e notificar a equipe. A execução continua manual.' },
+      ],
+      financeiro: [
+        { id: 'fin1', meta: 'ERP', conf: '88%', title: 'Antecipar 2º aviso da régua', body: 'A faixa 1–15 dias concentra 41% da inadimplência. Antecipar o 2º aviso de D+8 para D+5 projeta −R$ 38k/mês em atraso.', cta: 'Simular nova régua', confirmNote: 'Vou rodar uma simulação da régua de cobrança sem alterar nada em produção. A mudança real exige sua aprovação.' },
+        { id: 'fin2', meta: 'contratos', conf: '90%', title: '1.204 contratos elegíveis a reajuste', body: 'Completam 12 meses em julho. O reajuste por IGPM projeta +R$ 21k de MRR sem alterar o churn esperado.', cta: 'Revisar lote', confirmNote: 'Vou montar o lote de reajuste para sua revisão item a item. Nenhum contrato é alterado automaticamente.' },
+      ],
+    };
+    const suggestions = SUG[lens]
+      .filter(s => applied[s.id] !== 'dismissed')
+      .map(s => {
+        const st = applied[s.id];
+        return {
+          ...s,
+          isIdle: !st || st === 'idle',
+          isConfirm: st === 'confirm',
+          isDone: st === 'done',
+          doneNote: 'agora · registrado no log de auditoria',
+          onPropose: () => this.setApplied(s.id, 'confirm'),
+          onConfirm: () => this.setApplied(s.id, 'done'),
+          onCancel: () => this.setApplied(s.id, 'idle'),
+          onDismiss: () => this.setApplied(s.id, 'dismissed'),
+        };
+      });
+
+    // ---- lens tabs ----
+    const lensDef = [{ id: 'operador', label: 'Operador' }, { id: 'noc', label: 'NOC' }, { id: 'financeiro', label: 'Financeiro' }];
+    const lensTabs = lensDef.map(d => {
+      const active = d.id === lens;
+      return {
+        label: d.label,
+        onClick: () => this.setLens(d.id),
+        style: `padding:6px 14px;border:none;border-radius:8px;cursor:pointer;font-family:inherit;font-size:12.5px;font-weight:550;transition:all .12s;` +
+          (active
+            ? 'background:#26262b;color:#f4f4f6;box-shadow:0 1px 2px rgba(0,0,0,0.3)'
+            : 'background:transparent;color:#82828b'),
+      };
+    });
+    const titles = {
+      operador: ['Visão do operador', 'Saúde do negócio e da rede num só painel · atualizado agora'],
+      noc: ['Centro de operações de rede', 'Topologia, tráfego e incidentes correlacionados em tempo real'],
+      financeiro: ['Visão financeira', 'Faturamento, recebimento e inadimplência do ciclo atual'],
+    };
+
+    // ---- command palette ----
+    const q = this.state.paletteQuery.trim().toLowerCase();
+    const groupsRaw = [
+      { label: 'Assinantes', items: [
+        { glyph: 'MO', label: 'Marcos R. Oviedo', hint: '#18432 · Plano 600MB · ativo', iconBg: 'color-mix(in oklch, oklch(0.62 0.17 250) 14%, transparent)', iconColor: 'oklch(0.78 0.13 250)' },
+        { glyph: 'AB', label: 'Ana Carolina Benítez', hint: '#17765 · Plano 300MB · ativo', iconBg: 'color-mix(in oklch, oklch(0.62 0.17 250) 14%, transparent)', iconColor: 'oklch(0.78 0.13 250)' },
+      ] },
+      { label: 'Equipamentos', items: [
+        { glyph: '◉', label: 'OLT-ASU-01', hint: 'Huawei MA5800 · down', iconBg: 'color-mix(in oklch, oklch(0.64 0.2 22) 15%, transparent)', iconColor: 'oklch(0.8 0.16 22)' },
+        { glyph: '⇄', label: 'SW-CORE-02', hint: 'Mikrotik CCR · alerta', iconBg: 'color-mix(in oklch, oklch(0.8 0.14 80) 15%, transparent)', iconColor: 'oklch(0.86 0.13 80)' },
+      ] },
+      { label: 'Faturas', items: [
+        { glyph: '$', label: 'Fatura #84193', hint: 'R$ 119,90 · paga', iconBg: 'color-mix(in oklch, oklch(0.74 0.16 150) 14%, transparent)', iconColor: 'oklch(0.84 0.13 150)' },
+        { glyph: '$', label: 'Fatura #84021', hint: 'R$ 1.890 · em atraso', iconBg: 'color-mix(in oklch, oklch(0.64 0.2 22) 14%, transparent)', iconColor: 'oklch(0.8 0.16 22)' },
+      ] },
+      { label: 'Chamados', items: [
+        { glyph: '#', label: 'Chamado #2210', hint: 'Sem sinal · aberto há 6m', iconBg: 'rgba(255,255,255,0.06)', iconColor: '#cfcfd6' },
+      ] },
+      { label: 'Ações', items: [
+        { glyph: '+', label: 'Criar assinante', hint: 'ERP · novo cadastro', iconBg: 'rgba(255,255,255,0.06)', iconColor: '#cfcfd6' },
+        { glyph: '⚑', label: 'Abrir incidente', hint: 'NOC · novo P1–P3', iconBg: 'rgba(255,255,255,0.06)', iconColor: '#cfcfd6' },
+        { glyph: '◍', label: 'Trocar lente → NOC', hint: 'reconfigura o dashboard', iconBg: 'color-mix(in oklch, oklch(0.66 0.17 295) 14%, transparent)', iconColor: 'oklch(0.82 0.12 295)' },
+      ] },
+      { label: 'Ir para', items: [
+        { glyph: '▦', label: 'Dashboard', hint: 'núcleo', iconBg: 'rgba(255,255,255,0.06)', iconColor: '#cfcfd6' },
+        { glyph: '▤', label: 'Topologia', hint: 'NMS', iconBg: 'rgba(255,255,255,0.06)', iconColor: '#cfcfd6' },
+        { glyph: '▥', label: 'Financeiro', hint: 'ERP', iconBg: 'rgba(255,255,255,0.06)', iconColor: '#cfcfd6' },
+      ] },
+    ];
+    const paletteGroups = q
+      ? groupsRaw.map(g => ({ ...g, items: g.items.filter(it => (it.label + ' ' + it.hint).toLowerCase().includes(q)) })).filter(g => g.items.length)
+      : groupsRaw;
+
+    const rot = (b) => b ? '90deg' : '0deg';
+
+    return {
+      lens,
+      lensLabel: lens === 'operador' ? 'Operador' : lens === 'noc' ? 'NOC' : 'Financeiro',
+      isOperador: lens === 'operador', isNoc: lens === 'noc', isFin: lens === 'financeiro',
+      pageTitle: titles[lens][0], pageSub: titles[lens][1],
+      lensTabs, kpis,
+      regions, incidents, revArea: rev.area, revLine: rev.line, subLine: sub.line, churnLine: churn.line,
+      alarms, elements, ingArea: ing.area, ingLine: ing.line, egrLine: egr.line,
+      revBars, aging, invoices,
+      suggestions,
+      events: this.state.events,
+      railOpen: this.state.railOpen, railClosed: !this.state.railOpen,
+      toggleRail: () => this.toggleRail(),
+      exp: this.state.exp,
+      erpRot: rot(this.state.exp.erp), nmsRot: rot(this.state.exp.nms), monitorRot: rot(this.state.exp.monitor), cpeRot: rot(this.state.exp.cpe), callRot: rot(this.state.exp.call),
+      toggleErp: () => this.toggleMod('erp'), toggleNms: () => this.toggleMod('nms'), toggleMonitor: () => this.toggleMod('monitor'), toggleCpe: () => this.toggleMod('cpe'), toggleCall: () => this.toggleMod('call'),
+      erpItems: ['Financeiro', 'Faturamento', 'Clientes', 'Provisionamento', 'Estoque'],
+      nmsItems: ['Topologia', 'Dispositivos', 'Configurações'],
+      monitorItems: ['Monitoramento', 'Alarmes'],
+      cpeItems: ['TR-069', 'OLTs'],
+      callItems: ['Atendimento', 'WhatsApp', 'Instagram'],
+      paletteOpen: this.state.paletteOpen,
+      openPalette: () => this.setState({ paletteOpen: true, paletteQuery: '' }),
+      closePalette: () => this.setState({ paletteOpen: false }),
+      stop: (e) => e.stopPropagation(),
+      paletteQuery: this.state.paletteQuery,
+      onPaletteInput: (e) => this.setState({ paletteQuery: e.target.value }),
+      paletteGroups,
+      paletteEmpty: q && paletteGroups.length === 0,
+    };
+  }
+}
+</script>
+</body>
+</html>
