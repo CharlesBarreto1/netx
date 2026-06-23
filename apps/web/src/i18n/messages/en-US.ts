@@ -243,6 +243,14 @@ const messages = {
     collapse: 'Collapse NEXUS',
     expand: 'Open NEXUS',
   },
+  dashboardCockpit: {
+    breadcrumb: 'Dashboard',
+    lens: 'Lens',
+    lensName: { operador: 'Operator', noc: 'NOC', financeiro: 'Financial' },
+    operador: { title: 'Operator view', subtitle: 'Network, subscribers and ops in one place' },
+    noc: { title: 'Network operations (NOC)', subtitle: 'Traffic, elements and alarms in real time' },
+    financeiro: { title: 'Financial view', subtitle: 'Revenue, delinquency and billing' },
+  },
   customers: {
     title: 'Customers',
     new: 'New customer',
