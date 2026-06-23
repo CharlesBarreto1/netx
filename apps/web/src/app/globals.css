@@ -54,6 +54,11 @@
   --accent-muted: 217 91% 96%;
   --accent-strong: 217 91% 52%;
 
+  /* IA / Copiloto — violeta (claro). Exclusivo da IA. */
+  --ai: 272 60% 55%;
+  --ai-foreground: 0 0% 100%;
+  --ai-muted: 272 85% 96%;
+
   /* Status semânticos */
   --danger: 0 72% 51%;
   --danger-foreground: 0 0% 100%;
@@ -93,48 +98,55 @@
 }
 
 .dark {
-  --bg: 220 20% 7%;
-  --surface: 220 18% 10%;
-  --surface-muted: 220 16% 13%;
-  --surface-hover: 220 14% 17%;
-  --surface-elevated: 220 17% 12%;
+  /* Superfícies — paleta near-black neutra do handoff (design_handoff_netx_shell). */
+  --bg: 240 5% 4%;             /* bg-app      #0a0a0b */
+  --surface: 240 9% 6%;        /* bg-card     #0f0f12 */
+  --surface-muted: 240 8% 5%;  /* bg-panel    #0b0b0d */
+  --surface-hover: 240 7% 12%; /* bg-pill     #1c1c20 */
+  --surface-elevated: 240 8% 8%; /* bg-elevated #121215 */
 
-  --border: 220 13% 18%;
-  --border-strong: 220 13% 28%;
+  --border: 240 6% 14%;        /* ~ rgba(255,255,255,0.07) sobre near-black */
+  --border-strong: 240 6% 22%;
 
-  --text: 210 20% 98%;
-  --text-muted: 215 15% 72%;
-  --text-subtle: 215 12% 55%;
+  --text: 240 6% 93%;          /* text-primary  #ededef */
+  --text-muted: 240 4% 62%;    /* text-muted    #9b9ba3 */
+  --text-subtle: 240 5% 50%;   /* text-dim      #82828b */
 
-  --accent: 217 91% 63%;
-  --accent-foreground: 220 20% 7%;
-  --accent-muted: 217 60% 18%;
-  --accent-strong: 217 91% 70%;
+  /* Marca (azul) — handoff brand */
+  --accent: 222 83% 62%;
+  --accent-foreground: 0 0% 100%;
+  --accent-muted: 222 55% 16%;
+  --accent-strong: 220 85% 70%;
 
-  --danger: 0 74% 60%;
+  /* IA / Copiloto — VIOLETA, exclusivo da IA ("proposta, não ação"). */
+  --ai: 272 62% 64%;
+  --ai-foreground: 0 0% 100%;
+  --ai-muted: 272 45% 18%;
+
+  --danger: 8 78% 61%;
   --danger-foreground: 0 0% 100%;
-  --danger-muted: 0 40% 20%;
+  --danger-muted: 8 45% 18%;
 
-  --success: 142 65% 50%;
-  --success-foreground: 0 0% 100%;
-  --success-muted: 142 40% 16%;
+  --success: 150 58% 50%;
+  --success-foreground: 150 60% 6%;
+  --success-muted: 150 40% 14%;
 
-  --warning: 38 92% 58%;
-  --warning-foreground: 30 80% 10%;
-  --warning-muted: 38 40% 16%;
+  --warning: 45 90% 57%;
+  --warning-foreground: 40 80% 8%;
+  --warning-muted: 42 45% 15%;
 
   --info: 199 84% 56%;
-  --info-foreground: 220 20% 7%;
+  --info-foreground: 240 6% 4%;
   --info-muted: 199 40% 16%;
 
-  --severity-online: 142 65% 50%;
-  --severity-warn:   38 92% 58%;
-  --severity-offline: 220 9% 45%;
-  --severity-error: 0 74% 60%;
+  --severity-online: 150 58% 50%;
+  --severity-warn:   45 90% 57%;
+  --severity-offline: 240 5% 40%;
+  --severity-error: 8 78% 61%;
 
-  --ring: 217 91% 63%;
+  --ring: 222 83% 62%;
   --shadow: 0 0% 0%;
-  --shadow-accent: 217 91% 60%;
+  --shadow-accent: 222 83% 60%;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -166,6 +178,10 @@
   --color-accent-foreground: hsl(var(--accent-foreground));
   --color-accent-muted: hsl(var(--accent-muted));
   --color-accent-strong: hsl(var(--accent-strong));
+
+  --color-ai: hsl(var(--ai));
+  --color-ai-foreground: hsl(var(--ai-foreground));
+  --color-ai-muted: hsl(var(--ai-muted));
 
   --color-danger: hsl(var(--danger));
   --color-danger-foreground: hsl(var(--danger-foreground));

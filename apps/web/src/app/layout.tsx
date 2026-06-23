@@ -15,15 +15,16 @@
  */
 import type { Metadata } from 'next';
 import type { CSSProperties } from 'react';
-import '@fontsource-variable/inter';
-import '@fontsource-variable/jetbrains-mono';
+import '@fontsource-variable/geist';
+import '@fontsource-variable/geist-mono';
 import './globals.css';
 
 // Mesmos CSS vars que o `next/font` setava — agora apontando pras famílias
-// self-hosted, com fallback de sistema.
+// self-hosted. Geist + Geist Mono = sistema tipográfico do design (handoff do
+// shell). Ver design_handoff_netx_shell/README.md.
 const FONT_VARS = {
-  '--font-sans': "'Inter Variable', system-ui, -apple-system, Segoe UI, sans-serif",
-  '--font-mono': "'JetBrains Mono Variable', ui-monospace, SFMono-Regular, monospace",
+  '--font-sans': "'Geist Variable', system-ui, -apple-system, Segoe UI, sans-serif",
+  '--font-mono': "'Geist Mono Variable', ui-monospace, SFMono-Regular, monospace",
 } as CSSProperties;
 
 export const metadata: Metadata = {
