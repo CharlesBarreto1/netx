@@ -880,7 +880,9 @@ export class ProvisioningService {
     await this.bus.emit<OntSwappedPayload>(
       CPE_ONT_SWAPPED,
       tenantId,
-      { contractId, ontId: ont.id, oldSn, newSn, network: 'own', status: res.status },
+      // rede própria: a ONT antiga foi DELETADA (linha acima) e installCustomer
+      // criou uma nova — usar res.ontId (a nova), não ont.id (a removida).
+      { contractId, ontId: res.ontId, oldSn, newSn, network: 'own', status: res.status },
       'netx-cpe',
     );
     return { status: res.status };
