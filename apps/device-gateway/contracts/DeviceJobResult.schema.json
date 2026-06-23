@@ -1,0 +1,175 @@
+{
+  "$ref": "#/definitions/DeviceJobResult",
+  "definitions": {
+    "DeviceJobResult": {
+      "type": "object",
+      "properties": {
+        "jobId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "deviceId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "ok": {
+          "type": "boolean"
+        },
+        "finishedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "durationMs": {
+          "type": "number",
+          "minimum": 0
+        },
+        "data": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "connectivity-test"
+                },
+                "ssh": {
+                  "type": "object",
+                  "properties": {
+                    "reachable": {
+                      "type": "boolean"
+                    },
+                    "detail": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "reachable"
+                  ],
+                  "additionalProperties": false
+                },
+                "netconf": {
+                  "$ref": "#/definitions/DeviceJobResult/properties/data/anyOf/0/properties/ssh"
+                },
+                "snmp": {
+                  "$ref": "#/definitions/DeviceJobResult/properties/data/anyOf/0/properties/ssh"
+                }
+              },
+              "required": [
+                "kind",
+                "ssh",
+                "netconf",
+                "snmp"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "store-credential"
+                },
+                "username": {
+                  "type": "string"
+                },
+                "passwordEnc": {
+                  "type": "string"
+                },
+                "sshKeyEnc": {
+                  "type": "string"
+                },
+                "snmpCommunityEnc": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "username"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "sync-snmp-config"
+                },
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "written",
+                    "removed",
+                    "noop"
+                  ]
+                },
+                "file": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "kind",
+                "action",
+                "file"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "run-playbook"
+                },
+                "playbookId": {
+                  "type": "string"
+                },
+                "output": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "playbookId",
+                "output"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "backup-config"
+                },
+                "config": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "config"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "error": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "jobId",
+        "deviceId",
+        "ok",
+        "finishedAt",
+        "durationMs"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

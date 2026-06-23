@@ -1,0 +1,62 @@
+# NetX NMS — infra de dev. Alvo: instância on-prem por cliente (provedor ~5k assinantes).
+#   docker compose up -d
+name: netx-nms
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:2.17.2-pg16
+    environment:
+      POSTGRES_USER: netx
+      POSTGRES_PASSWORD: netx
+      POSTGRES_DB: netx_nms
+    ports:
+      - '5432:5432'
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U netx -d netx_nms']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  telegraf:
+    image: telegraf:1.32
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    # Carrega a config base + os arquivos SNMP gerados pelo gateway em telegraf.d/,
+    # recarregando sozinho quando mudam (ADR 0003).
+    command:
+      [
+        'telegraf',
+        '--config',
+        '/etc/telegraf/telegraf.conf',
+        '--config-directory',
+        '/etc/telegraf/telegraf.d',
+        '--watch-config',
+        'poll',
+      ]
+    ports:
+      - '162:162/udp' # receptor de traps SNMP
+    volumes:
+      - ./telegraf/telegraf.conf:/etc/telegraf/telegraf.conf:ro
+      - ./telegraf/telegraf.d:/etc/telegraf/telegraf.d:ro
+      - ./telegraf/mibs:/usr/share/snmp/mibs:ro
+
+volumes:
+  timescale-data:
+  redis-data:

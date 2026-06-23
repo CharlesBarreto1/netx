@@ -1,0 +1,195 @@
+export interface Device {
+  id: string;
+  hostname: string;
+  mgmtIp: string;
+  vendor: string;
+  model: string | null;
+  site: string | null;
+}
+export interface DeviceInterface {
+  name: string;
+  description: string | null;
+  adminStatus: string;
+  operStatus: string;
+  speedBps: number | null;
+}
+export interface InterfaceRate {
+  ifName: string;
+  inBps: number | null;
+  outBps: number | null;
+  inErrors: number | null;
+  outErrors: number | null;
+  operStatus: number | null;
+}
+export interface OpticalReading {
+  ifName: string;
+  rxDbm: number | null;
+  txDbm: number | null;
+  moduleTempC: number | null;
+}
+export interface SystemReading {
+  component: string;
+  tempC: number | null;
+  cpuPct: number | null;
+}
+export interface DeviceEvent {
+  ts: string;
+  type: string;
+  severity: 'info' | 'warning' | 'error' | 'critical';
+  source: string;
+  message: string | null;
+}
+export interface Playbook {
+  id: string;
+  name: string;
+  command: string;
+}
+export interface PlaybookResult {
+  playbookId: string;
+  command: string;
+  output: string;
+}
+export interface ConfigSnapshot {
+  id: string;
+  gitHash: string;
+  diffSummary: string | null;
+  capturedAt: string;
+}
+export interface SnapshotDetail extends ConfigSnapshot {
+  config: string;
+  diff: string;
+}
+export interface BackupResult {
+  changed: boolean;
+  gitHash: string;
+  diffSummary?: string;
+}
+
+// ── Autenticação (ADR 0007) ─────────────────────────────────────────────────
+export type Role = 'admin' | 'operator' | 'viewer';
+export interface AuthUser {
+  id: string;
+  username: string;
+  role: Role;
+}
+export interface UserView extends AuthUser {
+  name: string | null;
+  active: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+}
+
+const TOKEN_KEY = 'netx_nms_token';
+
+/** Disparado quando o token é rejeitado (401), para a UI voltar ao login. */
+export const onUnauthorized = new EventTarget();
+
+export function getToken(): string | null {
+  return localStorage.getItem(TOKEN_KEY);
+}
+function setToken(token: string): void {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+export function clearToken(): void {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  const token = getToken();
+  return { ...(token ? { authorization: `Bearer ${token}` } : {}), ...extra };
+}
+
+/** Trata 401 (limpa token + sinaliza UI) e erros; devolve corpo JSON ou undefined em 204. */
+async function handle<T>(r: Response, path: string): Promise<T> {
+  if (r.status === 401) {
+    clearToken();
+    onUnauthorized.dispatchEvent(new Event('unauthorized'));
+    throw new Error('Sessão expirada — faça login novamente');
+  }
+  if (!r.ok) {
+    const body = (await r.json().catch(() => ({}))) as { message?: string };
+    throw new Error(body.message ?? `${path} → HTTP ${r.status}`);
+  }
+  if (r.status === 204) return undefined as T;
+  return r.json() as Promise<T>;
+}
+
+async function get<T>(path: string): Promise<T> {
+  return handle<T>(await fetch(`/api${path}`, { headers: authHeaders() }), path);
+}
+
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const r = await fetch(`/api${path}`, {
+    method: 'POST',
+    headers: authHeaders({ 'content-type': 'application/json' }),
+    body: JSON.stringify(body),
+  });
+  return handle<T>(r, path);
+}
+
+async function putJson<T>(path: string, body: unknown): Promise<T> {
+  const r = await fetch(`/api${path}`, {
+    method: 'PUT',
+    headers: authHeaders({ 'content-type': 'application/json' }),
+    body: JSON.stringify(body),
+  });
+  return handle<T>(r, path);
+}
+
+async function del(path: string): Promise<void> {
+  await handle<void>(
+    await fetch(`/api${path}`, { method: 'DELETE', headers: authHeaders() }),
+    path,
+  );
+}
+
+export interface CopilotAnswer {
+  question: string;
+  answer: string;
+}
+
+async function post<T>(path: string): Promise<T> {
+  const r = await fetch(`/api${path}`, { method: 'POST', headers: authHeaders() });
+  return handle<T>(r, path);
+}
+
+export interface LoginResult {
+  token: string;
+  user: AuthUser;
+}
+
+export const api = {
+  login: async (username: string, password: string): Promise<AuthUser> => {
+    const r = await postJson<LoginResult>('/auth/login', { username, password });
+    setToken(r.token);
+    return r.user;
+  },
+  logout: () => clearToken(),
+  me: () => get<AuthUser>('/auth/me'),
+  users: {
+    list: () => get<UserView[]>('/users'),
+    create: (body: { username: string; password: string; name?: string; role: Role }) =>
+      postJson<UserView>('/users', body),
+    update: (
+      id: string,
+      body: { name?: string | null; password?: string; role?: Role; active?: boolean },
+    ) => putJson<UserView>(`/users/${id}`, body),
+    remove: (id: string) => del(`/users/${id}`),
+  },
+  devices: () => get<Device[]>('/devices'),
+  interfaces: (id: string) => get<DeviceInterface[]>(`/devices/${id}/interfaces`),
+  rates: (id: string) => get<InterfaceRate[]>(`/devices/${id}/metrics/interfaces`),
+  optical: (id: string) => get<OpticalReading[]>(`/devices/${id}/metrics/optical`),
+  system: (id: string) => get<SystemReading[]>(`/devices/${id}/metrics/system`),
+  events: (id: string) => get<DeviceEvent[]>(`/devices/${id}/events`),
+  playbooks: () => get<Playbook[]>('/playbooks'),
+  runPlaybook: (id: string, pb: string) =>
+    post<PlaybookResult>(`/devices/${id}/playbooks/${pb}/run`),
+  snapshots: (id: string) => get<ConfigSnapshot[]>(`/devices/${id}/snapshots`),
+  snapshot: (id: string, snapId: string) =>
+    get<SnapshotDetail>(`/devices/${id}/snapshots/${snapId}`),
+  backup: (id: string) => post<BackupResult>(`/devices/${id}/backup`),
+  aiStatus: () => get<{ available: boolean }>('/ai/status'),
+  copilot: (id: string, question: string) =>
+    postJson<CopilotAnswer>(`/devices/${id}/copilot`, { question }),
+};

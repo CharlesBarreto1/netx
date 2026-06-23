@@ -1,0 +1,156 @@
+// NetX NMS — modelo relacional mínimo do MVP (AGENTS.md / docs/MVP-SPEC.md).
+// Séries temporais (MetricPoint) NÃO ficam aqui: vão pro TimescaleDB via Telegraf.
+// Credenciais de equipamento NÃO ficam aqui: só `credentialsRef` (ponteiro pro cofre).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Vendor {
+  juniper // MVP: apenas Juniper. Outros vendors são fase 2.
+}
+
+/// Papéis de acesso (ADR 0007). viewer = só leitura; operator = roda playbooks/backup/terminal;
+/// admin = tudo + gerencia usuários. Toda ação contra equipamento amarra a um destes (AGENTS.md §5).
+enum Role {
+  admin
+  operator
+  viewer
+}
+
+enum IfStatus {
+  up
+  down
+  unknown
+}
+
+enum EventSeverity {
+  info
+  warning
+  error
+  critical
+}
+
+/// Usuário de acesso ao NMS (ADR 0007). A senha é guardada como hash scrypt (nunca em claro).
+/// O `username` vira o `actor` da auditoria — toda ação rastreia a um humano (AGENTS.md §5).
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  username     String   @unique
+  /// Nome de exibição opcional (ex.: "Charles Barreto").
+  name         String?
+  /// Hash scrypt no formato `scrypt:N:r:p:salt:hash` (base64). Nunca a senha em claro.
+  passwordHash String   @map("password_hash")
+  role         Role     @default(viewer)
+  /// Conta desativada não loga, mas o histórico de auditoria continua válido.
+  active       Boolean  @default(true)
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("app_user")
+}
+
+model Device {
+  id             String   @id @default(uuid()) @db.Uuid
+  hostname       String
+  mgmtIp         String   @map("mgmt_ip")
+  vendor         Vendor   @default(juniper)
+  model          String?
+  osVersion      String?  @map("os_version")
+  site           String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  credential DeviceCredential?
+  interfaces Interface[]
+  events     Event[]
+  snapshots  ConfigSnapshot[]
+  auditLogs  AuditLog[]
+
+  @@unique([mgmtIp])
+  @@map("device")
+}
+
+/// Credenciais de equipamento CIFRADAS (AES-256-GCM, formato v1:iv:tag:ct). A chave-mestra
+/// vive só no device-gateway; a API guarda estes blobs mas NÃO os decifra (ADR 0002, §4).
+model DeviceCredential {
+  id               String   @id @default(uuid()) @db.Uuid
+  deviceId         String   @unique @map("device_id") @db.Uuid
+  /// Username não é segredo — fica em claro para exibição.
+  username         String
+  passwordEnc      String?  @map("password_enc")
+  sshKeyEnc        String?  @map("ssh_key_enc")
+  snmpCommunityEnc String?  @map("snmp_community_enc")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@map("device_credential")
+}
+
+model Interface {
+  id          String   @id @default(uuid()) @db.Uuid
+  deviceId    String   @map("device_id") @db.Uuid
+  name        String
+  description String?
+  adminStatus IfStatus @default(unknown) @map("admin_status")
+  operStatus  IfStatus @default(unknown) @map("oper_status")
+  speedBps    BigInt?  @map("speed_bps")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([deviceId, name])
+  @@map("interface")
+}
+
+model Event {
+  id       String        @id @default(uuid()) @db.Uuid
+  deviceId String        @map("device_id") @db.Uuid
+  severity EventSeverity
+  type     String
+  message  String
+  ts       DateTime
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, ts])
+  @@map("event")
+}
+
+model ConfigSnapshot {
+  id          String   @id @default(uuid()) @db.Uuid
+  deviceId    String   @map("device_id") @db.Uuid
+  /// Hash do commit no repositório git de backups.
+  gitHash     String   @map("git_hash")
+  diffSummary String?  @map("diff_summary")
+  capturedAt  DateTime @default(now()) @map("captured_at")
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, capturedAt])
+  @@map("config_snapshot")
+}
+
+/// Registro IMUTÁVEL de toda ação contra equipamento (AGENTS.md §5).
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  /// Humano que disparou. Ações nunca são atribuídas à IA.
+  actor     String
+  deviceId  String?  @map("device_id") @db.Uuid
+  action    String
+  command   String?
+  diff      String?
+  result    String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  device Device? @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+
+  @@index([deviceId, createdAt])
+  @@map("audit_log")
+}

@@ -1,0 +1,125 @@
+# NetX NMS — stack de PRODUÇÃO (instância on-prem por cliente).
+# As imagens das apps vêm do GHCR (publicadas pelo GitHub Actions). Nada é compilado aqui.
+#   docker compose -f docker-compose.prod.yml --env-file .env pull
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d
+name: netx-nms
+
+# Imagens vêm de ${REGISTRY}/${IMAGE_NAMESPACE}/netx-nms-<app>:${IMAGE_TAG} (ver .env).
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:2.17.2-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  telegraf:
+    image: telegraf:1.32
+    restart: unless-stopped
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    command:
+      [
+        'telegraf',
+        '--config',
+        '/etc/telegraf/telegraf.conf',
+        '--config-directory',
+        '/etc/telegraf/telegraf.d',
+        '--watch-config',
+        'poll',
+      ]
+    ports:
+      - '${TRAP_PORT:-162}:162/udp' # receptor de traps SNMP
+    volumes:
+      - ./telegraf/telegraf.prod.conf:/etc/telegraf/telegraf.conf:ro
+      - telegraf-d:/etc/telegraf/telegraf.d
+      - telegraf-mibs:/usr/share/snmp/mibs
+
+  device-gateway:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-charlesbarreto1}/netx-nms-device-gateway:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CONCURRENCY: ${GATEWAY_CONCURRENCY:-4}
+      # Chave-mestra AES-256 do cofre — SOMENTE este serviço a possui (AGENTS.md §4).
+      MASTER_KEY: ${MASTER_KEY}
+      TELEGRAF_CONFIG_DIR: /etc/telegraf/telegraf.d
+      TERMINAL_HOST: 0.0.0.0
+      TERMINAL_PORT: '8766'
+    volumes:
+      # Escreve os configs SNMP que o Telegraf lê (ADR 0003).
+      - telegraf-d:/etc/telegraf/telegraf.d
+      - telegraf-mibs:/usr/share/snmp/mibs
+
+  api:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-charlesbarreto1}/netx-nms-api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@timescaledb:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://redis:6379
+      GATEWAY_TERMINAL_URL: ws://device-gateway:8766
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_TTL: ${JWT_TTL:-12h}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      BACKUP_REPO_DIR: /data/config-backups
+      BACKUP_CRON: ${BACKUP_CRON:-0 3 * * *}
+      ANOMALY_CRON: ${ANOMALY_CRON:-*/10 * * * *}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LLM_MODEL_SUMMARY: ${LLM_MODEL_SUMMARY:-claude-haiku-4-5}
+      LLM_MODEL_COPILOT: ${LLM_MODEL_COPILOT:-claude-sonnet-4-6}
+    volumes:
+      - config-backups:/data/config-backups
+
+  web:
+    image: ${REGISTRY:-ghcr.io}/${IMAGE_NAMESPACE:-charlesbarreto1}/netx-nms-web:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - '${WEB_PORT:-8080}:80'
+
+volumes:
+  timescale-data:
+  redis-data:
+  telegraf-d:
+  telegraf-mibs:
+  config-backups:
