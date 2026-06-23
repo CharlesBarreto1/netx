@@ -284,3 +284,11 @@ expand-contract, e só faz merge quando comprovadamente reversível.
     receber `netx-erp.contract.created`, o NMS reserva recursos), mais costuras
     conforme a necessidade, e persistir o dedup de idempotência (hoje em memória)
     se/quando o consumidor virar crítico.
+- 2026-06-22 — **Testes do core-sdk** (`packages/core-sdk/src/*.spec.ts`):
+  licensing (entitlement), manifesto (defineModule/resolveLoadOrder), envelope
+  (makeEnvelope/Noop). Type-checados via `nx build @netx/core-sdk` (verde).
+  **BLOQUEIO conhecido (pré-existente, fora do ecossistema)**: o runner jest está
+  quebrado no monorepo inteiro — `apps/mobile` (react-native) puxa `jest-mock@29`
+  que é hasteado e conflita com o `jest@30` do backend
+  (`clearMocksOnScope is not a function`). `nx test @netx/shared` falha igual.
+  Os specs rodam quando o toolchain for alinhado (tarefa separada).
