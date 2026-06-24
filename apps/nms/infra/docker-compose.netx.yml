@@ -132,6 +132,9 @@ services:
       RABBITMQ_URL: ${RABBITMQ_URL}
       EVENTBUS_CONSUME: ${EVENTBUS_CONSUME:-true}
       EVENTBUS_EXCHANGE: ${EVENTBUS_EXCHANGE:-netx.events}
+      # pnpm 11: o entrypoint roda `pnpm exec prisma migrate deploy`; sem isto ele
+      # dispara um install implícito a cada exec. Deps já vêm instaladas na imagem.
+      npm_config_verify_deps_before_run: 'false'
     # host.docker.internal → alcança serviços do NetX no host (RabbitMQ bare-metal).
     extra_hosts:
       - 'host.docker.internal:host-gateway'

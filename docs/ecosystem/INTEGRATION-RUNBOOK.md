@@ -134,12 +134,13 @@ Python 3.12 (no container do gateway) e colisão de banco (Timescale próprio).
 - Costura com o NetX por env: `CORE_JWT_SECRET` (SSO), `RABBITMQ_URL`→rabbit do
   host (`host.docker.internal`) + `EVENTBUS_CONSUME=true` (eventos), api publicada
   em `:3300` (o gateway aponta `NMS_SERVICE_PORT=3300`). Entitlement já no gateway.
-- Rodar (na VPS):
+- Rodar (na VPS) — **1 comando** (gera o `.env.netx` puxando CORE_JWT_SECRET +
+  RabbitMQ do NetX e gerando os segredos do NMS; idempotente):
   ```
-  cd /opt/netx/apps/nms/infra
-  cp .env.netx.example .env.netx     # preencher segredos (ver comentários)
-  docker compose -f docker-compose.netx.yml --env-file .env.netx up -d --build
+  cd /opt/netx/apps/nms/infra && sudo bash up-netx.sh
   ```
+  (Manual, se preferir: `cp .env.netx.example .env.netx` → preencher →
+  `docker compose -f docker-compose.netx.yml --env-file .env.netx up -d --build`.)
 - Pré-requisito do canal 4: o api-gateway do NetX precisa estar no build com o
   `NmsProxyController` (pós-`netx-update`). Equipamento (Juniper): o gateway precisa
   de rota até a rede (descomentar `network_mode: host` no serviço device-gateway).
