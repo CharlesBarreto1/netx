@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuditModule } from '../audit/audit.module';
+import { BrBillingModule } from '../br-billing/br-billing.module';
 import { ContractsModule } from '../contracts/contracts.module';
 
 import { EfiAutogenService } from './efi-autogen.service';
@@ -18,7 +19,7 @@ import { EfiWebhookController } from './efi-webhook.controller';
  * PrismaModule e CryptoModule são @Global; AuditModule é importado.
  */
 @Module({
-  imports: [AuditModule, ContractsModule],
+  imports: [AuditModule, BrBillingModule, ContractsModule],
   controllers: [EfiController, EfiWebhookController],
   providers: [EfiClientService, EfiConfigService, EfiChargesService, EfiAutogenService],
   exports: [EfiChargesService, EfiConfigService],

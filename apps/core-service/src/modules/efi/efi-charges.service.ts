@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  type OnModuleInit,
 } from '@nestjs/common';
 import {
   EfiChargeStatus as PrismaEfiChargeStatus,
@@ -22,6 +23,7 @@ import {
 } from '@netx/shared';
 
 import { AuditService } from '../audit/audit.service';
+import { BrBillingService } from '../br-billing/br-billing.service';
 import { ContractInvoicesService } from '../contracts/contract-invoices.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -30,7 +32,7 @@ import { EfiConfigService } from './efi-config.service';
 import type { EfiNotificationResponse, EfiResolvedConfig } from './efi.types';
 
 @Injectable()
-export class EfiChargesService {
+export class EfiChargesService implements OnModuleInit {
   private readonly logger = new Logger(EfiChargesService.name);
 
   constructor(
@@ -39,7 +41,15 @@ export class EfiChargesService {
     private readonly client: EfiClientService,
     private readonly invoices: ContractInvoicesService,
     private readonly audit: AuditService,
+    private readonly brBilling: BrBillingService,
   ) {}
+
+  /** Registra o emissor EFI no dispatcher (evita ciclo de imports). */
+  onModuleInit(): void {
+    this.brBilling.register('EFI', (tenantId, actor, invoiceId) =>
+      this.createForInvoice(tenantId, actor, invoiceId, {}),
+    );
+  }
 
   // ===========================================================================
   // EMISSÃO

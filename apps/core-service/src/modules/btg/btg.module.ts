@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuditModule } from '../audit/audit.module';
+import { BrBillingModule } from '../br-billing/br-billing.module';
 import { ContractsModule } from '../contracts/contracts.module';
 
 import { BtgAutogenService } from './btg-autogen.service';
@@ -21,7 +22,7 @@ import { BtgWebhookController } from './btg-webhook.controller';
  * (TenantSetting finance.br.gateway). PrismaModule e CryptoModule são @Global.
  */
 @Module({
-  imports: [AuditModule, ContractsModule],
+  imports: [AuditModule, BrBillingModule, ContractsModule],
   controllers: [BtgController, BtgOauthController, BtgWebhookController],
   providers: [
     BtgClientService,

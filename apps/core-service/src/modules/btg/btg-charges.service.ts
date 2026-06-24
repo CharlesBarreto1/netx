@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  type OnModuleInit,
 } from '@nestjs/common';
 import {
   BtgChargeStatus as PrismaBtgChargeStatus,
@@ -22,6 +23,7 @@ import {
 } from '@netx/shared';
 
 import { AuditService } from '../audit/audit.service';
+import { BrBillingService } from '../br-billing/br-billing.service';
 import { ContractInvoicesService } from '../contracts/contract-invoices.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -37,7 +39,7 @@ function isoDate(date: Date, addDays = 0): string {
 }
 
 @Injectable()
-export class BtgChargesService {
+export class BtgChargesService implements OnModuleInit {
   private readonly logger = new Logger(BtgChargesService.name);
 
   constructor(
@@ -46,7 +48,15 @@ export class BtgChargesService {
     private readonly client: BtgClientService,
     private readonly invoices: ContractInvoicesService,
     private readonly audit: AuditService,
+    private readonly brBilling: BrBillingService,
   ) {}
+
+  /** Registra o emissor BTG no dispatcher (evita ciclo de imports). */
+  onModuleInit(): void {
+    this.brBilling.register('BTG', (tenantId, actor, invoiceId) =>
+      this.createForInvoice(tenantId, actor, invoiceId, {}),
+    );
+  }
 
   // ===========================================================================
   // EMISSÃO
