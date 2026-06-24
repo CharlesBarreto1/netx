@@ -150,9 +150,11 @@ export interface HubsoftCustomerListItem {
 
 export interface BrowseHubsoftCustomersResponse {
   items: HubsoftCustomerListItem[];
-  total: number;
+  // null quando a lista é paginada server-side no Hubsoft (total desconhecido).
+  total: number | null;
   page: number;
   pageSize: number;
+  hasMore: boolean;
 }
 
 // -----------------------------------------------------------------------------

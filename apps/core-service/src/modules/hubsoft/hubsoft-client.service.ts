@@ -21,6 +21,7 @@ import type {
 
 const TOKEN_TIMEOUT_MS = 15_000;
 const API_TIMEOUT_MS = 30_000;
+const BULK_TIMEOUT_MS = 120_000; // /cliente/all pode ser pesado
 const TOKEN_SKEW_MS = 60_000;
 
 export class HubsoftApiError extends Error {
@@ -144,7 +145,11 @@ export class HubsoftClientService {
   // ---------------------------------------------------------------------------
   // GET genérico autenticado
   // ---------------------------------------------------------------------------
-  private async get<T = unknown>(cfg: HubsoftResolvedConfig, path: string): Promise<T> {
+  private async get<T = unknown>(
+    cfg: HubsoftResolvedConfig,
+    path: string,
+    timeoutMs = API_TIMEOUT_MS,
+  ): Promise<T> {
     const token = await this.getToken(cfg);
     const res = await this.fetchJson(
       `${cfg.host}${path}`,
@@ -152,7 +157,7 @@ export class HubsoftClientService {
         method: 'GET',
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
       },
-      API_TIMEOUT_MS,
+      timeoutMs,
     );
     if (res.status < 200 || res.status >= 300) {
       throw new HubsoftApiError(`Hubsoft GET ${path} → ${res.status}`, res.status, res.json);
@@ -201,9 +206,19 @@ export class HubsoftClientService {
    */
   async getClientesAll(
     cfg: HubsoftResolvedConfig,
-    params: { cancelado?: 'sim' | 'nao'; codigo_pacote?: string | number; limit?: number } = {},
+    params: {
+      cancelado?: 'sim' | 'nao';
+      codigo_pacote?: string | number;
+      limit?: number;
+      offset?: number;
+    } = {},
   ): Promise<HubsoftCliente[]> {
-    const json = await this.get(cfg, `/api/v1/integracao/cliente/all${this.qs(params)}`);
+    // /cliente/all pode trazer MUITO dado — timeout generoso (2 min).
+    const json = await this.get(
+      cfg,
+      `/api/v1/integracao/cliente/all${this.qs(params)}`,
+      BULK_TIMEOUT_MS,
+    );
     return this.pickArray(json, ['clientes']) as HubsoftCliente[];
   }
 

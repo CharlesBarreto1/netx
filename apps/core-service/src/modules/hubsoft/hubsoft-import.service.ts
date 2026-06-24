@@ -159,40 +159,129 @@ export class HubsoftImportService {
     const cfg = await this.config.resolve(tenantId);
     const filters = req.filters;
     const cancelado: 'sim' | 'nao' = filters?.status?.includes('cancelado') ? 'sim' : 'nao';
+    const page = req.page ?? 1;
+    const pageSize = req.pageSize ?? 50;
+    const hasClientFilter = !!(
+      filters?.cidades?.length ||
+      filters?.status?.length ||
+      filters?.grupos?.length
+    );
 
-    // Com busca textual usamos a rota /cliente (busca server-side, rápida); sem
-    // busca, /cliente/all. Filtros cidade/status/grupo são client-side nos dois.
-    let clientes;
+    const imported = await this.importedCodigos(tenantId);
+    const toItems = (list: HubsoftCliente[]) =>
+      list
+        .filter((cli) => this.str(cli.codigo_cliente ?? cli.id_cliente))
+        .map((cli) => this.toListItem(cli, imported, filters));
+
+    // 1) Busca textual → rota /cliente (server-side, rápida). Conjunto pequeno;
+    //    aplica filtros client-side e pagina em memória.
     if (req.search) {
       const digits = req.search.replace(/\D/g, '');
       const byDoc = digits.length >= 11;
-      clientes = await this.client.getClientes(cfg, {
+      const found = await this.client.getClientes(cfg, {
         busca: byDoc ? 'cpf_cnpj' : 'nome_razaosocial',
         termo_busca: byDoc ? digits : req.search,
         cancelado,
       });
-    } else {
-      clientes = await this.client.getClientesAll(cfg, { cancelado });
+      const filtered = this.applyBrowseFilters(found, filters);
+      const slice = filtered.slice((page - 1) * pageSize, page * pageSize);
+      return {
+        items: toItems(slice),
+        total: filtered.length,
+        page,
+        pageSize,
+        hasMore: page * pageSize < filtered.length,
+      };
     }
 
+    // 2) Com filtros client-side (cidade/status/grupo) precisamos da base toda
+    //    p/ filtrar — /cliente/all (timeout generoso), filtra e pagina em memória.
+    if (hasClientFilter) {
+      const all = await this.client.getClientesAll(cfg, { cancelado });
+      const filtered = this.applyBrowseFilters(all, filters);
+      const slice = filtered.slice((page - 1) * pageSize, page * pageSize);
+      return {
+        items: toItems(slice),
+        total: filtered.length,
+        page,
+        pageSize,
+        hasMore: page * pageSize < filtered.length,
+      };
+    }
+
+    // 3) Listagem pura → pagina SERVER-SIDE no /cliente/all (limit+offset).
+    //    Evita baixar a base inteira e o timeout. Total fica desconhecido.
+    const pageItems = await this.client.getClientesAll(cfg, {
+      cancelado,
+      limit: pageSize,
+      offset: (page - 1) * pageSize,
+    });
+    return {
+      items: toItems(pageItems),
+      total: null,
+      page,
+      pageSize,
+      hasMore: pageItems.length === pageSize,
+    };
+  }
+
+  /** Filtros client-side (cidade/status/grupo) sobre a lista do Hubsoft. */
+  private applyBrowseFilters(
+    clientes: HubsoftCliente[],
+    filters?: HubsoftCustomerFilters,
+  ): HubsoftCliente[] {
     const hasServiceFilter = !!(filters?.status?.length || filters?.grupos?.length);
-    clientes = clientes.filter((cli) => {
-      if (!this.str(cli.codigo_cliente ?? cli.id_cliente)) return false;
+    if (!filters?.cidades?.length && !hasServiceFilter) return clientes;
+    return clientes.filter((cli) => {
       if (filters?.cidades?.length && !this.matchCity(cli, filters.cidades)) return false;
       if (hasServiceFilter && this.matchServicos(cli.servicos ?? [], filters).length === 0) {
         return false;
       }
       return true;
     });
+  }
 
-    const total = clientes.length;
-    const page = req.page ?? 1;
-    const pageSize = req.pageSize ?? 50;
-    const pageItems = clientes.slice((page - 1) * pageSize, page * pageSize);
-
-    const imported = await this.importedCodigos(tenantId);
-    const items = pageItems.map((cli) => this.toListItem(cli, imported, filters));
-    return { items, total, page, pageSize };
+  /**
+   * Busca clientes por código, um a um, via /cliente?busca=codigo_cliente —
+   * rota leve e confiável (a /cliente/all pode ser pesada/instável). Tolera
+   * falhas por código (vão pra `errors`) e ignora códigos não encontrados,
+   * registrando-os para visibilidade.
+   */
+  private async fetchByCodigos(
+    cfg: HubsoftResolvedConfig,
+    codigos: string[],
+    cancelado: 'sim' | 'nao',
+  ): Promise<{ clientes: HubsoftCliente[]; errors: Array<{ ref: string; message: string }> }> {
+    const clientes: HubsoftCliente[] = [];
+    const errors: Array<{ ref: string; message: string }> = [];
+    const seen = new Set<string>();
+    for (const codigo of codigos) {
+      try {
+        const found = await this.client.getClientes(cfg, {
+          busca: 'codigo_cliente',
+          termo_busca: codigo,
+          cancelado,
+        });
+        // /cliente pode casar parcialmente — fica só com o código exato.
+        const exact = found.filter(
+          (c) => this.str(c.codigo_cliente ?? c.id_cliente) === String(codigo),
+        );
+        if (!exact.length) {
+          errors.push({ ref: codigo, message: 'cliente não encontrado no Hubsoft' });
+          continue;
+        }
+        for (const c of exact) {
+          const key = this.str(c.codigo_cliente ?? c.id_cliente);
+          if (key && !seen.has(key)) {
+            seen.add(key);
+            clientes.push(c);
+          }
+        }
+      } catch (e) {
+        errors.push({ ref: codigo, message: e instanceof Error ? e.message : String(e) });
+      }
+    }
+    return { clientes, errors };
   }
 
   /** Conjunto de codigo_cliente já importados no NetX (Customer HS-<codigo>). */
@@ -279,24 +368,26 @@ export class HubsoftImportService {
     // padrão da API (nao). Cidade/status/grupo são aplicados client-side abaixo.
     const cancelado: 'sim' | 'nao' = filters?.status?.includes('cancelado') ? 'sim' : 'nao';
 
-    // Quando há seleção (codigos) ou só-importados, precisamos da base completa
-    // ANTES de estreitar — então não passamos o limit server-side nesses casos.
-    const narrowing = !!(codigos?.length || onlyImported);
-    // SEMPRE via /cliente/all: a rota /cliente exige `busca`+`termo_busca`
-    // (obrigatórios) e voltaria vazia numa busca em massa. /cliente/all aceita
-    // `limit` server-side.
-    let clientes = await this.client.getClientesAll(cfg, {
-      cancelado,
-      ...(!narrowing && limit ? { limit } : {}),
-    });
-
+    // Seleção (codigos) e re-sync de importados (onlyImported) buscam CADA cliente
+    // por código via /cliente?busca=codigo_cliente — rota leve e confiável. Só a
+    // importação em massa (sem seleção) usa /cliente/all.
+    let clientes: HubsoftCliente[];
     if (codigos?.length) {
-      const set = new Set(codigos.map((c) => String(c)));
-      clientes = clientes.filter((c) => set.has(this.str(c.codigo_cliente ?? c.id_cliente)));
-    }
-    if (onlyImported) {
-      const imported = await this.importedCodigos(tenantId);
-      clientes = clientes.filter((c) => imported.has(this.str(c.codigo_cliente ?? c.id_cliente)));
+      const r = await this.fetchByCodigos(cfg, codigos, cancelado);
+      clientes = r.clientes;
+      res.errors.push(...r.errors);
+      res.failed += r.errors.length;
+    } else if (onlyImported) {
+      const imported = [...(await this.importedCodigos(tenantId))];
+      const r = await this.fetchByCodigos(cfg, imported, cancelado);
+      clientes = r.clientes;
+      res.errors.push(...r.errors);
+      res.failed += r.errors.length;
+    } else {
+      clientes = await this.client.getClientesAll(cfg, {
+        cancelado,
+        ...(limit ? { limit } : {}),
+      });
     }
     if (limit) clientes = clientes.slice(0, limit);
     res.fetched = clientes.length;

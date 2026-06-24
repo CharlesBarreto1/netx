@@ -113,10 +113,14 @@ export default function HubsoftImportPage() {
       const res = await hubsoftApi.importSelected({ codigos: [...selected] });
       setLastRun({ kind: 'import', res });
       const cust = res.entities.find((e) => e.entity === 'customers');
-      toast.success(
-        `Importação concluída: ${cust ? cust.created + cust.updated : selected.size} cliente(s).`,
-      );
-      setSelected(new Set());
+      const ok = cust ? cust.created + cust.updated : 0;
+      const failed = res.entities.reduce((a, e) => a + e.failed, 0);
+      if (ok > 0) {
+        toast.success(`Importados ${ok} cliente(s)${failed ? ` · ${failed} falha(s)` : ''}.`);
+        setSelected(new Set());
+      } else {
+        toast.error(`Nenhum cliente importado · ${failed} falha(s). Veja os detalhes abaixo.`);
+      }
       await doSearch(result?.page ?? 1); // atualiza os badges "importado"
     } catch (err) {
       const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
@@ -141,7 +145,6 @@ export default function HubsoftImportPage() {
   }
 
   const items = result?.items ?? [];
-  const totalPages = result ? Math.max(1, Math.ceil(result.total / result.pageSize)) : 1;
 
   return (
     <div className="space-y-5">
@@ -224,7 +227,7 @@ export default function HubsoftImportPage() {
         <section className="rounded-lg border border-border bg-surface shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-3">
             <span className="text-sm text-text-muted">
-              {result.total} cliente(s) · página {result.page}/{totalPages}
+              {result.total != null ? `${result.total} cliente(s) · ` : ''}página {result.page}
               {selected.size > 0 ? ` · ${selected.size} selecionado(s)` : ''}
             </span>
             {canSync && (
@@ -299,7 +302,7 @@ export default function HubsoftImportPage() {
             </table>
           </div>
 
-          {totalPages > 1 && (
+          {(result.page > 1 || result.hasMore) && (
             <div className="flex items-center justify-end gap-2 border-t border-border p-3">
               <Button
                 variant="outline"
@@ -312,7 +315,7 @@ export default function HubsoftImportPage() {
               <Button
                 variant="outline"
                 size="sm"
-                disabled={loading || result.page >= totalPages}
+                disabled={loading || !result.hasMore}
                 onClick={() => doSearch(result.page + 1)}
               >
                 Próxima
@@ -332,6 +335,9 @@ export default function HubsoftImportPage() {
 }
 
 function RunSummary({ kind, res }: { kind: 'import' | 'sync'; res: HubsoftSyncResult }) {
+  const allErrors = res.entities.flatMap((e) =>
+    e.errors.map((er) => ({ entity: e.entity, ...er })),
+  );
   return (
     <section className="rounded-lg border border-border bg-surface-muted p-3">
       <div className="mb-2 text-sm font-semibold text-text">
@@ -343,14 +349,27 @@ function RunSummary({ kind, res }: { kind: 'import' | 'sync'; res: HubsoftSyncRe
             key={e.entity}
             className="rounded-md border border-border bg-surface px-3 py-1.5 text-text-muted"
           >
-            <b className="text-text">
-              {e.entity === 'customers' ? 'Clientes' : 'Financeiro'}:
-            </b>{' '}
+            <b className="text-text">{e.entity === 'customers' ? 'Clientes' : 'Financeiro'}:</b>{' '}
             {e.created} novo(s) · {e.updated} atualizado(s)
             {e.failed ? ` · ${e.failed} falha(s)` : ''}
           </span>
         ))}
       </div>
+
+      {allErrors.length > 0 && (
+        <div className="mt-3">
+          <div className="mb-1 text-xs font-semibold text-danger">
+            {allErrors.length} falha(s):
+          </div>
+          <ul className="max-h-48 space-y-1 overflow-auto rounded-md border border-border bg-surface p-2 text-[11px] leading-snug">
+            {allErrors.slice(0, 100).map((er, idx) => (
+              <li key={idx} className="text-text-muted">
+                <span className="font-mono text-text">{er.ref}</span> — {er.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </section>
   );
 }
