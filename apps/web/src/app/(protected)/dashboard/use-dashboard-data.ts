@@ -81,6 +81,34 @@ interface OltOption {
   vendor: string;
 }
 
+export interface AgingBucket {
+  label: string;
+  count: number;
+  amount: number;
+}
+export interface AgingReport {
+  totalCount: number;
+  totalAmount: number;
+  buckets: AgingBucket[];
+}
+
+export interface MrrPoint {
+  yearMonth: string;
+  activeContracts: number;
+  mrr: number;
+}
+interface MrrSeriesReport {
+  months: number;
+  current: number;
+  byMonth: MrrPoint[];
+}
+
+interface ChurnReport {
+  months: number;
+  avgChurnPct: number;
+  byMonth: Array<{ yearMonth: string; activeStart: number; cancelled: number; churnPct: number }>;
+}
+
 // SWR só dispara quando a key é não-nula (padrão condicional do SWR).
 const gate = (perm: string, key: string): string | null =>
   hasPermission(perm) ? key : null;
@@ -99,6 +127,9 @@ export interface DashboardLive {
   serviceOrdersOverdue?: number;
   oltCount?: number;
   recentInvoices?: RecentInvoice[];
+  aging?: AgingReport;
+  mrrSeries?: MrrPoint[];
+  churnPct?: number;
 }
 
 /**
@@ -129,6 +160,16 @@ export function useDashboardData(lens: 'operador' | 'noc' | 'financeiro'): Dashb
   // Faturas recentes (lente financeira).
   const recent = useSWR<InvoiceList>(
     lens === 'financeiro' ? gate('contracts.read', '/v1/contract-invoices?pageSize=5') : null,
+  );
+  // Inadimplência por faixa, série MRR 12m e churn — só lente financeira.
+  const aging = useSWR<AgingReport>(
+    lens === 'financeiro' ? gate('reports.read', '/v1/reports/aging') : null,
+  );
+  const mrrSeries = useSWR<MrrSeriesReport>(
+    lens === 'financeiro' ? gate('reports.read', '/v1/reports/mrr-series?months=12') : null,
+  );
+  const churn = useSWR<ChurnReport>(
+    lens === 'financeiro' ? gate('reports.read', '/v1/reports/churn?months=12') : null,
   );
 
   // Snapshot online/offline — refresh espaçado (cross join pesado no DB).
@@ -161,6 +202,9 @@ export function useDashboardData(lens: 'operador' | 'noc' | 'financeiro'): Dashb
     finance.isLoading ||
     forecast.isLoading ||
     recent.isLoading ||
+    aging.isLoading ||
+    mrrSeries.isLoading ||
+    churn.isLoading ||
     online.isLoading ||
     incidents.isLoading ||
     olts.isLoading ||
@@ -179,5 +223,8 @@ export function useDashboardData(lens: 'operador' | 'noc' | 'financeiro'): Dashb
     serviceOrdersOverdue: soOverdue.data?.pagination.total,
     oltCount: olts.data?.length,
     recentInvoices: recent.data?.data,
+    aging: aging.data,
+    mrrSeries: mrrSeries.data?.byMonth,
+    churnPct: churn.data?.avgChurnPct,
   };
 }

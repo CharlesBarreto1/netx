@@ -2,14 +2,19 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
 import type {
+  AgingReport,
   CashRegistersReport,
   CashRegistersReportQuery,
+  ChurnReport,
+  ChurnReportQuery,
   CustomersReport,
   CustomersReportQuery,
   FinanceReport,
   FinanceReportQuery,
   ForecastReport,
   ForecastReportQuery,
+  MrrSeriesQuery,
+  MrrSeriesReport,
 } from '@netx/shared';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -387,5 +392,166 @@ export class ReportsService {
       totalForecast: monthlyBaseline * months,
       generatedAt: new Date().toISOString(),
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // AGING — inadimplência por faixa de atraso (snapshot, vencidos AGORA)
+  // ---------------------------------------------------------------------------
+  async aging(tenantId: string): Promise<AgingReport> {
+    // due_date é @db.Date → (CURRENT_DATE - due_date) dá dias inteiros.
+    // status é enum no PG: castamos pra text pra comparar com literais.
+    const rows = await this.prisma.$queryRaw<
+      { bucket: string; count: bigint; amount: number }[]
+    >(Prisma.sql`
+      SELECT
+        CASE
+          WHEN (CURRENT_DATE - due_date) <= 15 THEN '1-15'
+          WHEN (CURRENT_DATE - due_date) <= 30 THEN '16-30'
+          WHEN (CURRENT_DATE - due_date) <= 60 THEN '31-60'
+          ELSE '60+'
+        END AS bucket,
+        COUNT(*)::bigint AS count,
+        COALESCE(SUM(amount), 0) AS amount
+      FROM contract_invoices
+      WHERE tenant_id = ${tenantId}::uuid
+        AND status::text IN ('OPEN', 'OVERDUE')
+        AND due_date < CURRENT_DATE
+      GROUP BY bucket
+    `);
+
+    const byBucket = new Map(
+      rows.map((r) => [r.bucket, { count: Number(r.count), amount: Number(r.amount) }]),
+    );
+    const buckets = [
+      { label: '1–15d', key: '1-15' },
+      { label: '16–30d', key: '16-30' },
+      { label: '31–60d', key: '31-60' },
+      { label: '+60d', key: '60+' },
+    ].map(({ label, key }) => ({
+      label,
+      count: byBucket.get(key)?.count ?? 0,
+      amount: byBucket.get(key)?.amount ?? 0,
+    }));
+
+    return {
+      totalCount: buckets.reduce((s, b) => s + b.count, 0),
+      totalAmount: buckets.reduce((s, b) => s + b.amount, 0),
+      buckets,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // MRR SERIES — soma das mensalidades dos contratos ativos em cada mês
+  // ---------------------------------------------------------------------------
+  // Modelo simples: usa monthlyValue ATUAL de cada contrato (não temos histórico
+  // de valor por mês). "Ativo no mês X" = começou (activatedAt ?? createdAt) até
+  // o fim do mês e não foi cancelado antes do início do mês.
+  async mrrSeries(
+    tenantId: string,
+    q: MrrSeriesQuery,
+  ): Promise<MrrSeriesReport> {
+    const months = q.months ?? 12;
+    const contracts = await this.prisma.contract.findMany({
+      where: { tenantId, deletedAt: null },
+      select: {
+        monthlyValue: true,
+        activatedAt: true,
+        createdAt: true,
+        cancelledAt: true,
+      },
+    });
+
+    const now = new Date();
+    const byMonth: MrrSeriesReport['byMonth'] = [];
+    for (let i = months - 1; i >= 0; i--) {
+      const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthEnd = new Date(
+        now.getFullYear(),
+        now.getMonth() - i + 1,
+        0,
+        23,
+        59,
+        59,
+      );
+      let mrr = 0;
+      let active = 0;
+      for (const c of contracts) {
+        const start = c.activatedAt ?? c.createdAt;
+        if (start > monthEnd) continue; // ainda não tinha começado
+        if (c.cancelledAt && c.cancelledAt < monthStart) continue; // já cancelado
+        active += 1;
+        mrr += Number(c.monthlyValue);
+      }
+      byMonth.push({
+        yearMonth: `${monthStart.getFullYear()}-${String(
+          monthStart.getMonth() + 1,
+        ).padStart(2, '0')}`,
+        activeContracts: active,
+        mrr,
+      });
+    }
+
+    return {
+      months,
+      current: byMonth.length > 0 ? byMonth[byMonth.length - 1].mrr : 0,
+      byMonth,
+    };
+  }
+
+  // ---------------------------------------------------------------------------
+  // CHURN — cancelamentos no mês / base ativa no início do mês
+  // ---------------------------------------------------------------------------
+  async churn(tenantId: string, q: ChurnReportQuery): Promise<ChurnReport> {
+    const months = q.months ?? 12;
+    const contracts = await this.prisma.contract.findMany({
+      where: { tenantId, deletedAt: null },
+      select: { activatedAt: true, createdAt: true, cancelledAt: true },
+    });
+
+    const now = new Date();
+    const byMonth: ChurnReport['byMonth'] = [];
+    for (let i = months - 1; i >= 0; i--) {
+      const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const monthEnd = new Date(
+        now.getFullYear(),
+        now.getMonth() - i + 1,
+        0,
+        23,
+        59,
+        59,
+      );
+      let activeStart = 0;
+      let cancelled = 0;
+      for (const c of contracts) {
+        const start = c.activatedAt ?? c.createdAt;
+        // Base ativa no INÍCIO do mês: começou antes do mês e não cancelado antes dele.
+        if (start < monthStart && (!c.cancelledAt || c.cancelledAt >= monthStart)) {
+          activeStart += 1;
+        }
+        // Cancelados DENTRO do mês.
+        if (c.cancelledAt && c.cancelledAt >= monthStart && c.cancelledAt <= monthEnd) {
+          cancelled += 1;
+        }
+      }
+      const churnPct =
+        activeStart > 0 ? Math.round((cancelled / activeStart) * 1000) / 10 : 0;
+      byMonth.push({
+        yearMonth: `${monthStart.getFullYear()}-${String(
+          monthStart.getMonth() + 1,
+        ).padStart(2, '0')}`,
+        activeStart,
+        cancelled,
+        churnPct,
+      });
+    }
+
+    const avgChurnPct =
+      byMonth.length > 0
+        ? Math.round(
+            (byMonth.reduce((s, m) => s + m.churnPct, 0) / byMonth.length) * 10,
+          ) / 10
+        : 0;
+
+    return { months, avgChurnPct, byMonth };
   }
 }

@@ -28,6 +28,18 @@ export const ForecastReportQuerySchema = z.object({
 });
 export type ForecastReportQuery = z.infer<typeof ForecastReportQuerySchema>;
 
+export const MrrSeriesQuerySchema = z.object({
+  /** Quantos meses de histórico (1..24). Default 12. */
+  months: z.coerce.number().int().min(1).max(24).default(12),
+});
+export type MrrSeriesQuery = z.infer<typeof MrrSeriesQuerySchema>;
+
+export const ChurnReportQuerySchema = z.object({
+  /** Quantos meses de histórico (1..24). Default 12. */
+  months: z.coerce.number().int().min(1).max(24).default(12),
+});
+export type ChurnReportQuery = z.infer<typeof ChurnReportQuerySchema>;
+
 // =============================================================================
 // RESPONSES
 // =============================================================================
@@ -83,6 +95,43 @@ export interface FinanceReport {
     cashRegisterName: string;
     count: number;
     amount: number;
+  }>;
+}
+
+/** Inadimplência por faixa de atraso (snapshot — vencidos AGORA). */
+export interface AgingReport {
+  /** Total de faturas vencidas (todas as faixas). */
+  totalCount: number;
+  /** Soma vencida (todas as faixas). */
+  totalAmount: number;
+  /** Faixas fixas: 1–15, 16–30, 31–60, +60 dias. */
+  buckets: Array<{ label: string; count: number; amount: number }>;
+}
+
+/** Série histórica de MRR (soma das mensalidades dos contratos ativos no mês). */
+export interface MrrSeriesReport {
+  months: number;
+  /** MRR do mês corrente (= ForecastReport.monthlyBaseline). */
+  current: number;
+  byMonth: Array<{
+    /** YYYY-MM */
+    yearMonth: string;
+    activeContracts: number;
+    mrr: number;
+  }>;
+}
+
+/** Churn mensal — cancelamentos no mês / base ativa no início do mês. */
+export interface ChurnReport {
+  months: number;
+  /** Média simples do churn% nos meses retornados. */
+  avgChurnPct: number;
+  byMonth: Array<{
+    /** YYYY-MM */
+    yearMonth: string;
+    activeStart: number;
+    cancelled: number;
+    churnPct: number;
   }>;
 }
 

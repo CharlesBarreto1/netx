@@ -196,7 +196,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Painéis por lente */}
-      {lens === 'operador' && <OperadorPanels live={live} money={money} moneyShort={moneyShort} nf={nf} />}
+      {lens === 'operador' && <OperadorPanels live={live} moneyShort={moneyShort} nf={nf} />}
       {lens === 'noc' && <NocPanels live={live} />}
       {lens === 'financeiro' && <FinanceiroPanels live={live} money={money} moneyShort={moneyShort} nf={nf} />}
     </div>
@@ -258,7 +258,7 @@ function buildKpis(lens: Lens, live: DashboardLive, f: Fmt): Kpi[] {
       { label: 'Ticket médio', value: ticket != null ? f.money(ticket) : '—', delta: 'por contrato', deltaTone: 'muted', sub: 'ativo', dot: 'text-info', example: ticket == null },
       { label: 'Recebido (mês)', value: f.moneyShort(live.finance?.receivedInPeriod.amount), delta: live.finance ? `${live.finance.receivedInPeriod.count}` : '—', deltaTone: 'success', sub: 'faturas pagas', dot: 'text-success', example: live.finance == null },
       { label: 'A receber', value: f.moneyShort(live.finance?.open.amount), delta: live.finance ? `${live.finance.open.count}` : '—', deltaTone: 'muted', sub: 'em aberto', dot: 'text-accent', example: live.finance == null },
-      { label: 'Churn', value: '1,3%', delta: '-0,2pp', deltaTone: 'success', sub: 'no mês', dot: 'text-success', example: true },
+      { label: 'Churn', value: live.churnPct != null ? `${live.churnPct.toLocaleString('pt-BR')}%` : '—', delta: 'média 12m', deltaTone: 'success', sub: 'cancelamentos', dot: 'text-success', example: live.churnPct == null },
     ];
   }
   // NOC — só Alarmes e OLTs têm fonte; o resto é telemetria sem coleta ainda.
@@ -315,7 +315,7 @@ function Panel({
 }
 
 // ── OPERADOR ──────────────────────────────────────────────────────────────
-function OperadorPanels({ live, money, moneyShort, nf }: { live: DashboardLive; money: (v?: number) => string; moneyShort: (v?: number) => string; nf: (n?: number) => string }) {
+function OperadorPanels({ live, moneyShort, nf }: { live: DashboardLive; moneyShort: (v?: number) => string; nf: (n?: number) => string }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-4 lg:grid-cols-[1.45fr_1fr]">
@@ -507,38 +507,44 @@ function AlarmsList({ incidents }: { incidents?: IncidentItem[] }) {
 
 // ── FINANCEIRO ────────────────────────────────────────────────────────────
 function FinanceiroPanels({ live, money, moneyShort, nf }: { live: DashboardLive; money: (v?: number) => string; moneyShort: (v?: number) => string; nf: (n?: number) => string }) {
+  const mrr = live.mrrSeries;
+  const mrrData = mrr ? mrr.map((p) => Math.round(p.mrr)) : [120, 128, 132, 140, 145, 150, 158, 162, 168, 175, 178, 184];
+  const mrrLabels = mrr ? mrr.map((p) => p.yearMonth.slice(5)) : ['j', 'f', 'm', 'a', 'm', 'j', 'j', 'a', 's', 'o', 'n', 'd'];
+
+  const aging = live.aging?.buckets ?? AGING.map((a) => ({ label: a.label, count: 0, amount: 0 }));
+  const agingMax = Math.max(1, ...aging.map((b) => b.amount));
+
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-4 lg:grid-cols-[1.45fr_1fr]">
-        <Panel title="MRR (baseline)">
+        <Panel title="MRR (12 meses)" badge={mrr == null ? <MockBadge /> : undefined}>
           <div className="font-mono text-[27px] font-semibold text-text-strong">
             {moneyShort(live.monthlyBaseline)}<span className="text-base text-text-subtle">/mês</span>
           </div>
           <div className="mt-1 text-xs text-text-subtle">
             {live.activeContracts != null ? `${nf(live.activeContracts)} contratos ativos` : 'soma do plano mensal dos contratos ativos'}
           </div>
-          <div className="mt-3 flex items-center gap-2">
-            <BarChart
-              data={[120, 128, 132, 140, 145, 150, 158, 162, 168, 175, 178, 184]}
-              labels={['j', 'f', 'm', 'a', 'm', 'j', 'j', 'a', 's', 'o', 'n', 'd']}
-            />
-            <MockBadge />
+          <div className="mt-3">
+            <BarChart data={mrrData} labels={mrrLabels} />
           </div>
         </Panel>
-        <Panel title="Inadimplência por faixa" badge={<MockBadge />}>
+        <Panel title="Inadimplência por faixa" badge={live.aging == null ? <MockBadge /> : undefined}>
           <div className="text-xs text-text-subtle">
-            {moneyShort(live.finance?.overdue.amount)} em {nf(live.overdueCount)} faturas vencidas
+            {moneyShort(live.aging?.totalAmount ?? live.finance?.overdue.amount)} em {nf(live.aging?.totalCount ?? live.overdueCount)} faturas vencidas
           </div>
           <div className="mt-3 space-y-2.5">
-            {AGING.map((a) => (
-              <div key={a.label}>
-                <div className="mb-1 flex items-center justify-between text-xs">
-                  <span className="text-text-muted">{a.label}</span>
-                  <span className="font-mono text-text-muted">{a.value}</span>
+            {aging.map((b, idx) => {
+              const tone = idx === aging.length - 1 ? 'text-danger' : 'text-warning';
+              return (
+                <div key={b.label}>
+                  <div className="mb-1 flex items-center justify-between text-xs">
+                    <span className="text-text-muted">{b.label}</span>
+                    <span className="font-mono text-text-muted">{moneyShort(b.amount)} · {b.count}</span>
+                  </div>
+                  <Progress value={(b.amount / agingMax) * 100} className={tone} />
                 </div>
-                <Progress value={a.pct * 2} className={a.tone} />
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Panel>
       </div>

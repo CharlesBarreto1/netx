@@ -3,14 +3,18 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
 import {
   CashRegistersReportQuerySchema,
+  ChurnReportQuerySchema,
   CustomersReportQuerySchema,
   FinanceReportQuerySchema,
   ForecastReportQuerySchema,
+  MrrSeriesQuerySchema,
   type AuthenticatedPrincipal,
   type CashRegistersReportQuery,
+  type ChurnReportQuery,
   type CustomersReportQuery,
   type FinanceReportQuery,
   type ForecastReportQuery,
+  type MrrSeriesQuery,
 } from '@netx/shared';
 
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
@@ -58,5 +62,29 @@ export class ReportsController {
     @Query(new ZodQueryPipe(ForecastReportQuerySchema)) q: ForecastReportQuery,
   ) {
     return this.reports.forecast(user.tenantId, q);
+  }
+
+  @Get('aging')
+  @RequirePermissions('reports.read')
+  aging(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.reports.aging(user.tenantId);
+  }
+
+  @Get('mrr-series')
+  @RequirePermissions('reports.read')
+  mrrSeries(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Query(new ZodQueryPipe(MrrSeriesQuerySchema)) q: MrrSeriesQuery,
+  ) {
+    return this.reports.mrrSeries(user.tenantId, q);
+  }
+
+  @Get('churn')
+  @RequirePermissions('reports.read')
+  churn(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Query(new ZodQueryPipe(ChurnReportQuerySchema)) q: ChurnReportQuery,
+  ) {
+    return this.reports.churn(user.tenantId, q);
   }
 }
