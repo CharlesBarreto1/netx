@@ -12,8 +12,10 @@ import { z } from 'zod';
 export const BtgEnvironmentSchema = z.enum(['PRODUCTION', 'SANDBOX']);
 export type BtgEnvironment = z.infer<typeof BtgEnvironmentSchema>;
 
-// Gateway BR ativo do tenant (coexistência EFI×BTG). Default 'EFI'.
-export const BrPaymentGatewaySchema = z.enum(['EFI', 'BTG']);
+// Gateway de cobrança BR. Escolhido POR CONTRATO (trava em 1) e também usado
+// como padrão pré-preenchido do tenant. MANUAL = sem gateway (carnê/baixa
+// manual); EFI/BTG fazem a fatura nascer no gateway. Extensível.
+export const BrPaymentGatewaySchema = z.enum(['MANUAL', 'EFI', 'BTG']);
 export type BrPaymentGateway = z.infer<typeof BrPaymentGatewaySchema>;
 
 export const SetBrGatewayRequestSchema = z

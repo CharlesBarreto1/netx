@@ -1,0 +1,159 @@
+# NetX NMS — stack DENTRO do ecossistema NetX (prova de conceito do módulo plugável).
+#
+# Diferente do docker-compose.prod.yml (que puxa imagens GHCR do repo standalone),
+# este compose BUILDA LOCAL a partir de apps/nms — pra incluir o código dos 4
+# canais de integração (SSO, eventos, guard de schema) que só existe no monorepo.
+#
+# Banco/Redis/Telegraf/gateway são PRÓPRIOS do NMS (isolados do Core — invariante 3,
+# zero risco de colidir com o Postgres do NetX). A costura com o NetX é por:
+#   - SSO        : CORE_JWT_SECRET (= JWT_ACCESS_SECRET do Core) → api valida o JWT do Core.
+#   - eventos    : RABBITMQ_URL → RabbitMQ do NetX (no host) + EVENTBUS_CONSUME=true.
+#   - HTTP /nms  : api publicada em :3300 → o api-gateway do NetX aponta NMS_SERVICE_PORT=3300.
+#   - entitlement: já no gateway do NetX (fail-open).
+#
+# Subir (a partir de apps/nms/infra/):
+#   cp .env.netx.example .env.netx   # preencher segredos
+#   docker compose -f docker-compose.netx.yml --env-file .env.netx up -d --build
+#
+# Ver docs/ecosystem/INTEGRATION-RUNBOOK.md §A.
+name: netx-nms-eco
+
+services:
+  timescaledb:
+    image: timescale/timescaledb:2.17.2-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-netx}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-netx_nms_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-netx_nms}
+    volumes:
+      - timescale-data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-netx} -d ${POSTGRES_DB:-netx_nms}']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  telegraf:
+    image: telegraf:1.32
+    restart: unless-stopped
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-netx}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-netx_nms_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-netx_nms}
+    command:
+      [
+        'telegraf',
+        '--config',
+        '/etc/telegraf/telegraf.conf',
+        '--config-directory',
+        '/etc/telegraf/telegraf.d',
+        '--watch-config',
+        'poll',
+      ]
+    ports:
+      - '${TRAP_PORT:-162}:162/udp'
+    volumes:
+      - ./telegraf/telegraf.prod.conf:/etc/telegraf/telegraf.conf:ro
+      - telegraf-d:/etc/telegraf/telegraf.d
+      - telegraf-mibs:/usr/share/snmp/mibs
+
+  device-gateway:
+    build:
+      context: ..
+      dockerfile: apps/device-gateway/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://redis:6379
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CONCURRENCY: ${GATEWAY_CONCURRENCY:-4}
+      MASTER_KEY: ${MASTER_KEY}
+      TELEGRAF_CONFIG_DIR: /etc/telegraf/telegraf.d
+      TERMINAL_HOST: 0.0.0.0
+      TERMINAL_PORT: '8766'
+    volumes:
+      - telegraf-d:/etc/telegraf/telegraf.d
+      - telegraf-mibs:/usr/share/snmp/mibs
+    # Para o gateway alcançar os equipamentos (Juniper) é preciso rota até eles.
+    # Em dev, descomente para usar a rede do host (acesso ao túnel/VPN do host):
+    # network_mode: host
+
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: '3000'
+      # Banco PRÓPRIO do NMS (Timescale isolado). NÃO é o Postgres do Core.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-netx}:${POSTGRES_PASSWORD:-netx_nms_dev}@timescaledb:5432/${POSTGRES_DB:-netx_nms}?schema=public
+      REDIS_URL: redis://redis:6379
+      GATEWAY_TERMINAL_URL: ws://device-gateway:8766
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_TTL: ${JWT_TTL:-12h}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      BACKUP_REPO_DIR: /data/config-backups
+      BACKUP_CRON: ${BACKUP_CRON:-0 3 * * *}
+      ANOMALY_CRON: ${ANOMALY_CRON:-*/10 * * * *}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LLM_MODEL_SUMMARY: ${LLM_MODEL_SUMMARY:-claude-haiku-4-5}
+      LLM_MODEL_COPILOT: ${LLM_MODEL_COPILOT:-claude-sonnet-4-6}
+      # ── Canal 1: SSO — aceitar o JWT de operador do Core (mesmo HS256) ──────
+      CORE_JWT_SECRET: ${CORE_JWT_SECRET}
+      CORE_JWT_ISSUER: ${CORE_JWT_ISSUER:-netx}
+      CORE_JWT_AUDIENCE: ${CORE_JWT_AUDIENCE:-netx-api}
+      # ── Canal 3: eventos — consumir netx.events do RabbitMQ do NetX ─────────
+      RABBITMQ_URL: ${RABBITMQ_URL}
+      EVENTBUS_CONSUME: ${EVENTBUS_CONSUME:-true}
+      EVENTBUS_EXCHANGE: ${EVENTBUS_EXCHANGE:-netx.events}
+    # host.docker.internal → alcança serviços do NetX no host (RabbitMQ bare-metal).
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    ports:
+      # Canal 4: o api-gateway do NetX (no host) aponta NMS_SERVICE_PORT pra cá.
+      - '${NMS_API_PORT:-3300}:3000'
+    volumes:
+      - config-backups:/data/config-backups
+
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - '${WEB_PORT:-8088}:80'
+
+volumes:
+  timescale-data:
+  redis-data:
+  telegraf-d:
+  telegraf-mibs:
+  config-backups:

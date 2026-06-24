@@ -1,10 +1,10 @@
 /**
  * Geração automática de cobranças BTG (boleto/Pix) sobre faturas a vencer.
  *
- * Espelha o EfiAutogenService, mas respeita a SELEÇÃO DE GATEWAY do tenant:
- * só emite quando o gateway BR ativo é BTG (TenantSetting `finance.br.gateway`
- * === 'BTG'). Assim BTG e EFI coexistem sem duplicar cobrança — o EFI autogen
- * pula os tenants marcados como BTG (ver BR_GATEWAY_SETTING_KEY).
+ * Espelha o EfiAutogenService. A escolha de cobrar via BTG é POR CONTRATO
+ * (contract.brBillingGateway === 'BTG') — este cron é a REDE DE SEGURANÇA que
+ * emite o que o "emit-na-hora" não cobriu (gateway fora no momento, ou fatura
+ * gerada pelo cron diário).
  *
  * Cron a cada 5 min com guard de reentrância. Idempotência: só emite p/ faturas
  * cobráveis (OPEN/OVERDUE, amount > 0) sem cobrança BTG viva (PENDING/ACTIVE/PAID).
@@ -19,23 +19,6 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 
 import { BtgChargesService } from './btg-charges.service';
-
-/** Chave do TenantSetting que define o gateway BR ativo: 'EFI' | 'BTG'. */
-export const BR_GATEWAY_SETTING_KEY = 'finance.br.gateway';
-
-/**
- * Lê o gateway BR ativo do tenant. Default 'EFI' (compatibilidade — tenants
- * que já usavam EFI continuam funcionando sem mexer em nada).
- */
-export async function resolveBrGateway(
-  prisma: PrismaService,
-  tenantId: string,
-): Promise<'EFI' | 'BTG'> {
-  const row = await prisma.tenantSetting.findUnique({
-    where: { tenantId_key: { tenantId, key: BR_GATEWAY_SETTING_KEY } },
-  });
-  return (row?.value as string) === 'BTG' ? 'BTG' : 'EFI';
-}
 
 @Injectable()
 export class BtgAutogenService {
@@ -63,8 +46,10 @@ export class BtgAutogenService {
 
   /** Emite cobranças pendentes. Retorna quantas foram criadas. */
   async runOnce(now: Date = new Date(), perTenantLimit = 100): Promise<{ created: number }> {
+    // Tenants com BTG configurado/ligado. A escolha de cobrar via BTG é POR
+    // CONTRATO (contract.brBillingGateway), filtrada abaixo.
     const tenants = await this.prisma.btgConfig.findMany({
-      where: { enabled: true, autoGenerate: true },
+      where: { enabled: true },
       select: { tenantId: true },
     });
     if (tenants.length === 0) return { created: 0 };
@@ -74,12 +59,11 @@ export class BtgAutogenService {
 
     let created = 0;
     for (const { tenantId } of tenants) {
-      // Coexistência EFI×BTG: só gera se o gateway ativo do tenant for BTG.
-      if ((await resolveBrGateway(this.prisma, tenantId)) !== 'BTG') continue;
-
       const invoices = await this.prisma.contractInvoice.findMany({
         where: {
           tenantId,
+          // Rede de segurança: só faturas de contratos que escolheram BTG.
+          contract: { brBillingGateway: 'BTG' },
           status: { in: [PrismaInvoiceStatus.OPEN, PrismaInvoiceStatus.OVERDUE] },
           dueDate: { lte: limitDate },
           amount: { gt: 0 },

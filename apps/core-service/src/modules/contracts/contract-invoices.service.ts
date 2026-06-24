@@ -30,6 +30,7 @@ import { nextPrepaidDate } from './billing-period.util';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { BrBillingService } from '../br-billing/br-billing.service';
 import { CashMovementsService } from '../finance/cash-movements.service';
 import { CashRegistersService } from '../finance/cash-registers.service';
 import { ContractsService } from './contracts.service';
@@ -55,6 +56,7 @@ export class ContractInvoicesService {
     private readonly registers: CashRegistersService,
     private readonly movements: CashMovementsService,
     private readonly bus: EventBusPublisher,
+    private readonly brBilling: BrBillingService,
   ) {}
 
   /** Publica `netx-erp.invoice.paid` — fonte única do evento das duas baixas (manual e gateway). */
@@ -128,7 +130,7 @@ export class ContractInvoicesService {
   ): Promise<ContractInvoiceResponse> {
     const contract = await this.prisma.contract.findFirst({
       where: { id: contractId, tenantId, deletedAt: null },
-      select: { id: true, status: true },
+      select: { id: true, status: true, brBillingGateway: true },
     });
     if (!contract) throw new NotFoundException('Contrato não encontrado');
     if (contract.status === PrismaContractStatus.CANCELLED) {
@@ -163,6 +165,14 @@ export class ContractInvoicesService {
         dueDate: created.dueDate.toISOString(),
       },
     });
+    // Faz a fatura "nascer" já no gateway do contrato (MANUAL = no-op).
+    // Nunca lança — falha vira log e o cron de autogen reprocessa.
+    await this.brBilling.emitForInvoice(
+      tenantId,
+      actorUserId,
+      created.id,
+      contract.brBillingGateway,
+    );
     return toInvoiceResponse(created);
   }
 

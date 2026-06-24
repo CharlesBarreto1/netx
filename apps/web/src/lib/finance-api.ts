@@ -547,7 +547,7 @@ export interface UpsertEfiConfigInput {
 // =============================================================================
 export type BtgChargeKind = 'BOLETO' | 'PIX';
 export type BtgChargeStatus = 'PENDING' | 'ACTIVE' | 'PAID' | 'CANCELED' | 'ERROR';
-export type BrPaymentGateway = 'EFI' | 'BTG';
+export type BrPaymentGateway = 'MANUAL' | 'EFI' | 'BTG';
 export type BtgRecurrencePeriod =
   | 'WEEKLY'
   | 'MONTHLY'

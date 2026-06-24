@@ -69,13 +69,13 @@ export class InvoiceGeneratorService {
       | 'activatedAt'
     >,
     opts?: { firstDueDate?: Date; activatedAt?: Date },
-  ): Promise<void> {
+  ): Promise<string> {
     const now = opts?.activatedAt ?? contract.activatedAt ?? new Date();
 
     if (contract.paymentMode === PaymentMode.PREPAID) {
       const due = utcMidnight(now);
       const periodEnd = nextPrepaidDate(due, 1);
-      await tx.contractInvoice.create({
+      const inv = await tx.contractInvoice.create({
         data: {
           tenantId: contract.tenantId,
           contractId: contract.id,
@@ -101,7 +101,7 @@ export class InvoiceGeneratorService {
           prepaidUntil: periodEnd,
         },
       });
-      return;
+      return inv.id;
     }
 
     // POSTPAID
@@ -123,7 +123,7 @@ export class InvoiceGeneratorService {
       ? prorate(contract.monthlyValue, days, totalDays)
       : contract.monthlyValue;
 
-    await tx.contractInvoice.create({
+    const inv = await tx.contractInvoice.create({
       data: {
         tenantId: contract.tenantId,
         contractId: contract.id,
@@ -136,6 +136,7 @@ export class InvoiceGeneratorService {
         reference: InvoiceReference.initialPostpaid(due),
       },
     });
+    return inv.id;
   }
 
   /**

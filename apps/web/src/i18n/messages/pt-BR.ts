@@ -161,6 +161,7 @@ const messages = {
     cashRegisters: 'Caixas',
     efiConfig: 'Pagamentos (EFI)',
     btgConfig: 'Pagamentos (BTG)',
+    brBilling: 'APIs de Cobrança BR',
     users: 'Usuários',
     plans: 'Planos',
     backups: 'Backups',

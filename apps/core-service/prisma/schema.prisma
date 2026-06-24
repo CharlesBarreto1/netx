@@ -1095,6 +1095,15 @@ enum PaymentMode {
   PREPAID
 }
 
+// Gateway de cobrança BR escolhido POR CONTRATO (trava em 1). MANUAL = sem
+// gateway (carnê/dinheiro/baixa manual). EFI/BTG emitem a fatura no gateway.
+// Extensível: gateway novo = +1 valor aqui + 1 case no BrBillingService.
+enum BrBillingGateway {
+  MANUAL
+  EFI
+  BTG
+}
+
 // Tipo da fatura — separa cobrança recorrente de ajustes financeiros:
 //   REGULAR   — mensalidade cheia (cron diário, ciclo POSTPAID ou PREPAID).
 //   INITIAL   — primeira fatura. POSTPAID: proporcional (do activatedAt até
@@ -1228,6 +1237,10 @@ model Contract {
   // Modo de pagamento. POSTPAID = fatura no dueDay; PREPAID = cliente paga
   // antes, ciclo ancorado em activatedAt. Default POSTPAID (compat).
   paymentMode         PaymentMode    @default(POSTPAID) @map("payment_mode")
+  // Forma de cobrança deste contrato (1 só). MANUAL (default) = sem gateway;
+  // EFI/BTG fazem a fatura nascer já no gateway. Padrão pré-preenchido vem do
+  // TenantSetting "finance.br.gateway" no cadastro do contrato.
+  brBillingGateway    BrBillingGateway @default(MANUAL) @map("br_billing_gateway")
   // Override per-contrato dos dias para bloqueio por inadimplência.
   // null = usa Plan.blockAfterDays (fallback 5). Aceita 0 (bloqueia no dia
   // do vencimento) até 60.

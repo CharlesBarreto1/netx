@@ -4,6 +4,7 @@
  */
 import { api } from './api';
 import type { Paginated } from './crm-types';
+import type { BrPaymentGateway } from './finance-api';
 
 // -----------------------------------------------------------------------------
 // Tipos (espelho do backend; mantidos aqui para evitar import do package shared
@@ -45,6 +46,8 @@ export interface Contract {
   dueDay: number;
   /** POSTPAID = paga depois (dueDay); PREPAID = paga antes (ciclo ancorado em activatedAt). */
   paymentMode: PaymentMode;
+  /** Forma de cobrança BR do contrato (MANUAL | EFI | BTG). */
+  brBillingGateway: BrPaymentGateway;
   /** Override per-contract dos dias até bloqueio. null = usa do plano. */
   blockAfterDays: number | null;
   /** Resolvido pelo backend (override > plan > 5). */
@@ -146,6 +149,8 @@ interface CommonContractInput {
   dueDay: number;
   /** Default POSTPAID. PREPAID = ciclo ancorado em activatedAt. */
   paymentMode?: PaymentMode;
+  /** Forma de cobrança BR. Omitido = herda o padrão do tenant. */
+  brBillingGateway?: BrPaymentGateway;
   /** Override per-contract dos dias até bloqueio. null/undefined = usa do plano. */
   blockAfterDays?: number | null;
   notes?: string | null;
@@ -207,6 +212,8 @@ export interface UpdateContractInput {
    * o override (volta a usar do plano).
    */
   blockAfterDays?: number | null;
+  /** Forma de cobrança BR (MANUAL | EFI | BTG). Muda só faturas futuras. */
+  brBillingGateway?: BrPaymentGateway;
   notes?: string | null;
   // NÃO inclua planId aqui — troca de plano vai por changePlan()
   // (calcula prorate). O backend rejeita planId no PATCH /contracts/:id.

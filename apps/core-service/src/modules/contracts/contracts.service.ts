@@ -56,6 +56,7 @@ import {
 } from './billing-period.util';
 import { recalcCustomerStatus } from './customer-status';
 import { InvoiceGeneratorService } from './invoice-generator.service';
+import { BrBillingService } from '../br-billing/br-billing.service';
 import { RadacctService } from '../radius/radacct.service';
 import { RadiusSyncService } from './radius-sync.service';
 import { EventBusPublisher } from '../events/event-bus.publisher';
@@ -116,6 +117,7 @@ export class ContractsService {
     private readonly ufinet: UfinetOrdersService,
     private readonly radacct: RadacctService,
     private readonly bus: EventBusPublisher,
+    private readonly brBilling: BrBillingService,
   ) {}
 
   /** Dispara baja/cancelación Ufinet no cancelamento do contrato (best-effort). */
@@ -164,6 +166,13 @@ export class ContractsService {
     const prefix = (
       tenantRow?.contractPrefix?.trim() || deriveContractPrefix(tenantRow?.slug)
     ).toUpperCase();
+
+    // Gateway de cobrança BR: o que veio no input, ou o padrão do tenant.
+    const brGateway = input.brBillingGateway ?? (await this.brBilling.defaultGateway(tenantId));
+    // Capturado dentro da tx pra emitir a cobrança no gateway PÓS-commit
+    // (emitir HTTP dentro da transação seguraria a tx e o charges service usa
+    // outra conexão Prisma — não veria a fatura não-commitada).
+    let initialInvoiceId: string | null = null;
 
     let created: ContractWithRelations;
     try {
@@ -245,6 +254,8 @@ export class ContractsService {
             dueDay: input.dueDay,
             // Cobrança. POSTPAID = default. PREPAID inverte o fluxo de fatura.
             paymentMode: input.paymentMode as PrismaPaymentMode,
+            // Gateway de cobrança BR do contrato (input ou padrão do tenant).
+            brBillingGateway: brGateway,
             // Override de dias até bloqueio (null = usa plan.blockAfterDays).
             blockAfterDays: input.blockAfterDays ?? null,
             // Geolocalização (módulo Mapeamento).
@@ -274,7 +285,7 @@ export class ContractsService {
           // Fluxo clássico: gera fatura inicial + enfileira RADIUS sync.
           // generateInitialInvoice escolhe POSTPAID (pro-rata) vs PREPAID
           // (cheia vencendo hoje) com base em contract.paymentMode.
-          await this.invoiceGen.generateInitialInvoice(tx, contract, {
+          initialInvoiceId = await this.invoiceGen.generateInitialInvoice(tx, contract, {
             firstDueDate: firstDue,
             activatedAt: now,
           });
@@ -341,6 +352,12 @@ export class ContractsService {
       status: created.status,
       authMethod: created.authMethod,
     });
+
+    // Faz a fatura inicial "nascer" no gateway do contrato (MANUAL = no-op).
+    // Pós-commit (fora da tx) e best-effort — falha vira log e o cron reprocessa.
+    if (initialInvoiceId) {
+      await this.brBilling.emitForInvoice(tenantId, actorUserId, initialInvoiceId, brGateway);
+    }
 
     // Rede neutra Ufinet (PY): a ALTA (reserva de porta) NÃO é mais disparada
     // na criação. Ela sai na INSTALAÇÃO (ProvisioningService.install), quando a
@@ -471,6 +488,9 @@ export class ContractsService {
     if (input.bandwidthMbps !== undefined) data.bandwidthMbps = input.bandwidthMbps;
     if (input.uploadMbps !== undefined) data.uploadMbps = input.uploadMbps ?? null;
     if (input.dueDay !== undefined) data.dueDay = input.dueDay;
+    // Forma de cobrança BR do contrato (MANUAL | EFI | BTG). Muda só faturas
+    // FUTURAS — não reemite/cancela cobranças já abertas.
+    if (input.brBillingGateway !== undefined) data.brBillingGateway = input.brBillingGateway;
     // Override de dias até bloqueio. `null` explícito limpa o override
     // (volta a usar plan.blockAfterDays).
     if (input.blockAfterDays !== undefined) data.blockAfterDays = input.blockAfterDays ?? null;
@@ -1839,6 +1859,7 @@ function toContractResponse(
     uploadMbps: c.uploadMbps,
     dueDay: c.dueDay,
     paymentMode: c.paymentMode as PaymentMode,
+    brBillingGateway: c.brBillingGateway,
     blockAfterDays: c.blockAfterDays,
     effectiveBlockAfterDays: resolveBlockAfterDays(
       { blockAfterDays: c.blockAfterDays },

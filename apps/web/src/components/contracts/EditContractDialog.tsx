@@ -10,6 +10,7 @@ import {
   FieldHelp,
   Input,
   Label,
+  Select,
   Textarea,
 } from '@/components/ui/Input';
 import { Modal } from '@/components/ui/Modal';
@@ -22,6 +23,7 @@ import {
   type ContractAuthMethod,
   type UpdateContractInput,
 } from '@/lib/contracts-api';
+import type { BrPaymentGateway } from '@/lib/finance-api';
 import { plansApi, type Plan } from '@/lib/plans-api';
 import { useTenantConfig } from '@/lib/tenant-config';
 import { useFormatMoney } from '@/lib/use-money';
@@ -84,6 +86,7 @@ export function EditContractDialog({
     dueDay: String(contract.dueDay),
     blockAfterDays:
       contract.blockAfterDays != null ? String(contract.blockAfterDays) : '',
+    brBillingGateway: contract.brBillingGateway,
     installationAddress: contract.installationAddress,
     installationMapsUrl: contract.installationMapsUrl ?? '',
     notes: contract.notes ?? '',
@@ -126,6 +129,7 @@ export function EditContractDialog({
       dueDay: String(contract.dueDay),
       blockAfterDays:
         contract.blockAfterDays != null ? String(contract.blockAfterDays) : '',
+      brBillingGateway: contract.brBillingGateway,
       installationAddress: contract.installationAddress,
       installationMapsUrl: contract.installationMapsUrl ?? '',
       notes: contract.notes ?? '',
@@ -299,6 +303,7 @@ export function EditContractDialog({
       blockAfterDays: form.blockAfterDays.trim()
         ? Number(form.blockAfterDays)
         : null,
+      brBillingGateway: form.brBillingGateway,
       installationAddress: form.installationAddress,
       installationMapsUrl: form.installationMapsUrl.trim()
         ? normalizeMapsUrl(form.installationMapsUrl)
@@ -700,6 +705,27 @@ export function EditContractDialog({
               {t('editContract.blockAfterDaysHelp', { days: contract.effectiveBlockAfterDays })}
             </FieldHelp>
           </div>
+        </div>
+
+        {/* Forma de cobrança (gateway BR) */}
+        <div>
+          <Label htmlFor="edit-brGateway">Forma de cobrança</Label>
+          <Select
+            id="edit-brGateway"
+            value={form.brBillingGateway}
+            onChange={(e) =>
+              setForm((s) => ({ ...s, brBillingGateway: e.target.value as BrPaymentGateway }))
+            }
+          >
+            <option value="MANUAL">Manual (sem gateway)</option>
+            <option value="EFI">EFI (Pix/Boleto)</option>
+            <option value="BTG">BTG (Pix/Boleto)</option>
+          </Select>
+          <FieldHelp>
+            {form.brBillingGateway === 'MANUAL'
+              ? 'Faturas sem cobrança automática (baixa manual). Vale para faturas futuras.'
+              : `Faturas futuras nascem já no ${form.brBillingGateway} (Pix/boleto automático).`}
+          </FieldHelp>
         </div>
 
         {/* Endereço */}

@@ -112,6 +112,38 @@ npm run nms:dev                # sobe o NMS (api+web) em :3300
 ```
 Depois, com o gateway de pé, `GET /api/v1/nms/health` deve responder via NMS.
 
+**⚠️ Pegadinha (incidente 2026-06-23):** se o `DATABASE_URL` do NMS NÃO terminar
+com `?schema=nms`, o `prisma migrate deploy` do NMS aplica no schema **`public`**
+do Core e corrompe o histórico de migrations do NetX (erro **P3009** no próximo
+`netx-update`). Recuperação: o Core continua no ar (o `safe-migrate` aborta antes
+de reiniciar); limpar as linhas órfãs com
+`DELETE FROM public._prisma_migrations WHERE migration_name IN ('0_init','1_device_credential','2_user_auth');`
+e re-rodar `netx-update`. **Prevenção (já no repo):** `nms:prisma-generate` e
+`nms:prisma-deploy` rodam `apps/nms/scripts/assert-nms-schema.cjs`, que RECUSA
+qualquer `DATABASE_URL` sem `schema=nms`. Sempre criar o `.env` do NMS a partir do
+`.env.example` (que já vem com `?schema=nms`).
+
+**Subir o NMS LIMPO via Docker (PoC do ecossistema — recomendado):** em vez de
+rodar pnpm/Python no host, suba a stack própria do NMS em containers, isolada e
+costurada ao NetX. Resolve de uma vez: atrito do pnpm (build dentro da imagem),
+Python 3.12 (no container do gateway) e colisão de banco (Timescale próprio).
+- Arquivos: `apps/nms/infra/docker-compose.netx.yml` (BUILDA local a partir de
+  `apps/nms` — pega o código dos 4 canais; as imagens GHCR do compose.prod NÃO têm)
+  + `apps/nms/infra/.env.netx.example`.
+- Banco/Redis/Telegraf/device-gateway são PRÓPRIOS do NMS (zero risco ao Core).
+- Costura com o NetX por env: `CORE_JWT_SECRET` (SSO), `RABBITMQ_URL`→rabbit do
+  host (`host.docker.internal`) + `EVENTBUS_CONSUME=true` (eventos), api publicada
+  em `:3300` (o gateway aponta `NMS_SERVICE_PORT=3300`). Entitlement já no gateway.
+- Rodar (na VPS):
+  ```
+  cd /opt/netx/apps/nms/infra
+  cp .env.netx.example .env.netx     # preencher segredos (ver comentários)
+  docker compose -f docker-compose.netx.yml --env-file .env.netx up -d --build
+  ```
+- Pré-requisito do canal 4: o api-gateway do NetX precisa estar no build com o
+  `NmsProxyController` (pós-`netx-update`). Equipamento (Juniper): o gateway precisa
+  de rota até a rede (descomentar `network_mode: host` no serviço device-gateway).
+
 **Pendências do NMS (follow-ups, fora desta leva):**
 - **device-gateway (Python)** + TimescaleDB não foram integrados (features de
   SSH/SNMP exigem; rodam pelo compose próprio do NMS). Python local é 3.9; o

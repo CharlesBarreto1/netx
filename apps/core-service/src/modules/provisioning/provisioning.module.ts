@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { AlarmsModule } from '../alarms/alarms.module';
 import { AuditModule } from '../audit/audit.module';
+import { BrBillingModule } from '../br-billing/br-billing.module';
 import { ContractsModule } from '../contracts/contracts.module';
 import { CryptoModule } from '../crypto/crypto.module';
 import { StockModule } from '../stock/stock.module';
@@ -29,7 +30,7 @@ import { Tr069ReconcileService } from './tr069-reconcile.service';
 import { Tr069TasksService } from './tr069-tasks.service';
 
 @Module({
-  imports: [AlarmsModule, AuditModule, CryptoModule, ContractsModule, StockModule, UfinetModule],
+  imports: [AlarmsModule, AuditModule, BrBillingModule, CryptoModule, ContractsModule, StockModule, UfinetModule],
   controllers: [
     ProvisioningController,
     OltsController,

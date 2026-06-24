@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
-import type { BtgConfigResponse, UpsertBtgConfigRequest } from '@netx/shared';
+import type { BrPaymentGateway, BtgConfigResponse, UpsertBtgConfigRequest } from '@netx/shared';
 import type { BtgConfig } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
@@ -274,18 +274,20 @@ export class BtgConfigService {
   // ---------------------------------------------------------------------------
   // Gateway BR ativo (coexistência EFI×BTG) — TenantSetting finance.br.gateway
   // ---------------------------------------------------------------------------
-  async getBrGateway(tenantId: string): Promise<'EFI' | 'BTG'> {
+  async getBrGateway(tenantId: string): Promise<BrPaymentGateway> {
     const row = await this.prisma.tenantSetting.findUnique({
       where: { tenantId_key: { tenantId, key: 'finance.br.gateway' } },
     });
-    return (row?.value as string) === 'BTG' ? 'BTG' : 'EFI';
+    const v = typeof row?.value === 'string' ? row.value : undefined;
+    // Padrão pré-preenchido do tenant pra contratos novos. MANUAL se ausente.
+    return v === 'EFI' || v === 'BTG' || v === 'MANUAL' ? v : 'MANUAL';
   }
 
   async setBrGateway(
     tenantId: string,
     actorUserId: string,
-    gateway: 'EFI' | 'BTG',
-  ): Promise<{ gateway: 'EFI' | 'BTG' }> {
+    gateway: BrPaymentGateway,
+  ): Promise<{ gateway: BrPaymentGateway }> {
     await this.prisma.tenantSetting.upsert({
       where: { tenantId_key: { tenantId, key: 'finance.br.gateway' } },
       create: { tenantId, key: 'finance.br.gateway', value: gateway },

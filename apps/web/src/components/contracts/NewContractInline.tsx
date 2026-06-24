@@ -22,6 +22,7 @@ import {
   type CreateContractInput,
 } from '@/lib/contracts-api';
 import type { Customer, Paginated } from '@/lib/crm-types';
+import { btgApi, type BrPaymentGateway } from '@/lib/finance-api';
 import { plansApi, type Plan } from '@/lib/plans-api';
 import { useTenantConfig } from '@/lib/tenant-config';
 import { pppoeLoginCandidates } from '@netx/shared';
@@ -128,6 +129,17 @@ export function NewContractInline({
   // Modo de cobrança — default POSTPAID. PREPAID inverte: 1ª fatura na ativação,
   // ciclo ancorado em activatedAt, cancelamento sem cobrança final.
   const [paymentMode, setPaymentMode] = useState<'POSTPAID' | 'PREPAID'>('POSTPAID');
+  // Forma de cobrança BR. Pré-preenchida com o padrão do tenant; o operador
+  // pode trocar por contrato. MANUAL = sem gateway (carnê/dinheiro/baixa manual).
+  const [brBillingGateway, setBrBillingGateway] = useState<BrPaymentGateway>('MANUAL');
+  useEffect(() => {
+    btgApi
+      .getGateway()
+      .then((r) => setBrBillingGateway(r.gateway))
+      .catch(() => {
+        /* sem padrão configurado → MANUAL */
+      });
+  }, []);
   // Operador editou o login à mão? Se sim, o auto-preenchimento (derivado do
   // nome do cliente) para de sobrescrever.
   const [pppoeUserEdited, setPppoeUserEdited] = useState(false);
@@ -336,6 +348,7 @@ export function NewContractInline({
       uploadMbps: form.uploadMbps.trim() ? Number(form.uploadMbps) : null,
       dueDay: Number(form.dueDay),
       paymentMode,
+      brBillingGateway,
       blockAfterDays: form.blockAfterDays.trim() ? Number(form.blockAfterDays) : null,
       notes: form.notes || null,
       firstDueDate: form.firstDueDate || undefined,
@@ -724,6 +737,25 @@ export function NewContractInline({
             {t('newContract.prepaidHelp')}
           </FieldHelp>
         )}
+      </div>
+
+      {/* ─── Forma de cobrança (gateway BR) ────────────────────────────── */}
+      <div>
+        <Label htmlFor="contract-brGateway">Forma de cobrança</Label>
+        <Select
+          id="contract-brGateway"
+          value={brBillingGateway}
+          onChange={(e) => setBrBillingGateway(e.target.value as BrPaymentGateway)}
+        >
+          <option value="MANUAL">Manual (sem gateway)</option>
+          <option value="EFI">EFI (Pix/Boleto)</option>
+          <option value="BTG">BTG (Pix/Boleto)</option>
+        </Select>
+        <FieldHelp>
+          {brBillingGateway === 'MANUAL'
+            ? 'As faturas não geram cobrança automática — baixa manual (carnê/dinheiro).'
+            : `As faturas deste contrato nascem já no ${brBillingGateway} (Pix/boleto gerado automaticamente).`}
+        </FieldHelp>
       </div>
 
       {/* ─── Plano de internet ─────────────────────────────────────────── */}

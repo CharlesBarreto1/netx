@@ -55,6 +55,7 @@ import {
 } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
+import { BrBillingService } from '../br-billing/br-billing.service';
 import { recalcCustomerStatus } from '../contracts/customer-status';
 import { InvoiceGeneratorService } from '../contracts/invoice-generator.service';
 import { RadiusSyncService } from '../contracts/radius-sync.service';
@@ -92,6 +93,7 @@ export class ProvisioningService {
     private readonly invoiceGen: InvoiceGeneratorService,
     private readonly bus: EventBusPublisher,
     private readonly profiles: OltProvisioningProfilesService,
+    private readonly brBilling: BrBillingService,
   ) {}
 
   /**
@@ -409,6 +411,9 @@ export class ProvisioningService {
       : input.wifiPassword ?? null;
     const hasWifi = !!(effectiveSsid && effectiveWifiPassword);
     let updatedContract: Contract | null = null;
+    // Fatura inicial criada na ativação (se houver) — emitida no gateway
+    // PÓS-commit (fora da tx). null = não gerou nesta ativação.
+    let initialInvoiceId: string | null = null;
     try {
       updatedContract = await this.prisma.$transaction(async (tx) => {
         // 4.1 Atualiza Ont com resultado do driver
@@ -458,7 +463,7 @@ export class ProvisioningService {
             select: { id: true },
           });
           if (!hasInitial) {
-            await this.invoiceGen.generateInitialInvoice(tx, c, {
+            initialInvoiceId = await this.invoiceGen.generateInitialInvoice(tx, c, {
               activatedAt: c.activatedAt ?? new Date(),
             });
           }
@@ -500,6 +505,18 @@ export class ProvisioningService {
       `Contrato ${updatedContract.code ?? updatedContract.id.slice(0, 8)} ativado`,
     );
     pushEvent('RADIUS_ENQUEUE', 'SUCCESS', 'RADIUS sync enfileirado (applier processa em ≤30s)');
+
+    // Faz a fatura inicial "nascer" no gateway do contrato (MANUAL = no-op).
+    // Pós-commit + best-effort (nunca lança); cron de autogen é a rede de
+    // segurança se o gateway estiver fora.
+    if (initialInvoiceId && updatedContract) {
+      await this.brBilling.emitForInvoice(
+        tenantId,
+        actorUserId,
+        initialInvoiceId,
+        updatedContract.brBillingGateway,
+      );
+    }
 
     // ── 5. Enfileira Tr069Task SET_PARAMS (Wi-Fi) ─────────────────────────
     // Fora da TX porque a tabela tr069_tasks tem cascade no device, e device

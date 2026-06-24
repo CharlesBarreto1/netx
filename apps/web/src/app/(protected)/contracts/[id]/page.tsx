@@ -40,6 +40,7 @@ import { DeactivateInstallDialog } from '@/components/contracts/DeactivateInstal
 import { NewInvoiceDialog } from '@/components/contracts/NewInvoiceDialog';
 import { PaymentDialog } from '@/components/finance/PaymentDialog';
 import { EfiChargeDialog } from '@/components/finance/EfiChargeDialog';
+import { BtgChargeDialog } from '@/components/finance/BtgChargeDialog';
 import { chargesApi, type OneTimeCharge } from '@/lib/finance-api';
 
 import { StatusBadge } from '../_components/StatusBadge';
@@ -62,6 +63,7 @@ export default function ContractDetailPage() {
   const canReverse = hasPermission('cash_registers.manage');
   const canEmitSifen = hasPermission('sifen.emit');
   const canEfiCharge = hasPermission('efi.charges.write');
+  const canBtgCharge = hasPermission('btg.charges.write');
   const tenantConfig = useTenantConfig();
   const tenantCountry = tenantConfig?.tenant?.country ?? null;
   const formatMoney = useFormatMoney();
@@ -123,6 +125,7 @@ export default function ContractDetailPage() {
   // --- Estados de modais ---------------------------------------------------
   const [payInvoice, setPayInvoice] = useState<ContractInvoice | null>(null);
   const [efiCharging, setEfiCharging] = useState<ContractInvoice | null>(null);
+  const [btgCharging, setBtgCharging] = useState<ContractInvoice | null>(null);
   const [newInvoiceOpen, setNewInvoiceOpen] = useState(false);
   const [payCharge, setPayCharge] = useState<OneTimeCharge | null>(null);
   const [cancelCharge, setCancelCharge] = useState<OneTimeCharge | null>(null);
@@ -720,12 +723,25 @@ export default function ContractDetailPage() {
                           </>
                         )}
                         {(inv.status === 'OPEN' || inv.status === 'OVERDUE') &&
+                          contract.brBillingGateway === 'EFI' &&
                           canEfiCharge && (
                             <Button
                               size="sm"
                               variant="ghost"
                               onClick={() => setEfiCharging(inv)}
                               title="Gerar cobrança Pix/Boleto no EFI"
+                            >
+                              Pix/Boleto
+                            </Button>
+                          )}
+                        {(inv.status === 'OPEN' || inv.status === 'OVERDUE') &&
+                          contract.brBillingGateway === 'BTG' &&
+                          canBtgCharge && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setBtgCharging(inv)}
+                              title="Gerar cobrança Pix/Boleto no BTG"
                             >
                               Pix/Boleto
                             </Button>
@@ -944,6 +960,21 @@ export default function ContractDetailPage() {
             efiCharging.reference
               ? `${efiCharging.reference} · ${formatDate(efiCharging.dueDate)}`
               : formatMoney(efiCharging.amount)
+          }
+        />
+      )}
+
+      {/* -------------------- Cobrança Pix/Boleto (BTG) -------------------- */}
+      {btgCharging && (
+        <BtgChargeDialog
+          open={!!btgCharging}
+          onOpenChange={(v) => !v && setBtgCharging(null)}
+          invoiceId={btgCharging.id}
+          amount={btgCharging.amount}
+          description={
+            btgCharging.reference
+              ? `${btgCharging.reference} · ${formatDate(btgCharging.dueDate)}`
+              : formatMoney(btgCharging.amount)
           }
         />
       )}

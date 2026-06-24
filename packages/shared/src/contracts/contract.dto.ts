@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { BrPaymentGatewaySchema, type BrPaymentGateway } from '../finance/btg.dto';
 import { SsidSchema, WifiPasswordSchema } from '../provisioning/types';
 
 // -----------------------------------------------------------------------------
@@ -79,6 +80,10 @@ const commonContractFields = {
   // PREPAID inverte o fluxo: 1ª fatura vence na ativação (vide
   // InvoiceGenerator), ciclo ancorado em activatedAt, sem dueDay efetivo.
   paymentMode: PaymentModeSchema.default('POSTPAID'),
+  // Forma de cobrança BR deste contrato (trava em 1). Omitido na criação =
+  // herda o padrão do tenant (TenantSetting "finance.br.gateway"). MANUAL =
+  // sem gateway; EFI/BTG fazem a fatura nascer já no gateway.
+  brBillingGateway: BrPaymentGatewaySchema.optional(),
   // Override per-contrato dos dias até o bloqueio por inadimplência.
   // null/undefined = usa Plan.blockAfterDays (fallback 5).
   blockAfterDays: z.coerce.number().int().min(0).max(60).nullish(),
@@ -333,6 +338,8 @@ export interface ContractResponse {
 
   // Modelo de cobrança. POSTPAID = paga depois (dueDay); PREPAID = paga antes.
   paymentMode: PaymentMode;
+  // Gateway de cobrança BR do contrato (MANUAL | EFI | BTG).
+  brBillingGateway: BrPaymentGateway;
   // Override por contrato; null = usa plan.blockAfterDays.
   blockAfterDays: number | null;
   // Resolvido pela API (contract.blockAfterDays ?? plan.blockAfterDays ?? 5).

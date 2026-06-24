@@ -19,15 +19,16 @@
       "executor": "nx:run-commands",
       "cache": false,
       "options": {
-        "command": "pnpm -C apps/nms/apps/api exec prisma generate",
+        "command": "node apps/nms/scripts/assert-nms-schema.cjs && pnpm -C apps/nms/apps/api exec prisma generate",
         "env": { "npm_config_verify_deps_before_run": "false" }
       }
     },
     "prisma-deploy": {
       "executor": "nx:run-commands",
       "cache": false,
+      "// nota": "assert-nms-schema: RECUSA migrar se o DATABASE_URL não estiver isolado em schema=nms (invariante 3). Evita repetir o incidente de migration do NMS no schema public do Core.",
       "options": {
-        "command": "pnpm -C apps/nms/apps/api exec prisma migrate deploy",
+        "command": "node apps/nms/scripts/assert-nms-schema.cjs && pnpm -C apps/nms/apps/api exec prisma migrate deploy",
         "env": { "npm_config_verify_deps_before_run": "false" }
       }
     },

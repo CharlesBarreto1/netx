@@ -20,7 +20,6 @@ import {
   InvoiceStatus as PrismaInvoiceStatus,
 } from '@prisma/client';
 
-import { resolveBrGateway } from '../btg/btg-autogen.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { EfiChargesService } from './efi-charges.service';
@@ -52,8 +51,10 @@ export class EfiAutogenService {
 
   /** Emite cobranças pendentes. Retorna quantas foram criadas. */
   async runOnce(now: Date = new Date(), perTenantLimit = 100): Promise<{ created: number }> {
+    // Tenants com EFI configurado/ligado (credenciais presentes). A escolha de
+    // cobrar via EFI é POR CONTRATO (contract.brBillingGateway), filtrada abaixo.
     const tenants = await this.prisma.efiConfig.findMany({
-      where: { enabled: true, autoGenerate: true },
+      where: { enabled: true },
       select: { tenantId: true },
     });
     if (tenants.length === 0) return { created: 0 };
@@ -63,13 +64,12 @@ export class EfiAutogenService {
 
     let created = 0;
     for (const { tenantId } of tenants) {
-      // Coexistência EFI×BTG: se o tenant escolheu BTG como gateway BR ativo,
-      // o EFI autogen não emite (evita cobrança duplicada). Default = EFI.
-      if ((await resolveBrGateway(this.prisma, tenantId)) === 'BTG') continue;
-
       const invoices = await this.prisma.contractInvoice.findMany({
         where: {
           tenantId,
+          // Rede de segurança: só faturas de contratos que escolheram EFI e que
+          // o emit-na-hora não cobriu (gateway fora, ou fatura gerada pelo cron).
+          contract: { brBillingGateway: 'EFI' },
           status: { in: [PrismaInvoiceStatus.OPEN, PrismaInvoiceStatus.OVERDUE] },
           dueDate: { lte: limitDate },
           amount: { gt: 0 },
