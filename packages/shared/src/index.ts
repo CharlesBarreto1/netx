@@ -24,3 +24,4 @@ export * from './mobile';
 export * from './fleet';
 export * from './hr';
 export * from './licensing';
+export * from './integrations';

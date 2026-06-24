@@ -254,6 +254,17 @@ const btgPermissions = [
 ];
 
 // -----------------------------------------------------------------------------
+// Permission catalog — Hubsoft (integração de leitura p/ migração/operação conjunta)
+// -----------------------------------------------------------------------------
+const hubsoftPermissions = [
+  // Config (credenciais OAuth do Hubsoft + flags de sync — sensível, admin).
+  { code: 'hubsoft.config.read',  module: 'hubsoft', resource: 'hubsoft_config', action: 'read'  },
+  { code: 'hubsoft.config.write', module: 'hubsoft', resource: 'hubsoft_config', action: 'write' },
+  // Sync (disparar import/dry-run dos dados do Hubsoft para o NetX).
+  { code: 'hubsoft.sync.write',   module: 'hubsoft', resource: 'hubsoft_sync',   action: 'write' },
+];
+
+// -----------------------------------------------------------------------------
 // Permission catalog — Chat / Atendimento (WhatsApp via Evolution API)
 // -----------------------------------------------------------------------------
 const chatPermissions = [
@@ -359,6 +370,10 @@ const systemRoles = [
       'btg.config.write',
       'btg.charges.read',
       'btg.charges.write',
+      // Hubsoft — integração de leitura (migração)
+      'hubsoft.config.read',
+      'hubsoft.config.write',
+      'hubsoft.sync.write',
       'reports.read',
       'backups.manage',
       // Rede
@@ -562,6 +577,7 @@ async function main() {
     ...ufinetPermissions,
     ...efiPermissions,
     ...btgPermissions,
+    ...hubsoftPermissions,
     ...chatPermissions,
   ]) {
     await prisma.permission.upsert({

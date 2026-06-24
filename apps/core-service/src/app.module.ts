@@ -14,6 +14,7 @@ import { DisconnectModule } from './modules/disconnect/disconnect.module';
 import { EventBusModule } from './modules/events/event-bus.module';
 import { BtgModule } from './modules/btg/btg.module';
 import { EfiModule } from './modules/efi/efi.module';
+import { HubsoftModule } from './modules/hubsoft/hubsoft.module';
 import { ServiceOrdersModule } from './modules/service-orders/service-orders.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { ReportsModule } from './modules/reports/reports.module';
@@ -97,6 +98,7 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
     FinanceModule,
     EfiModule,
     BtgModule,
+    HubsoftModule,
     ReportsModule,
     BackupsModule,
     NetworkModule,

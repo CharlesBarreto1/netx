@@ -165,6 +165,7 @@ model Tenant {
 
   // BTG (pagamentos BR — boleto + Pix cobrança + Pix Automático)
   btgConfig            BtgConfig?
+  hubsoftConfig        HubsoftConfig?
   btgCharges           BtgCharge[]
   btgRecurrences       BtgRecurrence[]
 
@@ -5205,4 +5206,42 @@ model BtgRecurrence {
   @@index([tenantId, contractId])
   @@index([authorizationId])
   @@map("btg_recurrences")
+}
+
+// =============================================================================
+// Hubsoft — integração de LEITURA (read-only) p/ migração/operação conjunta.
+// Consome a API oficial do Hubsoft (OAuth2 password grant) e espelha clientes,
+// contratos (servicos[]) e financeiro (faturas) nos modelos do NetX. Credenciais
+// por tenant, cifradas (CryptoService). Ver project_netx + módulo /hubsoft.
+// =============================================================================
+model HubsoftConfig {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @unique @map("tenant_id") @db.Uuid
+
+  enabled        Boolean  @default(false)
+
+  // Endereço do servidor do provedor (ex.: https://api.provedor.hubsoft.com.br).
+  host           String?  @db.VarChar(255)
+
+  // Segredos cifrados (CryptoService v1:iv:tag:ct).
+  // credentialsEnc = JSON {clientId, clientSecret, username, password}.
+  credentialsEnc String?  @map("credentials_enc") @db.Text
+
+  // Sync contínuo automático (cron). SEMPRE read-only — nunca escreve no Hubsoft.
+  autoSync       Boolean  @default(false) @map("auto_sync")
+  syncCustomers  Boolean  @default(true)  @map("sync_customers")
+  syncFinanceiro Boolean  @default(true)  @map("sync_financeiro")
+
+  // Telemetria do último sync.
+  lastSyncAt     DateTime? @map("last_sync_at")
+  lastSyncStatus String?   @map("last_sync_status") @db.VarChar(16) // OK|PARTIAL|ERROR
+  lastSyncError  String?   @map("last_sync_error") @db.Text
+  lastSyncStats  Json?     @map("last_sync_stats")
+
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("hubsoft_configs")
 }
