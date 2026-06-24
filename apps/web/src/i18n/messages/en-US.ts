@@ -152,6 +152,7 @@ const messages = {
     efiConfig: 'Payments (EFI)',
     btgConfig: 'Payments (BTG)',
     brBilling: 'BR Billing APIs',
+    hubsoft: 'Hubsoft (migration)',
     users: 'Users',
     plans: 'Plans',
     backups: 'Backups',

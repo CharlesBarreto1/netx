@@ -257,6 +257,8 @@ export const MENU_GROUPS: MenuGroup[] = [
       { key: 'settings', href: '/settings/tenant', labelKey: 'settings', permission: 'tenants.update' },
       { key: 'users', href: '/settings/users', labelKey: 'users', permission: 'users.read' },
       { key: 'plans', href: '/settings/plans', labelKey: 'plans', permission: 'plans.manage' },
+      // Hubsoft — integração de leitura p/ migração (config + sync). Só BR.
+      { key: 'hubsoft', href: '/settings/hubsoft', labelKey: 'hubsoft', permission: 'hubsoft.config.read', visibleIfCountry: ['BR'] },
       // [DESATIVADO] WhatsApp admin — descomenta quando módulo Chat voltar
       // { key: 'whatsapp', href: '/settings/whatsapp', labelKey: 'whatsappAdmin', permission: 'chat.admin' },
       { key: 'backups', href: '/settings/backups', labelKey: 'backups', permission: 'backups.manage' },
