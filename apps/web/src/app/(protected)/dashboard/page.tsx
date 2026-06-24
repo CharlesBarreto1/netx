@@ -5,9 +5,11 @@
  * Financeiro) que reconfiguram a MESMA base (design_handoff_netx_shell §3-7).
  * Não são apps separados: a lente troca título, KPIs e painéis.
  *
- * DADOS: mock por ora (fiel ao protótipo). TODO: ligar nas APIs reais — os KPIs
- * de Operador (clientes/contratos/inadimplência/online) já existiam no dashboard
- * antigo e devem ser re-cabeados aqui.
+ * DADOS: híbrido. Os blocos com endpoint real são cabeados via `useDashboardData`
+ * (assinantes, inadimplência, recebíveis, MRR, incidentes, O.S, OLTs, faturas).
+ * Os blocos SEM fonte ainda — telemetria de NOC (tráfego/latência/uptime/saúde
+ * por região), aging por faixa e churn — seguem em mock, marcados com o selo
+ * "exemplo" para não enganar o operador. Ver `use-dashboard-data.ts`.
  */
 
 import { ArrowRight } from 'lucide-react';
@@ -16,6 +18,10 @@ import { useEffect, useState } from 'react';
 
 import { BarChart, HealthDonut, LineChart, Progress, Sparkline } from '@/components/dashboard/charts';
 import { cn } from '@/lib/cn';
+import { formatDate, formatMoney, relativeTime } from '@/lib/format';
+import { getSession } from '@/lib/session';
+
+import { useDashboardData, type DashboardLive, type IncidentItem, type RecentInvoice } from './use-dashboard-data';
 
 type Lens = 'operador' | 'noc' | 'financeiro';
 const LENSES: Lens[] = ['operador', 'noc', 'financeiro'];
@@ -28,6 +34,7 @@ interface Kpi {
   deltaTone: 'success' | 'warning' | 'danger' | 'muted';
   sub: string;
   dot: string; // classe de cor do dot
+  example?: boolean; // dado mock (sem fonte real ainda)
 }
 
 const TONE_CHIP: Record<Kpi['deltaTone'], string> = {
@@ -37,53 +44,24 @@ const TONE_CHIP: Record<Kpi['deltaTone'], string> = {
   muted: 'text-text-muted bg-surface-hover',
 };
 
-// ── Dados mock por lente ──────────────────────────────────────────────────
-const KPIS: Record<Lens, Kpi[]> = {
-  operador: [
-    { label: 'Assinantes ativos', value: '18.432', delta: '+124', deltaTone: 'success', sub: 'no mês', dot: 'text-accent' },
-    { label: 'Inadimplência', value: '6,9%', delta: '-0,4pp', deltaTone: 'success', sub: '1.287 contratos', dot: 'text-warning' },
-    { label: 'Saúde da rede', value: '99,2%', delta: 'estável', deltaTone: 'success', sub: '2.341 nós', dot: 'text-success' },
-    { label: 'Incidentes', value: '5', delta: '2 P1', deltaTone: 'danger', sub: 'abertos', dot: 'text-danger' },
-    { label: 'O.S do dia', value: '38', delta: '12 pend.', deltaTone: 'warning', sub: 'campo', dot: 'text-info' },
-    { label: 'Faturamento', value: 'R$ 1,84M', delta: '+4,8%', deltaTone: 'success', sub: '88% recebido', dot: 'text-accent' },
-  ],
-  noc: [
-    { label: 'Tráfego pico', value: '428,6 Gbps', delta: '+6,1%', deltaTone: 'warning', sub: 'agregado', dot: 'text-accent' },
-    { label: 'Elementos online', value: '2.338', delta: '3 down', deltaTone: 'danger', sub: 'de 2.341', dot: 'text-success' },
-    { label: 'Alarmes ativos', value: '7', delta: '4 críticos', deltaTone: 'danger', sub: 'agora', dot: 'text-danger' },
-    { label: 'Latência média', value: '8,4 ms', delta: '-0,6ms', deltaTone: 'success', sub: 'backbone', dot: 'text-info' },
-    { label: 'Uptime 30d', value: '99,94%', delta: 'SLA ok', deltaTone: 'success', sub: 'core', dot: 'text-success' },
-    { label: 'OLTs', value: '46', delta: '1 alerta', deltaTone: 'warning', sub: 'ativas', dot: 'text-accent' },
-  ],
-  financeiro: [
-    { label: 'MRR', value: 'R$ 1,84M', delta: '+4,8%', deltaTone: 'success', sub: '/mês', dot: 'text-accent' },
-    { label: 'Inadimplência', value: 'R$ 218k', delta: '+2,1%', deltaTone: 'danger', sub: '1.287 contratos', dot: 'text-warning' },
-    { label: 'Ticket médio', value: 'R$ 99,80', delta: '+1,2%', deltaTone: 'success', sub: 'por contrato', dot: 'text-info' },
-    { label: 'Recebido (mês)', value: '88%', delta: 'R$ 1,62M', deltaTone: 'success', sub: 'da meta', dot: 'text-success' },
-    { label: 'A receber', value: 'R$ 412k', delta: '7 dias', deltaTone: 'muted', sub: 'próx. ciclo', dot: 'text-accent' },
-    { label: 'Churn', value: '1,3%', delta: '-0,2pp', deltaTone: 'success', sub: 'no mês', dot: 'text-success' },
-  ],
-};
+// ── Selo "exemplo" para blocos ainda sem fonte real ───────────────────────
+function MockBadge() {
+  return (
+    <span
+      title="Dado de exemplo — sem fonte real ainda"
+      className="rounded bg-surface-hover px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-text-disabled"
+    >
+      exemplo
+    </span>
+  );
+}
 
+// ── Mocks de fallback (blocos sem endpoint ou enquanto carrega) ────────────
 const REGIONS = [
   { name: 'Asunción Centro', pct: 99.8, tone: 'text-success' },
   { name: 'Asunción Norte', pct: 97.4, tone: 'text-warning' },
   { name: 'Central · Luque', pct: 99.9, tone: 'text-success' },
   { name: 'Encarnación', pct: 94.1, tone: 'text-danger' },
-];
-
-const INCIDENTS = [
-  { title: 'Queda PON OLT-ASU-01', id: 'INC-4821', region: 'Centro', sla: '00:42', sev: 'P1' },
-  { title: 'Latência alta backbone', id: 'INC-4820', region: 'Norte', sla: '01:15', sev: 'P2' },
-  { title: 'Pacotes perdidos SW-02', id: 'INC-4818', region: 'Luque', sla: '02:30', sev: 'P2' },
-  { title: 'RX degradado setor 7', id: 'INC-4815', region: 'Encarn.', sla: '03:48', sev: 'P3' },
-];
-
-const ALARMS = [
-  { text: 'OLT-ASU-01 sem resposta', node: 'olt-asu-01', ago: '6m', tone: 'danger' },
-  { text: 'SW-CORE-02 carga 88%', node: 'sw-core-02', ago: '14m', tone: 'warning' },
-  { text: 'RX baixo PON 3/12', node: 'pon-3-12', ago: '22m', tone: 'warning' },
-  { text: 'Link redundante caiu', node: 'rtr-border-01', ago: '40m', tone: 'danger' },
 ];
 
 const ELEMENTS = [
@@ -99,14 +77,6 @@ const AGING = [
   { label: '16–30d', pct: 28, value: 'R$ 61k', tone: 'text-warning' },
   { label: '31–60d', pct: 20, value: 'R$ 44k', tone: 'text-warning' },
   { label: '+60d', pct: 11, value: 'R$ 24k', tone: 'text-danger' },
-];
-
-const INVOICES = [
-  { name: 'María González', id: 'FAT-90412', due: '23/06', val: 'R$ 149,90', status: 'Pago', tone: 'success' },
-  { name: 'João Pereira', id: 'FAT-90411', due: '22/06', val: 'R$ 99,90', status: 'Atraso', tone: 'danger' },
-  { name: 'Carlos Ávalos', id: 'FAT-90410', due: '24/06', val: 'R$ 199,90', status: 'Pendente', tone: 'warning' },
-  { name: 'Ana Benítez', id: 'FAT-90409', due: '21/06', val: 'R$ 79,90', status: 'Pago', tone: 'success' },
-  { name: 'Luis Martínez', id: 'FAT-90408', due: '25/06', val: 'R$ 129,90', status: 'Aberta', tone: 'muted' },
 ];
 
 const SEV_TONE: Record<string, string> = {
@@ -126,9 +96,33 @@ const DOT_STATUS: Record<string, string> = {
   down: 'bg-danger',
 };
 
+// ── Helpers de severidade / status (mapeiam enums do back → tom visual) ────
+function sevTone(severity: string): string {
+  const s = severity.toUpperCase();
+  if (s.includes('CRIT') || s === 'P1' || s === 'HIGH') return 'text-danger bg-danger-muted';
+  if (s.includes('MAJOR') || s === 'P2' || s === 'MEDIUM' || s === 'WARN') return 'text-warning bg-warning-muted';
+  return 'text-text-muted bg-surface-hover';
+}
+function sevIsDanger(severity: string): boolean {
+  const s = severity.toUpperCase();
+  return s.includes('CRIT') || s === 'P1' || s === 'HIGH';
+}
+
+const INVOICE_STATUS: Record<string, { label: string; tone: keyof typeof STATUS_TONE }> = {
+  PAID: { label: 'Pago', tone: 'success' },
+  OVERDUE: { label: 'Atraso', tone: 'danger' },
+  OPEN: { label: 'Aberta', tone: 'muted' },
+  CANCELLED: { label: 'Cancelada', tone: 'muted' },
+};
+
 export default function DashboardPage() {
   const t = useTranslations('dashboardCockpit');
   const [lens, setLens] = useState<Lens>('operador');
+  const live = useDashboardData(lens);
+
+  const session = getSession();
+  const currency = session?.tenant.currency ?? 'BRL';
+  const tenantName = session?.tenant.name ?? 'NetX';
 
   useEffect(() => {
     const s = localStorage.getItem(STORAGE_KEY) as Lens | null;
@@ -140,12 +134,18 @@ export default function DashboardPage() {
     localStorage.setItem(STORAGE_KEY, l);
   };
 
+  const moneyShort = (v?: number) => formatMoney(v ?? 0, currency, { short: true });
+  const money = (v?: number) => formatMoney(v ?? 0, currency);
+  const nf = (n?: number) => (n ?? 0).toLocaleString('pt-BR');
+
+  const kpis = buildKpis(lens, live, { moneyShort, money, nf });
+
   return (
     <div className="mx-auto w-full max-w-[1180px]">
       {/* Header + lens switcher */}
       <div className="flex flex-wrap items-end justify-between gap-3 pb-5">
         <div>
-          <div className="text-xs text-text-subtle">ASU Telecom / {t('breadcrumb')}</div>
+          <div className="text-xs text-text-subtle">{tenantName} / {t('breadcrumb')}</div>
           <h1 className="mt-0.5 text-2xl font-semibold tracking-tight text-text-strong">
             {t(`${lens}.title`)}
           </h1>
@@ -177,11 +177,12 @@ export default function DashboardPage() {
 
       {/* KPI strip */}
       <div className="grid grid-cols-2 gap-3 pb-4 sm:grid-cols-3 lg:grid-cols-6">
-        {KPIS[lens].map((k) => (
+        {kpis.map((k) => (
           <div key={k.label} className="rounded-xl border border-border bg-card p-3.5">
             <div className="flex items-center gap-1.5">
               <span className={cn('h-1.5 w-1.5 rounded-full bg-current', k.dot)} />
               <span className="truncate text-xs text-text-subtle">{k.label}</span>
+              {k.example && <span className="ml-auto"><MockBadge /></span>}
             </div>
             <div className="mt-1.5 font-mono text-xl font-semibold text-text-strong">{k.value}</div>
             <div className="mt-1 flex items-center gap-1.5">
@@ -195,29 +196,113 @@ export default function DashboardPage() {
       </div>
 
       {/* Painéis por lente */}
-      {lens === 'operador' && <OperadorPanels />}
-      {lens === 'noc' && <NocPanels />}
-      {lens === 'financeiro' && <FinanceiroPanels />}
+      {lens === 'operador' && <OperadorPanels live={live} money={money} moneyShort={moneyShort} nf={nf} />}
+      {lens === 'noc' && <NocPanels live={live} />}
+      {lens === 'financeiro' && <FinanceiroPanels live={live} money={money} moneyShort={moneyShort} nf={nf} />}
     </div>
   );
+}
+
+// ── Builders de KPI (real onde há fonte; mock marcado onde não há) ─────────
+interface Fmt {
+  moneyShort: (v?: number) => string;
+  money: (v?: number) => string;
+  nf: (n?: number) => string;
+}
+
+function buildKpis(lens: Lens, live: DashboardLive, f: Fmt): Kpi[] {
+  if (lens === 'operador') {
+    const overdueAmount = live.finance?.overdue.amount;
+    return [
+      {
+        label: 'Assinantes ativos',
+        value: live.activeContracts != null ? f.nf(live.activeContracts) : '—',
+        delta: 'ativos', deltaTone: 'success', sub: 'contratos', dot: 'text-accent',
+      },
+      {
+        label: 'Inadimplência',
+        value: overdueAmount != null ? f.moneyShort(overdueAmount) : (live.overdueCount != null ? f.nf(live.overdueCount) : '—'),
+        delta: live.overdueCount != null ? `${f.nf(live.overdueCount)}` : '—',
+        deltaTone: 'warning', sub: 'faturas vencidas', dot: 'text-warning',
+      },
+      {
+        label: 'Saúde da rede', value: '99,2%', delta: 'estável', deltaTone: 'success', sub: '2.341 nós', dot: 'text-success', example: true,
+      },
+      {
+        label: 'Incidentes',
+        value: live.incidents != null ? f.nf(live.incidents.pagination?.total ?? live.incidents.data.length) : '—',
+        delta: 'abertos', deltaTone: 'danger', sub: 'correlacionados', dot: 'text-danger',
+        example: live.incidents == null,
+      },
+      {
+        label: 'O.S do dia',
+        value: live.serviceOrdersOpen != null ? f.nf(live.serviceOrdersOpen) : '—',
+        delta: live.serviceOrdersOverdue != null ? `${f.nf(live.serviceOrdersOverdue)} venc.` : '—',
+        deltaTone: 'warning', sub: 'abertas', dot: 'text-info',
+      },
+      {
+        label: 'Recebido (mês)',
+        value: f.moneyShort(live.finance?.receivedInPeriod.amount),
+        delta: live.finance ? `${live.finance.receivedInPeriod.count}` : '—',
+        deltaTone: 'success', sub: 'faturas pagas', dot: 'text-accent',
+        example: live.finance == null,
+      },
+    ];
+  }
+  if (lens === 'financeiro') {
+    const mrr = live.monthlyBaseline;
+    const ticket = mrr != null && live.activeContracts ? mrr / live.activeContracts : undefined;
+    return [
+      { label: 'MRR', value: mrr != null ? f.moneyShort(mrr) : '—', delta: 'baseline', deltaTone: 'success', sub: '/mês', dot: 'text-accent', example: mrr == null },
+      { label: 'Inadimplência', value: f.moneyShort(live.finance?.overdue.amount), delta: live.overdueCount != null ? `${f.nf(live.overdueCount)}` : '—', deltaTone: 'danger', sub: 'faturas vencidas', dot: 'text-warning', example: live.finance == null },
+      { label: 'Ticket médio', value: ticket != null ? f.money(ticket) : '—', delta: 'por contrato', deltaTone: 'muted', sub: 'ativo', dot: 'text-info', example: ticket == null },
+      { label: 'Recebido (mês)', value: f.moneyShort(live.finance?.receivedInPeriod.amount), delta: live.finance ? `${live.finance.receivedInPeriod.count}` : '—', deltaTone: 'success', sub: 'faturas pagas', dot: 'text-success', example: live.finance == null },
+      { label: 'A receber', value: f.moneyShort(live.finance?.open.amount), delta: live.finance ? `${live.finance.open.count}` : '—', deltaTone: 'muted', sub: 'em aberto', dot: 'text-accent', example: live.finance == null },
+      { label: 'Churn', value: '1,3%', delta: '-0,2pp', deltaTone: 'success', sub: 'no mês', dot: 'text-success', example: true },
+    ];
+  }
+  // NOC — só Alarmes e OLTs têm fonte; o resto é telemetria sem coleta ainda.
+  return [
+    { label: 'Tráfego pico', value: '428,6 Gbps', delta: '+6,1%', deltaTone: 'warning', sub: 'agregado', dot: 'text-accent', example: true },
+    { label: 'Elementos online', value: '2.338', delta: '3 down', deltaTone: 'danger', sub: 'de 2.341', dot: 'text-success', example: true },
+    {
+      label: 'Alarmes ativos',
+      value: live.incidents != null ? f.nf(live.incidents.pagination?.total ?? live.incidents.data.length) : '—',
+      delta: 'abertos', deltaTone: 'danger', sub: 'agora', dot: 'text-danger',
+      example: live.incidents == null,
+    },
+    { label: 'Latência média', value: '8,4 ms', delta: '-0,6ms', deltaTone: 'success', sub: 'backbone', dot: 'text-info', example: true },
+    { label: 'Uptime 30d', value: '99,94%', delta: 'SLA ok', deltaTone: 'success', sub: 'core', dot: 'text-success', example: true },
+    {
+      label: 'OLTs',
+      value: live.oltCount != null ? f.nf(live.oltCount) : '—',
+      delta: 'ativas', deltaTone: 'success', sub: 'cadastradas', dot: 'text-accent',
+      example: live.oltCount == null,
+    },
+  ];
 }
 
 // ── Wrapper de card ───────────────────────────────────────────────────────
 function Panel({
   title,
   link,
+  badge,
   children,
   className,
 }: {
   title: string;
   link?: string;
+  badge?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }) {
   return (
     <div className={cn('rounded-2xl border border-border bg-card p-[18px]', className)}>
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-text">{title}</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-text">{title}</h2>
+          {badge}
+        </div>
         {link && (
           <span className="inline-flex items-center gap-0.5 text-xs text-accent-strong">
             {link} <ArrowRight className="h-3 w-3" />
@@ -230,11 +315,11 @@ function Panel({
 }
 
 // ── OPERADOR ──────────────────────────────────────────────────────────────
-function OperadorPanels() {
+function OperadorPanels({ live, money, moneyShort, nf }: { live: DashboardLive; money: (v?: number) => string; moneyShort: (v?: number) => string; nf: (n?: number) => string }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-4 lg:grid-cols-[1.45fr_1fr]">
-        <Panel title="Saúde da rede" link="Ver topologia">
+        <Panel title="Saúde da rede" link="Ver topologia" badge={<MockBadge />}>
           <div className="flex items-center gap-5">
             <HealthDonut
               segments={[
@@ -259,13 +344,18 @@ function OperadorPanels() {
           </div>
         </Panel>
         <Panel title="Faturamento do mês">
-          <div className="font-mono text-[27px] font-semibold text-text-strong">R$ 1,84M</div>
-          <div className="mt-1 flex items-center gap-2">
-            <span className="rounded px-1 py-px text-[10px] font-semibold text-success bg-success-muted">+4,8%</span>
-            <span className="text-xs text-text-subtle">Meta R$ 1,90M · 88% recebido</span>
+          <div className="font-mono text-[27px] font-semibold text-text-strong">
+            {moneyShort(live.finance?.receivedInPeriod.amount)}
           </div>
-          <div className="mt-3">
+          <div className="mt-1 flex items-center gap-2">
+            <span className="rounded px-1 py-px text-[10px] font-semibold text-success bg-success-muted">recebido</span>
+            <span className="text-xs text-text-subtle">
+              Em aberto {moneyShort(live.finance?.open.amount)} · {nf(live.finance?.open.count)} faturas
+            </span>
+          </div>
+          <div className="mt-3 flex items-center gap-2">
             <Sparkline data={[40, 52, 48, 61, 58, 72, 69, 80, 84, 92]} className="text-accent" />
+            <MockBadge />
           </div>
         </Panel>
       </div>
@@ -273,54 +363,59 @@ function OperadorPanels() {
         <Panel title="Base de assinantes">
           <div className="flex gap-6">
             <div>
-              <div className="font-mono text-xl font-semibold text-text-strong">18.432</div>
+              <div className="font-mono text-xl font-semibold text-text-strong">{live.activeContracts != null ? nf(live.activeContracts) : '—'}</div>
               <div className="flex items-center gap-1 text-2xs text-text-subtle">
                 <span className="h-2 w-2 rounded-sm bg-success" /> ativos
               </div>
             </div>
             <div>
-              <div className="font-mono text-xl font-semibold text-text-strong">1.287</div>
+              <div className="font-mono text-xl font-semibold text-text-strong">{live.overdueCount != null ? nf(live.overdueCount) : '—'}</div>
               <div className="flex items-center gap-1 text-2xs text-text-subtle">
                 <span className="h-2 w-2 rounded-sm bg-warning" /> inadimpl.
               </div>
             </div>
           </div>
-          <div className="mt-3">
+          <div className="mt-3 flex items-center gap-2">
             <LineChart
               series={[
                 { data: [60, 62, 65, 64, 68, 72, 75], className: 'text-success' },
                 { data: [12, 14, 13, 15, 14, 13, 12], className: 'text-warning', dashed: true },
               ]}
             />
+            <MockBadge />
           </div>
         </Panel>
-        <Panel title="Incidentes abertos" link="Abrir NOC">
-          <IncidentsTable />
+        <Panel title="Incidentes abertos" link="Abrir NOC" badge={live.incidents == null ? <MockBadge /> : undefined}>
+          <IncidentsTable incidents={live.incidents?.data} />
         </Panel>
       </div>
     </div>
   );
 }
 
-function IncidentsTable() {
+function IncidentsTable({ incidents }: { incidents?: IncidentItem[] }) {
+  const rows = incidents ?? [];
   return (
     <div className="text-xs">
-      <div className="grid grid-cols-[1fr_92px_72px_56px] gap-2 border-b border-border pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-text-disabled">
+      <div className="grid grid-cols-[1fr_92px_72px_64px] gap-2 border-b border-border pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-text-disabled">
         <span>Incidente</span>
-        <span>Região</span>
-        <span>SLA</span>
+        <span>Escopo</span>
+        <span>Desde</span>
         <span>Sev</span>
       </div>
-      {INCIDENTS.map((i) => (
-        <div key={i.id} className="grid grid-cols-[1fr_92px_72px_56px] items-center gap-2 border-b border-border/60 py-2">
+      {rows.length === 0 && (
+        <div className="py-6 text-center text-text-subtle">Nenhum incidente aberto.</div>
+      )}
+      {rows.map((i) => (
+        <div key={i.id} className="grid grid-cols-[1fr_92px_72px_64px] items-center gap-2 border-b border-border/60 py-2">
           <div className="min-w-0">
-            <div className="truncate text-text">{i.title}</div>
-            <div className="font-mono text-[10px] text-text-subtle">{i.id}</div>
+            <div className="truncate text-text">{i.scopeLabel ?? i.rootCause ?? i.scope}</div>
+            <div className="font-mono text-[10px] text-text-subtle">{i.affectedCount}/{i.totalInScope} afetados</div>
           </div>
-          <span className="text-text-muted">{i.region}</span>
-          <span className="font-mono text-text-muted">{i.sla}</span>
-          <span className={cn('w-fit rounded px-1.5 py-px text-[10px] font-semibold', SEV_TONE[i.sev])}>
-            {i.sev}
+          <span className="truncate text-text-muted">{i.scope}</span>
+          <span className="font-mono text-text-muted">{relativeTime(i.firstEventAt)}</span>
+          <span className={cn('w-fit rounded px-1.5 py-px text-[10px] font-semibold', sevTone(i.severity))}>
+            {i.severity}
           </span>
         </div>
       ))}
@@ -329,11 +424,11 @@ function IncidentsTable() {
 }
 
 // ── NOC ───────────────────────────────────────────────────────────────────
-function NocPanels() {
+function NocPanels({ live }: { live: DashboardLive }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-4 lg:grid-cols-[1.45fr_1fr]">
-        <Panel title="Tráfego agregado">
+        <Panel title="Tráfego agregado" badge={<MockBadge />}>
           <div className="mb-2 flex items-center gap-4 text-2xs text-text-subtle">
             <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-accent" /> Ingress</span>
             <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-ai" /> Egress</span>
@@ -347,28 +442,11 @@ function NocPanels() {
             height={140}
           />
         </Panel>
-        <Panel title="Alarmes ativos">
-          <div className="space-y-2">
-            {ALARMS.map((a) => (
-              <div
-                key={a.node}
-                className={cn(
-                  'rounded-lg border border-border bg-card-inset px-2.5 py-2',
-                  a.tone === 'danger' ? 'border-l-2 border-l-danger' : 'border-l-2 border-l-warning',
-                )}
-              >
-                <div className="flex items-center gap-1.5">
-                  <span className={cn('h-1.5 w-1.5 rounded-full', a.tone === 'danger' ? 'bg-danger' : 'bg-warning')} />
-                  <span className="text-xs text-text">{a.text}</span>
-                  <span className="ml-auto text-[10px] text-text-subtle">há {a.ago}</span>
-                </div>
-                <span className="font-mono text-[10px] text-text-subtle">{a.node}</span>
-              </div>
-            ))}
-          </div>
+        <Panel title="Alarmes ativos" badge={live.incidents == null ? <MockBadge /> : undefined}>
+          <AlarmsList incidents={live.incidents?.data} />
         </Panel>
       </div>
-      <Panel title="Elementos de rede" link="Ver todos (2.341)">
+      <Panel title="Elementos de rede" link={live.oltCount != null ? `${live.oltCount} OLTs` : 'Ver todos'} badge={<MockBadge />}>
         <div className="text-xs">
           <div className="grid grid-cols-[1.4fr_84px_72px_1fr_72px] gap-2 border-b border-border pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-text-disabled">
             <span>Elemento</span><span>Tipo</span><span>Status</span><span>Carga</span><span>Uptime</span>
@@ -397,23 +475,60 @@ function NocPanels() {
   );
 }
 
+function AlarmsList({ incidents }: { incidents?: IncidentItem[] }) {
+  const rows = incidents ?? [];
+  if (rows.length === 0) {
+    return <div className="py-6 text-center text-xs text-text-subtle">Nenhum alarme ativo.</div>;
+  }
+  return (
+    <div className="space-y-2">
+      {rows.slice(0, 5).map((a) => {
+        const danger = sevIsDanger(a.severity);
+        return (
+          <div
+            key={a.id}
+            className={cn(
+              'rounded-lg border border-border bg-card-inset px-2.5 py-2',
+              danger ? 'border-l-2 border-l-danger' : 'border-l-2 border-l-warning',
+            )}
+          >
+            <div className="flex items-center gap-1.5">
+              <span className={cn('h-1.5 w-1.5 rounded-full', danger ? 'bg-danger' : 'bg-warning')} />
+              <span className="truncate text-xs text-text">{a.scopeLabel ?? a.rootCause ?? a.scope}</span>
+              <span className="ml-auto whitespace-nowrap text-[10px] text-text-subtle">{relativeTime(a.lastEventAt)}</span>
+            </div>
+            <span className="font-mono text-[10px] text-text-subtle">{a.scope} · {a.affectedCount}/{a.totalInScope}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── FINANCEIRO ────────────────────────────────────────────────────────────
-function FinanceiroPanels() {
+function FinanceiroPanels({ live, money, moneyShort, nf }: { live: DashboardLive; money: (v?: number) => string; moneyShort: (v?: number) => string; nf: (n?: number) => string }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-4 lg:grid-cols-[1.45fr_1fr]">
-        <Panel title="MRR (12 meses)">
-          <div className="font-mono text-[27px] font-semibold text-text-strong">R$ 1,84M<span className="text-base text-text-subtle">/mês</span></div>
-          <div className="mt-1"><span className="rounded px-1 py-px text-[10px] font-semibold text-success bg-success-muted">+4,8%</span></div>
-          <div className="mt-3">
+        <Panel title="MRR (baseline)">
+          <div className="font-mono text-[27px] font-semibold text-text-strong">
+            {moneyShort(live.monthlyBaseline)}<span className="text-base text-text-subtle">/mês</span>
+          </div>
+          <div className="mt-1 text-xs text-text-subtle">
+            {live.activeContracts != null ? `${nf(live.activeContracts)} contratos ativos` : 'soma do plano mensal dos contratos ativos'}
+          </div>
+          <div className="mt-3 flex items-center gap-2">
             <BarChart
               data={[120, 128, 132, 140, 145, 150, 158, 162, 168, 175, 178, 184]}
               labels={['j', 'f', 'm', 'a', 'm', 'j', 'j', 'a', 's', 'o', 'n', 'd']}
             />
+            <MockBadge />
           </div>
         </Panel>
-        <Panel title="Inadimplência por faixa">
-          <div className="text-xs text-text-subtle">R$ 218k em 1.287 contratos</div>
+        <Panel title="Inadimplência por faixa" badge={<MockBadge />}>
+          <div className="text-xs text-text-subtle">
+            {moneyShort(live.finance?.overdue.amount)} em {nf(live.overdueCount)} faturas vencidas
+          </div>
           <div className="mt-3 space-y-2.5">
             {AGING.map((a) => (
               <div key={a.label}>
@@ -427,29 +542,43 @@ function FinanceiroPanels() {
           </div>
         </Panel>
       </div>
-      <Panel title="Faturas recentes" link="Ver financeiro">
-        <div className="text-xs">
-          <div className="grid grid-cols-[1.3fr_1fr_84px_92px_84px] gap-2 border-b border-border pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-text-disabled">
-            <span>Assinante</span><span>Fatura</span><span>Venc.</span><span>Valor</span><span>Status</span>
-          </div>
-          {INVOICES.map((inv) => (
-            <div key={inv.id} className="grid grid-cols-[1.3fr_1fr_84px_92px_84px] items-center gap-2 border-b border-border/60 py-2">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-surface-hover text-[10px] font-semibold text-text-muted">
-                  {inv.name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
-                </span>
-                <span className="truncate text-text">{inv.name}</span>
-              </div>
-              <span className="font-mono text-text-muted">{inv.id}</span>
-              <span className="font-mono text-text-muted">{inv.due}</span>
-              <span className="font-mono text-text">{inv.val}</span>
-              <span className={cn('w-fit rounded px-1.5 py-px text-[10px] font-semibold', STATUS_TONE[inv.tone])}>
-                {inv.status}
-              </span>
-            </div>
-          ))}
-        </div>
+      <Panel title="Faturas recentes" link="Ver financeiro" badge={live.recentInvoices == null ? <MockBadge /> : undefined}>
+        <InvoicesTable invoices={live.recentInvoices} money={money} />
       </Panel>
+    </div>
+  );
+}
+
+function InvoicesTable({ invoices, money }: { invoices?: RecentInvoice[]; money: (v?: number) => string }) {
+  const rows = invoices ?? [];
+  return (
+    <div className="text-xs">
+      <div className="grid grid-cols-[1.3fr_1fr_84px_92px_84px] gap-2 border-b border-border pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-text-disabled">
+        <span>Contrato</span><span>Fatura</span><span>Venc.</span><span>Valor</span><span>Status</span>
+      </div>
+      {rows.length === 0 && (
+        <div className="py-6 text-center text-text-subtle">Nenhuma fatura.</div>
+      )}
+      {rows.map((inv) => {
+        const ident = inv.contract?.pppoeUsername ?? inv.contract?.code ?? inv.contract?.customerId.slice(0, 8) ?? '—';
+        const st = INVOICE_STATUS[inv.status] ?? { label: inv.status, tone: 'muted' as const };
+        return (
+          <div key={inv.id} className="grid grid-cols-[1.3fr_1fr_84px_92px_84px] items-center gap-2 border-b border-border/60 py-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-surface-hover text-[10px] font-semibold text-text-muted">
+                {ident.slice(0, 2).toUpperCase()}
+              </span>
+              <span className="truncate text-text">{ident}</span>
+            </div>
+            <span className="font-mono text-text-muted">{inv.contract?.code ?? inv.id.slice(0, 8)}</span>
+            <span className="font-mono text-text-muted">{formatDate(inv.dueDate)}</span>
+            <span className="font-mono text-text">{money(inv.amount)}</span>
+            <span className={cn('w-fit rounded px-1.5 py-px text-[10px] font-semibold', STATUS_TONE[st.tone])}>
+              {st.label}
+            </span>
+          </div>
+        );
+      })}
     </div>
   );
 }

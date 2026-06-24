@@ -18,10 +18,16 @@ OUT=".env.netx"
 COMPOSE="docker-compose.netx.yml"
 
 # Extrai VALOR de KEY=VALOR de um arquivo .env-style (tira aspas).
+# Sem pipe (grep|head) de propósito: sob `set -o pipefail`, o head fecharia o
+# pipe cedo, o grep levaria SIGPIPE e o script morreria. Usa grep -m1 + || true.
 getval() {
-  local key="$1" file="$2"
-  [ -f "$file" ] || return 0
-  grep -E "^${key}=" "$file" 2>/dev/null | head -1 | cut -d= -f2- | sed -e 's/^["'"'"']//' -e 's/["'"'"']$//'
+  local key="$1" file="$2" line val
+  [ -f "$file" ] || { printf ''; return 0; }
+  line="$(grep -m1 -E "^${key}=" "$file" 2>/dev/null || true)"
+  val="${line#*=}"
+  val="${val%\"}"; val="${val#\"}"
+  val="${val%\'}"; val="${val#\'}"
+  printf '%s' "$val"
 }
 
 if [ -f "$OUT" ]; then
