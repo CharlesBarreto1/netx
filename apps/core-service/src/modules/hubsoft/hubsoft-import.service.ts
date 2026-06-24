@@ -15,7 +15,10 @@
  */
 import { Injectable, Logger } from '@nestjs/common';
 import type {
+  BrowseHubsoftCustomersRequest,
+  BrowseHubsoftCustomersResponse,
   HubsoftCustomerFilters,
+  HubsoftCustomerListItem,
   HubsoftServiceStatus,
   HubsoftSyncEntity,
   HubsoftSyncEntityResult,
@@ -86,9 +89,18 @@ export class HubsoftImportService {
     for (const entity of entities) {
       try {
         if (entity === 'customers') {
-          results.push(await this.importCustomers(tenantId, cfg, dryRun, limit, opts.filters));
+          results.push(
+            await this.importCustomers(tenantId, cfg, dryRun, {
+              limit,
+              filters: opts.filters,
+              codigos: opts.codigos,
+              onlyImported: opts.onlyImported,
+            }),
+          );
         } else if (entity === 'financeiro') {
-          results.push(await this.importFinanceiro(tenantId, cfg, dryRun, limit));
+          results.push(
+            await this.importFinanceiro(tenantId, cfg, dryRun, { limit, codigos: opts.codigos }),
+          );
         }
       } catch (e) {
         results.push({
@@ -138,15 +150,117 @@ export class HubsoftImportService {
   }
 
   // ===========================================================================
+  // BROWSE — listar clientes do Hubsoft p/ escolher quem importar (não grava)
+  // ===========================================================================
+  async browse(
+    tenantId: string,
+    req: BrowseHubsoftCustomersRequest,
+  ): Promise<BrowseHubsoftCustomersResponse> {
+    const cfg = await this.config.resolve(tenantId);
+    const filters = req.filters;
+    const cancelado: 'sim' | 'nao' = filters?.status?.includes('cancelado') ? 'sim' : 'nao';
+
+    // Com busca textual usamos a rota /cliente (busca server-side, rápida); sem
+    // busca, /cliente/all. Filtros cidade/status/grupo são client-side nos dois.
+    let clientes;
+    if (req.search) {
+      const digits = req.search.replace(/\D/g, '');
+      const byDoc = digits.length >= 11;
+      clientes = await this.client.getClientes(cfg, {
+        busca: byDoc ? 'cpf_cnpj' : 'nome_razaosocial',
+        termo_busca: byDoc ? digits : req.search,
+        cancelado,
+      });
+    } else {
+      clientes = await this.client.getClientesAll(cfg, { cancelado });
+    }
+
+    const hasServiceFilter = !!(filters?.status?.length || filters?.grupos?.length);
+    clientes = clientes.filter((cli) => {
+      if (!this.str(cli.codigo_cliente ?? cli.id_cliente)) return false;
+      if (filters?.cidades?.length && !this.matchCity(cli, filters.cidades)) return false;
+      if (hasServiceFilter && this.matchServicos(cli.servicos ?? [], filters).length === 0) {
+        return false;
+      }
+      return true;
+    });
+
+    const total = clientes.length;
+    const page = req.page ?? 1;
+    const pageSize = req.pageSize ?? 50;
+    const pageItems = clientes.slice((page - 1) * pageSize, page * pageSize);
+
+    const imported = await this.importedCodigos(tenantId);
+    const items = pageItems.map((cli) => this.toListItem(cli, imported, filters));
+    return { items, total, page, pageSize };
+  }
+
+  /** Conjunto de codigo_cliente já importados no NetX (Customer HS-<codigo>). */
+  private async importedCodigos(tenantId: string): Promise<Set<string>> {
+    const rows = await this.prisma.customer.findMany({
+      where: { tenantId, code: { startsWith: HS_CUSTOMER_PREFIX } },
+      select: { code: true },
+    });
+    return new Set(
+      rows.map((r) => (r.code ?? '').slice(HS_CUSTOMER_PREFIX.length)).filter(Boolean),
+    );
+  }
+
+  private toListItem(
+    cli: HubsoftCliente,
+    imported: Set<string>,
+    filters?: HubsoftCustomerFilters,
+  ): HubsoftCustomerListItem {
+    const codigo = this.str(cli.codigo_cliente ?? cli.id_cliente);
+    const servicos =
+      filters?.status?.length || filters?.grupos?.length
+        ? this.matchServicos(cli.servicos ?? [], filters)
+        : cli.servicos ?? [];
+    const planos = [...new Set(servicos.map((s) => this.planName(s)).filter(Boolean))];
+    return {
+      codigo,
+      id: this.str(cli.id_cliente),
+      nome: this.str(cli.nome_razaosocial) || this.str(cli.nome) || `Cliente HS ${codigo}`,
+      cpfCnpj: this.str(cli.cpf_cnpj),
+      cidade: this.firstCidade(cli),
+      statusLabel:
+        this.str(cli.status_txt ?? cli.status) ||
+        (servicos[0] ? this.serviceStatusText(servicos[0]) : ''),
+      planos,
+      servicosCount: servicos.length,
+      alreadyImported: imported.has(codigo),
+    };
+  }
+
+  private firstCidade(cli: HubsoftCliente): string {
+    const cands = [
+      cli.endereco_instalacao,
+      cli.endereco_cadastral,
+      cli.endereco_cobranca,
+      cli.endereco_fiscal,
+      ...(cli.servicos ?? []).map((s) => s.endereco_instalacao),
+    ];
+    for (const e of cands) {
+      if (e && typeof e === 'object' && e.cidade) return this.str(e.cidade);
+    }
+    return '';
+  }
+
+  // ===========================================================================
   // Clientes + Contratos (+ Planos)
   // ===========================================================================
   private async importCustomers(
     tenantId: string,
     cfg: HubsoftResolvedConfig,
     dryRun: boolean,
-    limit?: number,
-    filters?: HubsoftCustomerFilters,
+    opts: {
+      limit?: number;
+      filters?: HubsoftCustomerFilters;
+      codigos?: string[]; // importar apenas estes (seleção manual)
+      onlyImported?: boolean; // re-sync só dos já importados (cron)
+    } = {},
   ): Promise<HubsoftSyncEntityResult> {
+    const { limit, filters, codigos, onlyImported } = opts;
     const res: HubsoftSyncEntityResult = {
       entity: 'customers',
       fetched: 0,
@@ -165,13 +279,25 @@ export class HubsoftImportService {
     // padrão da API (nao). Cidade/status/grupo são aplicados client-side abaixo.
     const cancelado: 'sim' | 'nao' = filters?.status?.includes('cancelado') ? 'sim' : 'nao';
 
+    // Quando há seleção (codigos) ou só-importados, precisamos da base completa
+    // ANTES de estreitar — então não passamos o limit server-side nesses casos.
+    const narrowing = !!(codigos?.length || onlyImported);
     // SEMPRE via /cliente/all: a rota /cliente exige `busca`+`termo_busca`
     // (obrigatórios) e voltaria vazia numa busca em massa. /cliente/all aceita
-    // `limit` server-side; o slice é só rede de segurança.
+    // `limit` server-side.
     let clientes = await this.client.getClientesAll(cfg, {
       cancelado,
-      ...(limit ? { limit } : {}),
+      ...(!narrowing && limit ? { limit } : {}),
     });
+
+    if (codigos?.length) {
+      const set = new Set(codigos.map((c) => String(c)));
+      clientes = clientes.filter((c) => set.has(this.str(c.codigo_cliente ?? c.id_cliente)));
+    }
+    if (onlyImported) {
+      const imported = await this.importedCodigos(tenantId);
+      clientes = clientes.filter((c) => imported.has(this.str(c.codigo_cliente ?? c.id_cliente)));
+    }
     if (limit) clientes = clientes.slice(0, limit);
     res.fetched = clientes.length;
 
@@ -443,8 +569,9 @@ export class HubsoftImportService {
     tenantId: string,
     cfg: HubsoftResolvedConfig,
     dryRun: boolean,
-    limit?: number,
+    opts: { limit?: number; codigos?: string[] } = {},
   ): Promise<HubsoftSyncEntityResult> {
+    const { limit, codigos } = opts;
     const res: HubsoftSyncEntityResult = {
       entity: 'financeiro',
       fetched: 0,
@@ -458,9 +585,14 @@ export class HubsoftImportService {
 
     // O financeiro do Hubsoft é POR cliente. Pegamos a lista de códigos a partir
     // dos clientes já importados no NetX (code HS-...) — assim só puxamos fatura
-    // de quem realmente migrou.
+    // de quem realmente migrou. Se vier `codigos`, restringe a essa seleção.
     const customers = await this.prisma.customer.findMany({
-      where: { tenantId, code: { startsWith: HS_CUSTOMER_PREFIX } },
+      where: {
+        tenantId,
+        code: codigos?.length
+          ? { in: codigos.map((c) => `${HS_CUSTOMER_PREFIX}${c}`) }
+          : { startsWith: HS_CUSTOMER_PREFIX },
+      },
       select: { id: true, code: true },
       ...(limit ? { take: limit } : {}),
     });

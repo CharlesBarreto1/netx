@@ -111,9 +111,64 @@ export const RunHubsoftSyncRequestSchema = z
     limit: z.coerce.number().int().min(1).max(5000).optional(),
     // Filtros aplicados à busca de clientes (cidade/status/grupo de serviço).
     filters: HubsoftCustomerFiltersSchema.optional(),
+    // Importar apenas estes códigos de cliente (seleção manual na lista).
+    codigos: z.array(z.string().min(1)).min(1).optional(),
+    // Re-sincronizar apenas clientes JÁ importados no NetX (cron 4x/dia).
+    onlyImported: z.boolean().optional(),
   })
   .strict();
 export type RunHubsoftSyncRequest = z.infer<typeof RunHubsoftSyncRequestSchema>;
+
+// -----------------------------------------------------------------------------
+// BROWSE — listar clientes do Hubsoft p/ escolher quem importar (não grava)
+// -----------------------------------------------------------------------------
+export const BrowseHubsoftCustomersRequestSchema = z
+  .object({
+    // Busca textual (nome ou CPF/CNPJ — a rota /cliente do Hubsoft é usada).
+    search: z.string().trim().min(1).max(120).optional(),
+    // Mesmos filtros do sync (cidade/status/grupo).
+    filters: HubsoftCustomerFiltersSchema.optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(200).default(50),
+  })
+  .strict();
+export type BrowseHubsoftCustomersRequest = z.infer<
+  typeof BrowseHubsoftCustomersRequestSchema
+>;
+
+export interface HubsoftCustomerListItem {
+  codigo: string; // codigo_cliente (chave externa, vira HS-<codigo>)
+  id: string; // id_cliente
+  nome: string;
+  cpfCnpj: string;
+  cidade: string;
+  statusLabel: string; // texto de status do cliente/serviço no Hubsoft
+  planos: string[]; // nomes distintos dos planos dos serviços
+  servicosCount: number;
+  alreadyImported: boolean; // já existe Customer HS-<codigo> no NetX
+}
+
+export interface BrowseHubsoftCustomersResponse {
+  items: HubsoftCustomerListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+// -----------------------------------------------------------------------------
+// IMPORT — importar a seleção da lista (grava no NetX)
+// -----------------------------------------------------------------------------
+export const ImportHubsoftCustomersRequestSchema = z
+  .object({
+    codigos: z.array(z.string().min(1)).min(1).max(2000),
+    // Entidades a importar (default: as habilitadas na config).
+    entities: z.array(HubsoftSyncEntitySchema).min(1).optional(),
+    dryRun: z.boolean().optional(),
+  })
+  .strict();
+export type ImportHubsoftCustomersRequest = z.infer<
+  typeof ImportHubsoftCustomersRequestSchema
+>;
 
 export interface HubsoftSyncEntityResult {
   entity: HubsoftSyncEntity;

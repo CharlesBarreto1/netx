@@ -1,20 +1,14 @@
 'use client';
 
 /**
- * /settings/hubsoft — integração de LEITURA com a API oficial do Hubsoft.
+ * /settings/hubsoft — CONEXÃO com a API oficial do Hubsoft (config).
  *
- * Usada na migração/operação conjunta de um provedor que está saindo do
- * Hubsoft: o NetX puxa clientes, contratos e financeiro e espelha nos seus
- * modelos. Nunca escreve no Hubsoft.
+ * Só credenciais/conexão/teste. A ferramenta de migração (listar clientes,
+ * escolher quem importar e sincronizar) fica em /settings/hubsoft/import.
  *
- * Seções:
- *   1. Conexão     — host + habilitar + sync automático + entidades
- *   2. Credenciais — client_id/secret + usuário/senha (OAuth password grant, write-only)
- *   3. Testar      — diagnóstico OAuth sem importar nada
- *   4. Sincronizar — filtros (cidade/status/grupo), dry-run e resultado/preview
- *
- * Textos em PT inline (mesmo padrão das demais telas; i18n pode vir depois).
+ * Textos em PT inline (mesmo padrão das demais telas).
  */
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 
@@ -28,14 +22,11 @@ import {
   hubsoftApi,
   type HubsoftConfigView,
   type HubsoftDiagnostics,
-  type HubsoftServiceStatus,
-  type HubsoftSyncResult,
 } from '@/lib/hubsoft-api';
 import { hasPermission } from '@/lib/session';
 
 export default function HubsoftSettingsPage() {
   const canWrite = hasPermission('hubsoft.config.write');
-  const canSync = hasPermission('hubsoft.sync.write');
   const { data: config, mutate, isLoading } = useSWR<HubsoftConfigView>(
     hubsoftApi.configPath(),
     () => hubsoftApi.getConfig(),
@@ -45,19 +36,27 @@ export default function HubsoftSettingsPage() {
 
   return (
     <div className="space-y-5">
-      <header>
-        <h1 className="text-2xl font-bold tracking-tight">Hubsoft — migração</h1>
-        <p className="mt-1 text-sm text-text-muted">
-          Integração de leitura com a API oficial do Hubsoft. O NetX puxa clientes, contratos e
-          financeiro e espelha aqui — nada é escrito no Hubsoft. Ideal para operar em paralelo
-          durante a migração de um provedor.
-        </p>
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Hubsoft — conexão</h1>
+          <p className="mt-1 text-sm text-text-muted">
+            Credenciais da API oficial do Hubsoft (read-only). Depois de conectar, use a página de
+            migração para listar e importar os clientes.
+          </p>
+        </div>
+        {config.enabled && config.hasCredentials && (
+          <Link
+            href="/settings/hubsoft/import"
+            className="shrink-0 rounded-md border border-accent bg-accent-muted px-3 py-2 text-sm font-semibold text-text hover:opacity-90"
+          >
+            Importar clientes →
+          </Link>
+        )}
       </header>
 
       <ConnectionCard config={config} canWrite={canWrite} onSaved={() => mutate()} />
       <CredentialsCard config={config} canWrite={canWrite} onSaved={() => mutate()} />
       <DiagnosticsCard />
-      <SyncCard canSync={canSync} lastConfig={config} onRan={() => mutate()} />
     </div>
   );
 }
@@ -112,7 +111,7 @@ function ConnectionCard({
   const badge = !config.hasCredentials ? (
     <Badge tone="neutral">Sem credenciais</Badge>
   ) : config.enabled ? (
-    <Badge tone="success">Ativo{config.autoSync ? ' · sync automático' : ''}</Badge>
+    <Badge tone="success">Ativo{config.autoSync ? ' · sync 4x/dia' : ''}</Badge>
   ) : (
     <Badge tone="neutral">Configurado, desativado</Badge>
   );
@@ -145,8 +144,8 @@ function ConnectionCard({
             checked={autoSync}
             onChange={setAutoSync}
             disabled={!canWrite}
-            label="Sync automático (de hora em hora)"
-            help="Mantém os dados espelhados sem ação manual. Sempre read-only."
+            label="Sincronizar importados 4x/dia"
+            help="A cada 6h, atualiza só os clientes já importados. Sempre read-only."
           />
           <Check
             id="hub-cust"
@@ -300,7 +299,7 @@ function DiagnosticsCard() {
   return (
     <Section title="Testar conexão">
       <p className="mb-3 text-xs text-text-muted">
-        Faz o login OAuth na API do Hubsoft sem importar nada. Valide aqui antes de sincronizar.
+        Faz o login OAuth na API do Hubsoft sem importar nada. Valide aqui antes de migrar.
       </p>
       <div className="flex justify-end">
         <Button onClick={run} loading={running} variant="outline">
@@ -318,192 +317,6 @@ function DiagnosticsCard() {
         </div>
       )}
     </Section>
-  );
-}
-
-// =============================================================================
-// Sincronizar (filtros + dry-run + resultado)
-// =============================================================================
-const STATUS_OPTS: HubsoftServiceStatus[] = ['ativo', 'bloqueado', 'cancelado'];
-
-function SyncCard({
-  canSync,
-  lastConfig,
-  onRan,
-}: {
-  canSync: boolean;
-  lastConfig: HubsoftConfigView;
-  onRan: () => void;
-}) {
-  const [cidades, setCidades] = useState('');
-  const [grupos, setGrupos] = useState('');
-  const [status, setStatus] = useState<HubsoftServiceStatus[]>([]);
-  const [dryRun, setDryRun] = useState(true);
-  const [limit, setLimit] = useState('20');
-  const [running, setRunning] = useState(false);
-  const [result, setResult] = useState<HubsoftSyncResult | null>(null);
-
-  const enabled = lastConfig.enabled && lastConfig.hasCredentials;
-
-  function toggleStatus(s: HubsoftServiceStatus) {
-    setStatus((prev) => (prev.includes(s) ? prev.filter((x) => x !== s) : [...prev, s]));
-  }
-
-  function parseCsv(v: string): string[] {
-    return v
-      .split(',')
-      .map((x) => x.trim())
-      .filter(Boolean);
-  }
-
-  async function run() {
-    setRunning(true);
-    try {
-      const cidadesArr = parseCsv(cidades);
-      const gruposArr = parseCsv(grupos);
-      const filters =
-        cidadesArr.length || gruposArr.length || status.length
-          ? {
-              ...(cidadesArr.length ? { cidades: cidadesArr } : {}),
-              ...(gruposArr.length ? { grupos: gruposArr } : {}),
-              ...(status.length ? { status } : {}),
-            }
-          : undefined;
-      const limitNum = limit.trim() ? Number(limit) : undefined;
-      const res = await hubsoftApi.runSync({
-        dryRun,
-        ...(limitNum && Number.isFinite(limitNum) ? { limit: limitNum } : {}),
-        ...(filters ? { filters } : {}),
-      });
-      setResult(res);
-      if (!dryRun) {
-        toast.success('Sincronização concluída');
-        onRan();
-      } else {
-        toast.success('Dry-run concluído (nada foi gravado)');
-      }
-    } catch (err) {
-      const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
-      toast.error(`Falha ao sincronizar: ${msg}`);
-    } finally {
-      setRunning(false);
-    }
-  }
-
-  return (
-    <Section
-      title="Sincronizar"
-      rightSlot={dryRun ? <Badge tone="warning">Dry-run</Badge> : <Badge tone="danger">Grava no NetX</Badge>}
-    >
-      {!enabled && (
-        <p className="mb-3 rounded-md border border-border bg-surface-muted px-3 py-2 text-xs text-text-muted">
-          Habilite a integração e salve as credenciais antes de sincronizar.
-        </p>
-      )}
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <div>
-          <Label>Cidades</Label>
-          <Input value={cidades} onChange={(e) => setCidades(e.target.value)}
-            placeholder="Divinópolis, São Paulo" disabled={!canSync} />
-          <FieldHelp>Separe por vírgula. Sem acento/maiúscula importa. Vazio = todas.</FieldHelp>
-        </div>
-        <div>
-          <Label>Grupos / planos de serviço</Label>
-          <Input value={grupos} onChange={(e) => setGrupos(e.target.value)}
-            placeholder="300 MEGA, FIBRA, 100" disabled={!canSync} />
-          <FieldHelp>Casa por id do serviço, nome/número do plano ou código do pacote.</FieldHelp>
-        </div>
-      </div>
-
-      <div className="mt-4">
-        <Label>Status do serviço</Label>
-        <div className="flex flex-wrap gap-2">
-          {STATUS_OPTS.map((s) => (
-            <button
-              key={s}
-              type="button"
-              disabled={!canSync}
-              onClick={() => toggleStatus(s)}
-              aria-pressed={status.includes(s)}
-              className={
-                'rounded-md border px-3 py-1.5 text-sm capitalize transition-colors ' +
-                (status.includes(s)
-                  ? 'border-accent bg-accent-muted text-text'
-                  : 'border-border bg-surface text-text-muted hover:bg-surface-hover')
-              }
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-        <FieldHelp>Nenhum selecionado = todos os status. Marcar “cancelado” busca cancelados na API.</FieldHelp>
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-end gap-4">
-        <div className="w-32">
-          <Label>Limite</Label>
-          <Input value={limit} onChange={(e) => setLimit(e.target.value)} inputMode="numeric"
-            placeholder="20" disabled={!canSync} />
-        </div>
-        <Check id="hub-dryrun" checked={dryRun} onChange={setDryRun} disabled={!canSync}
-          label="Dry-run (não grava — só prévia)" />
-        <div className="ml-auto">
-          <Button onClick={run} loading={running} disabled={!canSync || !enabled}
-            variant={dryRun ? 'outline' : 'primary'}>
-            {dryRun ? 'Pré-visualizar' : 'Sincronizar agora'}
-          </Button>
-        </div>
-      </div>
-
-      {result && <SyncResult result={result} />}
-    </Section>
-  );
-}
-
-function SyncResult({ result }: { result: HubsoftSyncResult }) {
-  return (
-    <div className="mt-5 space-y-3">
-      <p className="text-xs text-text-muted">
-        {result.dryRun ? 'Dry-run' : 'Execução'} · {result.durationMs} ms
-      </p>
-      {result.entities.map((e) => (
-        <div key={e.entity} className="rounded-md border border-border bg-surface-muted p-3">
-          <div className="mb-2 flex items-center justify-between gap-3">
-            <span className="text-sm font-semibold capitalize text-text">
-              {e.entity === 'customers' ? 'Clientes + contratos' : 'Financeiro'}
-            </span>
-            <Badge tone={e.failed ? 'warning' : 'success'}>
-              {e.failed ? `${e.failed} falha(s)` : 'OK'}
-            </Badge>
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
-            <Fact label="Buscados" value={String(e.fetched)} />
-            <Fact label="Filtrados" value={String(e.filteredOut ?? 0)} />
-            <Fact label="Criados" value={String(e.created)} />
-            <Fact label="Atualizados" value={String(e.updated)} />
-            <Fact label="Ignorados" value={String(e.skipped)} />
-          </div>
-
-          {e.errors.length > 0 && (
-            <pre className="mt-2 max-h-40 overflow-auto rounded-md border border-border bg-surface p-2 text-[11px] leading-snug text-danger">
-              {JSON.stringify(e.errors.slice(0, 50), null, 2)}
-            </pre>
-          )}
-
-          {e.preview && e.preview.length > 0 && (
-            <details className="mt-2">
-              <summary className="cursor-pointer text-xs text-text-muted">
-                Prévia ({e.preview.length} registro(s)) — clique para expandir
-              </summary>
-              <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-border bg-surface p-2 text-[11px] leading-snug text-text-muted">
-                {JSON.stringify(e.preview.slice(0, 20), null, 2)}
-              </pre>
-            </details>
-          )}
-        </div>
-      ))}
-    </div>
   );
 }
 
@@ -541,15 +354,6 @@ function Check({
         </label>
       </div>
       {help && <FieldHelp>{help}</FieldHelp>}
-    </div>
-  );
-}
-
-function Fact({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border border-border bg-surface px-3 py-2">
-      <div className="text-text-muted">{label}</div>
-      <div className="truncate font-mono text-text">{value}</div>
     </div>
   );
 }

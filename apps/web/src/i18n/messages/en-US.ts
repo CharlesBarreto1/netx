@@ -153,6 +153,7 @@ const messages = {
     btgConfig: 'Payments (BTG)',
     brBilling: 'BR Billing APIs',
     hubsoft: 'Hubsoft (migration)',
+    hubsoftImport: 'Import from Hubsoft',
     users: 'Users',
     plans: 'Plans',
     backups: 'Backups',

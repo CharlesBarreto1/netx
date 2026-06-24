@@ -1,13 +1,13 @@
 /**
- * Sync contínuo (read-only) do Hubsoft.
+ * Sync periódico (read-only) do Hubsoft — 4x/dia (a cada 6h: 00/06/12/18h).
  *
- * A cada hora, para cada tenant com HubsoftConfig.enabled && autoSync, roda o
- * import das entidades habilitadas. Guard de reentrância igual ao EfiAutogen:
- * se um tick ainda roda, o próximo é ignorado. Erros por tenant não derrubam
- * os demais. Nunca escreve no Hubsoft — só lê e espelha no NetX.
+ * Para cada tenant com HubsoftConfig.enabled && autoSync, RE-SINCRONIZA apenas
+ * os clientes JÁ importados no NetX (onlyImported) — mantém a base migrada
+ * atualizada sem puxar clientes novos (a importação de novos é manual, pela
+ * lista). Guard de reentrância igual ao EfiAutogen. Nunca escreve no Hubsoft.
  */
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -25,7 +25,8 @@ export class HubsoftSyncService {
     private readonly config: HubsoftConfigService,
   ) {}
 
-  @Cron(CronExpression.EVERY_HOUR)
+  // 4x/dia: 00:00, 06:00, 12:00, 18:00 (segundo minuto hora ...).
+  @Cron('0 0 */6 * * *')
   async tick(): Promise<void> {
     if (this.running) return;
     this.running = true;
@@ -46,7 +47,10 @@ export class HubsoftSyncService {
     });
     for (const { tenantId } of tenants) {
       try {
-        await this.importer.run(tenantId, 'system:hubsoft-sync', { dryRun: false });
+        await this.importer.run(tenantId, 'system:hubsoft-sync', {
+          dryRun: false,
+          onlyImported: true,
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         this.logger.warn(`[hubsoft-sync] tenant ${tenantId} falhou: ${message}`);
