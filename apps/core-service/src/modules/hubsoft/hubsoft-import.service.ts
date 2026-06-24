@@ -165,9 +165,13 @@ export class HubsoftImportService {
     // padrão da API (nao). Cidade/status/grupo são aplicados client-side abaixo.
     const cancelado: 'sim' | 'nao' = filters?.status?.includes('cancelado') ? 'sim' : 'nao';
 
-    let clientes = limit
-      ? await this.client.getClientes(cfg, { limit, cancelado })
-      : await this.client.getClientesAll(cfg, { cancelado });
+    // SEMPRE via /cliente/all: a rota /cliente exige `busca`+`termo_busca`
+    // (obrigatórios) e voltaria vazia numa busca em massa. /cliente/all aceita
+    // `limit` server-side; o slice é só rede de segurança.
+    let clientes = await this.client.getClientesAll(cfg, {
+      cancelado,
+      ...(limit ? { limit } : {}),
+    });
     if (limit) clientes = clientes.slice(0, limit);
     res.fetched = clientes.length;
 

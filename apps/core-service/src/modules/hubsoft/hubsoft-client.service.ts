@@ -201,7 +201,7 @@ export class HubsoftClientService {
    */
   async getClientesAll(
     cfg: HubsoftResolvedConfig,
-    params: { cancelado?: 'sim' | 'nao'; codigo_pacote?: string | number } = {},
+    params: { cancelado?: 'sim' | 'nao'; codigo_pacote?: string | number; limit?: number } = {},
   ): Promise<HubsoftCliente[]> {
     const json = await this.get(cfg, `/api/v1/integracao/cliente/all${this.qs(params)}`);
     return this.pickArray(json, ['clientes']) as HubsoftCliente[];
