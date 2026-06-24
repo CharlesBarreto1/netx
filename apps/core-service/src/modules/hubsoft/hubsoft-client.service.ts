@@ -199,8 +199,11 @@ export class HubsoftClientService {
    * GET /api/v1/integracao/cliente/all — TODOS os clientes (cacheado no Hubsoft).
    * O próprio Hubsoft recomenda usar poucas vezes ao dia.
    */
-  async getClientesAll(cfg: HubsoftResolvedConfig): Promise<HubsoftCliente[]> {
-    const json = await this.get(cfg, `/api/v1/integracao/cliente/all`);
+  async getClientesAll(
+    cfg: HubsoftResolvedConfig,
+    params: { cancelado?: 'sim' | 'nao'; codigo_pacote?: string | number } = {},
+  ): Promise<HubsoftCliente[]> {
+    const json = await this.get(cfg, `/api/v1/integracao/cliente/all${this.qs(params)}`);
     return this.pickArray(json, ['clientes']) as HubsoftCliente[];
   }
 

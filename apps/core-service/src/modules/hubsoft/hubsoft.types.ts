@@ -52,19 +52,34 @@ export interface HubsoftEndereco {
   longitude?: string | number;
 }
 
+export interface HubsoftPacote {
+  id_pacote?: number | string;
+  codigo?: string;
+  descricao?: string;
+  valor?: string | number;
+}
+
 export interface HubsoftServico {
   id_cliente_servico?: number | string;
+  id_servico?: number | string; // id do serviço/plano no Hubsoft (grupo)
   login?: string;
   senha?: string;
   status?: string;
   status_txt?: string;
-  numero_plano?: string; // nome do plano
+  status_prefixo?: string; // código estável: servico_habilitado | servico_cancelado | ...
+  // Nome do plano. ATENÇÃO: o shape varia por rota — em /cliente/all o nome vem
+  // em `nome` e `numero_plano` é numérico; em /cliente o nome pode vir em
+  // `numero_plano`. O mapeador trata os dois.
+  numero_plano?: string | number;
+  nome?: string;
   id_pacote?: number | string;
+  pacotes?: HubsoftPacote[];
   valor?: string | number;
   tecnologia?: string;
   conectado?: string;
-  equipamento_conexao?: string;
-  interface?: string;
+  ipv4?: string;
+  equipamento_conexao?: unknown;
+  interface?: unknown;
   endereco_instalacao?: HubsoftEndereco | string;
 }
 

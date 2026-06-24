@@ -15,6 +15,7 @@ export * from './reports';
 export * from './backups';
 export * from './portal.dto';
 export * from './sifen';
+export * from './nfcom';
 export * from './network';
 export * from './stock';
 export * from './provisioning';

@@ -113,6 +113,10 @@ model Tenant {
   // SIFEN — fatura eletrônica Paraguay (módulo opcional, ligado via env)
   sifenDocuments       SifenDocument[]
 
+  // NFCom — fatura de serviço de comunicação BR (modelo 62, módulo opcional)
+  nfcomConfig          NfcomConfig?
+  nfcomDocuments       NfcomDocument[]
+
   // Estoque (Fase 1)
   suppliers            Supplier[]
   products             Product[]
@@ -1389,6 +1393,8 @@ model ContractInvoice {
   efiCharges     EfiCharge[]
   // BTG — cobranças (boleto/Pix) geradas para esta fatura.
   btgCharges     BtgCharge[]
+  // NFCom — documentos fiscais BR (modelo 62) emitidos para esta fatura.
+  nfcomDocuments NfcomDocument[]
 
   @@index([tenantId, contractId])
   @@index([tenantId, cashRegisterId])
@@ -1759,6 +1765,8 @@ model OneTimeCharge {
 
   // SIFEN — 0..N documentos fiscais associados a essa cobrança avulsa.
   sifenDocuments SifenDocument[]
+  // NFCom — 0..N documentos fiscais BR associados a essa cobrança avulsa.
+  nfcomDocuments NfcomDocument[]
 
   @@unique([tenantId, code])
   @@index([tenantId, status])
@@ -5206,6 +5214,170 @@ model BtgRecurrence {
   @@index([tenantId, contractId])
   @@index([authorizationId])
   @@map("btg_recurrences")
+}
+
+// =============================================================================
+// NFCom — Nota Fiscal Fatura de Serviço de Comunicação Eletrônica (modelo 62).
+// Documento fiscal BR para ISP. Autorizador SVRS (RS) p/ quase todos os estados.
+// Espinha espelha SifenDocument (PY); transmissão ao Fisco fica atrás de uma
+// porta plugável (1o adapter = agregador REST; SVRS-direto fica p/ depois).
+// Integração SOMENTE BR. Módulo opcional, ligado por tenant via /settings/nfcom.
+// =============================================================================
+
+enum NfcomEnvironment {
+  HOMOLOGACAO
+  PRODUCAO
+}
+
+enum NfcomTransmitter {
+  NUVEM_FISCAL // agregador REST (default)
+  FOCUS_NFE    // agregador REST alternativo
+  SVRS_DIRECT  // XML + XMLDSig + SOAP direto no SVRS (futuro)
+}
+
+enum NfcomDocumentType {
+  NFCOM             // emissão normal
+  NFCOM_SUBSTITUICAO // substitui um NFCom anterior (gSub)
+}
+
+enum NfcomDocumentStatus {
+  DRAFT      // criado localmente, ainda não transmitido
+  SIGNED     // assinado, pronto p/ transmitir
+  SENT       // enviado ao Fisco, aguardando retorno
+  AUTHORIZED // autorizado (cStat 100) — documento fiscal efetivo
+  REJECTED   // rejeitado pelo Fisco — corrigir e reemitir
+  DENIED     // denegado (irregularidade fiscal do emitente/destinatário)
+  CANCELLED  // cancelado via evento (dentro do prazo)
+}
+
+model NfcomConfig {
+  id                     String           @id @default(uuid()) @db.Uuid
+  tenantId               String           @unique @map("tenant_id") @db.Uuid
+
+  environment            NfcomEnvironment @default(HOMOLOGACAO)
+  enabled                Boolean          @default(false)
+  transmitter            NfcomTransmitter @default(NUVEM_FISCAL)
+
+  // Segredos cifrados (CryptoService v1:iv:tag:ct).
+  // credentialsEnc = JSON {apiKey/token} do agregador escolhido.
+  credentialsEnc         String?          @map("credentials_enc") @db.Text
+  // Certificado .pfx A1 (base64) — exigido pelo SVRS_DIRECT e por agregadores
+  // que assinam com o cert do cliente. Cifrado.
+  certificateEnc         String?          @map("certificate_enc") @db.Text
+  certificatePasswordEnc String?          @map("certificate_password_enc") @db.Text
+
+  // Identidade do emitente (não-secreto)
+  cnpj                   String           @map("cnpj") @db.VarChar(14)
+  inscricaoEstadual      String?          @map("inscricao_estadual") @db.VarChar(20)
+  razaoSocial            String           @map("razao_social") @db.VarChar(255)
+  nomeFantasia           String?          @map("nome_fantasia") @db.VarChar(255)
+  crt                    String?          @map("crt") @db.VarChar(1) // regime tributário
+  uf                     String           @map("uf") @db.VarChar(2)
+  codMunicipio           String?          @map("cod_municipio") @db.VarChar(7)
+  // Endereço do emitente (enderEmit do XSD — todos obrigatórios p/ emitir).
+  endLogradouro          String?          @map("end_logradouro") @db.VarChar(60)
+  endNumero              String?          @map("end_numero") @db.VarChar(60)
+  endComplemento         String?          @map("end_complemento") @db.VarChar(60)
+  endBairro              String?          @map("end_bairro") @db.VarChar(60)
+  endMunicipioNome       String?          @map("end_municipio_nome") @db.VarChar(60)
+  endCep                 String?          @map("end_cep") @db.VarChar(8)
+  fone                   String?          @map("fone") @db.VarChar(12)
+  email                  String?          @map("email") @db.VarChar(255)
+  serie                  String           @default("1") @db.VarChar(3)
+  nextNumero             Int              @default(1) @map("next_numero")
+
+  // Defaults tributários — denormalizados no NfcomDocument na emissão.
+  cstIcms                String?          @map("cst_icms") @db.VarChar(3)
+  aliquotaIcms           Decimal?         @map("aliquota_icms") @db.Decimal(5, 2)
+  cfop                   String?          @map("cfop") @db.VarChar(4)
+  cClass                 String?          @map("c_class") @db.VarChar(7) // código de classificação
+  tpServ                 String?          @map("tp_serv") @db.VarChar(2)
+
+  // Emitir NFCom automaticamente a partir da fatura (cron de autogen).
+  autoGenerate           Boolean          @default(false) @map("auto_generate")
+  webhookToken           String?          @map("webhook_token") @db.VarChar(64)
+
+  createdAt              DateTime         @default(now()) @map("created_at")
+  updatedAt              DateTime         @updatedAt @map("updated_at")
+
+  tenant                 Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("nfcom_configs")
+}
+
+model NfcomDocument {
+  id                String              @id @default(uuid()) @db.Uuid
+  tenantId          String              @map("tenant_id") @db.Uuid
+
+  // Vínculo opcional (um dos dois). Espelha SifenDocument.
+  contractInvoiceId String?             @map("contract_invoice_id") @db.Uuid
+  oneTimeChargeId   String?             @map("one_time_charge_id") @db.Uuid
+
+  type              NfcomDocumentType   @default(NFCOM)
+  status            NfcomDocumentStatus @default(DRAFT)
+
+  serie             String              @db.VarChar(3)
+  numero            Int
+  // Chave de acesso 44 dígitos (preenchida após autorização do Fisco).
+  chaveAcesso       String?             @unique @map("chave_acesso") @db.VarChar(44)
+  protocolo         String?             @map("protocolo") @db.VarChar(20) // nProt da autorização
+  transmitterRef    String?             @map("transmitter_ref") @db.VarChar(64) // id do doc no agregador
+
+  emitenteCnpj      String              @map("emitente_cnpj") @db.VarChar(14)
+  receptorTaxId     String?             @map("receptor_tax_id") @db.VarChar(20)
+  receptorName      String?             @map("receptor_name") @db.VarChar(255)
+
+  totalAmount       Decimal             @map("total_amount") @db.Decimal(14, 2)
+  currency          String              @default("BRL") @db.Char(3)
+
+  // Snapshot tributário (copiado da NfcomConfig na emissão).
+  cstIcms           String?             @map("cst_icms") @db.VarChar(3)
+  aliquotaIcms      Decimal?            @map("aliquota_icms") @db.Decimal(5, 2)
+  baseCalculoIcms   Decimal?            @map("base_calculo_icms") @db.Decimal(14, 2)
+  valorIcms         Decimal?            @map("valor_icms") @db.Decimal(14, 2)
+
+  // XMLs + representação impressa (DANFE-COM).
+  xmlGenerated      String?             @map("xml_generated") @db.Text
+  xmlSigned         String?             @map("xml_signed") @db.Text
+  xmlAuthorized     String?             @map("xml_authorized") @db.Text
+  danfeUrl          String?             @map("danfe_url") @db.VarChar(500) // PDF DANFE-COM do agregador
+  qrCodeData        String?             @map("qrcode_data") @db.Text
+
+  // Resposta do Fisco + eventos.
+  authResponse      Json?               @map("auth_response")
+  rejectionCode     String?             @map("rejection_code") @db.VarChar(20)
+  rejectionReason   String?             @map("rejection_reason") @db.Text
+  cancelProtocol    String?             @map("cancel_protocol") @db.VarChar(20)
+  cancelReason      String?             @map("cancel_reason") @db.Text
+  substitutesId     String?             @map("substitutes_id") @db.Uuid // gSub — NFCom substituído
+
+  // Timeline.
+  issuedAt          DateTime            @map("issued_at")
+  signedAt          DateTime?           @map("signed_at")
+  sentAt            DateTime?           @map("sent_at")
+  authorizedAt      DateTime?           @map("authorized_at")
+  rejectedAt        DateTime?           @map("rejected_at")
+  cancelledAt       DateTime?           @map("cancelled_at")
+
+  // Retry (rede de segurança do transmissor).
+  retryCount        Int                 @default(0) @map("retry_count")
+  lastError         String?             @map("last_error") @db.Text
+  nextRetryAt       DateTime?           @map("next_retry_at")
+
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  contractInvoice   ContractInvoice?    @relation(fields: [contractInvoiceId], references: [id], onDelete: SetNull)
+  oneTimeCharge     OneTimeCharge?      @relation(fields: [oneTimeChargeId], references: [id], onDelete: SetNull)
+  substitutes       NfcomDocument?      @relation("NfcomSub", fields: [substitutesId], references: [id], onDelete: SetNull)
+  substitutedBy     NfcomDocument[]     @relation("NfcomSub")
+
+  @@unique([tenantId, serie, numero], map: "nfcom_doc_numero_uniq")
+  @@index([tenantId, status, issuedAt(sort: Desc)])
+  @@index([tenantId, contractInvoiceId])
+  @@index([nextRetryAt], map: "nfcom_doc_retry_idx")
+  @@map("nfcom_documents")
 }
 
 // =============================================================================

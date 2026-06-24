@@ -108,6 +108,17 @@ export const MENU_GROUPS: MenuGroup[] = [
     ],
   },
 
+  // Fiscal BR — NFCom (modelo 62, SVRS). Só aparece pra tenants Brasil.
+  {
+    key: 'fiscalBr',
+    labelKey: 'group.fiscalBr',
+    visibleIfCountry: ['BR'],
+    items: [
+      { key: 'nfcomDocuments', href: '/fiscal/nfcom', labelKey: 'nfcomDocuments', permission: 'nfcom.read' },
+      { key: 'nfcomConfig', href: '/settings/nfcom', labelKey: 'nfcomConfig', permission: 'nfcom.config' },
+    ],
+  },
+
   // Mapeamento — visualização geográfica (clientes, rede, backbone, etc).
   {
     key: 'mapping',

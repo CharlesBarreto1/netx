@@ -32,6 +32,7 @@ import { RadiusModule } from './modules/radius/radius.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { MappingModule } from './modules/mapping/mapping.module';
 import { SifenModule } from './modules/sifen/sifen.module';
+import { NfcomModule } from './modules/nfcom/nfcom.module';
 import { StockModule } from './modules/stock/stock.module';
 import { FleetModule } from './modules/fleet/fleet.module';
 import { StorageModule } from './modules/storage/storage.module';
@@ -106,6 +107,7 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
     PortalModule,
     RadiusModule,
     SifenModule,
+    NfcomModule,
     MappingModule,
     StockModule,
     FleetModule,

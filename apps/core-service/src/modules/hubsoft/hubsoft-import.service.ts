@@ -15,6 +15,8 @@
  */
 import { Injectable, Logger } from '@nestjs/common';
 import type {
+  HubsoftCustomerFilters,
+  HubsoftServiceStatus,
   HubsoftSyncEntity,
   HubsoftSyncEntityResult,
   HubsoftSyncStats,
@@ -84,7 +86,7 @@ export class HubsoftImportService {
     for (const entity of entities) {
       try {
         if (entity === 'customers') {
-          results.push(await this.importCustomers(tenantId, cfg, dryRun, limit));
+          results.push(await this.importCustomers(tenantId, cfg, dryRun, limit, opts.filters));
         } else if (entity === 'financeiro') {
           results.push(await this.importFinanceiro(tenantId, cfg, dryRun, limit));
         }
@@ -143,10 +145,12 @@ export class HubsoftImportService {
     cfg: HubsoftResolvedConfig,
     dryRun: boolean,
     limit?: number,
+    filters?: HubsoftCustomerFilters,
   ): Promise<HubsoftSyncEntityResult> {
     const res: HubsoftSyncEntityResult = {
       entity: 'customers',
       fetched: 0,
+      filteredOut: 0,
       created: 0,
       updated: 0,
       skipped: 0,
@@ -155,11 +159,19 @@ export class HubsoftImportService {
       preview: dryRun ? [] : undefined,
     };
 
+    // Pushdown: a API só filtra `cancelado`. Se o filtro de status NÃO inclui
+    // 'cancelado', pedimos cancelado=nao (não traz serviços cancelados — mais
+    // leve). Se inclui, cancelado=sim. Sem filtro de status → comportamento
+    // padrão da API (nao). Cidade/status/grupo são aplicados client-side abaixo.
+    const cancelado: 'sim' | 'nao' = filters?.status?.includes('cancelado') ? 'sim' : 'nao';
+
     let clientes = limit
-      ? await this.client.getClientes(cfg, { limit })
-      : await this.client.getClientesAll(cfg);
+      ? await this.client.getClientes(cfg, { limit, cancelado })
+      : await this.client.getClientesAll(cfg, { cancelado });
     if (limit) clientes = clientes.slice(0, limit);
     res.fetched = clientes.length;
+
+    const hasServiceFilter = !!(filters?.status?.length || filters?.grupos?.length);
 
     for (const cli of clientes) {
       const codigo = this.str(cli.codigo_cliente ?? cli.id_cliente);
@@ -167,13 +179,27 @@ export class HubsoftImportService {
         res.skipped += 1;
         continue;
       }
+
+      // Filtro por cidade (qualquer endereço do cliente ou da instalação).
+      if (filters?.cidades?.length && !this.matchCity(cli, filters.cidades)) {
+        res.filteredOut! += 1;
+        continue;
+      }
+
+      // Filtro por status/grupo: restringe os serviços que viram contratos.
+      const servicos = this.matchServicos(cli.servicos ?? [], filters);
+      if (hasServiceFilter && servicos.length === 0) {
+        res.filteredOut! += 1;
+        continue;
+      }
+
       try {
         const customerData = this.mapCliente(cli, codigo);
 
         if (dryRun) {
           res.preview!.push({
             customer: customerData,
-            contracts: (cli.servicos ?? []).map((s) => this.mapServicoPreview(s)),
+            contracts: servicos.map((s) => this.mapServicoPreview(s)),
           });
           continue;
         }
@@ -182,7 +208,7 @@ export class HubsoftImportService {
         if (created) res.created += 1;
         else res.updated += 1;
 
-        for (const svc of cli.servicos ?? []) {
+        for (const svc of servicos) {
           try {
             await this.upsertContract(tenantId, customerId, cli, svc);
           } catch (e) {
@@ -200,9 +226,82 @@ export class HubsoftImportService {
     }
 
     this.logger.log(
-      `[hubsoft-import] customers tenant=${tenantId} fetched=${res.fetched} created=${res.created} updated=${res.updated} failed=${res.failed}${dryRun ? ' (dry-run)' : ''}`,
+      `[hubsoft-import] customers tenant=${tenantId} fetched=${res.fetched} filteredOut=${res.filteredOut} created=${res.created} updated=${res.updated} failed=${res.failed}${dryRun ? ' (dry-run)' : ''}`,
     );
     return res;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Filtros client-side (a API do Hubsoft não filtra cidade/status/grupo)
+  // ---------------------------------------------------------------------------
+  /** Serviços que satisfazem os filtros de status e grupo (AND). */
+  private matchServicos(
+    servicos: HubsoftServico[],
+    filters?: HubsoftCustomerFilters,
+  ): HubsoftServico[] {
+    const hasStatus = !!filters?.status?.length;
+    const hasGrupos = !!filters?.grupos?.length;
+    if (!hasStatus && !hasGrupos) return servicos;
+    return servicos.filter(
+      (svc) =>
+        (!hasStatus ||
+          filters!.status!.includes(this.classifyServiceStatus(svc) as HubsoftServiceStatus)) &&
+        (!hasGrupos || this.matchGroup(svc, filters!.grupos!)),
+    );
+  }
+
+  /** Cliente casa se qualquer endereço (cadastral/cobrança/fiscal/instalação) for de uma das cidades. */
+  private matchCity(cli: HubsoftCliente, cidades: string[]): boolean {
+    const wanted = new Set(cidades.map((c) => this.normalize(c)));
+    const candidates: Array<HubsoftEndereco | string | undefined> = [
+      cli.endereco_instalacao,
+      cli.endereco_cadastral,
+      cli.endereco_cobranca,
+      cli.endereco_fiscal,
+      ...(cli.servicos ?? []).map((s) => s.endereco_instalacao),
+    ];
+    for (const e of candidates) {
+      if (e && typeof e === 'object' && e.cidade && wanted.has(this.normalize(this.str(e.cidade)))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** status_prefixo (ou texto) → ativo | bloqueado | cancelado | outro. */
+  private classifyServiceStatus(svc: HubsoftServico): HubsoftServiceStatus | 'outro' {
+    const t = this.normalize(
+      this.str(svc.status_prefixo) || this.str(svc.status ?? svc.status_txt),
+    );
+    if (/cancel|desativ/.test(t)) return 'cancelado';
+    if (/bloque|suspens|desabilit/.test(t)) return 'bloqueado';
+    if (/habilit|ativ/.test(t)) return 'ativo';
+    return 'outro';
+  }
+
+  /** Grupo casa contra id_servico, nome/numero do plano e código/descrição dos pacotes. */
+  private matchGroup(svc: HubsoftServico, grupos: string[]): boolean {
+    const wanted = new Set(grupos.map((g) => this.normalize(g)));
+    const cand: string[] = [
+      this.str(svc.id_servico),
+      this.str(svc.numero_plano),
+      this.str(svc.nome),
+      ...(svc.pacotes ?? []).flatMap((p) => [
+        this.str(p.id_pacote),
+        this.str(p.codigo),
+        this.str(p.descricao),
+      ]),
+    ].filter(Boolean);
+    return cand.some((c) => wanted.has(this.normalize(c)));
+  }
+
+  /** minúsculas + sem acento, para casar cidade/grupo de forma robusta. */
+  private normalize(s: string): string {
+    return s
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toLowerCase()
+      .trim();
   }
 
   private mapCliente(cli: HubsoftCliente, codigo: string) {
@@ -247,11 +346,11 @@ export class HubsoftImportService {
   private mapServicoPreview(svc: HubsoftServico) {
     return {
       code: `${HS_CONTRACT_PREFIX}${this.str(svc.id_cliente_servico)}`,
-      planName: this.str(svc.numero_plano) || null,
+      planName: this.planName(svc) || null,
       pppoeUsername: this.str(svc.login) || null,
       monthlyValue: this.decimal(svc.valor),
-      bandwidthMbps: this.bandwidth(svc.numero_plano),
-      status: this.mapContractStatus(this.str(svc.status ?? svc.status_txt)),
+      bandwidthMbps: this.bandwidth(this.planName(svc)),
+      status: this.mapContractStatus(this.serviceStatusText(svc)),
     };
   }
 
@@ -298,10 +397,10 @@ export class HubsoftImportService {
       installationAddress: installationAddress.slice(0, 500),
       planId,
       monthlyValue: this.decimal(svc.valor),
-      bandwidthMbps: this.bandwidth(svc.numero_plano),
-      uploadMbps: this.bandwidth(svc.numero_plano),
+      bandwidthMbps: this.bandwidth(this.planName(svc)),
+      uploadMbps: this.bandwidth(this.planName(svc)),
       dueDay: DEFAULT_DUE_DAY,
-      status: this.mapContractStatus(this.str(svc.status ?? svc.status_txt)),
+      status: this.mapContractStatus(this.serviceStatusText(svc)),
       notes: `Importado do Hubsoft (serviço ${svcId}).`,
     };
 
@@ -314,9 +413,9 @@ export class HubsoftImportService {
 
   /** Casa/insere o plano pelo nome. Retorna planId ou null se sem nome. */
   private async upsertPlan(tenantId: string, svc: HubsoftServico): Promise<string | null> {
-    const name = this.str(svc.numero_plano);
+    const name = this.planName(svc);
     if (!name) return null;
-    const mbps = this.bandwidth(svc.numero_plano);
+    const mbps = this.bandwidth(name);
     const plan = await this.prisma.plan.upsert({
       where: { tenantId_name: { tenantId, name: name.slice(0, 120) } },
       create: {
@@ -485,6 +584,20 @@ export class HubsoftImportService {
   private bandwidth(planName: unknown): number {
     const m = this.str(planName).match(/\d+/);
     return m ? parseInt(m[0], 10) : 0;
+  }
+
+  /**
+   * Nome do plano, robusto à variação de shape entre rotas: em /cliente/all o
+   * nome vem em `nome` (e `numero_plano` é numérico); em /cliente pode vir em
+   * `numero_plano`. Preferimos `nome`, com fallback para `numero_plano`.
+   */
+  private planName(svc: HubsoftServico): string {
+    return this.str(svc.nome) || this.str(svc.numero_plano);
+  }
+
+  /** Texto de status do serviço, preferindo o código estável `status_prefixo`. */
+  private serviceStatusText(svc: HubsoftServico): string {
+    return this.str(svc.status_prefixo) || this.str(svc.status ?? svc.status_txt);
   }
 
   private dateOrNull(v: unknown): Date | null {

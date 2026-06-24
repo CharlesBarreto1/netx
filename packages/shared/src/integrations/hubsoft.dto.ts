@@ -19,6 +19,33 @@ export const HubsoftSyncEntitySchema = z.enum([
 export type HubsoftSyncEntity = z.infer<typeof HubsoftSyncEntitySchema>;
 
 // -----------------------------------------------------------------------------
+// FILTROS de busca de clientes
+//
+// IMPORTANTE: a API do Hubsoft NÃO filtra cidade/status/grupo no servidor — só
+// aceita `busca` (nome/cpf/codigo/...) + `cancelado=sim/nao`. Por isso estes
+// filtros são aplicados CLIENT-SIDE no import (após buscar), com um pushdown do
+// `cancelado` quando o filtro de status permite (otimização). Os três são
+// combináveis (AND) e atuam por SERVIÇO do cliente: o cliente entra se tiver ao
+// menos um serviço que satisfaça status+grupo, e só os serviços que casam viram
+// contratos. `cidades` casa no endereço (cliente ou instalação do serviço).
+// -----------------------------------------------------------------------------
+export const HubsoftServiceStatusSchema = z.enum(['ativo', 'bloqueado', 'cancelado']);
+export type HubsoftServiceStatus = z.infer<typeof HubsoftServiceStatusSchema>;
+
+export const HubsoftCustomerFiltersSchema = z
+  .object({
+    // Nomes de cidade (casa em qualquer endereço; sem acento/maiúsculas).
+    cidades: z.array(z.string().min(1)).min(1).optional(),
+    // Status do SERVIÇO no Hubsoft (status_prefixo): ativo|bloqueado|cancelado.
+    status: z.array(HubsoftServiceStatusSchema).min(1).optional(),
+    // Grupo/plano do serviço — casa contra id_servico, nome/numero do plano e
+    // código dos pacotes do serviço (flexível; valide com dry-run).
+    grupos: z.array(z.string().min(1)).min(1).optional(),
+  })
+  .strict();
+export type HubsoftCustomerFilters = z.infer<typeof HubsoftCustomerFiltersSchema>;
+
+// -----------------------------------------------------------------------------
 // CONFIG (por tenant) — escrita
 // -----------------------------------------------------------------------------
 export const UpsertHubsoftConfigRequestSchema = z
@@ -82,6 +109,8 @@ export const RunHubsoftSyncRequestSchema = z
     dryRun: z.boolean().optional(),
     // Limite de registros (proteção; principalmente útil em dry-run).
     limit: z.coerce.number().int().min(1).max(5000).optional(),
+    // Filtros aplicados à busca de clientes (cidade/status/grupo de serviço).
+    filters: HubsoftCustomerFiltersSchema.optional(),
   })
   .strict();
 export type RunHubsoftSyncRequest = z.infer<typeof RunHubsoftSyncRequestSchema>;
@@ -89,6 +118,7 @@ export type RunHubsoftSyncRequest = z.infer<typeof RunHubsoftSyncRequestSchema>;
 export interface HubsoftSyncEntityResult {
   entity: HubsoftSyncEntity;
   fetched: number; // quantos vieram do Hubsoft
+  filteredOut?: number; // descartados pelos filtros (cidade/status/grupo)
   created: number; // novos no NetX
   updated: number; // já existiam, atualizados
   skipped: number; // ignorados (ex.: sem chave)

@@ -290,6 +290,15 @@ const chatPermissions = [
   { code: 'sifen.config.read',  module: 'sifen', resource: 'sifen_config', action: 'read'  },
   { code: 'sifen.config.write', module: 'sifen', resource: 'sifen_config', action: 'write' },
 
+  // NFCom — Fatura de serviço de comunicação BR (modelo 62, SVRS)
+  { code: 'nfcom.read',   module: 'nfcom', resource: 'nfcom', action: 'read'   },
+  // nfcom.emit = disparar emissão (e substituição) de NFCom
+  { code: 'nfcom.emit',   module: 'nfcom', resource: 'nfcom', action: 'emit'   },
+  // nfcom.cancel = cancelar NFCom autorizada (evento, dentro do prazo)
+  { code: 'nfcom.cancel', module: 'nfcom', resource: 'nfcom', action: 'cancel' },
+  // nfcom.config = configurar emitente, certificado .pfx, transmissor, ambiente
+  { code: 'nfcom.config', module: 'nfcom', resource: 'nfcom_config', action: 'admin' },
+
   // Mapeamento — visualização geográfica de clientes/rede/técnicos/veículos
   { code: 'mapping.read', module: 'mapping', resource: 'mapping', action: 'read' },
 ];
@@ -426,6 +435,10 @@ const systemRoles = [
       'sifen.admin',
       'sifen.config.read',
       'sifen.config.write',
+      'nfcom.read',
+      'nfcom.emit',
+      'nfcom.cancel',
+      'nfcom.config',
       'mapping.read',
     ],
   },
@@ -514,6 +527,8 @@ const systemRoles = [
       // Operador pode LER config (sabe se está habilitado/ambiente test/prod),
       // mas não pode mexer (sem .config.write).
       'sifen.config.read',
+      'nfcom.read',
+      'nfcom.emit',
       'mapping.read',
     ],
   },
@@ -541,6 +556,7 @@ const systemRoles = [
       'self.read',
       'provisioning.read',
       'sifen.read',
+      'nfcom.read',
       'mapping.read',
     ],
   },
