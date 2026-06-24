@@ -26,8 +26,11 @@ export class UsersService {
   ) {}
 
   async create(tenantId: string, actorUserId: string, input: CreateUserRequest): Promise<UserResponse> {
-    const existing = await this.prisma.user.findUnique({
-      where: { tenantId_email: { tenantId, email: input.email } },
+    // Só conflita com usuários VIVOS. Soft-deletados liberam o email (o
+    // softDelete renomeia o email com sufixo), então não devem bloquear o
+    // recadastro do mesmo endereço.
+    const existing = await this.prisma.user.findFirst({
+      where: { tenantId, email: input.email, deletedAt: null },
     });
     if (existing) throw new ConflictException('User with this email already exists');
 
@@ -250,7 +253,11 @@ export class UsersService {
         phone: input.phone,
         locale: input.locale,
         timezone: input.timezone,
-        status: input.status,
+        // status explícito do payload sempre vence. No reset de senha (sem
+        // status no payload) forçamos ACTIVE: senão um user INVITED/DISABLED
+        // tem a senha trocada mas continua barrado no login (status !== ACTIVE),
+        // que era exatamente o "senha resetada não loga".
+        status: input.status ?? (passwordHash ? UserStatus.ACTIVE : undefined),
         ...(passwordHash
           ? {
               passwordHash,
@@ -333,9 +340,19 @@ export class UsersService {
     const user = await this.prisma.user.findFirst({ where: { id, tenantId, deletedAt: null } });
     if (!user) throw new NotFoundException('User not found');
 
+    // Renomeia o email na exclusão para liberar a constraint @@unique([tenantId,
+    // email]) — o Prisma não suporta índice único parcial (WHERE deletedAt IS
+    // NULL), então sem isso o email ficaria "preso" e o recadastro batia na
+    // unique do banco. O id é único, então o email resultante nunca colide,
+    // mesmo deletando o mesmo endereço mais de uma vez. O email original fica
+    // recuperável (basta remover o sufixo) e o AuditLog registra a exclusão.
     await this.prisma.user.update({
       where: { id },
-      data: { deletedAt: new Date(), status: UserStatus.DISABLED },
+      data: {
+        deletedAt: new Date(),
+        status: UserStatus.DISABLED,
+        email: `${user.email}__deleted__${user.id}`,
+      },
     });
 
     await this.audit.log({
