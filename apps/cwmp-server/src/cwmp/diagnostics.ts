@@ -52,6 +52,26 @@ const WAN_STATS_PATHS = {
   rxBytes: `${PPP_PREFIX}.Stats.EthernetBytesReceived`,
   txBytes: `${PPP_PREFIX}.Stats.EthernetBytesSent`,
 };
+
+// ── Zyxel PX3321-T1 (espelha tr069-paths.zyxel.ts do core-service) ───────────
+// Níveis ópticos da Zyxel já vêm em unidade humana (dBm/°C/V) — sem normalizar.
+// PPPoE de internet na WAN 1 (não 2 como Huawei). Usados como FALLBACK quando os
+// keys Huawei não estão presentes na ParameterList — Huawei segue intocado.
+const ZYXEL_PPP_PREFIX =
+  'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1';
+const ZYXEL_PATHS = {
+  rxPower: 'InternetGatewayDevice.X_ZYXEL_EXT.Optical.rxPower',
+  txPower: 'InternetGatewayDevice.X_ZYXEL_EXT.Optical.txPower',
+  temperature: 'InternetGatewayDevice.X_ZYXEL_EXT.Optical.temperature',
+  voltage: 'InternetGatewayDevice.X_ZYXEL_EXT.Optical.voltage',
+  pppStatus: `${ZYXEL_PPP_PREFIX}.ConnectionStatus`,
+  pppLastError: `${ZYXEL_PPP_PREFIX}.LastConnectionError`,
+  pppUptime: `${ZYXEL_PPP_PREFIX}.Uptime`,
+  wanRxBytes: `${ZYXEL_PPP_PREFIX}.Stats.EthernetBytesReceived`,
+  wanTxBytes: `${ZYXEL_PPP_PREFIX}.Stats.EthernetBytesSent`,
+  cpuUsage: 'InternetGatewayDevice.DeviceInfo.ProcessStatus.CPUUsage',
+};
+
 // Regex de host da LAN: ...Hosts.Host.{i}.{campo}
 const HOST_RE = /Hosts\.Host\.(\d+)\.(.+)$/;
 
@@ -374,10 +394,19 @@ export function extractDiagnostics(params: Record<string, string>): ExtractedDia
   const { clients: wifiClients, worstRssi: wifiWorstRssi, avgRssi: wifiAvgRssi } =
     extractWifiClients(params);
   const hosts = extractLanHosts(params);
-  const rxPower = normalizePower(params[OPTICAL_PATHS.rxPower]);
-  const txPower = normalizePower(params[OPTICAL_PATHS.txPower]);
-  const temperature = numOrNull(params[OPTICAL_PATHS.temperature]);
-  const voltage = normalizeVoltage(params[OPTICAL_PATHS.voltage]);
+  // Óptico: Huawei (com normalização de unidade) tem prioridade; se os keys
+  // Huawei não vierem, cai no Zyxel (valores já em dBm/°C/V — sem normalizar).
+  const zyxelOptical = OPTICAL_PATHS.rxPower in params ? false : ZYXEL_PATHS.rxPower in params;
+  const rxPower = zyxelOptical
+    ? numOrNull(params[ZYXEL_PATHS.rxPower])
+    : normalizePower(params[OPTICAL_PATHS.rxPower]);
+  const txPower = zyxelOptical
+    ? numOrNull(params[ZYXEL_PATHS.txPower])
+    : normalizePower(params[OPTICAL_PATHS.txPower]);
+  const temperature = numOrNull(params[OPTICAL_PATHS.temperature] ?? params[ZYXEL_PATHS.temperature]);
+  const voltage = zyxelOptical
+    ? numOrNull(params[ZYXEL_PATHS.voltage])
+    : normalizeVoltage(params[OPTICAL_PATHS.voltage]);
   const biasCurrent = numOrNull(params[OPTICAL_PATHS.biasCurrent]);
 
   const hasOptical =
@@ -399,9 +428,9 @@ export function extractDiagnostics(params: Record<string, string>): ExtractedDia
     hecErrors: intOrNull(params[STATS_PATHS.hecErrors]),
     dropRate: numOrNull(params[STATS_PATHS.dropRate]),
     errorRate: numOrNull(params[STATS_PATHS.errorRate]),
-    pppStatus: params[PPP_PATHS.status] || null,
-    pppLastError: params[PPP_PATHS.lastError] || null,
-    wanUptime: intOrNull(params[PPP_PATHS.uptime]),
+    pppStatus: params[PPP_PATHS.status] ?? params[ZYXEL_PATHS.pppStatus] ?? null,
+    pppLastError: params[PPP_PATHS.lastError] ?? params[ZYXEL_PATHS.pppLastError] ?? null,
+    wanUptime: intOrNull(params[PPP_PATHS.uptime] ?? params[ZYXEL_PATHS.pppUptime]),
     hosts,
     wifiClients24: intOrNull(params[WIFI_PATHS.clients24]),
     wifiClients5: intOrNull(params[WIFI_PATHS.clients5]),
@@ -410,11 +439,11 @@ export function extractDiagnostics(params: Record<string, string>): ExtractedDia
     wifiClients,
     wifiWorstRssi,
     wifiAvgRssi,
-    cpuUsage: intOrNull(params[RESOURCE_PATHS.cpuUsed]),
+    cpuUsage: intOrNull(params[RESOURCE_PATHS.cpuUsed] ?? params[ZYXEL_PATHS.cpuUsage]),
     memUsage: intOrNull(params[RESOURCE_PATHS.memUsed]),
     deviceTemp: intOrNull(params[RESOURCE_PATHS.deviceTemp]),
-    wanRxBytes: intOrNull(params[WAN_STATS_PATHS.rxBytes]),
-    wanTxBytes: intOrNull(params[WAN_STATS_PATHS.txBytes]),
+    wanRxBytes: intOrNull(params[WAN_STATS_PATHS.rxBytes] ?? params[ZYXEL_PATHS.wanRxBytes]),
+    wanTxBytes: intOrNull(params[WAN_STATS_PATHS.txBytes] ?? params[ZYXEL_PATHS.wanTxBytes]),
     raw: params,
     hasOptical,
   };

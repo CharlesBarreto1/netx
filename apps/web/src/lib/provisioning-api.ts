@@ -806,4 +806,60 @@ export const tr069Api = {
   updateProfile: (id: string, body: Partial<CreateTr069ProfileBody>) =>
     api.patch<Tr069Profile>(`/v1/tr069/profiles/${id}`, body),
   deleteProfile: (id: string) => api.delete<void>(`/v1/tr069/profiles/${id}`),
+  // ── Política TR-069 por instância + caixa de adoção (Frente B) ──────────────
+  configPath: () => '/v1/tr069/config',
+  getConfig: () => api.get<Tr069ConfigView>('/v1/tr069/config'),
+  saveConfig: (body: UpsertTr069ConfigBody) =>
+    api.put<Tr069ConfigView>('/v1/tr069/config', body),
+  pendingPath: () => '/v1/tr069/pending',
+  listPending: () => api.get<Tr069PendingDeviceRow[]>('/v1/tr069/pending'),
+  adoptPending: (id: string, body: { ontId?: string | null }) =>
+    api.post<{ deviceId: string }>(`/v1/tr069/pending/${id}/adopt`, body),
+  firmwareCampaign: (body: { productClass?: string | null }) =>
+    api.post<{ enqueued: number }>('/v1/tr069/firmware/campaign', body),
 };
+
+// ── Tipos: política por instância + caixa de adoção (espelha tr069-config.dto) ─
+export type Tr069PppoeSource = 'CONTRACT' | 'STATIC' | 'OLT';
+export type Tr069Ipv6Mode = 'AUTOCONFIGURED' | 'DHCPV6';
+export type Tr069RemoteMode = 'LAN_ONLY' | 'LAN_WAN';
+
+export interface Tr069ConfigView {
+  tenantId: string;
+  acceptUnknownInforms: boolean;
+  wifiFromContract: boolean;
+  pppoeSource: Tr069PppoeSource;
+  defaultVlan: number | null;
+  pullFromOltProvisioning: boolean;
+  ipv6Enabled: boolean;
+  ipv6Mode: Tr069Ipv6Mode;
+  hasAccessPassword: boolean;
+  applyAccessPassword: boolean;
+  remoteHttpEnabled: boolean;
+  remoteHttpPort: number | null;
+  remoteMode: Tr069RemoteMode;
+  firmwareAutoUpdate: boolean;
+  firmwareUrl: string | null;
+  firmwareTargetVersion: string | null;
+  reconcileIntervalMin: number | null;
+  reconcileWindowStart: number | null;
+  reconcileWindowEnd: number | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export type UpsertTr069ConfigBody = Partial<
+  Omit<Tr069ConfigView, 'tenantId' | 'hasAccessPassword' | 'createdAt' | 'updatedAt'>
+> & { accessPassword?: string };
+
+export interface Tr069PendingDeviceRow {
+  id: string;
+  deviceId: string;
+  manufacturer: string | null;
+  productClass: string | null;
+  serialNumber: string | null;
+  softwareVersion: string | null;
+  informCount: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+}

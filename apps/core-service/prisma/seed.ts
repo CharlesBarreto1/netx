@@ -928,6 +928,74 @@ async function main() {
     console.log(`     · ${t.slug}: profile Huawei garantido`);
   }
 
+  // 9. TR-069 — profile padrão Zyxel PX3321-T1 (homologado via repo).
+  //    Mesma natureza idempotente do Huawei. Paths espelham
+  //    tr069-paths.zyxel.ts (raiz TR-098, PPPoE em WAN 1, WLAN 1/5). Só params
+  //    LEGÍVEIS viram regra de conformidade — senhas (Wi-Fi/PPPoE/acesso), VLAN,
+  //    IPv6, porta/acesso remoto são por-instância (Tr069TenantConfig) e/ou
+  //    aplicados no provisionamento, não no enforce contínuo (write-only daria
+  //    drift perpétuo). Escopo por productClass='PX3321-T1' (paths são do modelo).
+  console.log('  → TR-069 default Zyxel PX3321-T1 profile');
+  const ZYXEL_PROFILE_NAME = 'Zyxel PX3321-T1 — padrão';
+  const zppp =
+    'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1';
+  const ZYXEL_BASELINE_RULES = [
+    // SSID 2.4G / 5G — do cadastro do contrato (sistema é dono do Wi-Fi).
+    {
+      param: 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID',
+      valueType: 'xsd:string',
+      source: 'CONTRACT_WIFI_SSID' as const,
+      mode: 'ENFORCE' as const,
+      sortOrder: 1,
+    },
+    {
+      param: 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.SSID',
+      valueType: 'xsd:string',
+      source: 'CONTRACT_WIFI_SSID_5G' as const,
+      mode: 'ENFORCE' as const,
+      sortOrder: 2,
+    },
+    // PPPoE username — do contrato.
+    {
+      param: `${zppp}.Username`,
+      valueType: 'xsd:string',
+      source: 'CONTRACT_PPPOE_USER' as const,
+      mode: 'ENFORCE' as const,
+      sortOrder: 3,
+    },
+    // Periodic Inform = 5 min — ENFORCE idempotente (re-aplica se voltar ao
+    // default de fábrica). Aplica live (sem reboot).
+    {
+      param: 'InternetGatewayDevice.ManagementServer.PeriodicInformInterval',
+      valueType: 'xsd:unsignedInt',
+      source: 'STATIC' as const,
+      staticValue: '300',
+      mode: 'ENFORCE' as const,
+      sortOrder: 4,
+    },
+  ];
+  for (const t of allTenants) {
+    const profile = await prisma.tr069Profile.upsert({
+      where: { tenantId_name: { tenantId: t.id, name: ZYXEL_PROFILE_NAME } },
+      update: {},
+      create: {
+        tenantId: t.id,
+        name: ZYXEL_PROFILE_NAME,
+        manufacturer: 'Zyxel',
+        productClass: 'PX3321-T1',
+      },
+      select: { id: true },
+    });
+    for (const r of ZYXEL_BASELINE_RULES) {
+      await prisma.tr069ProfileRule.upsert({
+        where: { profileId_param: { profileId: profile.id, param: r.param } },
+        update: {},
+        create: { profileId: profile.id, ...r },
+      });
+    }
+    console.log(`     · ${t.slug}: profile Zyxel PX3321-T1 garantido`);
+  }
+
   console.log('✅ Seed completed.');
   console.log('');
   console.log('   Login de desenvolvimento:');

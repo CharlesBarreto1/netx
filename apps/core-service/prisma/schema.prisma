@@ -169,6 +169,7 @@ model Tenant {
 
   // BTG (pagamentos BR — boleto + Pix cobrança + Pix Automático)
   btgConfig            BtgConfig?
+  tr069Config          Tr069TenantConfig?
   hubsoftConfig        HubsoftConfig?
   btgCharges           BtgCharge[]
   btgRecurrences       BtgRecurrence[]
@@ -3630,6 +3631,7 @@ enum Tr069RuleSource {
   CONTRACT_WIFI_SSID
   CONTRACT_WIFI_SSID_5G  // SSID 5G derivado (sufixo -5G no DUAL_BAND)
   CONTRACT_WIFI_PASS
+  TENANT_ACCESS_PASSWORD // senha de acesso padrão do Tr069TenantConfig (cifrada)
 }
 
 enum Tr069RuleMode {
@@ -5522,4 +5524,73 @@ model HubsoftConfig {
   tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("hubsoft_configs")
+}
+
+/// Config TR-069 por instância (1:1 tenant). Padrão EfiConfig — segredo cifrado.
+model Tr069TenantConfig {
+  id                      String   @id @default(uuid()) @db.Uuid
+  tenantId                String   @unique @map("tenant_id") @db.Uuid
+
+  // Adoção de CPE desconhecido (server-level: o cwmp-server aceita se QUALQUER
+  // tenant tiver ligado). CPE cai em Tr069PendingDevice (tenantless).
+  acceptUnknownInforms    Boolean  @default(false) @map("accept_unknown_informs")
+
+  // Wi-Fi do contrato (gate nas regras CONTRACT_WIFI_*).
+  wifiFromContract        Boolean  @default(true) @map("wifi_from_contract")
+
+  // PPPoE: origem (CONTRACT | STATIC | OLT) + VLAN padrão.
+  pppoeSource             String   @default("CONTRACT") @map("pppoe_source") @db.VarChar(16)
+  defaultVlan             Int?     @map("default_vlan")
+  pullFromOltProvisioning Boolean  @default(false) @map("pull_from_olt_provisioning")
+
+  // IPv6: ativo + modo (AUTOCONFIGURED | DHCPV6).
+  ipv6Enabled             Boolean  @default(true) @map("ipv6_enabled")
+  ipv6Mode                String   @default("AUTOCONFIGURED") @map("ipv6_mode") @db.VarChar(16)
+
+  // Senha de acesso padrão (cifrada) + aplicar (provisionamento/reconcile).
+  accessPasswordEnc       String?  @map("access_password_enc") @db.Text
+  applyAccessPassword     Boolean  @default(false) @map("apply_access_password")
+
+  // Acesso remoto HTTP: ligado + porta + modo (LAN_ONLY | LAN_WAN).
+  remoteHttpEnabled       Boolean  @default(false) @map("remote_http_enabled")
+  remoteHttpPort          Int?     @map("remote_http_port")
+  remoteMode              String   @default("LAN_ONLY") @map("remote_mode") @db.VarChar(16)
+
+  // Firmware: campanha de atualização da frota.
+  firmwareAutoUpdate      Boolean  @default(false) @map("firmware_auto_update")
+  firmwareUrl             String?  @map("firmware_url") @db.VarChar(512)
+  firmwareTargetVersion   String?  @map("firmware_target_version") @db.VarChar(64)
+
+  // Conformidade: intervalo (min) e janela horária (hora local do tenant).
+  reconcileIntervalMin    Int?     @map("reconcile_interval_min")
+  reconcileWindowStart    Int?     @map("reconcile_window_start")
+  reconcileWindowEnd      Int?     @map("reconcile_window_end")
+
+  createdAt               DateTime @default(now()) @map("created_at")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  tenant                  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("tr069_tenant_configs")
+}
+
+/// Caixa de adoção: CPE que informou mas não casou com ONT/placeholder.
+/// TENANTLESS de propósito (equipamento desconhecido não tem tenant ainda); o
+/// operador adota e atribui tenant/contrato. Único por deviceId.
+model Tr069PendingDevice {
+  id                   String   @id @default(uuid()) @db.Uuid
+  deviceId             String   @unique @map("device_id") @db.VarChar(128)
+  oui                  String?  @db.VarChar(16)
+  productClass         String?  @map("product_class") @db.VarChar(64)
+  serialNumber         String?  @map("serial_number") @db.VarChar(64)
+  manufacturer         String?  @db.VarChar(64)
+  softwareVersion      String?  @map("software_version") @db.VarChar(32)
+  connectionRequestUrl String?  @map("connection_request_url") @db.VarChar(255)
+  parametersSnapshot   Json?    @map("parameters_snapshot")
+  informCount          Int      @default(1) @map("inform_count")
+  firstSeenAt          DateTime @default(now()) @map("first_seen_at")
+  lastSeenAt           DateTime @default(now()) @map("last_seen_at")
+
+  @@index([lastSeenAt])
+  @@map("tr069_pending_devices")
 }

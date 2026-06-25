@@ -325,6 +325,7 @@ export const MENU_GROUPS: MenuGroup[] = [
         children: [
           { key: 'oltTemplates', href: '/olt-templates', labelKey: 'oltTemplates', permission: 'olts.admin', requiredModules: ['netx-cpe'] },
           { key: 'tr069Profiles', href: '/tr069/profiles', labelKey: 'tr069Profiles', permission: 'tr069.admin', requiredModules: ['netx-cpe'] },
+          { key: 'tr069Config', href: '/settings/tr069', labelKey: 'tr069Config', permission: 'tr069.admin', requiredModules: ['netx-cpe'] },
         ],
       },
       {

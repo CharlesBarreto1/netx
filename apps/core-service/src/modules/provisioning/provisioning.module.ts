@@ -24,6 +24,7 @@ import {
   Tr069Controller,
 } from './provisioning.controller';
 import { ProvisioningService } from './provisioning.service';
+import { Tr069ConfigService } from './tr069-config.service';
 import { Tr069DiagnosticsService } from './tr069-diagnostics.service';
 import { Tr069ProfilesService } from './tr069-profiles.service';
 import { Tr069ReconcileService } from './tr069-reconcile.service';
@@ -53,6 +54,7 @@ import { Tr069TasksService } from './tr069-tasks.service';
     Tr069DiagnosticsService,
     Tr069ReconcileService,
     Tr069ProfilesService,
+    Tr069ConfigService,
     ProvisioningService,
   ],
   exports: [

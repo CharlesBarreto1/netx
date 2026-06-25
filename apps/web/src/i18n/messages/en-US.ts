@@ -188,6 +188,7 @@ const messages = {
     tr069Alerts: 'TR-069 alerts',
     tr069WifiCoverage: 'Wi-Fi coverage',
     tr069Profiles: 'TR-069 profiles',
+    tr069Config: 'TR-069 policies',
     fiscalDocuments: 'Fiscal documents',
     fiscalEmit: 'New emission',
     sifenConfig: 'SIFEN setup',

@@ -25,6 +25,7 @@ import type {
   Tr069Drift,
   Tr069DriftStatus,
   Tr069ProfileRule,
+  Tr069TenantConfig,
   WifiBandMode,
 } from '@prisma/client';
 
@@ -63,6 +64,8 @@ type DeviceForReconcile = {
   profileId: string | null;
   complianceStatus: Tr069ComplianceStatus;
   pendingRebootSince: Date | null;
+  lastReconciledAt: Date | null;
+  tenant: { timezone: string } | null;
   ont: {
     wifiBandMode: WifiBandMode;
     contract: {
@@ -142,6 +145,11 @@ export class Tr069ReconcileService {
 
   /** Hora local do tenant está dentro da janela de reboot? */
   private inRebootWindow(timezone: string): boolean {
+    return this.inHourWindow(timezone, REBOOT_WINDOW_START, REBOOT_WINDOW_END);
+  }
+
+  /** Hora local do tenant está em [start, end) (suporta janela que cruza meia-noite)? */
+  private inHourWindow(timezone: string, start: number, end: number): boolean {
     try {
       const h = parseInt(
         new Intl.DateTimeFormat('en-US', {
@@ -151,16 +159,18 @@ export class Tr069ReconcileService {
         }).format(new Date()),
         10,
       );
-      return REBOOT_WINDOW_START <= REBOOT_WINDOW_END
-        ? h >= REBOOT_WINDOW_START && h < REBOOT_WINDOW_END
-        : h >= REBOOT_WINDOW_START || h < REBOOT_WINDOW_END;
+      return start <= end ? h >= start && h < end : h >= start || h < end;
     } catch {
       return false;
     }
   }
 
-  /** Reconcilia um device (também chamável on-demand pelo portal). */
-  async reconcileDevice(deviceId: string): Promise<void> {
+  /**
+   * Reconcilia um device. `force` (reconcile manual do portal) ignora os gates
+   * de intervalo/janela por-tenant; o cron passa force=false (respeita a config).
+   */
+  async reconcileDevice(deviceId: string, opts?: { force?: boolean }): Promise<void> {
+    const force = opts?.force ?? false;
     const device = (await this.prisma.tr069Device.findUnique({
       where: { id: deviceId },
       select: {
@@ -173,6 +183,8 @@ export class Tr069ReconcileService {
         profileId: true,
         complianceStatus: true,
         pendingRebootSince: true,
+        lastReconciledAt: true,
+        tenant: { select: { timezone: true } },
         ont: {
           select: {
             wifiBandMode: true,
@@ -189,6 +201,35 @@ export class Tr069ReconcileService {
       },
     })) as DeviceForReconcile | null;
     if (!device) return;
+
+    // Config de políticas do tenant (intervalo/janela/senha/wifi/VLAN).
+    const cfg = await this.prisma.tr069TenantConfig.findUnique({
+      where: { tenantId: device.tenantId },
+    });
+
+    // Gates por-tenant (ignorados no reconcile manual `force`):
+    //  - intervalo: respeita um intervalo próprio MAIOR que o global do cron;
+    //  - janela: conformidade (alterações) só roda na faixa horária local.
+    if (!force && cfg) {
+      if (
+        cfg.reconcileIntervalMin != null &&
+        device.lastReconciledAt != null &&
+        Date.now() - device.lastReconciledAt.getTime() < cfg.reconcileIntervalMin * 60_000
+      ) {
+        return;
+      }
+      if (
+        cfg.reconcileWindowStart != null &&
+        cfg.reconcileWindowEnd != null &&
+        !this.inHourWindow(
+          device.tenant?.timezone ?? 'UTC',
+          cfg.reconcileWindowStart,
+          cfg.reconcileWindowEnd,
+        )
+      ) {
+        return;
+      }
+    }
 
     // 1. Profile homologado
     const profile = await this.resolveProfile(device);
@@ -219,9 +260,10 @@ export class Tr069ReconcileService {
     });
     if (inFlight > 0) return;
 
-    // 2. Valores esperados
+    // 2. Valores esperados — a config do tenant (carregada acima: senha de
+    // acesso, wifi-do-contrato, VLAN padrão) influencia a resolução.
     const expected = new Map<string, string | null>();
-    for (const r of rules) expected.set(r.param, this.resolveExpected(r, device));
+    for (const r of rules) expected.set(r.param, this.resolveExpected(r, device, cfg));
 
     // 3. Valores atuais — último GET de reconciliação DONE e fresco.
     const paramNames = rules.map((r) => r.param);
@@ -358,9 +400,19 @@ export class Tr069ReconcileService {
     }
   }
 
-  /** Valor esperado de uma regra pro device (estático ou derivado do contrato). */
-  private resolveExpected(rule: Tr069ProfileRule, device: DeviceForReconcile): string | null {
+  /**
+   * Valor esperado de uma regra pro device (estático / contrato / config da
+   * instância). `cfg` = Tr069TenantConfig do tenant (null = defaults).
+   */
+  private resolveExpected(
+    rule: Tr069ProfileRule,
+    device: DeviceForReconcile,
+    cfg: Tr069TenantConfig | null,
+  ): string | null {
     const c = device.ont?.contract ?? null;
+    // Wi-Fi do contrato pode ser desligado por instância (config). Off → não
+    // resolve as regras CONTRACT_WIFI_* (ficam fora do enforce/drift).
+    const wifiFromContract = cfg?.wifiFromContract ?? true;
     switch (rule.source) {
       case 'STATIC':
         return rule.staticValue;
@@ -369,14 +421,21 @@ export class Tr069ReconcileService {
       case 'CONTRACT_PPPOE_PASS':
         return c?.pppoePassword ?? null;
       case 'CONTRACT_WIFI_SSID':
-        return c?.ssid ?? null;
+        return wifiFromContract ? (c?.ssid ?? null) : null;
       case 'CONTRACT_WIFI_SSID_5G':
-        return c?.ssid ? ssid5gFor(c.ssid, device.ont?.wifiBandMode ?? 'BAND_STEERING') : null;
+        return wifiFromContract && c?.ssid
+          ? ssid5gFor(c.ssid, device.ont?.wifiBandMode ?? 'BAND_STEERING')
+          : null;
       case 'CONTRACT_WIFI_PASS':
-        return c?.wifiPasswordEnc ? this.crypto.decrypt(c.wifiPasswordEnc) : null;
+        return wifiFromContract && c?.wifiPasswordEnc ? this.crypto.decrypt(c.wifiPasswordEnc) : null;
       case 'CONTRACT_PPPOE_VLAN':
-        // VLAN não é persistida por-contrato hoje — use uma regra STATIC.
-        return null;
+        // VLAN padrão por instância (config); senão não resolve (use STATIC).
+        return cfg?.defaultVlan != null ? String(cfg.defaultVlan) : null;
+      case 'TENANT_ACCESS_PASSWORD':
+        // Senha de acesso padrão da instância (cifrada). Só aplica se ligado.
+        return cfg?.applyAccessPassword && cfg.accessPasswordEnc
+          ? this.crypto.decrypt(cfg.accessPasswordEnc)
+          : null;
       default:
         return null;
     }

@@ -45,6 +45,7 @@ import {
   buildTransferCompleteResponse,
   extractInform,
   parseCwmp,
+  type InformPayload,
   type ParsedCwmpMessage,
 } from './cwmp-soap';
 import { buildRpcForTask, detectFault, isResponseForTask } from './cwmp-rpc';
@@ -87,6 +88,8 @@ export interface CwmpResponse {
 export class CwmpSessionService {
   private readonly logger = new Logger(CwmpSessionService.name);
   private readonly sessions = new Map<string, SessionState>();
+  /** Cache curto da flag de adoção (server-level) — evita query por Inform. */
+  private acceptUnknownCache: { value: boolean; at: number } | null = null;
 
   constructor(private readonly prisma: PrismaService) {
     // GC periódico de sessions órfãs (CPE caiu sem enviar empty post final).
@@ -219,10 +222,23 @@ export class CwmpSessionService {
         : null;
 
       if (!ont) {
-        this.logger.warn(
-          `[CWMP] device desconhecido sem ONT correspondente (SN=${inform.serialNumber}) — ` +
-            `ignorando p/ não cruzar tenants. device=${inform.deviceId}`,
-        );
+        // Sem ONT: se a caixa de adoção estiver ligada (qualquer tenant / env),
+        // registra o CPE como PENDENTE (tenantless) pro operador adotar. Senão,
+        // ignora como antes (não cruza tenants).
+        if (await this.acceptUnknownEnabled()) {
+          await this.upsertPendingDevice(inform).catch((err: unknown) =>
+            this.logger.error(`[CWMP] falha ao registrar pendente: ${String(err)}`),
+          );
+          this.logger.log(
+            `[CWMP] device desconhecido (SN=${inform.serialNumber}) → caixa de adoção. ` +
+              `device=${inform.deviceId}`,
+          );
+        } else {
+          this.logger.warn(
+            `[CWMP] device desconhecido sem ONT correspondente (SN=${inform.serialNumber}) — ` +
+              `ignorando p/ não cruzar tenants. device=${inform.deviceId}`,
+          );
+        }
       } else if (ont.tr069Device) {
         // ONT já tem device (deviceId divergente) — atualiza o existente.
         const updated = await this.prisma.tr069Device.update({
@@ -285,6 +301,57 @@ export class CwmpSessionService {
       status: 200,
       sessionId: sid,
     };
+  }
+
+  /**
+   * Adoção ligada? Server-level: env TR069_ACCEPT_UNKNOWN=1 OU qualquer tenant
+   * com acceptUnknownInforms=true. Cache de 60s (roda só em CPE desconhecido).
+   */
+  private async acceptUnknownEnabled(): Promise<boolean> {
+    if ((process.env.TR069_ACCEPT_UNKNOWN ?? '') === '1') return true;
+    const now = Date.now();
+    if (this.acceptUnknownCache && now - this.acceptUnknownCache.at < 60_000) {
+      return this.acceptUnknownCache.value;
+    }
+    const any = await this.prisma.tr069TenantConfig.findFirst({
+      where: { acceptUnknownInforms: true },
+      select: { id: true },
+    });
+    const value = !!any;
+    this.acceptUnknownCache = { value, at: now };
+    return value;
+  }
+
+  /** Registra/atualiza um CPE desconhecido na caixa de adoção (tenantless). */
+  private async upsertPendingDevice(inform: InformPayload): Promise<void> {
+    const sw =
+      inform.parameters['InternetGatewayDevice.DeviceInfo.SoftwareVersion'] ??
+      inform.parameters['Device.DeviceInfo.SoftwareVersion'] ??
+      null;
+    await this.prisma.tr069PendingDevice.upsert({
+      where: { deviceId: inform.deviceId },
+      update: {
+        manufacturer: inform.manufacturer,
+        productClass: inform.productClass,
+        serialNumber: inform.serialNumber,
+        oui: inform.oui,
+        softwareVersion: sw,
+        connectionRequestUrl: inform.connectionRequestUrl,
+        parametersSnapshot: inform.parameters as unknown as object,
+        lastSeenAt: new Date(),
+        informCount: { increment: 1 },
+      },
+      create: {
+        deviceId: inform.deviceId,
+        manufacturer: inform.manufacturer,
+        productClass: inform.productClass,
+        serialNumber: inform.serialNumber,
+        oui: inform.oui,
+        softwareVersion: sw,
+        connectionRequestUrl: inform.connectionRequestUrl,
+        parametersSnapshot: inform.parameters as unknown as object,
+      },
+    });
   }
 
   /**

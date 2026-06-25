@@ -157,7 +157,8 @@ export class Tr069ProfilesService {
       select: { id: true },
     });
     if (!device) throw new NotFoundException('Device TR-069 não encontrado');
-    await this.reconcile.reconcileDevice(deviceId);
+    // Reconcile manual do portal: ignora gates de intervalo/janela por-tenant.
+    await this.reconcile.reconcileDevice(deviceId, { force: true });
     const after = await this.prisma.tr069Device.findUnique({
       where: { id: deviceId },
       select: { complianceStatus: true },

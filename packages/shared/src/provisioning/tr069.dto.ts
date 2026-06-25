@@ -462,7 +462,8 @@ export type Tr069RuleSource =
   | 'CONTRACT_PPPOE_VLAN'
   | 'CONTRACT_WIFI_SSID'
   | 'CONTRACT_WIFI_SSID_5G'
-  | 'CONTRACT_WIFI_PASS';
+  | 'CONTRACT_WIFI_PASS'
+  | 'TENANT_ACCESS_PASSWORD';
 
 export type Tr069RuleMode = 'ENFORCE' | 'REPORT_ONLY';
 
@@ -490,6 +491,7 @@ export const TR069_RULE_SOURCE_LABELS: Record<Tr069RuleSource, string> = {
   CONTRACT_WIFI_SSID: 'Wi-Fi — SSID 2.4G (contrato)',
   CONTRACT_WIFI_SSID_5G: 'Wi-Fi — SSID 5G (contrato)',
   CONTRACT_WIFI_PASS: 'Wi-Fi — senha (contrato)',
+  TENANT_ACCESS_PASSWORD: 'Senha de acesso (config da instância)',
 };
 
 export const Tr069RuleSourceSchema = z.enum([
@@ -500,6 +502,7 @@ export const Tr069RuleSourceSchema = z.enum([
   'CONTRACT_WIFI_SSID',
   'CONTRACT_WIFI_SSID_5G',
   'CONTRACT_WIFI_PASS',
+  'TENANT_ACCESS_PASSWORD',
 ]);
 export const Tr069RuleModeSchema = z.enum(['ENFORCE', 'REPORT_ONLY']);
 

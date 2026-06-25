@@ -26,6 +26,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -50,6 +51,9 @@ import {
   SetWifiRadioSchema,
   SpeedTestRequestSchema,
   Tr069ProbeRequestSchema,
+  AdoptPendingDeviceRequestSchema,
+  Tr069FirmwareCampaignRequestSchema,
+  UpsertTr069ConfigRequestSchema,
   UpdateOltRequestSchema,
   UpdateTr069ProfileSchema,
   type AuthenticatedPrincipal,
@@ -73,6 +77,9 @@ import {
   type SetWifiRadio,
   type SpeedTestRequest,
   type Tr069ProbeRequest,
+  type AdoptPendingDeviceRequest,
+  type Tr069FirmwareCampaignRequest,
+  type UpsertTr069ConfigRequest,
   type UpdateOltRequest,
   type UpdateTr069Profile,
 } from '@netx/shared';
@@ -91,6 +98,7 @@ const DeactivateInstallSchema = z.object({
 import { OltProvisioningProfilesService } from './olt-provisioning-profiles.service';
 import { OltsService } from './olts.service';
 import { ProvisioningService } from './provisioning.service';
+import { Tr069ConfigService } from './tr069-config.service';
 import { Tr069DiagnosticsService } from './tr069-diagnostics.service';
 import { Tr069ProfilesService } from './tr069-profiles.service';
 import { Tr069TasksService } from './tr069-tasks.service';
@@ -339,7 +347,55 @@ export class Tr069Controller {
     private readonly svc: Tr069TasksService,
     private readonly diag: Tr069DiagnosticsService,
     private readonly profiles: Tr069ProfilesService,
+    private readonly config: Tr069ConfigService,
   ) {}
+
+  // ── Política TR-069 por instância (config + caixa de adoção) ───────────────
+
+  /** Lê a config de políticas TR-069 do tenant. */
+  @Get('config')
+  @RequirePermissions('tr069.admin')
+  getConfig(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.config.get(user.tenantId);
+  }
+
+  /** Salva a config de políticas TR-069 do tenant. */
+  @Put('config')
+  @RequirePermissions('tr069.admin')
+  upsertConfig(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @ZodBody(UpsertTr069ConfigRequestSchema) body: UpsertTr069ConfigRequest,
+  ) {
+    return this.config.upsert(user.tenantId, user.sub, body);
+  }
+
+  /** Caixa de adoção — CPEs desconhecidos que informaram (tenantless). */
+  @Get('pending')
+  @RequirePermissions('tr069.admin')
+  listPending() {
+    return this.config.listPending();
+  }
+
+  /** Adota um pendente: cria o device no tenant (opc. vincula ONT). */
+  @Post('pending/:id/adopt')
+  @RequirePermissions('tr069.admin')
+  adoptPending(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(AdoptPendingDeviceRequestSchema) body: AdoptPendingDeviceRequest,
+  ) {
+    return this.config.adopt(user.tenantId, user.sub, id, body);
+  }
+
+  /** Dispara a campanha de firmware (DOWNLOAD na frota) usando a config. */
+  @Post('firmware/campaign')
+  @RequirePermissions('tr069.admin')
+  firmwareCampaign(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @ZodBody(Tr069FirmwareCampaignRequestSchema) body: Tr069FirmwareCampaignRequest,
+  ) {
+    return this.config.runFirmwareCampaign(user.tenantId, user.sub, body);
+  }
 
   /** Dashboard "Fila de diagnóstico" — KPIs + fila + sintomas. */
   @Get('dashboard')

@@ -57,14 +57,13 @@ import {
   HUAWEI_WIFI_CHANNELS,
   HUAWEI_WIFI_WIDTH_CODE,
   HUAWEI_WIFI_WIDTHS,
-  huaweiDiagnosticParamNames,
-  huaweiNotificationAttributes,
   huaweiWlanPaths,
   huaweiWlanSecurityParams,
   TR143_DOWNLOAD,
   TR143_PING,
   TR143_UPLOAD,
 } from './tr069-paths.huawei';
+import { diagnosticParamNamesFor, notificationAttributesFor } from './tr069-paths.registry';
 
 /** Intervalo (min) entre coletas proativas por device. */
 const DIAGNOSTIC_INTERVAL_MIN = parseInt(process.env.TR069_DIAGNOSTIC_INTERVAL_MIN ?? '15', 10);
@@ -145,12 +144,18 @@ export class Tr069DiagnosticsService {
     });
     if (inflight) return { taskId: inflight.id };
 
+    // Lista de params do diagnóstico depende do fabricante (Zyxel ≠ Huawei) —
+    // senão o CPE devolve Fault 9005 no GET inteiro.
+    const device = await this.prisma.tr069Device.findUnique({
+      where: { id: deviceDbId },
+      select: { manufacturer: true },
+    });
     const task = await this.prisma.tr069Task.create({
       data: {
         tenantId,
         deviceId: deviceDbId,
         action: 'GET_PARAMS',
-        payload: { names: huaweiDiagnosticParamNames(), purpose: 'DIAGNOSTICS' },
+        payload: { names: diagnosticParamNamesFor(device?.manufacturer), purpose: 'DIAGNOSTICS' },
         status: 'PENDING',
       },
     });
@@ -164,12 +169,16 @@ export class Tr069DiagnosticsService {
    * polling segue como fallback caso o arme falhe.
    */
   async enqueueArmNotifications(tenantId: string, deviceDbId: string): Promise<{ taskId: string }> {
+    const device = await this.prisma.tr069Device.findUnique({
+      where: { id: deviceDbId },
+      select: { manufacturer: true },
+    });
     const task = await this.prisma.tr069Task.create({
       data: {
         tenantId,
         deviceId: deviceDbId,
         action: 'SET_ATTRIBUTES',
-        payload: { attributes: huaweiNotificationAttributes() },
+        payload: { attributes: notificationAttributesFor(device?.manufacturer) },
         status: 'PENDING',
       },
     });
