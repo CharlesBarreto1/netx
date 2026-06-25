@@ -156,6 +156,7 @@ const messages = {
     hubsoftImport: 'Importar Hubsoft',
     users: 'Usuarios',
     plans: 'Planes',
+    locations: 'Direcciones',
     backups: 'Backups',
     audit: 'Auditoría',
     security: 'Mi seguridad',

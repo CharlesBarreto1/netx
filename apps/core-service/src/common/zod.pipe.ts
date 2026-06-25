@@ -1,5 +1,5 @@
 import { BadRequestException, PipeTransform, Injectable, ArgumentMetadata, createParamDecorator, ExecutionContext, applyDecorators } from '@nestjs/common';
-import { Body } from '@nestjs/common';
+import { Body, Query } from '@nestjs/common';
 import { ZodSchema } from 'zod';
 
 /**
@@ -28,3 +28,6 @@ export class ZodValidationPipe<T> implements PipeTransform<unknown, T> {
 }
 
 export const ZodBody = <T>(schema: ZodSchema<T>) => Body(new ZodValidationPipe(schema));
+
+/** Valida a query string contra um schema Zod. Usage: handler(@ZodQuery(S) q: T) */
+export const ZodQuery = <T>(schema: ZodSchema<T>) => Query(new ZodValidationPipe(schema));

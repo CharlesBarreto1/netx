@@ -64,6 +64,14 @@ const framedIpSchema = z.string().max(45).refine(
 // Campos comuns (não dependem de PPPoE/IPoE).
 const commonContractFields = {
   installationAddress: z.string().min(5).max(500),
+  // Endereço estruturado (BR) — FK pro cadastro-mestre de logradouro + número
+  // e complemento livres. Quando `streetId` vem, o backend DENORMALIZA o
+  // installationAddress a partir da rua (autoritativo). PY e contratos antigos
+  // seguem só no texto livre (streetId null). A obrigatoriedade p/ BR é regra
+  // do formulário (AddressPicker), não do schema — back-compat de API.
+  streetId: z.string().uuid().nullish(),
+  addressNumber: z.string().max(32).nullish(),
+  addressComplement: z.string().max(120).nullish(),
   // Link de localização (Google Maps / OSM / Apple Maps). Validação leve:
   // só exige URL válida; aceitar qualquer host pra não amarrar a um provedor.
   installationMapsUrl: z.string().url().max(500).nullish(),
@@ -325,6 +333,10 @@ export interface ContractResponse {
 
   installationAddress: string;
   installationMapsUrl: string | null;
+  /** Endereço estruturado (BR). Null quando o endereço é só texto livre (PY/legado). */
+  streetId: string | null;
+  addressNumber: string | null;
+  addressComplement: string | null;
   /** Coordenada do pino no módulo Mapeamento. Null = não georreferenciado. */
   latitude: number | null;
   longitude: number | null;

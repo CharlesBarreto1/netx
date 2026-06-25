@@ -697,6 +697,7 @@ model CustomerAddress {
   number      String?     @db.VarChar(32)
   complement  String?     @db.VarChar(120)
   postalCode  String?     @map("postal_code") @db.VarChar(16)
+  ibgeCode    String?     @map("ibge_code") @db.Char(7)        // IBGE do município (fiscal BR)
 
   latitude    Decimal?    @db.Decimal(9, 6)
   longitude   Decimal?    @db.Decimal(9, 6)
@@ -712,6 +713,95 @@ model CustomerAddress {
   @@index([tenantId, city])
   @@map("customer_addresses")
 }
+
+// -----------------------------------------------------------------------------
+// LOCATION REGISTRY (BR) — endereço estruturado por tenant
+//
+// Substitui o texto livre do endereço de instalação por seleção num cadastro-
+// mestre hierárquico: Cidade(IBGE) -> Bairro -> Rua(CEP), deixando livres só
+// número e complemento. Habilitado só p/ tenants BR (Tenant.country = 'BR');
+// PY segue em texto livre. IbgeMunicipality é referência NACIONAL (global,
+// read-only, seed do IBGE) e alimenta o codMunicipio do módulo fiscal (NFCom).
+// City/Neighborhood/Street são por tenant (multi-tenant estrito).
+// -----------------------------------------------------------------------------
+
+/// Município brasileiro do IBGE. Global (sem tenant). Seed via API do IBGE.
+/// codigo = código IBGE de 7 dígitos.
+model IbgeMunicipality {
+  codigo String @id @db.Char(7)
+  nome   String @db.VarChar(120)
+  uf     String @db.Char(2)
+
+  cities City[]
+
+  @@index([uf])
+  @@index([nome])
+  @@map("ibge_municipalities")
+}
+
+/// Cidade operada pelo ISP. Por tenant. Carrega o código IBGE (FK pro
+/// município) pra alimentar o módulo fiscal.
+model City {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  ibgeCode  String   @map("ibge_code") @db.Char(7)
+  name      String   @db.VarChar(120)
+  uf        String   @db.Char(2)
+  active    Boolean  @default(true)
+  latitude  Decimal? @db.Decimal(9, 6)
+  longitude Decimal? @db.Decimal(9, 6)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  municipality  IbgeMunicipality @relation(fields: [ibgeCode], references: [codigo])
+  neighborhoods Neighborhood[]
+  streets       Street[]
+
+  @@unique([tenantId, ibgeCode])
+  @@index([tenantId, name])
+  @@map("cities")
+}
+
+/// Bairro de uma cidade. Por tenant.
+model Neighborhood {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  cityId    String   @map("city_id") @db.Uuid
+  name      String   @db.VarChar(120)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  city    City     @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  streets Street[]
+
+  @@unique([tenantId, cityId, name])
+  @@index([tenantId, cityId])
+  @@map("neighborhoods")
+}
+
+/// Logradouro (rua/avenida) com CEP. Por tenant. Nasce do lookup ViaCEP ou de
+/// cadastro manual (cidades de CEP único). O número fica livre no contrato.
+model Street {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  cityId         String   @map("city_id") @db.Uuid
+  neighborhoodId String?  @map("neighborhood_id") @db.Uuid
+  name           String   @db.VarChar(255)
+  postalCode     String?  @map("postal_code") @db.VarChar(8)   // CEP só dígitos
+  kind           String?  @db.VarChar(40)                      // Rua, Avenida...
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  city         City          @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  neighborhood Neighborhood? @relation(fields: [neighborhoodId], references: [id], onDelete: SetNull)
+  contracts    Contract[]
+
+  @@unique([tenantId, cityId, name, postalCode])
+  @@index([tenantId, postalCode])
+  @@index([tenantId, cityId])
+  @@map("streets")
+}
+
 
 // -----------------------------------------------------------------------------
 // CUSTOMER CONTACT
@@ -1226,6 +1316,13 @@ model Contract {
   // erro <11cm, suficiente pra residências.
   latitude            Decimal?       @db.Decimal(9, 6)
   longitude           Decimal?       @db.Decimal(9, 6)
+
+  // Endereço estruturado (BR): FK pro cadastro-mestre de logradouro. Null p/ PY
+  // e contratos antigos; obrigatoriedade p/ BR é regra de aplicação (DTO/serviço).
+  streetId            String?        @map("street_id") @db.Uuid
+  addressNumber       String?        @map("address_number") @db.VarChar(32)
+  addressComplement   String?        @map("address_complement") @db.VarChar(120)
+  street              Street?        @relation(fields: [streetId], references: [id])
 
   // Comerciais
   // planId — plano de internet selecionado. Os campos abaixo (monthlyValue,

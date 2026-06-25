@@ -22,6 +22,7 @@
     "db:adopt": "dotenv -e ../../.env -- bash scripts/db/adopt-existing-db.sh",
     "db:seed": "dotenv -e ../../.env -- ts-node prisma/seed.ts",
     "db:seed:fake": "dotenv -e ../../.env -- ts-node prisma/seed-fake.ts",
+    "db:seed:ibge": "dotenv -e ../../.env -- ts-node prisma/seed-ibge.ts",
     "db:studio": "dotenv -e ../../.env -- prisma studio",
     "db:reset": "bash scripts/db/safe-reset.sh"
   },

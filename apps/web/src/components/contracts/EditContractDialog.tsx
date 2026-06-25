@@ -27,6 +27,7 @@ import type { BrPaymentGateway } from '@/lib/finance-api';
 import { plansApi, type Plan } from '@/lib/plans-api';
 import { useTenantConfig } from '@/lib/tenant-config';
 import { useFormatMoney } from '@/lib/use-money';
+import { AddressPicker, type AddressValue } from '@/components/contracts/AddressPicker';
 import type { LatLng } from '@/components/mapping/LocationPicker';
 
 // LocationPicker depende de Leaflet, que quebra no SSR (usa window).
@@ -65,7 +66,7 @@ export function EditContractDialog({
 }: EditContractDialogProps) {
   const t = useTranslations('contractCards');
   const tc = useTranslations('common');
-  const { currency, currencySymbol } = useTenantConfig();
+  const { currency, currencySymbol, tenant } = useTenantConfig();
   const moneyLabel = currencySymbol ?? currency;
   const formatMoney = useFormatMoney();
 
@@ -87,9 +88,15 @@ export function EditContractDialog({
     blockAfterDays:
       contract.blockAfterDays != null ? String(contract.blockAfterDays) : '',
     brBillingGateway: contract.brBillingGateway,
-    installationAddress: contract.installationAddress,
     installationMapsUrl: contract.installationMapsUrl ?? '',
     notes: contract.notes ?? '',
+  });
+  // Endereço de instalação — BR estruturado (AddressPicker), PY texto livre.
+  const [address, setAddress] = useState<AddressValue>({
+    streetId: contract.streetId,
+    addressNumber: contract.addressNumber ?? '',
+    addressComplement: contract.addressComplement ?? '',
+    installationAddress: contract.installationAddress,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -130,9 +137,14 @@ export function EditContractDialog({
       blockAfterDays:
         contract.blockAfterDays != null ? String(contract.blockAfterDays) : '',
       brBillingGateway: contract.brBillingGateway,
-      installationAddress: contract.installationAddress,
       installationMapsUrl: contract.installationMapsUrl ?? '',
       notes: contract.notes ?? '',
+    });
+    setAddress({
+      streetId: contract.streetId,
+      addressNumber: contract.addressNumber ?? '',
+      addressComplement: contract.addressComplement ?? '',
+      installationAddress: contract.installationAddress,
     });
     setSelectedPlanId(contract.planId ?? '');
     setPlanPreview(null);
@@ -257,8 +269,13 @@ export function EditContractDialog({
       }
     }
 
-    if (!form.installationAddress || form.installationAddress.length < 5)
+    // BR: endereço estruturado obrigatório; PY/legado: texto livre min 5.
+    if (tenant?.country === 'BR') {
+      if (!address.streetId)
+        e.installationAddress = 'Selecione o endereço de instalação (Cidade → Logradouro).';
+    } else if (!address.installationAddress || address.installationAddress.length < 5) {
       e.installationAddress = t('editContract.errors.installationAddress');
+    }
     if (form.installationMapsUrl) {
       const norm = normalizeMapsUrl(form.installationMapsUrl);
       try {
@@ -304,7 +321,10 @@ export function EditContractDialog({
         ? Number(form.blockAfterDays)
         : null,
       brBillingGateway: form.brBillingGateway,
-      installationAddress: form.installationAddress,
+      installationAddress: address.installationAddress,
+      streetId: address.streetId,
+      addressNumber: address.addressNumber.trim() || null,
+      addressComplement: address.addressComplement.trim() || null,
       installationMapsUrl: form.installationMapsUrl.trim()
         ? normalizeMapsUrl(form.installationMapsUrl)
         : null,
@@ -729,18 +749,13 @@ export function EditContractDialog({
         </div>
 
         {/* Endereço */}
-        <div>
-          <Label htmlFor="edit-installationAddress" required>
-            {t('editContract.installationAddress')}
-          </Label>
-          <Textarea
-            id="edit-installationAddress"
-            rows={2}
-            value={form.installationAddress}
-            onChange={(e) => update('installationAddress', e.target.value)}
-          />
-          <FieldError>{errors.installationAddress}</FieldError>
-        </div>
+        <AddressPicker
+          country={tenant?.country}
+          value={address}
+          onChange={setAddress}
+          error={errors.installationAddress}
+          freeTextLabel={t('editContract.installationAddress')}
+        />
         <div>
           <Label htmlFor="edit-installationMapsUrl">
             {t('editContract.mapsUrlLabel')}

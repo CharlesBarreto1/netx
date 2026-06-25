@@ -34,6 +34,10 @@ export interface Contract {
   vlanId: number | null;
   installationAddress: string;
   installationMapsUrl: string | null;
+  /** Endereço estruturado (BR). Null = texto livre (PY/legado). */
+  streetId: string | null;
+  addressNumber: string | null;
+  addressComplement: string | null;
   /** Coordenadas da casa do cliente — preenchidas via app mobile ou form de edição. */
   latitude: number | null;
   longitude: number | null;
@@ -140,6 +144,10 @@ interface CommonContractInput {
   customerId: string;
   installationAddress: string;
   installationMapsUrl?: string | null;
+  /** Endereço estruturado (BR). Quando streetId vem, o backend denormaliza o installationAddress. */
+  streetId?: string | null;
+  addressNumber?: string | null;
+  addressComplement?: string | null;
   /** Plano de internet selecionado (opcional). */
   planId?: string | null;
   monthlyValue: number;
@@ -199,6 +207,10 @@ export interface UpdateContractInput {
   vlanId?: number | null;
   installationAddress?: string;
   installationMapsUrl?: string | null;
+  /** Endereço estruturado (BR). streetId=null limpa o vínculo (volta a texto livre). */
+  streetId?: string | null;
+  addressNumber?: string | null;
+  addressComplement?: string | null;
   /** Coordenadas — preenchidas via app mobile ou form de edição. null limpa. */
   latitude?: number | null;
   longitude?: number | null;

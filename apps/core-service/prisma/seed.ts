@@ -303,6 +303,17 @@ const chatPermissions = [
   { code: 'mapping.read', module: 'mapping', resource: 'mapping', action: 'read' },
 ];
 
+// -----------------------------------------------------------------------------
+// Permission catalog — Endereços estruturados (BR): cidade/bairro/rua + IBGE/CEP
+// -----------------------------------------------------------------------------
+const locationsPermissions = [
+  // locations.read = listar cadastro, buscar IBGE e fazer lookup de CEP
+  { code: 'locations.read',   module: 'locations', resource: 'locations', action: 'read'   },
+  // locations.manage = criar/editar/excluir cidade, bairro e logradouro
+  // (inclui o "escape": criar rua na hora durante a venda)
+  { code: 'locations.manage', module: 'locations', resource: 'locations', action: 'manage' },
+];
+
 // Role → permission mapping
 const systemRoles = [
   {
@@ -439,6 +450,9 @@ const systemRoles = [
       'nfcom.emit',
       'nfcom.cancel',
       'nfcom.config',
+      // Endereços estruturados BR — admin gerencia o cadastro-mestre
+      'locations.read',
+      'locations.manage',
       'mapping.read',
     ],
   },
@@ -529,6 +543,9 @@ const systemRoles = [
       'sifen.config.read',
       'nfcom.read',
       'nfcom.emit',
+      // Endereços estruturados BR — operador seleciona e cria rua na hora (escape)
+      'locations.read',
+      'locations.manage',
       'mapping.read',
     ],
   },
@@ -557,6 +574,7 @@ const systemRoles = [
       'provisioning.read',
       'sifen.read',
       'nfcom.read',
+      'locations.read',
       'mapping.read',
     ],
   },
@@ -595,6 +613,7 @@ async function main() {
     ...btgPermissions,
     ...hubsoftPermissions,
     ...chatPermissions,
+    ...locationsPermissions,
   ]) {
     await prisma.permission.upsert({
       where: { code: p.code },

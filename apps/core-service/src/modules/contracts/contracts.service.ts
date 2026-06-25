@@ -138,6 +138,75 @@ export class ContractsService {
     }
   }
 
+  /**
+   * Resolve o endereço estruturado (BR) de um create/update.
+   *
+   * Quando `streetId` vem preenchido, carrega o logradouro (com bairro/cidade),
+   * valida que pertence ao tenant e DENORMALIZA o `installationAddress` a partir
+   * dele — a string fica sempre coerente com o cadastro-mestre e continua
+   * servindo busca/print/PY. `streetId === null` limpa o vínculo (volta a texto
+   * livre). `undefined` = não mexe (PATCH parcial).
+   *
+   * Retorna só os campos que devem ir pro `data` do Prisma.
+   */
+  private async resolveStructuredAddress(
+    tenantId: string,
+    input: {
+      streetId?: string | null;
+      addressNumber?: string | null;
+      addressComplement?: string | null;
+      installationAddress?: string;
+    },
+  ): Promise<{
+    streetId?: string | null;
+    addressNumber?: string | null;
+    addressComplement?: string | null;
+    installationAddress?: string;
+  }> {
+    // Sem campos estruturados no input → nada a fazer (texto livre segue como veio).
+    if (
+      input.streetId === undefined &&
+      input.addressNumber === undefined &&
+      input.addressComplement === undefined
+    ) {
+      return {};
+    }
+
+    // streetId null/ausente mas com número/complemento mexidos: atualiza só os
+    // livres, sem denormalizar (mantém o installationAddress do input).
+    if (!input.streetId) {
+      return {
+        ...(input.streetId === null ? { streetId: null } : {}),
+        ...(input.addressNumber !== undefined
+          ? { addressNumber: input.addressNumber ?? null }
+          : {}),
+        ...(input.addressComplement !== undefined
+          ? { addressComplement: input.addressComplement ?? null }
+          : {}),
+        ...(input.installationAddress !== undefined
+          ? { installationAddress: input.installationAddress }
+          : {}),
+      };
+    }
+
+    const street = await this.prisma.street.findFirst({
+      where: { id: input.streetId, tenantId },
+      include: { city: true, neighborhood: true },
+    });
+    if (!street) throw new BadRequestException('Logradouro não encontrado');
+
+    const number = input.addressNumber?.trim() || null;
+    const complement = input.addressComplement?.trim() || null;
+    const installationAddress = buildInstallationAddress(street, number, complement);
+
+    return {
+      streetId: street.id,
+      addressNumber: number,
+      addressComplement: complement,
+      installationAddress,
+    };
+  }
+
   // ---------------------------------------------------------------------------
   // CREATE
   // ---------------------------------------------------------------------------
@@ -169,6 +238,10 @@ export class ContractsService {
 
     // Gateway de cobrança BR: o que veio no input, ou o padrão do tenant.
     const brGateway = input.brBillingGateway ?? (await this.brBilling.defaultGateway(tenantId));
+
+    // Endereço estruturado (BR): se veio streetId, denormaliza o
+    // installationAddress a partir do logradouro do cadastro-mestre.
+    const structuredAddr = await this.resolveStructuredAddress(tenantId, input);
     // Capturado dentro da tx pra emitir a cobrança no gateway PÓS-commit
     // (emitir HTTP dentro da transação seguraria a tx e o charges service usa
     // outra conexão Prisma — não veria a fatura não-commitada).
@@ -242,8 +315,11 @@ export class ContractsService {
             code,
             seq,
             ...authData,
-            installationAddress: input.installationAddress,
+            installationAddress: structuredAddr.installationAddress ?? input.installationAddress,
             installationMapsUrl: input.installationMapsUrl ?? null,
+            streetId: structuredAddr.streetId ?? null,
+            addressNumber: structuredAddr.addressNumber ?? null,
+            addressComplement: structuredAddr.addressComplement ?? null,
             // Plano: referência. Valores (monthlyValue/bandwidth/upload) já
             // vêm preenchidos pelo front a partir do plano — o operador pode
             // ter ajustado o monthlyValue (desconto/acréscimo).
@@ -484,6 +560,19 @@ export class ContractsService {
     if (input.installationAddress !== undefined) data.installationAddress = input.installationAddress;
     if (input.installationMapsUrl !== undefined)
       data.installationMapsUrl = input.installationMapsUrl ?? null;
+    // Endereço estruturado (BR): denormaliza installationAddress a partir do
+    // logradouro (quando streetId vem) ou só atualiza número/complemento/limpa.
+    const structuredAddr = await this.resolveStructuredAddress(tenantId, input);
+    if (structuredAddr.streetId !== undefined)
+      data.street =
+        structuredAddr.streetId === null
+          ? { disconnect: true }
+          : { connect: { id: structuredAddr.streetId } };
+    if (structuredAddr.addressNumber !== undefined) data.addressNumber = structuredAddr.addressNumber;
+    if (structuredAddr.addressComplement !== undefined)
+      data.addressComplement = structuredAddr.addressComplement;
+    if (structuredAddr.installationAddress !== undefined)
+      data.installationAddress = structuredAddr.installationAddress;
     if (input.monthlyValue !== undefined) data.monthlyValue = new Prisma.Decimal(input.monthlyValue);
     if (input.bandwidthMbps !== undefined) data.bandwidthMbps = input.bandwidthMbps;
     if (input.uploadMbps !== undefined) data.uploadMbps = input.uploadMbps ?? null;
@@ -1831,6 +1920,38 @@ function deriveContractPrefix(slug?: string | null): string {
 // ---------------------------------------------------------------------------
 // MAPPER
 // ---------------------------------------------------------------------------
+/**
+ * Monta a string denormalizada do endereço de instalação a partir do
+ * logradouro estruturado. Ex.: "Rua das Flores, 123 - Apto 4 - Centro -
+ * Cascavel/PR - CEP 85800-000". Usada como `installationAddress` (busca/print).
+ */
+function buildInstallationAddress(
+  street: {
+    name: string;
+    kind: string | null;
+    postalCode: string | null;
+    neighborhood: { name: string } | null;
+    city: { name: string; uf: string };
+  },
+  number: string | null,
+  complement: string | null,
+): string {
+  const logradouro = [street.kind, street.name].filter(Boolean).join(' ');
+  const head = number ? `${logradouro}, ${number}` : logradouro;
+  const cep = street.postalCode
+    ? `CEP ${street.postalCode.replace(/^(\d{5})(\d{3})$/, '$1-$2')}`
+    : null;
+  return [
+    head,
+    complement,
+    street.neighborhood?.name ?? null,
+    `${street.city.name}/${street.city.uf}`,
+    cep,
+  ]
+    .filter(Boolean)
+    .join(' - ');
+}
+
 function toContractResponse(
   c: ContractWithRelations,
   opts: { includePassword: boolean },
@@ -1850,6 +1971,9 @@ function toContractResponse(
     vlanId: c.vlanId,
     installationAddress: c.installationAddress,
     installationMapsUrl: c.installationMapsUrl,
+    streetId: c.streetId,
+    addressNumber: c.addressNumber,
+    addressComplement: c.addressComplement,
     latitude: c.latitude != null ? Number(c.latitude) : null,
     longitude: c.longitude != null ? Number(c.longitude) : null,
     planId: c.planId,

@@ -318,15 +318,20 @@ export class NfcomService {
         where: { id: input.contractInvoiceId, tenantId },
         include: {
           contract: {
-            include: { customer: { include: { addresses: true } } },
+            include: {
+              customer: { include: { addresses: true } },
+              // Endereço estruturado de instalação (BR) — fonte do cMun (IBGE).
+              street: { include: { city: true, neighborhood: true } },
+            },
           },
         },
       });
       if (!inv) throw new NotFoundException('ContractInvoice não encontrada');
       const amount = Number(inv.amount);
       const cust = inv.contract.customer;
+      const serviceAddress = buildServiceAddress(inv.contract);
       return {
-        ...this.buildReceptorAssinante(cust, cfg, inv.contract.code),
+        ...this.buildReceptorAssinante(cust, cfg, inv.contract.code, serviceAddress),
         totalAmount: amount,
         items: [
           {
@@ -351,7 +356,9 @@ export class NfcomService {
     const amount = Number(ch.amount);
     const code = ch.code ?? `CHG-${input.oneTimeChargeId!.slice(0, 8)}`;
     return {
-      ...this.buildReceptorAssinante(ch.customer, cfg, code),
+      // Cobrança avulsa não tem contrato/endereço estruturado → null (cai no
+      // endereço cadastral do cliente).
+      ...this.buildReceptorAssinante(ch.customer, cfg, code, null),
       totalAmount: amount,
       items: [
         {
@@ -384,27 +391,57 @@ export class NfcomService {
         city: string;
         state: string | null;
         postalCode: string | null;
+        ibgeCode: string | null;
       }>;
     },
     cfg: NfcomEffectiveConfig,
     contractCode: string | null,
+    serviceAddress: NfcomServiceAddress | null,
   ): {
     receptor: NfcomAuthorizeInput['receptor'];
     assinante: NfcomAuthorizeInput['assinante'];
   } {
-    const addr =
-      customer.addresses.find((a) => a.isPrimary) ?? customer.addresses[0];
-    if (!addr) {
-      throw new BadRequestException(
-        `Cliente "${customer.displayName}" sem endereço cadastrado — exigido pela NFCom.`,
-      );
-    }
-    const uf = this.normalizeUf(addr.state) ?? cfg.emitente.uf;
-    // ⚠️ CustomerAddress não guarda o código IBGE do município (cMun). Sem ele,
-    // caímos no cMun do emitente (mesma praça) — homologação smoke-test. O SVRS
-    // rejeita cMun inválido; para produção, cadastrar o IBGE do cliente.
-    const cMun = cfg.emitente.codMunicipio ?? '';
     const taxId = customer.taxId ? customer.taxId.replace(/\D/g, '') : null;
+
+    // Preferência fiscal do enderDest:
+    //   1. endereço estruturado de instalação do contrato (cMun = IBGE real da
+    //      cidade cadastrada) — fonte mais confiável;
+    //   2. endereço cadastral do cliente, resolvendo o cMun pelo ibgeCode da
+    //      CustomerAddress;
+    //   3. último caso, o município do emitente (mesma praça).
+    let endereco: NfcomAuthorizeInput['receptor']['endereco'];
+    if (serviceAddress) {
+      endereco = {
+        logradouro: serviceAddress.logradouro,
+        numero: serviceAddress.numero,
+        complemento: serviceAddress.complemento,
+        bairro: serviceAddress.bairro ?? 'Centro',
+        codMunicipio: serviceAddress.codMunicipio,
+        municipioNome: serviceAddress.municipioNome,
+        cep: serviceAddress.cep,
+        uf: serviceAddress.uf,
+        fone: customer.primaryPhone,
+      };
+    } else {
+      const addr =
+        customer.addresses.find((a) => a.isPrimary) ?? customer.addresses[0];
+      if (!addr) {
+        throw new BadRequestException(
+          `Cliente "${customer.displayName}" sem endereço cadastrado — exigido pela NFCom.`,
+        );
+      }
+      endereco = {
+        logradouro: addr.street,
+        numero: addr.number ?? 'S/N',
+        complemento: addr.complement,
+        bairro: addr.district ?? 'Centro',
+        codMunicipio: addr.ibgeCode ?? cfg.emitente.codMunicipio ?? '',
+        municipioNome: addr.city,
+        cep: (addr.postalCode ?? '').replace(/\D/g, ''),
+        uf: this.normalizeUf(addr.state) ?? cfg.emitente.uf,
+        fone: customer.primaryPhone,
+      };
+    }
 
     return {
       receptor: {
@@ -412,17 +449,7 @@ export class NfcomService {
         name: customer.displayName,
         ie: customer.stateRegistration,
         email: customer.primaryEmail,
-        endereco: {
-          logradouro: addr.street,
-          numero: addr.number ?? 'S/N',
-          complemento: addr.complement,
-          bairro: addr.district ?? 'Centro',
-          codMunicipio: cMun,
-          municipioNome: addr.city,
-          cep: (addr.postalCode ?? '').replace(/\D/g, ''),
-          uf,
-          fone: customer.primaryPhone,
-        },
+        endereco,
       },
       assinante: {
         codigo: contractCode ?? customer.id.slice(0, 30),
@@ -555,4 +582,48 @@ export class NfcomService {
       updatedAt: d.updatedAt.toISOString(),
     };
   }
+}
+
+/** Endereço (enderDest) derivado do cadastro estruturado de instalação (BR). */
+interface NfcomServiceAddress {
+  logradouro: string;
+  numero: string;
+  complemento: string | null;
+  bairro: string | null;
+  /** Código IBGE (7 díg) do município — vem de City.ibgeCode. */
+  codMunicipio: string;
+  municipioNome: string;
+  cep: string;
+  uf: string;
+}
+
+/**
+ * Monta o endereço estruturado de instalação do contrato (quando vinculado ao
+ * cadastro-mestre via streetId). É a fonte preferencial do enderDest da NFCom
+ * porque carrega o código IBGE real do município. Sem streetId → null (cai no
+ * endereço cadastral do cliente).
+ */
+function buildServiceAddress(contract: {
+  addressNumber: string | null;
+  addressComplement: string | null;
+  street: {
+    name: string;
+    kind: string | null;
+    postalCode: string | null;
+    neighborhood: { name: string } | null;
+    city: { ibgeCode: string; name: string; uf: string };
+  } | null;
+}): NfcomServiceAddress | null {
+  const s = contract.street;
+  if (!s) return null;
+  return {
+    logradouro: [s.kind, s.name].filter(Boolean).join(' '),
+    numero: contract.addressNumber?.trim() || 'S/N',
+    complemento: contract.addressComplement ?? null,
+    bairro: s.neighborhood?.name ?? null,
+    codMunicipio: s.city.ibgeCode,
+    municipioNome: s.city.name,
+    cep: (s.postalCode ?? '').replace(/\D/g, ''),
+    uf: s.city.uf,
+  };
 }

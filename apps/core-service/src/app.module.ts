@@ -31,6 +31,7 @@ import { AlarmsModule } from './modules/alarms/alarms.module';
 import { RadiusModule } from './modules/radius/radius.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { MappingModule } from './modules/mapping/mapping.module';
+import { LocationsModule } from './modules/locations/locations.module';
 import { SifenModule } from './modules/sifen/sifen.module';
 import { NfcomModule } from './modules/nfcom/nfcom.module';
 import { StockModule } from './modules/stock/stock.module';
@@ -94,6 +95,7 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
     RolesModule,
     AuditModule,
     CrmModule,
+    LocationsModule,
     ContractsModule,
     ServiceOrdersModule,
     FinanceModule,

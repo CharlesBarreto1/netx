@@ -257,6 +257,8 @@ export const MENU_GROUPS: MenuGroup[] = [
       { key: 'settings', href: '/settings/tenant', labelKey: 'settings', permission: 'tenants.update' },
       { key: 'users', href: '/settings/users', labelKey: 'users', permission: 'users.read' },
       { key: 'plans', href: '/settings/plans', labelKey: 'plans', permission: 'plans.manage' },
+      // Endereços estruturados (cidade IBGE/bairro/rua/CEP). Só BR.
+      { key: 'locations', href: '/settings/locations', labelKey: 'locations', permission: 'locations.read', visibleIfCountry: ['BR'] },
       // Hubsoft — integração de leitura p/ migração (config + sync). Só BR.
       { key: 'hubsoft', href: '/settings/hubsoft', labelKey: 'hubsoft', permission: 'hubsoft.config.read', visibleIfCountry: ['BR'] },
       { key: 'hubsoftImport', href: '/settings/hubsoft/import', labelKey: 'hubsoftImport', permission: 'hubsoft.config.read', visibleIfCountry: ['BR'] },

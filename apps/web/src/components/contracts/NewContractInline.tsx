@@ -26,6 +26,7 @@ import { btgApi, type BrPaymentGateway } from '@/lib/finance-api';
 import { plansApi, type Plan } from '@/lib/plans-api';
 import { useTenantConfig } from '@/lib/tenant-config';
 import { pppoeLoginCandidates } from '@netx/shared';
+import { AddressPicker, EMPTY_ADDRESS, type AddressValue } from '@/components/contracts/AddressPicker';
 
 /**
  * NewContractInline — formulário reusável de criação de contrato.
@@ -95,7 +96,7 @@ export function NewContractInline({
   const submitText = submitLabel ?? t('newContract.submit');
   const cancelText = cancelLabel ?? tc('cancel');
   const skipText = skipLabel ?? tc('skip');
-  const { currency, currencySymbol } = useTenantConfig();
+  const { currency, currencySymbol, tenant } = useTenantConfig();
   const moneyLabel = `${currencySymbol ?? currency}`;
 
   const customersKey = lockedCustomerId ? null : '/v1/customers?pageSize=100';
@@ -156,7 +157,6 @@ export function NewContractInline({
     framedIpAddress: '',
     vlanId: '',
     // Comuns
-    installationAddress: initial?.installationAddress ?? '',
     installationMapsUrl: initial?.installationMapsUrl ?? '',
     // Wi-Fi do cliente — capturado aqui (antes era na instalação, pelo técnico).
     ssid: '',
@@ -172,6 +172,13 @@ export function NewContractInline({
     blockAfterDays: '',
     notes: initial?.notes ?? '',
     firstDueDate: initial?.firstDueDate ?? '',
+  });
+  // Endereço de instalação — BR usa o cadastro estruturado (AddressPicker),
+  // PY/legado segue texto livre. O installationAddress é denormalizado pelo
+  // backend a partir do streetId quando BR.
+  const [address, setAddress] = useState<AddressValue>({
+    ...EMPTY_ADDRESS,
+    installationAddress: initial?.installationAddress ?? '',
   });
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -291,8 +298,14 @@ export function NewContractInline({
       }
     }
 
-    if (!form.installationAddress || form.installationAddress.length < 5)
+    // BR: endereço estruturado obrigatório (exige logradouro selecionado).
+    // PY/legado: texto livre, mínimo 5 chars (comportamento histórico).
+    if (tenant?.country === 'BR') {
+      if (!address.streetId)
+        e.installationAddress = 'Selecione o endereço de instalação (Cidade → Logradouro).';
+    } else if (!address.installationAddress || address.installationAddress.length < 5) {
       e.installationAddress = t('newContract.errors.installationAddress');
+    }
 
     // Wi-Fi obrigatório no cadastro (o técnico não digita mais em campo).
     const ssid = form.ssid.trim();
@@ -338,7 +351,10 @@ export function NewContractInline({
 
     const common = {
       customerId: form.customerId,
-      installationAddress: form.installationAddress,
+      installationAddress: address.installationAddress,
+      streetId: address.streetId,
+      addressNumber: address.addressNumber.trim() || null,
+      addressComplement: address.addressComplement.trim() || null,
       installationMapsUrl: form.installationMapsUrl.trim()
         ? normalizeMapsUrl(form.installationMapsUrl)
         : null,
@@ -639,19 +655,14 @@ export function NewContractInline({
       </div>
       {/* ─── fim das configurações avançadas ─────────────────────────────── */}
 
-      <div>
-        <Label htmlFor="contract-installationAddress" required>
-          {t('newContract.installationAddress')}
-        </Label>
-        <Textarea
-          id="contract-installationAddress"
-          value={form.installationAddress}
-          onChange={(e) => update('installationAddress', e.target.value)}
-          placeholder={t('newContract.installationAddressPlaceholder')}
-          rows={2}
-        />
-        <FieldError>{errors.installationAddress}</FieldError>
-      </div>
+      <AddressPicker
+        country={tenant?.country}
+        value={address}
+        onChange={setAddress}
+        error={errors.installationAddress}
+        freeTextLabel={t('newContract.installationAddress')}
+        freeTextPlaceholder={t('newContract.installationAddressPlaceholder')}
+      />
 
       <div>
         <Label htmlFor="contract-installationMapsUrl">

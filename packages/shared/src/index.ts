@@ -8,6 +8,7 @@ export * from './tenant-context';
 export * from './validators/documents';
 export * from './i18n/country-presets';
 export * from './crm';
+export * from './locations';
 export * from './contracts';
 export * from './service-orders';
 export * from './finance';
