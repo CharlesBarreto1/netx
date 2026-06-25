@@ -222,18 +222,23 @@ export class HubsoftClientService {
     return this.pickArray(json, ['clientes']) as HubsoftCliente[];
   }
 
-  /** GET /api/v1/integracao/cliente/financeiro — faturas de um cliente. */
+  /**
+   * GET /api/v1/integracao/cliente/financeiro — faturas de um cliente.
+   * `apenas_pendente=nao` traz TAMBÉM as já pagas/liquidadas (histórico).
+   */
   async getFinanceiroCliente(
     cfg: HubsoftResolvedConfig,
     codigoCliente: number | string,
-    params: { limit?: number } = {},
+    params: { limit?: number; apenasPendente?: boolean } = {},
   ): Promise<HubsoftFatura[]> {
+    const { apenasPendente, ...rest } = params;
     const json = await this.get(
       cfg,
       `/api/v1/integracao/cliente/financeiro${this.qs({
         busca: 'codigo_cliente',
         termo_busca: codigoCliente,
-        ...params,
+        apenas_pendente: apenasPendente ? 'sim' : 'nao',
+        ...rest,
       })}`,
     );
     return this.pickArray(json, ['financeiro', 'faturas']) as HubsoftFatura[];

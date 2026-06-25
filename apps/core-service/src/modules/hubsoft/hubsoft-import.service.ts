@@ -793,6 +793,7 @@ export class HubsoftImportService {
     }
     if (!contractId) return 'skipped'; // sem contrato → não dá pra ancorar a fatura
 
+    const issuedAt = this.dateOrNull(fat.data_emissao);
     const data = {
       amount: this.decimal(fat.valor),
       dueDate: this.dateOrNull(fat.data_vencimento) ?? new Date(),
@@ -800,6 +801,8 @@ export class HubsoftImportService {
       paidAt: this.dateOrNull(fat.data_pagamento),
       paidAmount: fat.valor_pago != null ? this.decimal(fat.valor_pago) : null,
       reference,
+      // Data de emissão real (histórico) — senão usa o default now() na criação.
+      ...(issuedAt ? { issuedAt } : {}),
     };
 
     if (dryRun) {
@@ -862,19 +865,30 @@ export class HubsoftImportService {
     return this.str(svc.status_prefixo) || this.str(svc.status ?? svc.status_txt);
   }
 
+  /**
+   * Parse de DATA (dia) ancorado ao MEIO-DIA UTC. Datas só-data (@db.Date)
+   * salvas como UTC-meia-noite recuam 1 dia em fuso a oeste de UTC (ex.: BRT-3:
+   * 15/07 vira 14/07). Ancorar em 12:00Z mantém o dia correto em qualquer fuso.
+   * Aceita "YYYY-MM-DD[ HH:MM:SS]" e "DD/MM/YYYY".
+   */
   private dateOrNull(v: unknown): Date | null {
     const s = this.str(v);
     if (!s) return null;
-    // ISO "2020-03-05" ou "2020-03-05 10:00:00".
-    let d = new Date(s.replace(' ', 'T'));
-    if (!isNaN(d.getTime())) return d;
-    // BR "05/03/2020".
-    const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
-    if (m) {
-      d = new Date(`${m[3]}-${m[2]}-${m[1]}`);
-      if (!isNaN(d.getTime())) return d;
+    let y: number, mo: number, d: number;
+    const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (iso) {
+      y = +iso[1];
+      mo = +iso[2];
+      d = +iso[3];
+    } else {
+      const br = s.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+      if (!br) return null;
+      d = +br[1];
+      mo = +br[2];
+      y = +br[3];
     }
-    return null;
+    const dt = new Date(Date.UTC(y, mo - 1, d, 12, 0, 0));
+    return isNaN(dt.getTime()) ? null : dt;
   }
 
   private enderecoStr(e: HubsoftEndereco | string | undefined): string {
