@@ -18,20 +18,43 @@
 import type { Route } from 'next';
 import {
   Activity,
+  ArrowDownUp,
+  ArrowLeftRight,
+  Banknote,
+  BarChart3,
+  BellRing,
   BookOpen,
+  Box,
+  Boxes,
+  Briefcase,
   Building2,
+  Cable,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  CircleUser,
+  Clock,
+  Cpu,
   CreditCard,
   Database,
+  DownloadCloud,
+  Factory,
+  FileCog,
   FileSignature,
   FileText,
+  FolderOpen,
+  Gauge,
   GitBranch,
+  GitMerge,
+  Handshake,
   HardHat,
+  Headset,
+  Home,
+  Hourglass,
   KanbanSquare,
+  Layers,
   LayoutDashboard,
   ListChecks,
   Lock,
@@ -39,16 +62,26 @@ import {
   Map,
   MapPin,
   Network,
+  Newspaper,
+  Package,
+  Plug,
   Receipt,
+  RefreshCw,
+  Router,
   ScrollText,
   Search,
   Send,
+  Server,
   Settings,
   ShieldCheck,
+  SlidersHorizontal,
   Tag,
   Truck,
   Users,
   Wallet,
+  Warehouse,
+  Waves,
+  Wifi,
   Wrench,
   IdCard,
   Fuel,
@@ -70,10 +103,11 @@ import { SimpleTooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/cn';
 import { DensityProvider } from '@/lib/density';
 import {
+  isBranch,
   upsellMenuGroups,
   visibleMenuGroups,
-  type MenuDef,
   type MenuGroup,
+  type MenuItem,
   type UpsellModule,
 } from '@/lib/menus';
 import { authApi } from '@/lib/auth-api';
@@ -88,33 +122,100 @@ interface NavItem {
   permission?: string;
 }
 
-/** Catálogo `key` → Lucide icon. Único lugar onde ícones moram. */
+/** Sub-árvore (cabeçalho aninhado) — nível intermediário entre grupo e folha. */
+interface NavBranch {
+  key: string;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+  children: NavItem[];
+}
+
+/** Item dentro de um grupo: folha (link) ou sub-árvore (cabeçalho). */
+type NavNode = NavItem | NavBranch;
+
+interface NavGroup {
+  key: string;
+  label?: string;
+  items: NavNode[];
+}
+
+function isNavBranch(n: NavNode): n is NavBranch {
+  return 'children' in n;
+}
+
+/** Achata uma lista de nós em folhas (usado no modo sidebar-colapsada). */
+function flattenNav(items: NavNode[]): NavItem[] {
+  return items.flatMap((it) => (isNavBranch(it) ? it.children : [it]));
+}
+
+/** Rota ativa? Match exato ou prefixo de subrota. */
+function isActiveHref(href: string, pathname: string): boolean {
+  return pathname === href || pathname.startsWith(href + '/');
+}
+
+/** Catálogo `key` → Lucide icon. Único lugar onde ícones moram. Cobre folhas
+ *  E sub-árvores (cabeçalhos aninhados). Sem entrada ⇒ fallback `Activity`. */
 const ICON_BY_KEY: Record<string, ComponentType<{ className?: string }>> = {
   dashboard: LayoutDashboard,
+  // CRM
   sales: KanbanSquare,
   customers: Users,
   contracts: FileText,
-  serviceOrders: Wrench,
+  // Financeiro
   charges: Wallet,
-  reports: BookOpen,
-  tags: Tag,
-  settings: Settings,
+  payables: Banknote,
   cashRegisters: CreditCard,
-  serviceOrderReasons: ListChecks,
-  users: Users,
-  backups: Database,
-  audit: BookOpen,
-  security: ShieldCheck,
-  pops: Building2,
-  equipment: Wrench,
-  radiusLog: Activity,
-  // Fiscal (SIFEN PY)
+  financeFiscal: Receipt, // sub-árvore
   fiscalDocuments: ScrollText,
   fiscalEmit: Send,
-  sifenConfig: FileSignature,
+  nfcomDocuments: Receipt,
+  // Estoque
+  stockProducts: Package,
+  stockAssets: Boxes,
+  stockSuppliers: Factory,
+  stockLocations: Warehouse,
+  stockPurchases: Receipt,
+  stockMovements: ArrowLeftRight,
+  stockReport: BarChart3,
+  // RH
+  hrManagement: Briefcase, // sub-árvore
+  hrPortal: CircleUser, // sub-árvore
+  hrEmployees: Users,
+  hrTimeclock: Clock,
+  hrPayroll: Banknote,
+  hrPosts: Newspaper,
+  hrReports: BarChart3,
+  meHome: Home,
+  meTimeclock: Clock,
+  meEarnings: Wallet,
+  meDocuments: FolderOpen,
+  meNews: Newspaper,
+  // Atendimento
+  serviceOrders: Wrench,
+  // Técnico
+  techProvisioning: Router, // sub-árvore
+  techNetworkPlant: Cable, // sub-árvore
+  provisioningPending: Hourglass,
+  olts: Server,
+  tr069Dashboard: Gauge,
+  tr069Devices: Router,
+  tr069Alerts: BellRing,
+  tr069WifiCoverage: Wifi,
+  alarms: BellRing,
+  pops: Building2,
+  equipment: Wrench,
+  opticalEnclosures: Box,
+  fiberCables: Cable,
+  fiberSplices: GitMerge,
+  powerBudget: Gauge,
+  otdrEvents: Waves,
+  ponTree: Network,
+  kmlImport: ArrowDownUp,
+  radiusLog: Activity,
   // Mapeamento (Leaflet)
   mappingCustomers: MapPin,
   mappingNetwork: Network,
+  mapStudio: Map,
   mappingBackbone: GitBranch,
   mappingTechnicians: HardHat,
   // Frota
@@ -123,6 +224,32 @@ const ICON_BY_KEY: Record<string, ComponentType<{ className?: string }>> = {
   fleetExpenses: Fuel,
   fleetMaintenance: Wrench,
   fleetLive: Navigation,
+  // Relatórios
+  reports: BookOpen,
+  // Configurações (sub-árvores + folhas)
+  cfgGeneral: SlidersHorizontal,
+  cfgCommercial: Handshake,
+  cfgFinance: Banknote,
+  cfgFiscal: FileSignature,
+  cfgSupport: Headset,
+  cfgTechnical: Cpu,
+  cfgIntegrations: Plug,
+  settings: Settings,
+  users: Users,
+  backups: Database,
+  audit: BookOpen,
+  plans: Layers,
+  tags: Tag,
+  brBilling: CreditCard,
+  sifenConfig: FileSignature,
+  nfcomConfig: FileSignature,
+  serviceOrderReasons: ListChecks,
+  oltTemplates: FileCog,
+  tr069Profiles: SlidersHorizontal,
+  hubsoft: RefreshCw,
+  hubsoftImport: DownloadCloud,
+  // Conta pessoal
+  security: ShieldCheck,
 };
 
 const SIDEBAR_STORAGE_KEY = 'netx.sidebar.collapsed';
@@ -184,11 +311,6 @@ export function AppShell({
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  interface NavGroup {
-    key: string;
-    label?: string;
-    items: NavItem[];
-  }
   // País do tenant — usado pra filtrar grupos exclusivos de país (ex.: fiscal/PY).
   // Hook seguro: useTenantConfig devolve null quando ainda não carregou.
   const tenantConfig = useTenantConfig();
@@ -203,25 +325,33 @@ export function AppShell({
   );
   const entitledModules = licenseStatus?.entitledModules;
 
-  const allowedGroups = useMemo<NavGroup[]>(
-    () =>
-      visibleMenuGroups(
-        session.user.permissions,
-        session.user.menuAccess ?? null,
-        tenantCountry,
-        entitledModules,
-      ).map((g: MenuGroup) => ({
-        key: g.key,
-        label: g.labelKey ? tNav(g.labelKey as 'dashboard') : undefined,
-        items: g.items.map((m: MenuDef) => ({
-          href: m.href as Route,
-          label: tNav(m.labelKey as 'dashboard'),
-          icon: ICON_BY_KEY[m.key] ?? Activity,
-          permission: m.permission,
-        })),
-      })),
-    [session.user.permissions, session.user.menuAccess, tenantCountry, entitledModules, tNav],
-  );
+  const allowedGroups = useMemo<NavGroup[]>(() => {
+    const toLeaf = (m: { key: string; href: string; labelKey: string; permission?: string }): NavItem => ({
+      href: m.href as Route,
+      label: tNav(m.labelKey as 'dashboard'),
+      icon: ICON_BY_KEY[m.key] ?? Activity,
+      permission: m.permission,
+    });
+    const toNode = (it: MenuItem): NavNode =>
+      isBranch(it)
+        ? {
+            key: it.key,
+            label: tNav(it.labelKey as 'dashboard'),
+            icon: ICON_BY_KEY[it.key] ?? Activity,
+            children: it.children.map(toLeaf),
+          }
+        : toLeaf(it);
+    return visibleMenuGroups(
+      session.user.permissions,
+      session.user.menuAccess ?? null,
+      tenantCountry,
+      entitledModules,
+    ).map((g: MenuGroup) => ({
+      key: g.key,
+      label: g.labelKey ? tNav(g.labelKey as 'dashboard') : undefined,
+      items: g.items.map(toNode),
+    }));
+  }, [session.user.permissions, session.user.menuAccess, tenantCountry, entitledModules, tNav]);
 
   // Módulos licenciáveis NÃO habilitados → upsell "Disponível · ativar" (não
   // somem da nav). Painel único: o que não foi comprado vira oferta in-app.
@@ -439,57 +569,60 @@ function SidebarNav({
   pathname,
   collapsed,
 }: {
-  groups: { key: string; label?: string; items: NavItem[] }[];
+  groups: NavGroup[];
   pathname: string;
   collapsed: boolean;
 }) {
-  // Quais grupos estão expandidos. Persiste em localStorage. Auto-expande o
-  // grupo que contém a rota ativa (mesmo se o user tinha fechado antes) — é o
-  // comportamento esperado: você navegou pra lá, faz sentido ver o grupo.
-  const activeGroupKey = useMemo(() => {
+  // Keys (grupo + sub-árvore) que contêm a rota ativa → auto-expand. Você
+  // navegou pra lá, faz sentido ver a árvore aberta até o item. Grupos e
+  // sub-árvores dividem o mesmo Set porque suas keys são únicas na árvore toda.
+  const activeKeys = useMemo(() => {
+    const keys = new Set<string>();
     for (const g of groups) {
-      if (
-        g.items.some(
-          (it) => pathname === it.href || pathname.startsWith(it.href + '/'),
-        )
-      ) {
-        return g.key;
+      for (const it of g.items) {
+        if (isNavBranch(it)) {
+          if (it.children.some((c) => isActiveHref(c.href, pathname))) {
+            keys.add(g.key);
+            keys.add(it.key);
+          }
+        } else if (isActiveHref(it.href, pathname)) {
+          keys.add(g.key);
+        }
       }
     }
-    return null;
+    return keys;
   }, [groups, pathname]);
 
-  const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
-    // Init no SSR: empty. No client primeiro render: tenta localStorage.
-    // Auto-expansão do grupo ativo é aplicada em useEffect abaixo pra
-    // garantir hydratação consistente.
-    return new Set<string>();
-  });
+  const [openKeys, setOpenKeys] = useState<Set<string>>(() => new Set<string>());
 
-  // Após mount, hidrata do localStorage + força grupo ativo aberto.
+  // Após mount, hidrata do localStorage + força keys ativas abertas. (Não
+  // persiste aqui — só toggle explícito persiste, evita grava-grava por rota.)
   useEffect(() => {
     const stored = loadOpenGroupsFromStorage();
     const next = new Set(stored ?? []);
-    if (activeGroupKey) next.add(activeGroupKey);
-    setOpenGroups(next);
-    // Não persiste aqui — só persiste em toggle explícito do user, evita
-    // grava-grava em cada mudança de rota.
+    for (const k of activeKeys) next.add(k);
+    setOpenKeys(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Mudou de rota — garante que o grupo da rota ativa esteja aberto.
+  // Mudou de rota — garante as keys da rota ativa abertas.
   useEffect(() => {
-    if (!activeGroupKey) return;
-    setOpenGroups((prev) => {
-      if (prev.has(activeGroupKey)) return prev;
+    if (activeKeys.size === 0) return;
+    setOpenKeys((prev) => {
+      let changed = false;
       const next = new Set(prev);
-      next.add(activeGroupKey);
-      return next;
+      for (const k of activeKeys) {
+        if (!next.has(k)) {
+          next.add(k);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
     });
-  }, [activeGroupKey]);
+  }, [activeKeys]);
 
-  const toggleGroup = (key: string) => {
-    setOpenGroups((prev) => {
+  const toggleKey = (key: string) => {
+    setOpenKeys((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -498,13 +631,92 @@ function SidebarNav({
     });
   };
 
+  // Folha (link). `nested` = está dentro de sub-árvore (indenta + sem ícone bg).
+  const renderLeaf = (it: NavItem, nested: boolean) => {
+    const active = isActiveHref(it.href, pathname);
+    const Icon = it.icon;
+    const content = (
+      <Link
+        key={it.href}
+        href={it.href}
+        className={cn(
+          'group relative flex items-center gap-2.5 rounded-md text-sm font-medium transition-colors',
+          'compact:py-1.5 cozy:py-2 comfortable:py-2.5 py-2',
+          collapsed ? 'justify-center px-0' : nested ? 'pl-3 pr-2.5' : 'px-2.5',
+          active
+            ? 'bg-accent-muted text-accent-strong dark:text-accent-foreground'
+            : 'text-text-muted hover:bg-surface-hover hover:text-text',
+        )}
+        aria-current={active ? 'page' : undefined}
+      >
+        {/* Marcador de item ativo — barrinha à esquerda. */}
+        {active && !collapsed && (
+          <span className="absolute -left-0.5 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full bg-accent" />
+        )}
+        <Icon className="h-4 w-4 shrink-0" />
+        {!collapsed && <span className="truncate">{it.label}</span>}
+      </Link>
+    );
+    return collapsed ? (
+      <SimpleTooltip key={it.href} label={it.label} side="right">
+        {content}
+      </SimpleTooltip>
+    ) : (
+      content
+    );
+  };
+
+  // Sub-árvore (cabeçalho aninhado + filhos). Só no modo expandido — colapsada
+  // achata tudo em ícones (sem espaço pra accordion aninhado).
+  const renderBranch = (br: NavBranch) => {
+    const isOpen = openKeys.has(br.key);
+    const hasActive = br.children.some((c) => isActiveHref(c.href, pathname));
+    const Icon = br.icon;
+    return (
+      <div key={br.key}>
+        <button
+          type="button"
+          onClick={() => toggleKey(br.key)}
+          aria-expanded={isOpen}
+          aria-controls={`navbranch-${br.key}`}
+          className={cn(
+            'flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors',
+            hasActive
+              ? 'text-text'
+              : 'text-text-muted hover:bg-surface-hover hover:text-text',
+          )}
+        >
+          <Icon className="h-4 w-4 shrink-0" />
+          <span className="flex-1 truncate text-left">{br.label}</span>
+          <ChevronRight
+            className={cn(
+              'h-3.5 w-3.5 shrink-0 opacity-50 transition-transform',
+              isOpen && 'rotate-90',
+            )}
+          />
+        </button>
+        {isOpen && (
+          <div
+            id={`navbranch-${br.key}`}
+            className="ml-[1.05rem] mt-0.5 flex flex-col gap-0.5 border-l border-border/70 pl-2"
+          >
+            {br.children.map((c) => renderLeaf(c, true))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <nav className="flex flex-col gap-1 p-2.5">
       {groups.map((g, idx) => {
         const hasLabel = !!g.label;
-        const isCollapsible = hasLabel && !collapsed;
-        const isOpen = !isCollapsible || openGroups.has(g.key);
-        const hasActiveChild = activeGroupKey === g.key;
+        const isGroupCollapsible = hasLabel && !collapsed;
+        const isOpen = !isGroupCollapsible || openKeys.has(g.key);
+        const hasActiveChild = activeKeys.has(g.key);
+
+        // Colapsada: achata tudo em folhas (ícones + tooltip), sem headers.
+        const flatLeaves = collapsed ? flattenNav(g.items) : null;
 
         return (
           <div key={g.key} className={idx === 0 ? '' : 'mt-1'}>
@@ -512,7 +724,7 @@ function SidebarNav({
             {hasLabel && !collapsed && (
               <button
                 type="button"
-                onClick={() => toggleGroup(g.key)}
+                onClick={() => toggleKey(g.key)}
                 aria-expanded={isOpen}
                 aria-controls={`navgroup-${g.key}`}
                 className={cn(
@@ -531,47 +743,15 @@ function SidebarNav({
               </button>
             )}
 
-            {/* Itens do grupo (sempre visíveis quando sidebar colapsada,
-                ou quando o grupo está aberto, ou quando o grupo não tem label) */}
+            {/* Conteúdo do grupo: folhas + sub-árvores (ou folhas achatadas
+                quando colapsado). */}
             {isOpen && (
-              <div
-                id={`navgroup-${g.key}`}
-                className="flex flex-col gap-0.5"
-              >
-                {g.items.map((it) => {
-                  const active =
-                    pathname === it.href || pathname.startsWith(it.href + '/');
-                  const Icon = it.icon;
-                  const Content = (
-                    <Link
-                      key={it.href}
-                      href={it.href}
-                      className={cn(
-                        'group flex items-center gap-2.5 rounded-md px-2.5 text-sm font-medium transition-colors',
-                        'compact:py-1.5 cozy:py-2 comfortable:py-2.5 py-2',
-                        active
-                          ? 'bg-accent-muted text-accent-strong dark:text-accent-foreground'
-                          : 'text-text-muted hover:bg-surface-hover hover:text-text',
-                        collapsed && 'justify-center px-0',
-                      )}
-                      aria-current={active ? 'page' : undefined}
-                    >
-                      <Icon className="h-4 w-4 shrink-0" />
-                      {!collapsed && <span className="truncate">{it.label}</span>}
-                    </Link>
-                  );
-                  return collapsed ? (
-                    <SimpleTooltip
-                      key={it.href}
-                      label={it.label}
-                      side="right"
-                    >
-                      {Content}
-                    </SimpleTooltip>
-                  ) : (
-                    Content
-                  );
-                })}
+              <div id={`navgroup-${g.key}`} className="flex flex-col gap-0.5">
+                {flatLeaves
+                  ? flatLeaves.map((it) => renderLeaf(it, false))
+                  : g.items.map((it) =>
+                      isNavBranch(it) ? renderBranch(it) : renderLeaf(it, false),
+                    )}
               </div>
             )}
           </div>
