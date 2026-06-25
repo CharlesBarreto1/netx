@@ -803,6 +803,12 @@ export class HubsoftImportService {
       reference,
       // Data de emissão real (histórico) — senão usa o default now() na criação.
       ...(issuedAt ? { issuedAt } : {}),
+      // Boleto/Pix já gerados no Hubsoft → reimpressão no NetX (sem nova cobrança).
+      extSource: 'hubsoft',
+      extBoletoUrl: this.str(fat.link) || null,
+      extDigitableLine: this.str(fat.linha_digitavel) || null,
+      extBarcode: this.str(fat.codigo_barras) || null,
+      extPixCode: this.str(fat.pix_copia_cola) || null,
     };
 
     if (dryRun) {

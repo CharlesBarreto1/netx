@@ -128,7 +128,12 @@ export interface HubsoftFatura {
   data_emissao?: string;
   status?: string; // "Em Aberto" | "Pago" | "Vencido" | ...
   status_fatura?: string;
+  status_prefixo?: string;
+  // Boleto / Pix já gerados no Hubsoft (p/ reimpressão, sem nova cobrança).
   linha_digitavel?: string;
+  codigo_barras?: string;
+  nosso_numero?: string;
+  pix_copia_cola?: string;
   link?: string; // PDF do boleto
   descricao?: string;
 }

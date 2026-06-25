@@ -91,6 +91,15 @@ export interface ContractInvoiceResponse {
 
   reference: string | null;
 
+  // Boleto/Pix de ORIGEM (migração) — quando preenchido, o NetX REIMPRIME o
+  // documento já gerado no sistema legado (ex.: Hubsoft) em vez de emitir nova
+  // cobrança. O pagamento baixa nos dois sistemas via o sync do legado.
+  extSource: string | null; // 'hubsoft' | null
+  extBoletoUrl: string | null; // PDF do boleto
+  extDigitableLine: string | null; // linha digitável
+  extBarcode: string | null; // código de barras
+  extPixCode: string | null; // Pix copia-e-cola
+
   createdAt: string;
   updatedAt: string;
 

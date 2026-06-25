@@ -1476,6 +1476,13 @@ model ContractInvoice {
 
   // Referência textual p/ controle interno ex. "Mensalidade 05/2026"
   reference    String?        @db.VarChar(120)
+  // Boleto/Pix de ORIGEM (migração): reimprime o que já está gerado no sistema
+  // legado (ex.: Hubsoft) em vez de gerar nova cobrança. extSource = origem.
+  extSource        String?        @map("ext_source") @db.VarChar(16)
+  extBoletoUrl     String?        @map("ext_boleto_url") @db.VarChar(500)
+  extDigitableLine String?        @map("ext_digitable_line") @db.VarChar(64)
+  extBarcode       String?        @map("ext_barcode") @db.VarChar(64)
+  extPixCode       String?        @map("ext_pix_code") @db.Text
 
   createdAt    DateTime       @default(now()) @map("created_at")
   updatedAt    DateTime       @updatedAt @map("updated_at")

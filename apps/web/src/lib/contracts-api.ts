@@ -96,6 +96,12 @@ export interface ContractInvoice {
   cashRegisterId: string | null;
   paymentNote: string | null;
   reference: string | null;
+  // Boleto/Pix de origem (migração) — reimpressão sem nova cobrança.
+  extSource: string | null;
+  extBoletoUrl: string | null;
+  extDigitableLine: string | null;
+  extBarcode: string | null;
+  extPixCode: string | null;
   createdAt: string;
   updatedAt: string;
   contract?: {

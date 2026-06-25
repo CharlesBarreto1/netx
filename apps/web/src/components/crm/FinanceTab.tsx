@@ -8,6 +8,7 @@ import useSWR from 'swr';
 
 import { DiscountDialog } from '@/components/finance/DiscountDialog';
 import { EfiChargeDialog } from '@/components/finance/EfiChargeDialog';
+import { HubsoftBoletoDialog } from '@/components/finance/HubsoftBoletoDialog';
 import { NewChargeDialog } from '@/components/finance/NewChargeDialog';
 import { PaymentDialog } from '@/components/finance/PaymentDialog';
 import { PostponeDialog } from '@/components/finance/PostponeDialog';
@@ -26,6 +27,17 @@ import type { Paginated } from '@/lib/crm-types';
 import { formatDate } from '@/lib/format';
 import { useFormatMoney } from '@/lib/use-money';
 import { hasPermission } from '@/lib/session';
+
+/** Fatura migrada que já traz boleto/Pix do sistema de origem (ex.: Hubsoft). */
+function hasExtBoleto(inv: ContractInvoice): boolean {
+  return !!(
+    inv.extSource ||
+    inv.extBoletoUrl ||
+    inv.extDigitableLine ||
+    inv.extBarcode ||
+    inv.extPixCode
+  );
+}
 
 /**
  * FinanceTab — financeiro consolidado do cliente.
@@ -86,6 +98,7 @@ export function FinanceTab({ customerId }: { customerId: string }) {
   const [discounting, setDiscounting] = useState<ContractInvoice | null>(null);
   const [postponing, setPostponing] = useState<ContractInvoice | null>(null);
   const [efiCharging, setEfiCharging] = useState<ContractInvoice | null>(null);
+  const [reprinting, setReprinting] = useState<ContractInvoice | null>(null);
   const [newChargeOpen, setNewChargeOpen] = useState(false);
   const canCreateCharge = hasPermission('finance.charges.write');
   const canDiscount = hasPermission('finance.discount.apply');
@@ -231,15 +244,29 @@ export function FinanceTab({ customerId }: { customerId: string }) {
                             {t('finance.discount')}
                           </Button>
                         )}
-                        {canPay && canEfiCharge && (
+                        {/* Fatura migrada com boleto/Pix de origem → REIMPRIME o
+                            existente (não gera nova cobrança no NetX). */}
+                        {hasExtBoleto(inv) ? (
                           <Button
                             variant="ghost"
                             size="xs"
-                            onClick={() => setEfiCharging(inv)}
-                            title={t('finance.efiTitle')}
+                            onClick={() => setReprinting(inv)}
+                            title="Reimprimir boleto/Pix gerado no sistema de origem"
                           >
-                            Pix/Boleto
+                            Reimprimir
                           </Button>
+                        ) : (
+                          canPay &&
+                          canEfiCharge && (
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              onClick={() => setEfiCharging(inv)}
+                              title={t('finance.efiTitle')}
+                            >
+                              Pix/Boleto
+                            </Button>
+                          )
                         )}
                         {canPay && canWrite && (
                           <Button
@@ -325,6 +352,14 @@ export function FinanceTab({ customerId }: { customerId: string }) {
           amount={efiCharging.amount}
           description={`${efiCharging.reference ?? ''} · ${formatDate(efiCharging.dueDate)}`}
           onGenerated={() => void mutate()}
+        />
+      )}
+
+      {reprinting && (
+        <HubsoftBoletoDialog
+          invoice={reprinting}
+          open
+          onOpenChange={(v) => !v && setReprinting(null)}
         />
       )}
 

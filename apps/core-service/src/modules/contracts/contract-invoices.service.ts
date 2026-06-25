@@ -752,6 +752,11 @@ function toInvoiceResponse(i: InvoiceWithContract): ContractInvoiceResponse {
     cashRegisterId: (i as any).cashRegisterId ?? null,
     paymentNote: i.paymentNote,
     reference: i.reference,
+    extSource: (i as any).extSource ?? null,
+    extBoletoUrl: (i as any).extBoletoUrl ?? null,
+    extDigitableLine: (i as any).extDigitableLine ?? null,
+    extBarcode: (i as any).extBarcode ?? null,
+    extPixCode: (i as any).extPixCode ?? null,
     createdAt: i.createdAt.toISOString(),
     updatedAt: i.updatedAt.toISOString(),
     contract: i.contract
