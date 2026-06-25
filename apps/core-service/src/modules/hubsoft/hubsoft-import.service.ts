@@ -15,7 +15,7 @@
  * comprometer dados. Cada registro é isolado em try/catch — uma linha ruim não
  * derruba o lote; o erro entra em `errors[]`.
  */
-import { Injectable, Logger } from '@nestjs/common';
+import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
 import type {
   BrowseHubsoftCustomersRequest,
   BrowseHubsoftCustomersResponse,
@@ -39,7 +39,7 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 
-import { HubsoftClientService } from './hubsoft-client.service';
+import { HubsoftApiError, HubsoftClientService } from './hubsoft-client.service';
 import { HubsoftConfigService } from './hubsoft-config.service';
 import type {
   HubsoftCliente,
@@ -200,22 +200,69 @@ export class HubsoftImportService {
       };
     }
 
-    // 2) Com filtros client-side (cidade/status/grupo) precisamos da base toda
-    //    p/ filtrar — /cliente/all (timeout generoso), filtra e pagina em memória.
+    // 2) Com filtros client-side (cidade/status/grupo): VARRE o /cliente/all em
+    //    páginas (limit+offset), filtrando e acumulando — NUNCA baixa a base
+    //    inteira de uma vez (isso dava 500/timeout em bases grandes). Para quando
+    //    junta o suficiente p/ a página pedida, exaure a base, ou bate o teto.
     //    `incluir` traz endereços (cidade) e, p/ grupo, pacotes/grupos.
     if (hasClientFilter) {
       const incluir = filters?.grupos?.length
         ? `${HS_INCLUIR_ENDERECOS},pacotes,grupos`
         : HS_INCLUIR_ENDERECOS;
-      const all = await this.client.getClientesAll(cfg, { cancelado, incluir });
-      const filtered = this.applyBrowseFilters(all, filters);
-      const slice = filtered.slice((page - 1) * pageSize, page * pageSize);
+      const SCAN_PAGE = 200;
+      const MAX_SCANS = 60; // teto de segurança: ~12k clientes varridos
+      const need = page * pageSize;
+      const matched: HubsoftCliente[] = [];
+      let offset = 0;
+      let scans = 0;
+      let exhausted = false;
+      while (matched.length <= need && scans < MAX_SCANS) {
+        let batch: HubsoftCliente[];
+        try {
+          batch = await this.client.getClientesAll(cfg, {
+            cancelado,
+            incluir,
+            limit: SCAN_PAGE,
+            offset,
+          });
+        } catch (e) {
+          // Primeira página falhou → propaga a causa real (não um 500 cego).
+          if (scans === 0) {
+            const status = e instanceof HubsoftApiError ? ` (HTTP ${e.status})` : '';
+            throw new BadGatewayException(
+              `Hubsoft falhou ao listar clientes${status}: ${e instanceof Error ? e.message : String(e)}`,
+            );
+          }
+          // Páginas seguintes falharam → devolve o que já casou (parcial).
+          this.logger.warn(
+            `[hubsoft-browse] varredura interrompida no offset ${offset}: ${e instanceof Error ? e.message : String(e)}`,
+          );
+          break;
+        }
+        scans += 1;
+        if (batch.length === 0) {
+          exhausted = true;
+          break;
+        }
+        matched.push(...this.applyBrowseFilters(batch, filters));
+        offset += SCAN_PAGE;
+        if (batch.length < SCAN_PAGE) {
+          exhausted = true;
+          break;
+        }
+      }
+      if (!exhausted && scans >= MAX_SCANS) {
+        this.logger.warn(
+          `[hubsoft-browse] varredura por filtro parou no teto (${MAX_SCANS} páginas) — pode haver mais.`,
+        );
+      }
+      const slice = matched.slice((page - 1) * pageSize, page * pageSize);
       return {
         items: toItems(slice),
-        total: filtered.length,
+        total: exhausted ? matched.length : null,
         page,
         pageSize,
-        hasMore: page * pageSize < filtered.length,
+        hasMore: matched.length > page * pageSize || !exhausted,
       };
     }
 
