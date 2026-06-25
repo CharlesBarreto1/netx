@@ -209,6 +209,7 @@ const messages = {
     hrPayroll: 'Payroll',
     hrPosts: 'News',
     hrReports: 'HR reports',
+    nmsDevices: 'Routers',
     meHome: 'Home',
     meTimeclock: 'My timeclock',
     meEarnings: 'My earnings',
@@ -234,6 +235,7 @@ const messages = {
       reports: 'Reports',
       hr: 'Human Resources',
       portal: 'Employee portal',
+      nms: 'NMS — Network',
       settings: 'Settings',
     },
     // Sub-trees (nested headers, sidebar level 2).

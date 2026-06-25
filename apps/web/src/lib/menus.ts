@@ -151,6 +151,17 @@ export const MENU_GROUPS: MenuGroup[] = [
     ],
   },
 
+  // NMS — gestão técnica de rede multi-vendor (Juniper + Mikrotik). Módulo
+  // netx-nms, servido pelo gateway em /v1/nms/* (ecossistema plugável).
+  {
+    key: 'nms',
+    labelKey: 'group.nms',
+    requiredModules: ['netx-nms'],
+    items: [
+      { key: 'nmsDevices', href: '/nms/devices', labelKey: 'nmsDevices', requiredModules: ['netx-nms'] },
+    ],
+  },
+
   // 5. RH — gestão de colaboradores + portal self-service. Módulo netx-rh.
   {
     key: 'hr',

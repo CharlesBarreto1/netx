@@ -101,6 +101,19 @@ de prod ainda).
 (os 4 bindings) e `ownedTables: ['nms.*']`. `emits` fica vazio até o NMS publicar
 eventos próprios (ex.: `netx-nms.device.unreachable`).
 
+**A.5 — NMS multi-vendor + UI no shell do NetX (2026-06-24):**
+- **Multi-vendor**: enum `Vendor` do NMS ganhou `mikrotik` (migration
+  `3_vendor_mikrotik`), `CreateDeviceSchema` aceita `vendor` (default juniper),
+  serviço usa o vendor do DTO. Decisão: o MESMO Mikrotik é BNG no NetX
+  (RADIUS/PPPoE/CoA) e device de rede no NMS (saúde/backup/SSH) — planos
+  distintos. Driver RouterOS no device-gateway Python = follow-up (telemetria).
+- **Cadastro no shell do NetX** (em vez de reskin do app standalone): página
+  Next.js `apps/web/.../(protected)/nms/devices/page.tsx` (lista + cadastro +
+  teste de conexão + remover), client `apps/web/src/lib/nms-api.ts` batendo no
+  gateway `/v1/nms/*` (SSO + entitlement automáticos). Menu grupo `nms` gated por
+  `requiredModules: ['netx-nms']` + i18n nos 3 idiomas. Herda design/dark/SSO do
+  shell. **Build web 10/10 + nms verdes.**
+
 **Como rodar em dev:**
 ```
 npm run nms:install            # pnpm install do NMS (1x)

@@ -12,7 +12,8 @@ datasource db {
 }
 
 enum Vendor {
-  juniper // MVP: apenas Juniper. Outros vendors são fase 2.
+  juniper // MVP inicial. Read-only via NAPALM/PyEZ.
+  mikrotik // RouterOS — gestão de rede no NMS (SNMP/health/backup/terminal), em paralelo ao papel de BNG no NetX.
 }
 
 /// Papéis de acesso (ADR 0007). viewer = só leitura; operator = roda playbooks/backup/terminal;

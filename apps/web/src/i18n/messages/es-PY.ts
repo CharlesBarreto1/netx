@@ -209,6 +209,7 @@ const messages = {
     hrPayroll: 'Nómina',
     hrPosts: 'Noticias',
     hrReports: 'Reportes RR.HH.',
+    nmsDevices: 'Routers',
     meHome: 'Inicio',
     meTimeclock: 'Mi marcación',
     meEarnings: 'Mis ingresos',
@@ -234,6 +235,7 @@ const messages = {
       reports: 'Reportes',
       hr: 'Recursos Humanos',
       portal: 'Portal del colaborador',
+      nms: 'NMS — Red',
       settings: 'Configuración',
     },
     // Sub-árboles (encabezados anidados, nivel 2 de la barra lateral).

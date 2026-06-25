@@ -33,7 +33,8 @@ export class DevicesService {
 
   async create(dto: CreateDeviceDto, actor: string): Promise<Device> {
     const device = await this.prisma.device.create({
-      data: { ...dto, vendor: 'juniper' },
+      // vendor vem do DTO (default juniper aplicado pelo Zod). NMS multi-vendor.
+      data: { ...dto },
     });
     await this.audit.record({
       actor,
