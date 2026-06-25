@@ -294,6 +294,8 @@ export const MENU_GROUPS: MenuGroup[] = [
         labelKey: 'sub.cfgCommercial',
         children: [
           { key: 'plans', href: '/settings/plans', labelKey: 'plans', permission: 'plans.manage' },
+          // Endereços estruturados (cidade IBGE/bairro/rua/CEP). Só BR.
+          { key: 'locations', href: '/settings/locations', labelKey: 'locations', permission: 'locations.read', visibleIfCountry: ['BR'] },
           { key: 'tags', href: '/crm/tags', labelKey: 'tags', permission: 'customers.tags.manage' },
         ],
       },
