@@ -53,6 +53,10 @@ const HS_CUSTOMER_PREFIX = 'HS-';
 const HS_CONTRACT_PREFIX = 'HS-SVC-';
 const HS_INVOICE_PREFIX = 'HS-FAT-';
 const DEFAULT_DUE_DAY = 10;
+// /cliente/all NÃO embute endereços sem `incluir` (default "Nenhum") — sem isto
+// o filtro/coluna de cidade fica vazio.
+const HS_INCLUIR_ENDERECOS =
+  'endereco_instalacao,endereco_cadastral,endereco_cobranca,endereco_fiscal';
 
 @Injectable()
 export class HubsoftImportService {
@@ -198,8 +202,12 @@ export class HubsoftImportService {
 
     // 2) Com filtros client-side (cidade/status/grupo) precisamos da base toda
     //    p/ filtrar — /cliente/all (timeout generoso), filtra e pagina em memória.
+    //    `incluir` traz endereços (cidade) e, p/ grupo, pacotes/grupos.
     if (hasClientFilter) {
-      const all = await this.client.getClientesAll(cfg, { cancelado });
+      const incluir = filters?.grupos?.length
+        ? `${HS_INCLUIR_ENDERECOS},pacotes,grupos`
+        : HS_INCLUIR_ENDERECOS;
+      const all = await this.client.getClientesAll(cfg, { cancelado, incluir });
       const filtered = this.applyBrowseFilters(all, filters);
       const slice = filtered.slice((page - 1) * pageSize, page * pageSize);
       return {
@@ -217,6 +225,7 @@ export class HubsoftImportService {
       cancelado,
       limit: pageSize,
       offset: (page - 1) * pageSize,
+      incluir: HS_INCLUIR_ENDERECOS, // p/ a coluna Cidade aparecer
     });
     return {
       items: toItems(pageItems),
@@ -388,6 +397,7 @@ export class HubsoftImportService {
     } else {
       clientes = await this.client.getClientesAll(cfg, {
         cancelado,
+        incluir: HS_INCLUIR_ENDERECOS,
         ...(limit ? { limit } : {}),
       });
     }
@@ -479,7 +489,7 @@ export class HubsoftImportService {
 
   /** Cliente casa se qualquer endereço (cadastral/cobrança/fiscal/instalação) for de uma das cidades. */
   private matchCity(cli: HubsoftCliente, cidades: string[]): boolean {
-    const wanted = new Set(cidades.map((c) => this.normalize(c)));
+    const wanted = cidades.map((c) => this.cityKey(c)).filter(Boolean);
     const candidates: Array<HubsoftEndereco | string | undefined> = [
       cli.endereco_instalacao,
       cli.endereco_cadastral,
@@ -488,11 +498,20 @@ export class HubsoftImportService {
       ...(cli.servicos ?? []).map((s) => s.endereco_instalacao),
     ];
     for (const e of candidates) {
-      if (e && typeof e === 'object' && e.cidade && wanted.has(this.normalize(this.str(e.cidade)))) {
+      if (!e || typeof e !== 'object' || !e.cidade) continue;
+      const city = this.cityKey(this.str(e.cidade));
+      if (!city) continue;
+      // Tolerante: igualdade OU prefixo (cobre "Iretama/PR", "Iretama - PR").
+      if (wanted.some((w) => city === w || city.startsWith(w) || w.startsWith(city))) {
         return true;
       }
     }
     return false;
+  }
+
+  /** Normaliza cidade e descarta sufixo de UF ("Iretama/PR", "Iretama - PR" → "iretama"). */
+  private cityKey(s: string): string {
+    return this.normalize(this.str(s).split(/[/\-–|]/)[0]);
   }
 
   /** status_prefixo (ou texto) → ativo | bloqueado | cancelado | outro. */

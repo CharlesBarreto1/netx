@@ -211,6 +211,9 @@ export class HubsoftClientService {
       codigo_pacote?: string | number;
       limit?: number;
       offset?: number;
+      // CSV de objetos aninhados a embutir (default da API = "Nenhum"). Sem isto
+      // os endereços NÃO vêm — e o filtro/coluna de cidade fica vazio.
+      incluir?: string;
     } = {},
   ): Promise<HubsoftCliente[]> {
     // /cliente/all pode trazer MUITO dado — timeout generoso (2 min).
