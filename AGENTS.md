@@ -138,12 +138,12 @@ src/
     tr069/devices/         # devices TR-069 cadastrados
     stock/
   components/
-    layout/AppShell.tsx    # sidebar + topbar + tema (dark mode toggle)
+    layout/AppShell.tsx    # sidebar 3 níveis (SidebarNav recursivo) + ICON_BY_KEY + topbar + tema
     contracts/NewContractInline.tsx  # form de contrato (usado em 3 lugares)
     ui/                    # primitivos (Button, Input, Modal, Tooltip…)
   lib/
     api.ts                 # cliente HTTP central (handle 401, ApiError)
-    menus.ts               # catálogo de menus + visibleMenuGroups()
+    menus.ts               # catálogo de menus 3 níveis (grupo›sub-árvore›folha) — ver CONVENTIONS-FRONTEND §10
     session.ts             # hasPermission(), useSession()
     use-money.ts           # useFormatMoney() — formatação por tenant currency
   i18n/messages/{pt-BR,es-PY,en-US}.ts
@@ -604,8 +604,10 @@ SELECT migration_name, finished_at FROM _prisma_migrations ORDER BY finished_at 
    Mantém types locais (não importa de `@netx/shared` direto, exceto
    quando função utilitária pura).
 10. **Páginas**: `apps/web/src/app/(protected)/<feature>/page.tsx`.
-11. **Menu**: `apps/web/src/lib/menus.ts` — adiciona item + permissão.
-    i18n key em pt-BR/es-PY/en-US.
+11. **Menu**: `apps/web/src/lib/menus.ts` — adiciona a folha no grupo/sub-árvore
+    certo (parametrização → Configurações), define **ícone** em `ICON_BY_KEY`
+    (sem fallback `Activity`) e i18n key em pt-BR/es-PY/en-US. **Nunca renomeie
+    a `key` de uma folha** (quebra `User.menuAccess`). Regras: CONVENTIONS-FRONTEND §10.
 12. **Testar local**: `npm run dev` + browser.
 13. **Deploy**: commit → `sudo netx-update` na VPS. Migration roda, seed
     roda, build, restart.

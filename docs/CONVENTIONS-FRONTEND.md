@@ -426,7 +426,93 @@ código de aplicação. Quando precisar — sempre que cor for hardcoded por bom
 motivo (ex.: gráfico, logo) — pareie explicitamente: `text-emerald-600
 dark:text-emerald-400`.
 
-## 10. Checklist pré-commit (frontend)
+## 10. Navegação — IA de menus (sidebar de 3 níveis)
+
+> **Pilar.** A navegação do NetX é organizada e previsível. Toda feature nova
+> entra num lugar **definido pela convenção**, não "onde der". Funcionalidade
+> de operação fica nos menus de domínio; **toda parametrização vive em
+> Configurações**.
+
+### Modelo (`apps/web/src/lib/menus.ts`)
+
+A sidebar tem **3 níveis**:
+
+```
+MenuGroup  (menu raiz)        →  labelKey: nav.group.*   ex.: "Financeiro"
+  └─ MenuBranch (sub-árvore)  →  labelKey: nav.sub.*     ex.: "Fiscal"  (colapsável)
+       └─ MenuLeaf (folha)    →  labelKey: nav.<key>     ex.: "NFCom"   (link, href)
+```
+
+- Tipos: `MenuLeaf` (tem `href`), `MenuBranch` (tem `children`, sem `href`),
+  `MenuItem = MenuLeaf | MenuBranch`. Use o guard **`isBranch(item)`** para
+  distinguir — nunca cheque `'children' in item` na mão.
+- Sub-árvore é **opcional**: um grupo pode conter folhas direto (ex.: Dashboard)
+  e/ou sub-árvores. Aninhe só quando o grupo tem ≥ ~4 folhas de subdomínios
+  distintos.
+- Os helpers (`visibleMenuGroups`, `visibleMenus`, `MENU_CATALOG`,
+  `upsellMenuGroups`) são **recursivos** — qualquer nível novo já é coberto.
+
+### 12 menus raiz (ordem canônica)
+
+`Dashboard · CRM · Financeiro · Estoque · RH · Atendimento · Técnico ·
+Mapeamento · Frota · Relatórios · Configurações · Minha Segurança`
+
+### Onde encaixar uma feature nova (decida ANTES de criar a rota)
+
+| Tipo de feature | Vai para |
+|---|---|
+| **Parametrização / config** de qualquer módulo | **Configurações** → sub-árvore do domínio (`cfgGeneral`, `cfgCommercial`, `cfgFinance`, `cfgFiscal`, `cfgSupport`, `cfgTechnical`, `cfgIntegrations`) |
+| Documento/emissão fiscal (SIFEN-PY, NFCom-BR) | `Financeiro → Fiscal` (a **config** SIFEN/NFCom vai em `Configurações → Fiscal`) |
+| Operação de rede/CPE | `Técnico` → `Provisionamento` (gate `netx-cpe`) ou `Planta de Rede` |
+| Rastreamento/veículos | `Frota` (menu **próprio** top-level — não dentro de Técnico/RH) |
+| O.S, chat, call | `Atendimento` (hoje só O.S; chat/call entram como folhas futuras) |
+
+### Regras invioláveis
+
+- 🔒 **NUNCA renomeie a `key` de uma folha.** Ela alimenta `User.menuAccess` no
+  banco — renomear quebra o acesso de operadores existentes. Pode mudar
+  `labelKey`, `href`, ícone, ordem; a `key`, não.
+- **Keys de grupo e de folha não podem colidir** (compartilham o estado de
+  expand da sidebar). Por isso o grupo de relatórios é `reports-group` e a folha
+  é `reports`. As keys de grupo+sub-árvore precisam ser únicas entre si.
+- **Filtro de país/módulo é por folha e por sub-árvore** (`visibleIfCountry`,
+  gate de módulo), nunca escondendo o grupo inteiro na marra. Item gateado por
+  módulo ausente deve aparecer como **upsell** (`upsellMenuGroups`), não sumir
+  silenciosamente.
+
+### Ícones e recursos visuais — **obrigatórios em UI de navegação**
+
+A sidebar é visual, não uma lista de texto. Ao adicionar item:
+
+- ✅ **Todo grupo, sub-árvore e folha tem ícone** em `ICON_BY_KEY`
+  (`AppShell.tsx`). **Não deixe cair no fallback `Activity`** — escolha um
+  ícone `lucide-react` que represente o domínio.
+- ✅ A renderização (`SidebarNav`) já entrega, e você deve **preservar**:
+  accordion de 3 níveis, **guia de indentação** no nível 2, **marcador do item
+  ativo**, **chevron que gira**, **auto-expand** propagando da rota ativa pela
+  árvore, e **modo colapsado** (achata em ícones + tooltip).
+- ✅ Estado de expand persiste em `localStorage` — não reinvente.
+
+> **Pilar visual (vale além da sidebar).** Em telas novas, invista em hierarquia
+> visual e microestados: ícone semântico por entidade, badges (`<Badge>` /
+> `<StatusBadge>`, §9), estados de hover/ativo/loading/vazio, e densidade
+> confortável. Texto cru sem ícone/estado é o anti-padrão.
+
+### i18n
+
+Toda `labelKey` precisa existir nos **3 locales** (`pt-BR`, `es-PY`, `en-US`):
+grupos em `nav.group.*`, sub-árvores em `nav.sub.*`, folhas em `nav.<key>`.
+
+### Checklist ao mexer em menu
+
+1. [ ] Item no lugar certo pela tabela de convenção acima.
+2. [ ] `key` de folha nova e única; **nenhuma `key` existente renomeada**.
+3. [ ] Ícone definido em `ICON_BY_KEY` (sem fallback `Activity`).
+4. [ ] `labelKey` traduzida nos 3 locales.
+5. [ ] Permissão da folha existe no seed e gata o item (ver §6).
+6. [ ] País/módulo via `visibleIfCountry`/gate, com upsell quando aplicável.
+
+## 11. Checklist pré-commit (frontend)
 
 Antes de `git commit`:
 
@@ -439,6 +525,7 @@ Antes de `git commit`:
 6. [ ] Dark mode testado nas views novas (default: tokens cuidam disso sozinhos).
 7. [ ] Sem `slate-*`/`bg-white`/`dark:bg-slate-*` hardcoded em código novo — usar tokens (`surface`, `border`, `text-muted`, etc.) — ver §9.
 8. [ ] Permissões corretas gatando novos botões/páginas (ver §6).
+9. [ ] Item de menu novo segue a §11 (lugar certo, ícone, i18n nos 3 locales, key preservada).
 
 ## Referências
 
