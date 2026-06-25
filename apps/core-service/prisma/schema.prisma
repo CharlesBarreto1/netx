@@ -1297,6 +1297,7 @@ model Contract {
   // remoteId (option 82, sub-option 2) — opcional, complementa circuitId em
   // algumas vendors (geralmente identifica o switch/OLT).
   remoteId            String?        @map("remote_id") @db.VarChar(128)
+  externalRef         String?        @map("external_ref") @db.VarChar(64) // chave do sistema de origem (ex.: Hubsoft HS-SVC-<id>)
   // MAC address do CPE — usado como fallback de auth quando o BNG não
   // consegue propagar circuit-id. Formato canonicalizado AA:BB:CC:DD:EE:FF.
   macAddress          String?        @map("mac_address") @db.VarChar(17)
@@ -1429,6 +1430,7 @@ model Contract {
   @@unique([tenantId, code])
   @@unique([tenantId, seq])
   @@index([tenantId, customerId])
+  @@index([tenantId, externalRef])
   @@index([tenantId, planId])
   @@index([tenantId, status])
   @@index([tenantId, dueDay])

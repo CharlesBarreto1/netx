@@ -3,7 +3,9 @@
  *
  * Idempotência por CHAVE EXTERNA estável:
  *   - Customer.code        = "HS-{codigo_cliente}"
- *   - Contract.code        = "HS-SVC-{id_cliente_servico}"
+ *   - Contract.externalRef = "HS-SVC-{id_cliente_servico}" (identidade estável);
+ *     Contract.code = código do cliente (2561), e 2561-1/2561-2 do 2º serviço
+ *     em diante — é o NÚMERO do contrato visível no NetX
  *   - Plan                 = casado por nome (tenantId, name)
  *   - ContractInvoice.reference = "HS-FAT-{id_fatura}"
  * Reexecutar o sync ATUALIZA o que já existe (não duplica).
@@ -416,11 +418,14 @@ export class HubsoftImportService {
 
       try {
         const customerData = this.mapCliente(cli, codigo);
+        // Ordena por id_cliente_servico (imutável) → o nº do contrato é estável:
+        // 1º serviço = codigo do cliente; demais = codigo-1, codigo-2, ...
+        const sorted = this.sortServicos(servicos);
 
         if (dryRun) {
           res.preview!.push({
             customer: customerData,
-            contracts: servicos.map((s) => this.mapServicoPreview(s)),
+            contracts: sorted.map((s, index) => this.mapServicoPreview(s, codigo, index)),
           });
           continue;
         }
@@ -429,9 +434,10 @@ export class HubsoftImportService {
         if (created) res.created += 1;
         else res.updated += 1;
 
-        for (const svc of servicos) {
+        for (let index = 0; index < sorted.length; index++) {
+          const svc = sorted[index];
           try {
-            await this.upsertContract(tenantId, customerId, cli, svc);
+            await this.upsertContract(tenantId, customerId, cli, svc, codigo, index);
           } catch (e) {
             res.failed += 1;
             res.errors.push({
@@ -564,9 +570,10 @@ export class HubsoftImportService {
     };
   }
 
-  private mapServicoPreview(svc: HubsoftServico) {
+  private mapServicoPreview(svc: HubsoftServico, codigo: string, index: number) {
     return {
-      code: `${HS_CONTRACT_PREFIX}${this.str(svc.id_cliente_servico)}`,
+      code: this.contractCode(codigo, index),
+      externalRef: `${HS_CONTRACT_PREFIX}${this.str(svc.id_cliente_servico)}`,
       planName: this.planName(svc) || null,
       pppoeUsername: this.str(svc.login) || null,
       monthlyValue: this.decimal(svc.valor),
@@ -597,10 +604,15 @@ export class HubsoftImportService {
     customerId: string,
     cli: HubsoftCliente,
     svc: HubsoftServico,
+    codigo: string,
+    index: number,
   ): Promise<void> {
     const svcId = this.str(svc.id_cliente_servico);
     if (!svcId) return; // sem chave estável → não dá pra ser idempotente
-    const code = `${HS_CONTRACT_PREFIX}${svcId}`;
+    // Nº do contrato = código do cliente; do 2º serviço em diante, -1, -2, ...
+    const code = this.contractCode(codigo, index);
+    // Identidade estável do serviço no Hubsoft (idempotência + vínculo da fatura).
+    const externalRef = `${HS_CONTRACT_PREFIX}${svcId}`;
 
     const planId = await this.upsertPlan(tenantId, svc);
     const login = this.str(svc.login) || null;
@@ -612,6 +624,7 @@ export class HubsoftImportService {
 
     const data = {
       code,
+      externalRef,
       authMethod: login ? ContractAuthMethod.PPPOE : ContractAuthMethod.IPOE,
       pppoeUsername: login,
       pppoePassword: this.str(svc.senha) || null,
@@ -625,10 +638,31 @@ export class HubsoftImportService {
       notes: `Importado do Hubsoft (serviço ${svcId}).`,
     };
 
-    await this.prisma.contract.upsert({
-      where: { tenantId_code: { tenantId, code } },
-      create: { tenantId, customerId, ...data },
-      update: data,
+    // Match pela identidade estável (externalRef), não pelo `code` — assim o nº do
+    // contrato pode ser atualizado sem duplicar na re-sincronização.
+    const existing = await this.prisma.contract.findFirst({
+      where: { tenantId, externalRef },
+      select: { id: true },
+    });
+    if (existing) {
+      await this.prisma.contract.update({ where: { id: existing.id }, data });
+    } else {
+      await this.prisma.contract.create({ data: { tenantId, customerId, ...data } });
+    }
+  }
+
+  /** Nº do contrato: 1º serviço = código do cliente; demais = codigo-1, codigo-2... */
+  private contractCode(codigo: string, index: number): string {
+    return index === 0 ? codigo : `${codigo}-${index}`;
+  }
+
+  /** Ordena serviços por id_cliente_servico (imutável) — base p/ o nº estável. */
+  private sortServicos(servicos: HubsoftServico[]): HubsoftServico[] {
+    return [...servicos].sort((a, b) => {
+      const na = Number(this.str(a.id_cliente_servico));
+      const nb = Number(this.str(b.id_cliente_servico));
+      if (Number.isFinite(na) && Number.isFinite(nb) && na !== nb) return na - nb;
+      return this.str(a.id_cliente_servico).localeCompare(this.str(b.id_cliente_servico));
     });
   }
 
@@ -742,8 +776,9 @@ export class HubsoftImportService {
     let contractId: string | null = null;
     const svcId = this.str(fat.id_cliente_servico);
     if (svcId) {
-      const c = await this.prisma.contract.findUnique({
-        where: { tenantId_code: { tenantId, code: `${HS_CONTRACT_PREFIX}${svcId}` } },
+      // Vínculo pela identidade estável do serviço (externalRef), não pelo nº do contrato.
+      const c = await this.prisma.contract.findFirst({
+        where: { tenantId, externalRef: `${HS_CONTRACT_PREFIX}${svcId}` },
         select: { id: true },
       });
       contractId = c?.id ?? null;
