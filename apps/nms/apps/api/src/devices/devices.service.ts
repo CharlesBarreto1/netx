@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import type { Device } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
+import { EventPublisherService } from '../events/event-publisher.service.js';
 import type { CreateDeviceDto, UpdateDeviceDto } from './device.dto.js';
 
 @Injectable()
@@ -9,6 +10,7 @@ export class DevicesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly events: EventPublisherService,
   ) {}
 
   findAll(): Promise<Device[]> {
@@ -41,6 +43,15 @@ export class DevicesService {
       deviceId: device.id,
       action: 'device.create',
       result: 'ok',
+    });
+    // Canal 3 (produtor): anuncia o novo device no bus. Best-effort, fora do
+    // caminho crítico — o NetX pode reagir (ex.: registrar no inventário/alarmes).
+    void this.events.publish('netx-nms.device.registered', {
+      deviceId: device.id,
+      hostname: device.hostname,
+      mgmtIp: device.mgmtIp,
+      vendor: device.vendor,
+      site: device.site ?? null,
     });
     return device;
   }

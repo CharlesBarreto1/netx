@@ -44,8 +44,9 @@ defineModule('netx-maps', { apiPrefixes: ['/mapping'] });
 defineModule('netx-nms', {
   apiPrefixes: ['/nms'],
   ownedTables: ['nms.*'],
-  // Ainda não publica no bus; só consome (canal 3). emits entra quando o NMS
-  // formalizar eventos próprios (ex.: netx-nms.device.unreachable).
+  // Publica eventos próprios no bus (canal 3, lado produtor) — consumidos pelo
+  // NetX (NmsEventsHandler) p/ inventário/alarmes.
+  emits: ['netx-nms.device.registered'],
   consumes: [
     'netx-erp.contract.created',
     'netx-erp.contract.installed',

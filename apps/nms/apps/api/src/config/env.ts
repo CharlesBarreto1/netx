@@ -32,6 +32,8 @@ const EnvSchema = z.object({
     .transform((v) => v === 'true' || v === '1'),
   /** Exchange topic do bus (espelha o core). */
   EVENTBUS_EXCHANGE: z.string().default('netx.events'),
+  /** Tenant carimbado nos eventos publicados (NMS é single-tenant). */
+  EVENTBUS_TENANT_ID: z.string().default('default'),
   /** Seed do 1º admin no boot (só cria se não houver nenhum usuário). */
   ADMIN_USERNAME: z.string().default('admin'),
   /** Senha do seed admin. Se vazia, o boot gera uma aleatória e a imprime UMA vez no log. */

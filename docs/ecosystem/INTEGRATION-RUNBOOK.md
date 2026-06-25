@@ -114,6 +114,18 @@ eventos próprios (ex.: `netx-nms.device.unreachable`).
   `requiredModules: ['netx-nms']` + i18n nos 3 idiomas. Herda design/dark/SSO do
   shell. **Build web 10/10 + nms verdes.**
 
+**A.6 — Bus de eventos bidirecional (NMS→NetX) (2026-06-24):** o NMS deixou de só
+consumir e passou a PUBLICAR.
+- **NMS produtor**: `events/event-publisher.service.ts` (amqplib, resiliente,
+  no-op sem `RABBITMQ_URL`); `DevicesService.create()` emite
+  `netx-nms.device.registered`. `EventsModule` @Global exporta o publisher.
+- **NetX consumidor**: `events/nms-events.handler.ts` (`EventHandler` pattern
+  `netx-nms.*`), registrado via `EVENT_HANDLERS` (multi) no `EventBusModule`.
+  Hoje loga; é a SEMENTE p/ rotear `device.unreachable`/anomalia → Alarm Center.
+- **Manifesto**: `netx-nms.emits = ['netx-nms.device.registered']`.
+- Fecha o loop NetX↔NMS pelo bus (sem chamada direta). Para ver ao vivo: ambos
+  com `EVENTBUS_CONSUME=true` + (no core) `EVENTBUS_ENABLED=true`, rabbit acessível.
+
 **Como rodar em dev:**
 ```
 npm run nms:install            # pnpm install do NMS (1x)

@@ -6,6 +6,8 @@ import { EVENT_PUBLISHER, NoopEventPublisher, type EventPublisher } from '@netx/
 import { AmqpEventPublisher } from './amqp-event-publisher';
 import { EventBusPublisher } from './event-bus.publisher';
 import { EventConsumer } from './event-consumer';
+import { EVENT_HANDLERS } from './event-handler';
+import { NmsEventsHandler } from './nms-events.handler';
 
 /**
  * Bus de eventos do ecossistema (Fase 3). Registra o provider global
@@ -38,10 +40,20 @@ export class EventBusModule {
       },
     };
 
+    // Handler do NetX para eventos do NMS (netx-nms.*) — lado consumidor do
+    // canal 3. Registrado via token multi EVENT_HANDLERS (o EventConsumer
+    // despacha por pattern). Só age quando EVENTBUS_CONSUME está ligado.
+    // `multi` é suportado em runtime mas não tipado nesta versão do @nestjs/common.
+    const nmsHandler = {
+      provide: EVENT_HANDLERS,
+      useClass: NmsEventsHandler,
+      multi: true,
+    } as Provider;
+
     return {
       module: EventBusModule,
       global: true,
-      providers: [publisher, EventBusPublisher, EventConsumer],
+      providers: [publisher, EventBusPublisher, EventConsumer, nmsHandler],
       exports: [publisher, EventBusPublisher],
     };
   }
