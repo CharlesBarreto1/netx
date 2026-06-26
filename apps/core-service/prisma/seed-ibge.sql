@@ -1,6 +1,11 @@
+-- =============================================================================
 -- Seed da referência nacional de municípios do IBGE (tabela ibge_municipalities).
--- Idempotente: ON CONFLICT DO NOTHING. Rode com: psql "$DATABASE_URL" -f seed-ibge.sql
-INSERT INTO ibge_municipalities (codigo, nome, uf) VALUES
+-- Gerado da API oficial do IBGE (servicodados.ibge.gov.br). 5571 municípios.
+-- Idempotente (ON CONFLICT DO NOTHING). Schema-qualificado em public.
+-- Rodado automaticamente pelo install/netx-update via scripts/db/seed-ibge.sh.
+-- Uso manual:  psql "<DATABASE_URL sem ?schema=...>" -f seed-ibge.sql
+-- =============================================================================
+INSERT INTO public.ibge_municipalities (codigo, nome, uf) VALUES
 ('5200050','Abadia de Goiás','GO'),
 ('3100104','Abadia dos Dourados','MG'),
 ('5200100','Abadiânia','GO'),
@@ -582,7 +587,7 @@ INSERT INTO ibge_municipalities (codigo, nome, uf) VALUES
 ('2101731','Belágua','MA'),
 ('1501402','Belém','PA'),
 ('2501906','Belém','PB'),
-('2700805','Bel��m','AL'),
+('2700805','Belém','AL'),
 ('2601508','Belém de Maria','PE'),
 ('2502003','Belém do Brejo do Cruz','PB'),
 ('2201572','Belém do Piauí','PI'),
@@ -4723,7 +4728,7 @@ INSERT INTO ibge_municipalities (codigo, nome, uf) VALUES
 ('3162708','São João do Paraíso','MG'),
 ('2111052','São João do Paraíso','MA'),
 ('3549300','São João do Pau d''Alho','SP'),
-('2210003','São Jo��o do Piauí','PI'),
+('2210003','São João do Piauí','PI'),
 ('4318432','São João do Polêsine','RS'),
 ('2500700','São João do Rio do Peixe','PB'),
 ('2412104','São João do Sabugi','RN'),

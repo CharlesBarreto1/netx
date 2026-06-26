@@ -458,6 +458,10 @@ netx_app_seed_baseline() {
   # o seed SEMPRE roda.
   log_info "Rodando seed (permissões, roles, tenant default — idempotente)"
   as_netx "cd ${NETX_HOME} && npm run -w apps/core-service db:seed"
+  # Referência nacional de municípios IBGE (módulo de endereços BR). Idempotente
+  # e offline (SQL versionado). Base do cadastro de cidades e da NFCom.
+  log_info "Rodando seed IBGE (municípios — idempotente, offline)"
+  as_netx "cd ${NETX_HOME} && npm run -w apps/core-service db:seed:ibge:sql"
   # Marker mantido só pra debug ("já rodou ao menos 1 vez").
   touch "${NETX_VAR}/.seed-baseline-done"
   chown "${NETX_USER}:${NETX_USER}" "${NETX_VAR}/.seed-baseline-done"

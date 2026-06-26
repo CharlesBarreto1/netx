@@ -207,6 +207,12 @@ as_netx "cd ${NETX_HOME} && npm run -w apps/core-service db:migrate"
 log "seed (perms, roles, tenant default)"
 as_netx "cd ${NETX_HOME} && npm run -w apps/core-service db:seed"
 
+# Referência nacional de municípios IBGE (módulo de endereços BR). Idempotente
+# e offline (SQL versionado em prisma/seed-ibge.sql). Base do cadastro de
+# cidades e do codMunicipio da NFCom.
+log "seed IBGE (municípios — idempotente)"
+as_netx "cd ${NETX_HOME} && npm run -w apps/core-service db:seed:ibge:sql"
+
 # -----------------------------------------------------------------------------
 # 8. Restart systemd
 # -----------------------------------------------------------------------------
