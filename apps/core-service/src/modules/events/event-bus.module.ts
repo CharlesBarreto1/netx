@@ -3,6 +3,8 @@ import { DynamicModule, Logger, Module, type Provider } from '@nestjs/common';
 import { loadConfig } from '@netx/config';
 import { EVENT_PUBLISHER, NoopEventPublisher, type EventPublisher } from '@netx/core-sdk';
 
+import { AlarmsModule } from '../alarms/alarms.module';
+
 import { AmqpEventPublisher } from './amqp-event-publisher';
 import { EventBusPublisher } from './event-bus.publisher';
 import { EventConsumer } from './event-consumer';
@@ -53,6 +55,9 @@ export class EventBusModule {
     return {
       module: EventBusModule,
       global: true,
+      // AlarmsModule: o NmsEventsHandler injeta o AlarmStream pra surfar faults
+      // do NMS no NOC real-time.
+      imports: [AlarmsModule],
       providers: [publisher, EventBusPublisher, EventConsumer, nmsHandler],
       exports: [publisher, EventBusPublisher],
     };

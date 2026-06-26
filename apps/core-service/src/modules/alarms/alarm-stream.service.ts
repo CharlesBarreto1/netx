@@ -10,7 +10,7 @@ import { Injectable } from '@nestjs/common';
 import { Subject, type Observable } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
 
-export type AlarmStreamType = 'incident' | 'ont';
+export type AlarmStreamType = 'incident' | 'ont' | 'nms-device';
 
 interface AlarmStreamMessage {
   tenantId: string;

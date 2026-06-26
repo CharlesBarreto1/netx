@@ -126,6 +126,18 @@ consumir e passou a PUBLICAR.
 - Fecha o loop NetX↔NMS pelo bus (sem chamada direta). Para ver ao vivo: ambos
   com `EVENTBUS_CONSUME=true` + (no core) `EVENTBUS_ENABLED=true`, rabbit acessível.
 
+**A.7 — NMS faults → Alarm Center / NOC real-time (2026-06-24):**
+- **NMS**: `ConnectivityService.test()` emite `netx-nms.device.unreachable` quando
+  o `connectivity-test` falha (resultado é síncrono via `enqueueAndWait`).
+- **NetX**: `NmsEventsHandler` roteia `netx-nms.device.unreachable` →
+  `AlarmStream.publish(tenantId, 'nms-device', {...})` (tipo novo no stream),
+  aparecendo no SSE `/v1/alarms/stream` do NOC/mobile. `EventBusModule` importa
+  `AlarmsModule`. Manifesto emits += `netx-nms.device.unreachable`.
+- **Decisão de arquitetura**: NÃO usa o `IncidentCorrelator` (ONT-cêntrico:
+  correlação por PON/CTO/cabo — um roteador de rede não tem essa cadeia). Alarme
+  de **device de rede** é plano distinto do de **queda de assinante**. Persistir
+  esses alarmes em tabela própria (e UI dedicada) é o próximo follow-up.
+
 **Como rodar em dev:**
 ```
 npm run nms:install            # pnpm install do NMS (1x)

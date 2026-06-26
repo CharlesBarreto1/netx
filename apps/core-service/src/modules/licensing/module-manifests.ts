@@ -46,7 +46,7 @@ defineModule('netx-nms', {
   ownedTables: ['nms.*'],
   // Publica eventos próprios no bus (canal 3, lado produtor) — consumidos pelo
   // NetX (NmsEventsHandler) p/ inventário/alarmes.
-  emits: ['netx-nms.device.registered'],
+  emits: ['netx-nms.device.registered', 'netx-nms.device.unreachable'],
   consumes: [
     'netx-erp.contract.created',
     'netx-erp.contract.installed',
