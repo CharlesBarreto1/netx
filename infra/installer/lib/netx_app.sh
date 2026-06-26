@@ -179,7 +179,7 @@ netx_app_render_env() {
   # serviço AQUI — mesmo segredo que traccar_setup injeta no traccar.xml. Como
   # secret_get_or_create é idempotente, a ordem dos steps (netx_app roda antes
   # do traccar) não importa: ambos resolvem o mesmo valor.
-  if [[ "${NETX_ENABLE_TRACCAR:-0}" == "1" || -d /opt/traccar ]]; then
+  if [[ "${NETX_ENABLE_TRACCAR:-1}" == "1" || -d /opt/traccar ]]; then
     NETX_TRACCAR_URL="${NETX_TRACCAR_URL:-http://127.0.0.1:8082}"
     NETX_TRACCAR_TOKEN=$(secret_get_or_create TRACCAR_SERVICE_TOKEN 48)
   fi

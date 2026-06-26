@@ -2,7 +2,8 @@
 # =============================================================================
 # traccar.sh — Traccar (rastreamento GPS) pra aba "Ao vivo" da Frota
 # =============================================================================
-# OPT-IN: só roda quando NETX_ENABLE_TRACCAR=1 (precisa de rastreadores GPS).
+# HABILITADO POR PADRÃO (opt-out com NETX_ENABLE_TRACCAR=0). Frota out-of-the-box:
+# cadastra IMEI na UI → aponta o rastreador pra :5023 → carro no mapa "Ao vivo".
 #
 # Instala via installer oficial self-contained (JRE embutido) que cria a unit
 # systemd `traccar.service` e sobe em 0.0.0.0:8082 (web + REST API) + portas de

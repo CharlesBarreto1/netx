@@ -39,7 +39,7 @@ firewall_setup() {
   # dos X3 Tech NT). Só abre se o Traccar está habilitado/instalado. A web/API
   # (8082) fica FECHADA de propósito: o core-service fala via localhost e
   # inspeção humana é por túnel SSH.
-  if [[ "${NETX_ENABLE_TRACCAR:-0}" == "1" || -d /opt/traccar ]]; then
+  if [[ "${NETX_ENABLE_TRACCAR:-1}" == "1" || -d /opt/traccar ]]; then
     ufw allow 5023/tcp comment 'netx-traccar: rastreadores gt06' >/dev/null 2>&1 || true
   fi
 

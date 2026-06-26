@@ -251,11 +251,13 @@ main() {
     log_dim "→ evolution: pulado (NETX_SKIP_EVOLUTION=1)"
     : > "${NETX_STATE_DIR}/evolution.done"
   fi
-  # Traccar (GPS da Frota) é opt-in — só instala com NETX_ENABLE_TRACCAR=1.
-  if [[ "${NETX_ENABLE_TRACCAR:-0}" == "1" ]]; then
+  # Traccar (GPS da Frota) vem HABILITADO por padrão — a frota funciona out-of-
+  # the-box (cadastra IMEI na UI → rastreia). Opt-out explícito com
+  # NETX_ENABLE_TRACCAR=0 (instala mais leve, sem rastreamento GPS).
+  if [[ "${NETX_ENABLE_TRACCAR:-1}" == "1" ]]; then
     step "traccar"             traccar_setup
   else
-    log_dim "→ traccar: pulado (defina NETX_ENABLE_TRACCAR=1 pra instalar)"
+    log_dim "→ traccar: pulado (NETX_ENABLE_TRACCAR=0 — frota sem GPS)"
     : > "${NETX_STATE_DIR}/traccar.done"
   fi
   step "systemd"             systemd_setup
