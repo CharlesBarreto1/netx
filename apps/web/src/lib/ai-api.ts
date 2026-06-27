@@ -1,4 +1,5 @@
 import type {
+  AiAskResponse,
   AiConfigResponse,
   AiStatusResponse,
   AiTestResponse,
@@ -27,6 +28,15 @@ export const aiApi = {
   test() {
     return api.post<AiTestResponse>('/v1/ai/config/test');
   },
+  ask(question: string) {
+    return api.post<AiAskResponse>('/v1/ai/ask', { question });
+  },
 };
 
-export type { AiConfigResponse, AiStatusResponse, AiTestResponse, UpsertAiConfigRequest };
+export type {
+  AiAskResponse,
+  AiConfigResponse,
+  AiStatusResponse,
+  AiTestResponse,
+  UpsertAiConfigRequest,
+};

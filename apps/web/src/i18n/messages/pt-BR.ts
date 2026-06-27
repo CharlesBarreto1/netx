@@ -148,6 +148,7 @@ const messages = {
   },
   nav: {
     dashboard: 'Dashboard',
+    copilot: 'Copiloto IA',
     sales: 'Vendas',
     customers: 'Clientes',
     contracts: 'Contratos',
