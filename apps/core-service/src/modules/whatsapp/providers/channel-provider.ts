@@ -47,6 +47,12 @@ export interface CanonicalMessage {
   direction: 'IN' | 'OUT';
   /** Número do CONTATO (a outra ponta), E164 sem `+` ou com — normalizamos depois. */
   contactPhone: string;
+  /**
+   * JID/chatId real do canal (ex.: `5511...@c.us` ou `7117...@lid`). Guardamos
+   * pra responder no destino EXATO — o WhatsApp às vezes entrega o remetente
+   * como LID, e remontar `<digits>@c.us` não entrega.
+   */
+  chatId?: string | null;
   type: WaMsgType;
   body: string | null;
   /**
@@ -116,8 +122,15 @@ export interface ChannelProvider {
   connectionState(inst: DecryptedInstance): Promise<CanonicalConnection>;
 
   // ---- envio ----
-  sendText(inst: DecryptedInstance, toE164: string, text: string): Promise<SendResult>;
-  sendMedia(inst: DecryptedInstance, toE164: string, media: OutboundMedia): Promise<SendResult>;
+  // `chatId` (opcional) = JID exato pra responder (ex.: @lid). Se ausente,
+  // o provider monta a partir de `toE164`. Meta ignora (sempre usa telefone).
+  sendText(inst: DecryptedInstance, toE164: string, text: string, chatId?: string | null): Promise<SendResult>;
+  sendMedia(
+    inst: DecryptedInstance,
+    toE164: string,
+    media: OutboundMedia,
+    chatId?: string | null,
+  ): Promise<SendResult>;
   /** Só Meta. WAHA lança (não usa template / sem janela 24h). */
   sendTemplate(inst: DecryptedInstance, toE164: string, tpl: TemplateSend): Promise<SendResult>;
 

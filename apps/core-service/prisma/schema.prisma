@@ -2316,6 +2316,7 @@ model WhatsappContact {
 
   phoneE164   String  @map("phone_e164") @db.VarChar(20)   // +595981234567
   pushName    String? @map("push_name") @db.VarChar(255)   // como aparece no WhatsApp
+  waChatId    String? @map("wa_chat_id") @db.VarChar(80)    // JID real do WhatsApp (@c.us ou @lid) — responder NELE
   customerId  String? @map("customer_id") @db.Uuid          // se reconhecido
 
   createdAt   DateTime @default(now()) @map("created_at")

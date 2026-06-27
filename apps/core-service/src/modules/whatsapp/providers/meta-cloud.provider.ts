@@ -130,7 +130,13 @@ export class MetaCloudProvider implements ChannelProvider {
     return { providerMsgId: res?.messages?.[0]?.id ?? '' };
   }
 
-  async sendText(inst: DecryptedInstance, toE164: string, text: string): Promise<SendResult> {
+  // chatId é ignorado no Meta: o canal oficial sempre endereça por telefone.
+  async sendText(
+    inst: DecryptedInstance,
+    toE164: string,
+    text: string,
+    _chatId?: string | null,
+  ): Promise<SendResult> {
     return this.send(inst, {
       to: toE164.replace(/\D/g, ''),
       type: 'text',
@@ -138,7 +144,12 @@ export class MetaCloudProvider implements ChannelProvider {
     });
   }
 
-  async sendMedia(inst: DecryptedInstance, toE164: string, media: OutboundMedia): Promise<SendResult> {
+  async sendMedia(
+    inst: DecryptedInstance,
+    toE164: string,
+    media: OutboundMedia,
+    _chatId?: string | null,
+  ): Promise<SendResult> {
     // URL pública → link direto; base64/dataURI → upload e referencia por id.
     let ref: Record<string, unknown>;
     if (media.media.startsWith('http')) {
@@ -295,6 +306,7 @@ export class MetaCloudProvider implements ChannelProvider {
       providerMsgId: id,
       direction: 'IN', // Meta webhook só entrega inbound (não ecoa nossos envios)
       contactPhone: String(from),
+      chatId: String(from), // Meta = telefone; sem LID
       type,
       body,
       media,

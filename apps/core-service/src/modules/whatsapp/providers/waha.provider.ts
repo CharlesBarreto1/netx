@@ -175,19 +175,29 @@ export class WahaProvider implements ChannelProvider {
 
   // ---- envio ----
 
-  async sendText(inst: DecryptedInstance, toE164: string, text: string): Promise<SendResult> {
-    const res = await this.req<{ id?: string | { id?: string } }>(inst, '/api/sendText', {
+  async sendText(
+    inst: DecryptedInstance,
+    toE164: string,
+    text: string,
+    chatId?: string | null,
+  ): Promise<SendResult> {
+    const res = await this.req<WahaSendResponse>(inst, '/api/sendText', {
       method: 'POST',
       body: JSON.stringify({
         session: inst.instanceName,
-        chatId: this.chatId(toE164),
+        chatId: chatId || this.chatId(toE164),
         text,
       }),
     });
     return { providerMsgId: extractMsgId(res) };
   }
 
-  async sendMedia(inst: DecryptedInstance, toE164: string, media: OutboundMedia): Promise<SendResult> {
+  async sendMedia(
+    inst: DecryptedInstance,
+    toE164: string,
+    media: OutboundMedia,
+    chatId?: string | null,
+  ): Promise<SendResult> {
     const endpoint =
       media.mediatype === 'image'
         ? '/api/sendImage'
@@ -203,11 +213,11 @@ export class WahaProvider implements ChannelProvider {
       : media.media.startsWith('http')
       ? { mimetype: media.mimetype, filename: media.fileName, url: media.media }
       : { mimetype: media.mimetype, filename: media.fileName, data: media.media };
-    const res = await this.req<{ id?: string | { id?: string } }>(inst, endpoint, {
+    const res = await this.req<WahaSendResponse>(inst, endpoint, {
       method: 'POST',
       body: JSON.stringify({
         session: inst.instanceName,
-        chatId: this.chatId(toE164),
+        chatId: chatId || this.chatId(toE164),
         file,
         caption: media.caption,
       }),
@@ -293,6 +303,7 @@ export class WahaProvider implements ChannelProvider {
       providerMsgId: id,
       direction: fromMe ? 'OUT' : 'IN',
       contactPhone,
+      chatId: from, // JID exato (pode ser @lid) — respondemos NELE
       type,
       body,
       media,
@@ -376,7 +387,21 @@ function extractIncomingId(id: unknown): string | null {
   return null;
 }
 
-function extractMsgId(res: { id?: string | { id?: string; _serialized?: string } }): string {
+/**
+ * Resposta do WAHA sendText/sendMedia. O id da mensagem vem em `key.id`
+ * (NOWEB) ou às vezes em `id` no topo — cobrimos os dois.
+ */
+interface WahaSendResponse {
+  id?: string | { id?: string; _serialized?: string };
+  key?: { id?: string; _serialized?: string };
+}
+
+function extractMsgId(res: WahaSendResponse): string {
+  const k = res?.key;
+  if (k) {
+    if (typeof k.id === 'string') return k.id;
+    if (k._serialized) return k._serialized;
+  }
   const id = res?.id;
   if (typeof id === 'string') return id;
   if (id && typeof id === 'object') return id._serialized ?? id.id ?? '';

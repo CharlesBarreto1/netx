@@ -79,6 +79,7 @@ export class WhatsappMessagesService {
     tenantId: string,
     phoneE164: string,
     pushName: string | null,
+    waChatId: string | null = null,
   ) {
     const digits = phoneE164.replace(/\D/g, '');
     const e164 = `+${digits}`;
@@ -87,12 +88,12 @@ export class WhatsappMessagesService {
       where: { tenantId_phoneE164: { tenantId, phoneE164: e164 } },
     });
     if (existing) {
-      // Atualiza pushName se mudou
-      if (pushName && pushName !== existing.pushName) {
-        return this.prisma.whatsappContact.update({
-          where: { id: existing.id },
-          data: { pushName },
-        });
+      // Atualiza pushName e/ou waChatId se mudaram (waChatId é crítico p/ responder).
+      const patch: { pushName?: string; waChatId?: string } = {};
+      if (pushName && pushName !== existing.pushName) patch.pushName = pushName;
+      if (waChatId && waChatId !== existing.waChatId) patch.waChatId = waChatId;
+      if (Object.keys(patch).length) {
+        return this.prisma.whatsappContact.update({ where: { id: existing.id }, data: patch });
       }
       return existing;
     }
@@ -112,6 +113,7 @@ export class WhatsappMessagesService {
         tenantId,
         phoneE164: e164,
         pushName,
+        waChatId,
         customerId: match?.id ?? null,
       },
     });
@@ -160,7 +162,12 @@ export class WhatsappMessagesService {
     if (existing) return { messageId: existing.id, conversationId: existing.conversationId };
 
     const isInbound = msg.direction === 'IN';
-    const contact = await this.upsertContact(tenantId, msg.contactPhone, msg.pushName ?? null);
+    const contact = await this.upsertContact(
+      tenantId,
+      msg.contactPhone,
+      msg.pushName ?? null,
+      msg.chatId ?? null,
+    );
     const conversation = await this.upsertConversation(tenantId, instanceId, contact.id, isInbound);
 
     let mediaUrl: string | null = null;

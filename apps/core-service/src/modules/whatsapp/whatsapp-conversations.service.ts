@@ -254,7 +254,9 @@ export class WhatsappConversationsService {
     return this.dispatchOutbound(tenantId, actorUserId, conv, {
       type: 'TEXT',
       body: text,
-      send: (provider, dInst) => provider.sendText(dInst, conv.contact.phoneE164, text),
+      // Responde no JID exato do inbound (pode ser @lid); fallback p/ telefone.
+      send: (provider, dInst) =>
+        provider.sendText(dInst, conv.contact.phoneE164, text, conv.contact.waChatId),
       auditMeta: { conversationId: id, length: text.length },
     });
   }
