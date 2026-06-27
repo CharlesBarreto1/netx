@@ -1,19 +1,21 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import type { Prisma, WaMsgType } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 
+import type { CanonicalMessage, CanonicalStatusUpdate } from './providers/channel-provider';
 import { WhatsappEventsBus } from './whatsapp-events.bus';
 
 const MEDIA_ROOT = process.env.WHATSAPP_MEDIA_ROOT ?? '/var/lib/netx/whatsapp/media';
 
 /**
- * Dispatcher de eventos vindos do Evolution. Recebe payloads "crus" do
- * webhook, converte pra formato canônico e persiste com dedup.
+ * Persistência de mensagens canônicas (já parseadas pelo provider).
+ * O webhook controller chama parseWebhook no provider, resolve mídia e
+ * entrega CanonicalMessage/CanonicalStatusUpdate aqui.
  *
- * Idempotência: `evolutionMsgId` é UNIQUE — webhook reentregue não duplica.
+ * Idempotência: `providerMsgId` é UNIQUE — webhook reentregue não duplica.
  */
 @Injectable()
 export class WhatsappMessagesService {
@@ -137,54 +139,36 @@ export class WhatsappMessagesService {
   }
 
   /**
-   * Handler principal de `messages.upsert` do Evolution.
-   *
-   * Payload (simplificado):
-   * {
-   *   key: { remoteJid, fromMe, id },
-   *   pushName,
-   *   message: { conversation?, imageMessage?, audioMessage?, ... },
-   *   messageType,
-   *   messageTimestamp
-   * }
+   * Persiste uma mensagem canônica (in ou out-echo). Faz dedup por
+   * providerMsgId, upsert de contato/conversa, grava mídia (se já veio base64
+   * em media.data) e emite SSE.
    */
-  async handleIncoming(
+  async ingestMessage(
     instanceId: string,
     tenantId: string,
-    raw: any,
+    msg: CanonicalMessage,
   ): Promise<{ messageId: string; conversationId: string } | null> {
-    const key = raw?.key ?? {};
-    if (!key.remoteJid || !key.id) {
-      this.logger.warn('messages.upsert sem key.remoteJid/id — ignorando');
+    if (!msg.providerMsgId || !msg.contactPhone) {
+      this.logger.warn('CanonicalMessage sem providerMsgId/contactPhone — ignorando');
       return null;
     }
 
-    // Ignora mensagens de grupos/broadcast no MVP
-    if (typeof key.remoteJid === 'string' && key.remoteJid.endsWith('@g.us')) {
-      this.logger.debug('Mensagem de grupo ignorada');
-      return null;
-    }
-
-    const phoneE164 = (key.remoteJid as string).split('@')[0];
-    const isInbound = !key.fromMe;
-
-    // Dedup: já tem essa mensagem?
+    // Dedup: já temos essa mensagem?
     const existing = await this.prisma.whatsappMessage.findUnique({
-      where: { evolutionMsgId: key.id },
+      where: { providerMsgId: msg.providerMsgId },
     });
     if (existing) return { messageId: existing.id, conversationId: existing.conversationId };
 
-    const contact = await this.upsertContact(tenantId, phoneE164, raw.pushName ?? null);
+    const isInbound = msg.direction === 'IN';
+    const contact = await this.upsertContact(tenantId, msg.contactPhone, msg.pushName ?? null);
     const conversation = await this.upsertConversation(tenantId, instanceId, contact.id, isInbound);
-
-    // Decode tipo + corpo
-    const { type, body, mediaBase64, mediaMime } = this.parseMessage(raw.message ?? {});
 
     let mediaUrl: string | null = null;
     let mediaSize: number | null = null;
-    if (mediaBase64 && mediaMime) {
+    let mediaMime: string | null = msg.media?.mime ?? null;
+    if (msg.media?.data && msg.media.mime) {
       try {
-        const persisted = await this.persistMedia(mediaBase64, mediaMime, key.id);
+        const persisted = await this.persistMedia(msg.media.data, msg.media.mime, msg.providerMsgId);
         mediaUrl = persisted.url;
         mediaSize = persisted.size;
       } catch (e) {
@@ -195,18 +179,17 @@ export class WhatsappMessagesService {
     const created = await this.prisma.whatsappMessage.create({
       data: {
         conversationId: conversation.id,
-        direction: isInbound ? 'IN' : 'OUT',
-        type,
-        body,
+        direction: msg.direction,
+        type: msg.type,
+        body: msg.body,
         mediaUrl,
         mediaMimeType: mediaMime,
         mediaSize,
-        evolutionMsgId: key.id,
+        providerMsgId: msg.providerMsgId,
         status: 'DELIVERED',
       },
     });
 
-    // Emite SSE
     this.events.emit({
       type: 'message.created',
       tenantId,
@@ -234,101 +217,27 @@ export class WhatsappMessagesService {
     return { messageId: created.id, conversationId: conversation.id };
   }
 
-  /**
-   * Atualiza status de mensagem (DELIVERED/READ).
-   */
-  async handleStatusUpdate(tenantId: string, raw: any) {
-    const keyId = raw?.keyId ?? raw?.key?.id;
-    const status = raw?.status?.toUpperCase?.();
-    if (!keyId || !status) return;
-
-    const allowed = ['DELIVERED', 'READ', 'FAILED'];
-    if (!allowed.includes(status)) return;
-
+  /** Atualiza status de entrega (DELIVERED/READ/FAILED). */
+  async ingestStatus(tenantId: string, upd: CanonicalStatusUpdate) {
+    if (!upd.providerMsgId || !upd.status) return;
     const msg = await this.prisma.whatsappMessage.findUnique({
-      where: { evolutionMsgId: keyId },
+      where: { providerMsgId: upd.providerMsgId },
     });
     if (!msg) return;
 
+    // Não rebaixa status (READ não volta pra DELIVERED).
+    const rank: Record<string, number> = { PENDING: 0, SENT: 1, DELIVERED: 2, READ: 3, FAILED: 4 };
+    if ((rank[upd.status] ?? 0) <= (rank[msg.status] ?? 0) && upd.status !== 'FAILED') return;
+
     await this.prisma.whatsappMessage.update({
       where: { id: msg.id },
-      data: { status: status as any },
+      data: { status: upd.status },
     });
 
     this.events.emit({
       type: 'message.updated',
       tenantId,
-      payload: { id: msg.id, conversationId: msg.conversationId, status },
+      payload: { id: msg.id, conversationId: msg.conversationId, status: upd.status },
     });
-  }
-
-  // -- helpers --
-
-  private parseMessage(message: Record<string, unknown>): {
-    type: WaMsgType;
-    body: string | null;
-    mediaBase64: string | null;
-    mediaMime: string | null;
-  } {
-    if (typeof (message as any).conversation === 'string') {
-      return { type: 'TEXT', body: (message as any).conversation, mediaBase64: null, mediaMime: null };
-    }
-    if ((message as any).extendedTextMessage?.text) {
-      return {
-        type: 'TEXT',
-        body: (message as any).extendedTextMessage.text,
-        mediaBase64: null,
-        mediaMime: null,
-      };
-    }
-    if ((message as any).imageMessage) {
-      const im = (message as any).imageMessage;
-      return {
-        type: 'IMAGE',
-        body: im.caption ?? null,
-        mediaBase64: im.base64 ?? im.url ?? null,
-        mediaMime: im.mimetype ?? 'image/jpeg',
-      };
-    }
-    if ((message as any).audioMessage) {
-      const am = (message as any).audioMessage;
-      return {
-        type: 'AUDIO',
-        body: null,
-        mediaBase64: am.base64 ?? am.url ?? null,
-        mediaMime: am.mimetype ?? 'audio/ogg',
-      };
-    }
-    if ((message as any).videoMessage) {
-      const vm = (message as any).videoMessage;
-      return {
-        type: 'VIDEO',
-        body: vm.caption ?? null,
-        mediaBase64: vm.base64 ?? vm.url ?? null,
-        mediaMime: vm.mimetype ?? 'video/mp4',
-      };
-    }
-    if ((message as any).documentMessage) {
-      const dm = (message as any).documentMessage;
-      return {
-        type: 'DOCUMENT',
-        body: dm.fileName ?? dm.caption ?? null,
-        mediaBase64: dm.base64 ?? dm.url ?? null,
-        mediaMime: dm.mimetype ?? 'application/octet-stream',
-      };
-    }
-    if ((message as any).locationMessage) {
-      const lm = (message as any).locationMessage;
-      return {
-        type: 'LOCATION',
-        body: `${lm.degreesLatitude},${lm.degreesLongitude}`,
-        mediaBase64: null,
-        mediaMime: null,
-      };
-    }
-    if ((message as any).stickerMessage) {
-      return { type: 'STICKER', body: null, mediaBase64: null, mediaMime: null };
-    }
-    return { type: 'UNKNOWN', body: null, mediaBase64: null, mediaMime: null };
   }
 }

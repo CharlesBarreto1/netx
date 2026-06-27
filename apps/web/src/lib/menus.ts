@@ -100,12 +100,8 @@ export const MENU_GROUPS: MenuGroup[] = [
   // 1. Dashboard — top-level isolado, sempre primeiro.
   {
     key: 'home',
-    items: [
-      { key: 'dashboard', href: '/dashboard', labelKey: 'dashboard' },
-      // Copiloto de IA (grounded read-only). Gate por permissão ai.ask.
-      // (Sem requiredModules: o motor de IA não é gateado por licença hoje.)
-      { key: 'copilot', href: '/copiloto', labelKey: 'copilot', permission: 'ai.ask' },
-    ],
+    // Copiloto de IA não tem rota própria: vive no rail direito (Nexus/CopilotRail).
+    items: [{ key: 'dashboard', href: '/dashboard', labelKey: 'dashboard' }],
   },
 
   // 2. CRM — base de clientes + relacionamento + vendas.

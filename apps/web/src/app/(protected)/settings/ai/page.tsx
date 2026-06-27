@@ -145,14 +145,21 @@ export default function AiSettingsPage() {
           <CardTitle>Provider primário (motor aberto)</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <label className="flex items-center gap-2 text-sm">
+          <label className="flex items-start gap-2 rounded-lg bg-ai-muted/30 p-3 text-sm ring-1 ring-ai/20">
             <input
               type="checkbox"
               checked={Boolean(v('enabled'))}
               disabled={!canWrite}
               onChange={(e) => set({ enabled: e.target.checked })}
+              className="mt-0.5"
             />
-            Habilitar configuração específica deste tenant (senão usa o padrão do servidor)
+            <span>
+              <span className="font-medium">Ativar o motor de IA com esta configuração</span>
+              <FieldHelp>
+                Enquanto desligado, a IA ignora os campos abaixo e usa o padrão do servidor (Ollama
+                local). Ligue para usar o provider/fallback configurados aqui.
+              </FieldHelp>
+            </span>
           </label>
 
           <div>

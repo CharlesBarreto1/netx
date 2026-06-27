@@ -109,6 +109,7 @@ model Tenant {
   whatsappInstances    WhatsappInstance[]
   whatsappContacts     WhatsappContact[]
   whatsappConversations WhatsappConversation[]
+  whatsappTemplates    WhatsappTemplate[]
 
   // SIFEN — fatura eletrônica Paraguay (módulo opcional, ligado via env)
   sifenDocuments       SifenDocument[]
@@ -2219,6 +2220,14 @@ model NetworkEquipment {
 // Mídia armazenada localmente em /var/lib/netx/whatsapp/media/.
 // =============================================================================
 
+/// Canal de transporte da instância: WAHA (QR, não-oficial) ou
+/// META_CLOUD (WhatsApp Business Platform oficial). Default WAHA preserva
+/// as instâncias existentes sem migração de dados.
+enum WaChannel {
+  WAHA
+  META_CLOUD
+}
+
 enum WaInstanceStatus {
   DISCONNECTED
   CONNECTING
@@ -2266,8 +2275,9 @@ model WhatsappInstance {
   tenantId      String  @map("tenant_id") @db.Uuid
 
   name          String  @db.VarChar(120)                   // "Atendimento Principal"
+  channel       WaChannel @default(WAHA)                 // transporte (WAHA | META_CLOUD)
   evolutionUrl  String  @map("evolution_url") @db.VarChar(255) @default("http://localhost:8080")
-  apiKey        String  @map("api_key") @db.VarChar(255)   // criptografado at-rest
+  apiKey        String  @map("api_key") @db.Text           // cifrado (CryptoService). WAHA: X-Api-Key. Meta: ver apiCredentialsEnc
   instanceName  String  @map("instance_name") @db.VarChar(120) // nome no Evolution
   webhookSecret String  @map("webhook_secret") @db.VarChar(64)  // valida POST /webhooks/evolution
 
@@ -2276,6 +2286,12 @@ model WhatsappInstance {
   qrCode        String?  @map("qr_code") @db.Text             // base64 PNG quando aguardando scan
   lastError     String?  @map("last_error") @db.Text
   connectedAt   DateTime? @map("connected_at")
+
+  // --- Canal oficial Meta Cloud API (channel = META_CLOUD) ---
+  wabaId            String? @map("waba_id") @db.VarChar(40)            // WhatsApp Business Account id
+  phoneNumberId     String? @map("phone_number_id") @db.VarChar(40)    // roteia o webhook Meta -> instância
+  verifyToken       String? @map("verify_token") @db.VarChar(120)      // hub.verify_token (GET de verificação)
+  apiCredentialsEnc String? @map("api_credentials_enc") @db.Text       // JSON cifrado { accessToken, appSecret }
 
   active        Boolean @default(true)
 
@@ -2286,6 +2302,7 @@ model WhatsappInstance {
   conversations WhatsappConversation[]
 
   @@unique([tenantId, instanceName])
+  @@unique([phoneNumberId])
   @@index([tenantId, status])
   @@map("whatsapp_instances")
 }
@@ -2364,7 +2381,8 @@ model WhatsappMessage {
   mediaMimeType   String? @map("media_mime_type") @db.VarChar(100)
   mediaSize       Int?    @map("media_size")               // bytes
 
-  evolutionMsgId  String?  @unique @map("evolution_msg_id") @db.VarChar(120)
+  providerMsgId   String?  @unique @map("provider_msg_id") @db.VarChar(120)
+  templateName    String?  @map("template_name") @db.VarChar(120)   // HSM enviado (auditoria Meta)
   fromUserId      String?  @map("from_user_id") @db.Uuid    // null se IN
   status          WaMsgStatus @default(SENT)
   errorReason     String?  @map("error_reason") @db.Text
@@ -2377,6 +2395,33 @@ model WhatsappMessage {
 
   @@index([conversationId, createdAt])
   @@map("whatsapp_messages")
+}
+
+/// Template HSM (Highly Structured Message) aprovado na Meta. Obrigatório
+/// para iniciar conversa ou responder fora da janela de 24h no canal
+/// META_CLOUD. Sincronizado da Graph API (GET /{wabaId}/message_templates)
+/// ou cadastrado manualmente. Não se aplica ao canal WAHA.
+model WhatsappTemplate {
+  id             String  @id @default(uuid()) @db.Uuid
+  tenantId       String  @map("tenant_id") @db.Uuid
+  instanceId     String? @map("instance_id") @db.Uuid       // null = nível tenant
+
+  name           String  @db.VarChar(120)                   // nome aprovado na Meta
+  language       String  @db.VarChar(10)                    // ex: pt_BR
+  category       String  @db.VarChar(40)                    // MARKETING | UTILITY | AUTHENTICATION
+  status         String  @db.VarChar(20)                    // APPROVED | PENDING | REJECTED
+  bodyText       String? @db.Text                           // preview do corpo com {{1}}
+  components     Json?                                       // estrutura crua da Graph API
+  metaTemplateId String? @map("meta_template_id") @db.VarChar(60)
+
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  tenant         Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name, language])
+  @@index([tenantId, status])
+  @@map("whatsapp_templates")
 }
 
 /// Auditoria realtime: registra cada vez que um usuário abre uma conversa
