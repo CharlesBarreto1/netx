@@ -12,11 +12,12 @@ import { AuditModule } from '../audit/audit.module';
 import { AiConfigService } from './ai-config.service';
 import { AiController } from './ai.controller';
 import { AiService } from './ai.service';
+import { CopilotService } from './copilot.service';
 
 @Module({
   imports: [AuditModule],
   controllers: [AiController],
-  providers: [AiService, AiConfigService],
+  providers: [AiService, AiConfigService, CopilotService],
   exports: [AiService],
 })
 export class AiModule {}

@@ -164,6 +164,7 @@ const messages = {
     brBilling: 'APIs de Cobrança BR',
     hubsoft: 'Hubsoft (migração)',
     hubsoftImport: 'Importar Hubsoft',
+    aiConfig: 'Motor de IA',
     users: 'Usuários',
     plans: 'Planos',
     locations: 'Endereços',

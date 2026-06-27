@@ -5,13 +5,20 @@
 import { Controller, Get, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
-import { UpsertAiConfigRequestSchema, type AuthenticatedPrincipal, type UpsertAiConfigRequest } from '@netx/shared';
+import {
+  AiAskRequestSchema,
+  UpsertAiConfigRequestSchema,
+  type AiAskRequest,
+  type AuthenticatedPrincipal,
+  type UpsertAiConfigRequest,
+} from '@netx/shared';
 
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { ZodBody } from '../../common/zod.pipe';
 
 import { AiConfigService } from './ai-config.service';
 import { AiService } from './ai.service';
+import { CopilotService } from './copilot.service';
 
 @ApiTags('ai')
 @ApiBearerAuth()
@@ -20,6 +27,7 @@ export class AiController {
   constructor(
     private readonly ai: AiService,
     private readonly config: AiConfigService,
+    private readonly copilot: CopilotService,
   ) {}
 
   /** Status do motor (backends disponíveis). Qualquer autenticado pode ver. */
@@ -51,5 +59,15 @@ export class AiController {
   @RequirePermissions('ai.config.write')
   test(@CurrentUser() user: AuthenticatedPrincipal) {
     return this.ai.test(user.tenantId);
+  }
+
+  /** Copiloto grounded read-only — responde ancorado no snapshot do tenant. */
+  @Post('ask')
+  @RequirePermissions('ai.ask')
+  ask(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @ZodBody(AiAskRequestSchema) body: AiAskRequest,
+  ) {
+    return this.copilot.ask(user.tenantId, body.question);
   }
 }

@@ -348,6 +348,8 @@ export const MENU_GROUPS: MenuGroup[] = [
           // Hubsoft — integração de leitura p/ migração (config + sync). Só BR.
           { key: 'hubsoft', href: '/settings/hubsoft', labelKey: 'hubsoft', permission: 'hubsoft.config.read', visibleIfCountry: ['BR'] },
           { key: 'hubsoftImport', href: '/settings/hubsoft/import', labelKey: 'hubsoftImport', permission: 'hubsoft.config.read', visibleIfCountry: ['BR'] },
+          // Motor de IA (netx-ai): provider/modelo + fallback de nuvem + teste.
+          { key: 'aiConfig', href: '/settings/ai', labelKey: 'aiConfig', permission: 'ai.config.read', requiredModules: ['netx-ai'] },
         ],
       },
     ],
