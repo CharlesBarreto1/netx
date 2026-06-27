@@ -97,6 +97,30 @@ export class WhatsappController {
     return this.conversations.findById(user.tenantId, user.sub, canAudit, id);
   }
 
+  @Get('conversations/:id/customer-context')
+  @RequirePermissions('chat.read')
+  customerContext(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.conversations.customerContext(user.tenantId, id);
+  }
+
+  @Get('conversations/:id/messages')
+  @RequirePermissions('chat.read')
+  olderMessages(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Query('before') before?: string,
+  ) {
+    const cursor = before ? new Date(before) : new Date();
+    if (Number.isNaN(cursor.getTime())) {
+      throw new BadRequestException('Parâmetro "before" inválido (ISO date esperado)');
+    }
+    const canAudit = user.permissions.includes('chat.audit');
+    return this.conversations.messagesBefore(user.tenantId, user.sub, canAudit, id, cursor);
+  }
+
   @Post('conversations/:id/assign')
   @RequirePermissions('chat.assign')
   assign(

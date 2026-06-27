@@ -9,14 +9,13 @@ import {
   CheckCircle2,
   UserCheck,
   ArrowRightLeft,
-  ExternalLink,
   FileText,
 } from 'lucide-react';
-import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 
+import { CustomerPanel } from '@/components/chat/CustomerPanel';
 import { Button } from '@/components/ui/Button';
 import { PageLoader } from '@/components/ui/Spinner';
 import { toast } from '@/components/ui/sonner';
@@ -144,7 +143,13 @@ export default function ChatPage() {
           setSelectedId(null);
         }}
       />
-      <ChatContext conversation={detailQuery.data} />
+      <CustomerPanel
+        conversation={detailQuery.data}
+        onChanged={() => {
+          void detailQuery.mutate();
+          void inboxQuery.mutate();
+        }}
+      />
     </div>
   );
 }
@@ -645,53 +650,5 @@ function MessageBubble({ message }: { message: WaMessage }) {
 
 // =============================================================================
 // Context column (cliente reconhecido)
-// =============================================================================
 
-function ChatContext({ conversation }: { conversation: WaConversationDetail | undefined }) {
-  const t = useTranslations('chat');
-  if (!conversation) {
-    return <aside className="hidden md:block" />;
-  }
-  const customer = conversation.contact.customer;
-  return (
-    <aside className="flex h-[calc(100vh-160px)] flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
-      <h3 className="mb-3 text-sm font-semibold">{t('context.title')}</h3>
-      {customer ? (
-        <>
-          <div className="mb-3">
-            <p className="text-base font-medium">{customer.displayName}</p>
-            {customer.code && <p className="text-xs text-text-muted">{customer.code}</p>}
-          </div>
-          <dl className="space-y-2 text-xs">
-            <div>
-              <dt className="text-text-muted">{t('context.phone')}</dt>
-              <dd>{customer.primaryPhone ?? conversation.contact.phoneE164}</dd>
-            </div>
-            {customer.primaryEmail && (
-              <div>
-                <dt className="text-text-muted">{t('context.email')}</dt>
-                <dd>{customer.primaryEmail}</dd>
-              </div>
-            )}
-            <div>
-              <dt className="text-text-muted">{t('context.status')}</dt>
-              <dd>{customer.status}</dd>
-            </div>
-          </dl>
-          <Link
-            href={`/customers/${customer.id}`}
-            className="mt-4 inline-flex items-center gap-1 rounded-md bg-brand-50 px-3 py-2 text-xs font-medium text-brand-700 hover:bg-brand-100 dark:bg-slate-700 dark:text-brand-300"
-          >
-            <ExternalLink className="h-3.5 w-3.5" />
-            {t('context.openHub')}
-          </Link>
-        </>
-      ) : (
-        <div className="text-xs text-text-muted">
-          <p>{t('context.unknownContact')}</p>
-          <p className="mt-2">{conversation.contact.phoneE164}</p>
-        </div>
-      )}
-    </aside>
-  );
-}
+

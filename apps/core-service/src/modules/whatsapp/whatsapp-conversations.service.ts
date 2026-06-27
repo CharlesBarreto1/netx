@@ -169,6 +169,101 @@ export class WhatsappConversationsService {
     return { ...conv, messages };
   }
 
+  /**
+   * Contexto do cliente pro painel do atendente: o customer vinculado ao contato
+   * da conversa + seus contratos (o front busca conexão/diagnóstico/financeiro por
+   * contrato nos endpoints já existentes). Não infla este endpoint.
+   */
+  async customerContext(tenantId: string, id: string) {
+    const conv = await this.prisma.whatsappConversation.findFirst({
+      where: { id, tenantId },
+      select: { contact: { select: { id: true, phoneE164: true, pushName: true, customerId: true } } },
+    });
+    if (!conv) throw new NotFoundException('Conversa não encontrada');
+    const contact = conv.contact;
+
+    if (!contact.customerId) {
+      return { contact, customer: null, contracts: [] };
+    }
+
+    const customer = await this.prisma.customer.findFirst({
+      where: { id: contact.customerId, tenantId, deletedAt: null },
+      select: {
+        id: true,
+        displayName: true,
+        code: true,
+        status: true,
+        type: true,
+        primaryPhone: true,
+        primaryEmail: true,
+      },
+    });
+
+    const contracts = await this.prisma.contract.findMany({
+      where: { customerId: contact.customerId, tenantId, deletedAt: null },
+      orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+      select: {
+        id: true,
+        code: true,
+        status: true,
+        suspendReason: true,
+        trustExtensionUntil: true,
+        monthlyValue: true,
+        bandwidthMbps: true,
+        uploadMbps: true,
+        pppoeUsername: true,
+        plan: { select: { name: true } },
+      },
+    });
+
+    return {
+      contact,
+      customer,
+      contracts: contracts.map((c) => ({
+        id: c.id,
+        code: c.code,
+        status: c.status,
+        suspendReason: c.suspendReason,
+        trustExtensionUntil: c.trustExtensionUntil,
+        planName: c.plan?.name ?? null,
+        monthlyValue: Number(c.monthlyValue),
+        bandwidthMbps: c.bandwidthMbps,
+        uploadMbps: c.uploadMbps,
+        pppoeUsername: c.pppoeUsername,
+      })),
+    };
+  }
+
+  /**
+   * Mensagens anteriores a um cursor (createdAt ISO) — scroll pra cima estilo
+   * WhatsApp. Devolve em ordem cronológica (asc). Mesma regra de acesso do
+   * findById (assigned ou chat.audit).
+   */
+  async messagesBefore(
+    tenantId: string,
+    userId: string,
+    canAudit: boolean,
+    id: string,
+    before: Date,
+    limit = 50,
+  ) {
+    const conv = await this.prisma.whatsappConversation.findFirst({
+      where: { id, tenantId },
+      select: { assignedUserId: true },
+    });
+    if (!conv) throw new NotFoundException('Conversa não encontrada');
+    if (conv.assignedUserId && conv.assignedUserId !== userId && !canAudit) {
+      throw new ForbiddenException('Conversa atribuída a outro operador.');
+    }
+    const rows = await this.prisma.whatsappMessage.findMany({
+      where: { conversationId: id, createdAt: { lt: before } },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(limit, 100),
+      include: { fromUser: { select: { id: true, firstName: true, lastName: true } } },
+    });
+    return rows.reverse(); // cronológico (antigas → novas)
+  }
+
   async assign(tenantId: string, actorUserId: string, id: string, targetUserId: string | null) {
     const conv = await this.prisma.whatsappConversation.findFirst({
       where: { id, tenantId },

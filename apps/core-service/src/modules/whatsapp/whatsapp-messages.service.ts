@@ -36,8 +36,10 @@ export class WhatsappMessagesService {
     contactId: string,
     isInbound: boolean,
   ) {
+    // Reusa a thread existente (OPEN/RESOLVED/ARCHIVED) pra manter o histórico
+    // contínuo estilo WhatsApp — só (instanceId, contactId) define a thread.
     const existingOpen = await this.prisma.whatsappConversation.findFirst({
-      where: { instanceId, contactId, status: { in: ['OPEN', 'RESOLVED'] } },
+      where: { instanceId, contactId, status: { in: ['OPEN', 'RESOLVED', 'ARCHIVED'] } },
       orderBy: { lastMessageAt: 'desc' },
     });
 
@@ -48,8 +50,8 @@ export class WhatsappMessagesService {
           ? { lastInboundAt: new Date(), unreadCount: { increment: 1 } }
           : {}),
       };
-      // Re-abre se estava resolvida e cliente mandou nova msg
-      if (existingOpen.status === 'RESOLVED' && isInbound) {
+      // Re-abre se estava resolvida/arquivada e o cliente mandou nova msg.
+      if ((existingOpen.status === 'RESOLVED' || existingOpen.status === 'ARCHIVED') && isInbound) {
         updates.status = 'OPEN';
         updates.resolvedAt = null;
       }

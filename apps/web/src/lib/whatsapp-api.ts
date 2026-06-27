@@ -127,6 +127,72 @@ export async function getConversation(id: string) {
   return api.get<WaConversationDetail>(`/v1/whatsapp/conversations/${id}`);
 }
 
+export async function loadOlderMessages(id: string, before: string) {
+  return api.get<WaMessage[]>(
+    `/v1/whatsapp/conversations/${id}/messages?before=${encodeURIComponent(before)}`,
+  );
+}
+
+// ---- contexto do cliente (painel do atendente) ----
+
+export interface WaContractCtx {
+  id: string;
+  code: string | null;
+  status: string;
+  suspendReason: string | null;
+  trustExtensionUntil: string | null;
+  planName: string | null;
+  monthlyValue: number;
+  bandwidthMbps: number;
+  uploadMbps: number | null;
+  pppoeUsername: string | null;
+}
+
+export interface WaCustomerContext {
+  contact: { id: string; phoneE164: string; pushName: string | null; customerId: string | null };
+  customer: {
+    id: string;
+    displayName: string;
+    code: string | null;
+    status: string;
+    type: string;
+    primaryPhone: string | null;
+    primaryEmail: string | null;
+  } | null;
+  contracts: WaContractCtx[];
+}
+
+export async function getCustomerContext(conversationId: string) {
+  return api.get<WaCustomerContext>(
+    `/v1/whatsapp/conversations/${conversationId}/customer-context`,
+  );
+}
+
+export function customerContextPath(conversationId: string) {
+  return `/v1/whatsapp/conversations/${conversationId}/customer-context`;
+}
+
+/** Vincula (ou desvincula com null) o contato a um cliente. */
+export async function linkContactCustomer(contactId: string, customerId: string | null) {
+  return api.patch(`/v1/whatsapp/contacts/${contactId}`, { customerId });
+}
+
+export interface WaCustomerHit {
+  id: string;
+  displayName: string;
+  code: string | null;
+  status: string;
+  primaryPhone: string | null;
+}
+
+/** Busca rápida de clientes pro vínculo manual. */
+export async function searchCustomers(q: string) {
+  const res = await api.get<{ data: WaCustomerHit[] }>(
+    `/v1/customers?search=${encodeURIComponent(q)}&pageSize=10`,
+  );
+  return res.data ?? [];
+}
+
 export async function assignConversation(id: string, userId: string | null) {
   return api.post(`/v1/whatsapp/conversations/${id}/assign`, { userId });
 }

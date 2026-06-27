@@ -9,6 +9,8 @@ import { WahaProvider } from './providers/waha.provider';
 import { WhatsappCredentials } from './providers/whatsapp-credentials';
 import { WhatsappAiController } from './whatsapp-ai.controller';
 import { WhatsappAiService } from './whatsapp-ai.service';
+import { WhatsappContactsController } from './whatsapp-contacts.controller';
+import { WhatsappContactsService } from './whatsapp-contacts.service';
 import { WhatsappController } from './whatsapp.controller';
 import { WhatsappConversationsService } from './whatsapp-conversations.service';
 import { WhatsappEventsBus } from './whatsapp-events.bus';
@@ -40,6 +42,7 @@ import { WhatsappWebhookMetaController } from './whatsapp-webhook-meta.controlle
   imports: [AuditModule, AiModule],
   controllers: [
     WhatsappController,
+    WhatsappContactsController,
     WhatsappInstancesController,
     WhatsappTemplatesController,
     WhatsappWebhookController,
@@ -53,6 +56,7 @@ import { WhatsappWebhookMetaController } from './whatsapp-webhook-meta.controlle
     WhatsappCredentials,
     WhatsappEventsBus,
     WhatsappInstancesService,
+    WhatsappContactsService,
     WhatsappConversationsService,
     WhatsappMessagesService,
     WhatsappTemplatesService,
