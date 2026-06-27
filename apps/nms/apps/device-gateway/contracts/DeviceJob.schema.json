@@ -333,6 +333,85 @@
             "params"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jobId": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/jobId"
+            },
+            "deviceId": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/deviceId"
+            },
+            "requestedBy": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/requestedBy"
+            },
+            "requestedAt": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/requestedAt"
+            },
+            "accessMode": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/accessMode"
+            },
+            "approvedBy": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/approvedBy"
+            },
+            "kind": {
+              "type": "string",
+              "const": "network-test"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "testType": {
+                  "type": "string",
+                  "enum": [
+                    "ping",
+                    "traceroute"
+                  ],
+                  "default": "ping"
+                },
+                "target": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "host",
+                    "device"
+                  ],
+                  "default": "host"
+                },
+                "mgmtIp": {
+                  "type": "string"
+                },
+                "username": {
+                  "type": "string"
+                },
+                "passwordEnc": {
+                  "type": "string"
+                },
+                "sshPort": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "default": 22
+                }
+              },
+              "required": [
+                "target"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "jobId",
+            "deviceId",
+            "requestedBy",
+            "requestedAt",
+            "kind",
+            "params"
+          ],
+          "additionalProperties": false
         }
       ]
     }

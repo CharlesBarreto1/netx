@@ -7,9 +7,11 @@ FROM python:3.12-slim-bookworm AS runtime
 COPY --from=ghcr.io/astral-sh/uv:0.5.11 /uv /uvx /bin/
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 
-# Libs de sistema p/ lxml (junos-eznc), paramiko/cryptography e cliente SSH.
+# Libs de sistema p/ lxml (junos-eznc), paramiko/cryptography, cliente SSH e
+# ferramentas de teste de rede (probe do host: job network-test ping/traceroute).
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc libxml2-dev libxslt1-dev libssl-dev libffi-dev openssh-client \
+    iputils-ping traceroute \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

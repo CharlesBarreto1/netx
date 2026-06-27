@@ -49,6 +49,8 @@ async def process_job(
         result_data = await _handle_run_playbook(data, crypto)
     elif kind == "backup-config":
         result_data = await _handle_backup_config(data, crypto)
+    elif kind == "network-test":
+        result_data = await _handle_network_test(data, crypto)
     else:
         raise ValueError(f"tipo de job desconhecido: {kind!r}")
 
@@ -148,6 +150,31 @@ async def _handle_run_playbook(
         command=params["command"],
     )
     return {"kind": "run-playbook", "playbookId": params["playbookId"], "output": output}
+
+
+async def _handle_network_test(
+    job: dict[str, Any], crypto: CryptoService | None
+) -> dict[str, Any]:
+    """Ping/traceroute do host (probe padrão) ou de um device via SSH. Read-only."""
+    import asyncio
+
+    from .network import run_network_test
+
+    params: dict[str, Any] = job["params"]
+    password = None
+    if params.get("source") == "device" and crypto is not None and params.get("passwordEnc"):
+        password = crypto.decrypt(params["passwordEnc"])
+
+    return await asyncio.to_thread(
+        run_network_test,
+        test_type=params.get("testType", "ping"),
+        target=params["target"],
+        source=params.get("source", "host"),
+        mgmt_ip=params.get("mgmtIp"),
+        username=params.get("username"),
+        password=password,
+        ssh_port=params.get("sshPort", 22),
+    )
 
 
 def _handle_sync_snmp_config(

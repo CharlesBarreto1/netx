@@ -93,6 +93,26 @@ export const BackupConfigJobSchema = DeviceJobBaseSchema.extend({
   }),
 });
 
+/**
+ * Teste de rede ativo (ping/traceroute) — read-only. Disparado pelo copiloto.
+ * `source='host'`: roda no próprio device-gateway (probe padrão) — deviceId é o
+ * nil-uuid sentinela. `source='device'`: SSH no equipamento (a API resolve
+ * mgmtIp + credencial cifrada).
+ */
+export const NetworkTestJobSchema = DeviceJobBaseSchema.extend({
+  kind: z.literal('network-test'),
+  params: z.object({
+    testType: z.enum(['ping', 'traceroute']).default('ping'),
+    target: z.string().min(1),
+    source: z.enum(['host', 'device']).default('host'),
+    // Só quando source='device' (preenchidos pela API a partir do device+cofre).
+    mgmtIp: z.string().optional(),
+    username: z.string().optional(),
+    passwordEnc: z.string().optional(),
+    sshPort: z.number().int().positive().default(22),
+  }),
+});
+
 /** União discriminada de todos os tipos de job. Novos pilares adicionam membros aqui. */
 export const DeviceJobSchema = z.discriminatedUnion('kind', [
   ConnectivityTestJobSchema,
@@ -100,6 +120,7 @@ export const DeviceJobSchema = z.discriminatedUnion('kind', [
   SyncSnmpConfigJobSchema,
   RunPlaybookJobSchema,
   BackupConfigJobSchema,
+  NetworkTestJobSchema,
 ]);
 /** Job já validado (accessMode resolvido). */
 export type DeviceJob = z.infer<typeof DeviceJobSchema>;
@@ -150,6 +171,26 @@ export const BackupConfigResultSchema = z.object({
   config: z.string(),
 });
 
+/**
+ * Resultado COMPACTO do teste de rede (token-econômico): resumo + campos
+ * estruturados pro Nexus renderizar sem mandar stdout verboso pro LLM. `raw`
+ * (truncado) é só pro render determinístico, não pro modelo.
+ */
+export const NetworkTestResultSchema = z.object({
+  kind: z.literal('network-test'),
+  testType: z.string(),
+  target: z.string(),
+  source: z.string(),
+  reachable: z.boolean(),
+  /** Resumo de 1 linha, ex.: "4/4 pacotes, 11.2ms médio, 0% perda". */
+  summary: z.string(),
+  hops: z.number().int().nonnegative().optional(),
+  rttMs: z.number().nonnegative().optional(),
+  lossPct: z.number().min(0).max(100).optional(),
+  /** stdout truncado (render determinístico no Nexus; não vai pro LLM). */
+  raw: z.string().optional(),
+});
+
 export const DeviceJobResultSchema = z.object({
   jobId: z.string().uuid(),
   deviceId: z.string().uuid(),
@@ -163,6 +204,7 @@ export const DeviceJobResultSchema = z.object({
       SyncSnmpConfigResultSchema,
       RunPlaybookResultSchema,
       BackupConfigResultSchema,
+      NetworkTestResultSchema,
     ])
     .optional(),
   error: z.string().optional(),

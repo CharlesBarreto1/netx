@@ -154,6 +154,55 @@
                 "config"
               ],
               "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "network-test"
+                },
+                "testType": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string"
+                },
+                "reachable": {
+                  "type": "boolean"
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "hops": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "rttMs": {
+                  "type": "number",
+                  "minimum": 0
+                },
+                "lossPct": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "raw": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind",
+                "testType",
+                "target",
+                "source",
+                "reachable",
+                "summary"
+              ],
+              "additionalProperties": false
             }
           ]
         },
