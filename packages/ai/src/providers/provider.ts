@@ -1,4 +1,12 @@
-import type { ChatMessage, ChatOptions, ChatResult, ProviderKind } from '../types';
+import type {
+  AgentResult,
+  ChatMessage,
+  ChatOptions,
+  ChatResult,
+  ProviderKind,
+  ToolDef,
+  ToolExecutor,
+} from '../types';
 
 /**
  * Contrato de um backend de IA. Cada provider sabe falar com UM tipo de motor
@@ -17,6 +25,31 @@ export interface AiProvider {
   readonly model: string;
   /** Executa uma chamada de chat. Deve lançar em erro de transporte/timeout. */
   chat(messages: ChatMessage[], opts: ResolvedChatOptions): Promise<ChatResult>;
+
+  /** Suporta loop de ferramentas (copiloto agêntico)? */
+  readonly supportsTools: boolean;
+
+  /**
+   * Loop agêntico: o modelo chama ferramentas (via `execute`) até produzir a
+   * resposta final. Opcional — só providers com supportsTools=true implementam.
+   */
+  runAgent?(
+    messages: ChatMessage[],
+    tools: ToolDef[],
+    execute: ToolExecutor,
+    opts: ResolvedAgentOptions,
+  ): Promise<AgentResult>;
+}
+
+/** Opções de agente já normalizadas pelo engine. */
+export interface ResolvedAgentOptions {
+  model: string;
+  maxTokens: number;
+  temperature: number;
+  timeoutMs: number;
+  maxSteps: number;
+  system?: string;
+  signal?: AbortSignal;
 }
 
 /** Opções já normalizadas pelo engine (sem campos opcionais ambíguos). */

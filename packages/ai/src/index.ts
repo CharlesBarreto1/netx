@@ -14,7 +14,7 @@ export * from './types';
 export { AiEngine, createAiEngine } from './engine';
 export { aiConfigFromEnv, AI_DEFAULTS } from './config';
 export { redact, redactMessages } from './redact';
-export type { AiProvider, ResolvedChatOptions } from './providers/provider';
+export type { AiProvider, ResolvedAgentOptions, ResolvedChatOptions } from './providers/provider';
 export { OllamaProvider } from './providers/ollama.provider';
 export { OpenAiCompatProvider } from './providers/openai-compat.provider';
 export { AnthropicProvider } from './providers/anthropic.provider';

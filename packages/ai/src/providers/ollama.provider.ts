@@ -13,6 +13,8 @@ export class OllamaProvider implements AiProvider {
   readonly kind = 'ollama' as const;
   readonly model: string;
   readonly cloud: boolean;
+  // Tool-calling local é irregular/lento; copiloto agêntico usa nuvem por ora.
+  readonly supportsTools = false;
   private readonly baseUrl: string;
   private readonly apiKey?: string;
 

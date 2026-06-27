@@ -1,14 +1,18 @@
 import { AnthropicProvider } from './providers/anthropic.provider';
 import { OllamaProvider } from './providers/ollama.provider';
 import { OpenAiCompatProvider } from './providers/openai-compat.provider';
-import type { AiProvider, ResolvedChatOptions } from './providers/provider';
+import type { AiProvider, ResolvedAgentOptions, ResolvedChatOptions } from './providers/provider';
 import { redactMessages } from './redact';
 import type {
+  AgentOptions,
+  AgentResult,
   AiEngineConfig,
   ChatMessage,
   ChatOptions,
   ChatResult,
   ProviderSettings,
+  ToolDef,
+  ToolExecutor,
 } from './types';
 
 function buildProvider(settings: ProviderSettings): AiProvider {
@@ -160,6 +164,87 @@ export class AiEngine {
         `IA devolveu JSON inválido (${result.provider}): ${result.text.slice(0, 200)}`,
       );
     }
+  }
+
+  /** true se algum backend suporta tool-calling (copiloto agêntico). */
+  supportsTools(): boolean {
+    return (
+      (this.primary.supportsTools && this.primary.available()) ||
+      Boolean(this.fallback?.supportsTools && this.fallback.available())
+    );
+  }
+
+  /**
+   * Copiloto agêntico: o modelo chama ferramentas read-only (via `execute`) até
+   * compor a resposta com dados reais. Só usa backends com supportsTools. Cai
+   * pro fallback se o primário não suportar/falhar.
+   */
+  async agent(
+    messages: ChatMessage[],
+    tools: ToolDef[],
+    execute: ToolExecutor,
+    opts: AgentOptions = {},
+    feature?: string,
+  ): Promise<AgentResult> {
+    const order: Array<{ provider: AiProvider; isFallback: boolean }> = [];
+    if (this.primary.supportsTools && this.primary.available() && this.primary.runAgent)
+      order.push({ provider: this.primary, isFallback: false });
+    if (this.fallback?.supportsTools && this.fallback.available() && this.fallback.runAgent)
+      order.push({ provider: this.fallback, isFallback: true });
+
+    if (order.length === 0) {
+      throw new Error(
+        'Copiloto indisponível: nenhum backend com suporte a ferramentas. Ligue um provider de nuvem (Anthropic / OpenAI-compat).',
+      );
+    }
+
+    let lastErr: unknown;
+    for (const { provider, isFallback } of order) {
+      const resolved: ResolvedAgentOptions = {
+        model: opts.model ?? provider.model,
+        maxTokens: opts.maxTokens ?? this.config.defaultMaxTokens,
+        temperature: opts.temperature ?? 0.2,
+        timeoutMs: opts.timeoutMs ?? this.config.defaultTimeoutMs,
+        maxSteps: opts.maxSteps ?? 6,
+        system: opts.system,
+        signal: opts.signal,
+      };
+      // Tools podem trafegar dado sensível; em provider de nuvem, mascara PII.
+      const payload =
+        provider.cloud && this.config.redactPii ? redactMessages(messages) : messages;
+      try {
+        const result = await provider.runAgent!(payload, tools, execute, resolved);
+        result.usedFallback = isFallback;
+        this.config.logger?.onUsage?.({
+          provider: result.provider,
+          model: result.model,
+          latencyMs: result.latencyMs,
+          usedFallback: isFallback,
+          feature,
+          ok: true,
+        });
+        return result;
+      } catch (err) {
+        lastErr = err;
+        this.config.logger?.warn?.(
+          `[ai] agent ${provider.kind} falhou${isFallback ? ' (fallback)' : ''}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+        this.config.logger?.onUsage?.({
+          provider: provider.kind,
+          model: resolved.model,
+          latencyMs: 0,
+          usedFallback: isFallback,
+          feature,
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    throw new Error(
+      `Copiloto falhou em todos os backends: ${lastErr instanceof Error ? lastErr.message : String(lastErr)}`,
+    );
   }
 }
 

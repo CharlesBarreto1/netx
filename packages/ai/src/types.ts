@@ -110,3 +110,51 @@ export interface AiLogger {
   onUsage?(event: AiUsageEvent): void;
   warn?(message: string): void;
 }
+
+// -----------------------------------------------------------------------------
+// Tool-calling (copiloto agêntico) — o modelo escolhe ferramentas read-only que
+// o backend executa e devolve; o modelo compõe a resposta com o dado real.
+// A IA continua conselheira: as ferramentas SÓ LEEM, nunca mutam estado.
+// -----------------------------------------------------------------------------
+
+/** Definição de uma ferramenta exposta ao modelo. */
+export interface ToolDef {
+  name: string;
+  description: string;
+  /** JSON Schema dos argumentos de entrada. */
+  parameters: JsonSchema;
+}
+
+/** Chamada de ferramenta pedida pelo modelo. */
+export interface ToolCall {
+  id: string;
+  name: string;
+  args: Record<string, unknown>;
+}
+
+/** Executa uma chamada e devolve um resultado serializável (será JSON.stringify). */
+export type ToolExecutor = (call: ToolCall) => Promise<unknown>;
+
+export interface AgentOptions {
+  model?: string;
+  maxTokens?: number;
+  temperature?: number;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+  /** Máximo de rodadas de ferramenta antes de forçar resposta. Default 6. */
+  maxSteps?: number;
+  /** System prompt. */
+  system?: string;
+}
+
+export interface AgentResult {
+  text: string;
+  provider: ProviderKind;
+  model: string;
+  usedFallback: boolean;
+  /** Rodadas de ferramenta executadas. */
+  steps: number;
+  /** Nomes das ferramentas efetivamente chamadas (em ordem). */
+  toolsUsed: string[];
+  latencyMs: number;
+}
