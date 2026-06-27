@@ -465,6 +465,10 @@ const systemRoles = [
       'locations.read',
       'locations.manage',
       'mapping.read',
+      // IA — copiloto (Nexus) + config do motor
+      'ai.ask',
+      'ai.config.read',
+      'ai.config.write',
     ],
   },
   {
@@ -558,6 +562,8 @@ const systemRoles = [
       'locations.read',
       'locations.manage',
       'mapping.read',
+      // IA — copiloto (Nexus) read-only; config do motor fica pro admin
+      'ai.ask',
     ],
   },
   {
