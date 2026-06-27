@@ -11,11 +11,13 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { AuthenticatedPrincipal } from '@netx/shared';
 
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
+import { RequiresModule } from '../licensing/license.decorators';
 
 import { WhatsappAiService } from './whatsapp-ai.service';
 
 @ApiTags('whatsapp')
 @ApiBearerAuth()
+@RequiresModule('netx-call')
 @Controller('whatsapp/conversations')
 export class WhatsappAiController {
   constructor(private readonly ai: WhatsappAiService) {}

@@ -203,6 +203,8 @@ export const MENU_GROUPS: MenuGroup[] = [
     labelKey: 'group.support',
     items: [
       { key: 'serviceOrders', href: '/service-orders', labelKey: 'serviceOrders', permission: 'service_orders.read' },
+      // Inbox de Atendimento WhatsApp (Call). Módulo netx-call.
+      { key: 'chat', href: '/chat', labelKey: 'chat', permission: 'chat.read', requiredModules: ['netx-call'] },
     ],
   },
 
@@ -331,6 +333,8 @@ export const MENU_GROUPS: MenuGroup[] = [
         labelKey: 'sub.cfgSupport',
         children: [
           { key: 'serviceOrderReasons', href: '/settings/service-order-reasons', labelKey: 'serviceOrderReasons', permission: 'service_order_reasons.manage' },
+          // Conexão WhatsApp (WAHA QR / Meta Cloud) + templates HSM. Módulo netx-call.
+          { key: 'whatsappInstances', href: '/settings/whatsapp', labelKey: 'whatsappInstances', permission: 'chat.admin', requiredModules: ['netx-call'] },
         ],
       },
       {

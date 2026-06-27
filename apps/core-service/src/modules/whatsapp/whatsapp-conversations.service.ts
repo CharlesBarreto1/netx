@@ -5,15 +5,32 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import type { Prisma, WaConversationStatus } from '@prisma/client';
+import type { Prisma, WaConversationStatus, WaMsgType } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 
-import { EvolutionClient } from './evolution.client';
+import type { TemplateSend } from './providers/channel-provider';
+import { ChannelProviderFactory } from './providers/channel-provider.factory';
+import { WhatsappCredentials } from './providers/whatsapp-credentials';
 import { WhatsappEventsBus } from './whatsapp-events.bus';
 
 export type InboxFilter = 'mine' | 'unassigned' | 'all' | 'resolved';
+
+/** Janela de atendimento da Meta: 24h desde o último inbound do cliente. */
+const META_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** Erro estruturado: envio livre bloqueado fora da janela 24h (Meta). */
+export class TemplateRequiredException extends BadRequestException {
+  constructor() {
+    super({
+      statusCode: 400,
+      requiresTemplate: true,
+      message:
+        'Fora da janela de 24h. No canal oficial Meta, use um template aprovado (HSM) para responder.',
+    });
+  }
+}
 
 @Injectable()
 export class WhatsappConversationsService {
@@ -23,7 +40,8 @@ export class WhatsappConversationsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly events: WhatsappEventsBus,
-    private readonly evolution: EvolutionClient,
+    private readonly factory: ChannelProviderFactory,
+    private readonly creds: WhatsappCredentials,
   ) {}
 
   async list(tenantId: string, userId: string, filter: InboxFilter = 'mine') {
@@ -53,7 +71,7 @@ export class WhatsappConversationsService {
             },
           },
         },
-        instance: { select: { id: true, name: true, phoneE164: true, status: true } },
+        instance: { select: { id: true, name: true, phoneE164: true, status: true, channel: true } },
         assignedUser: { select: { id: true, firstName: true, lastName: true, email: true } },
         messages: {
           orderBy: { createdAt: 'desc' },
@@ -94,7 +112,7 @@ export class WhatsappConversationsService {
             },
           },
         },
-        instance: { select: { id: true, name: true, phoneE164: true, status: true } },
+        instance: { select: { id: true, name: true, phoneE164: true, status: true, channel: true } },
         assignedUser: { select: { id: true, firstName: true, lastName: true, email: true } },
       },
     });
@@ -221,43 +239,115 @@ export class WhatsappConversationsService {
   }
 
   /**
-   * Envia mensagem de texto. Persiste localmente com status PENDING, dispara
-   * pra Evolution; se sucesso atualiza com evolutionMsgId + status SENT,
-   * se falha marca FAILED.
+   * Envia texto. Canal-agnóstico via provider. Para o canal META_CLOUD respeita
+   * a janela de 24h: fora dela, lança TemplateRequiredException (o front então
+   * oferece um template HSM via sendTemplate).
    */
   async sendText(tenantId: string, actorUserId: string, id: string, text: string) {
+    const conv = await this.loadSendableConversation(tenantId, actorUserId, id);
+
+    // Janela 24h só se aplica ao canal oficial Meta.
+    if (conv.instance.channel === 'META_CLOUD' && !this.withinMetaWindow(conv.lastInboundAt)) {
+      throw new TemplateRequiredException();
+    }
+
+    return this.dispatchOutbound(tenantId, actorUserId, conv, {
+      type: 'TEXT',
+      body: text,
+      send: (provider, dInst) => provider.sendText(dInst, conv.contact.phoneE164, text),
+      auditMeta: { conversationId: id, length: text.length },
+    });
+  }
+
+  /**
+   * Envia um template HSM (canal META_CLOUD). Permitido dentro e fora da janela
+   * de 24h. Persiste como mensagem OUT com `templateName` para auditoria.
+   */
+  async sendTemplate(
+    tenantId: string,
+    actorUserId: string,
+    id: string,
+    tpl: TemplateSend,
+    previewBody?: string,
+  ) {
+    const conv = await this.loadSendableConversation(tenantId, actorUserId, id);
+    if (conv.instance.channel !== 'META_CLOUD') {
+      throw new BadRequestException('Templates HSM só existem no canal oficial Meta.');
+    }
+
+    return this.dispatchOutbound(tenantId, actorUserId, conv, {
+      type: 'TEXT',
+      body: previewBody ?? `[template: ${tpl.name}]`,
+      templateName: tpl.name,
+      send: (provider, dInst) => provider.sendTemplate(dInst, conv.contact.phoneE164, tpl),
+      auditMeta: { conversationId: id, template: tpl.name },
+    });
+  }
+
+  /** Carrega a conversa e valida que o ator pode enviar nela. */
+  private async loadSendableConversation(tenantId: string, actorUserId: string, id: string) {
     const conv = await this.prisma.whatsappConversation.findFirst({
       where: { id, tenantId },
       include: { instance: true, contact: true },
     });
     if (!conv) throw new NotFoundException();
 
-    // Apenas o assigned user pode enviar (ou ninguém atribuído)
+    // Apenas o assigned user pode enviar (ou ninguém atribuído).
     if (conv.assignedUserId && conv.assignedUserId !== actorUserId) {
       throw new ForbiddenException(
         'Conversa atribuída a outro operador. Assuma ou peça transferência.',
       );
     }
 
-    if (conv.instance.status !== 'CONNECTED') {
+    // WAHA exige sessão conectada; Meta está conectada enquanto o token vale.
+    if (conv.instance.channel === 'WAHA' && conv.instance.status !== 'CONNECTED') {
       throw new BadRequestException(
         'Instância WhatsApp não está conectada. Verifique em Atendimento → Instâncias.',
       );
     }
+    return conv;
+  }
 
-    // Persiste primeiro (PENDING)
+  private withinMetaWindow(lastInboundAt: Date | null): boolean {
+    if (!lastInboundAt) return false;
+    return Date.now() - lastInboundAt.getTime() < META_WINDOW_MS;
+  }
+
+  /**
+   * Persiste PENDING → dispara no provider → SENT/FAILED, auto-atribui, emite
+   * SSE e audita. Compartilhado por sendText e sendTemplate.
+   */
+  private async dispatchOutbound(
+    tenantId: string,
+    actorUserId: string,
+    conv: Prisma.WhatsappConversationGetPayload<{ include: { instance: true; contact: true } }>,
+    opts: {
+      type: WaMsgType;
+      body: string | null;
+      templateName?: string;
+      auditMeta?: Prisma.InputJsonObject;
+      send: (
+        provider: ReturnType<ChannelProviderFactory['for']>,
+        dInst: ReturnType<WhatsappCredentials['decrypt']>,
+      ) => Promise<{ providerMsgId: string }>;
+    },
+  ) {
+    const id = conv.id;
+
+    // Persiste primeiro (PENDING).
     const local = await this.prisma.whatsappMessage.create({
       data: {
         conversationId: id,
         direction: 'OUT',
-        type: 'TEXT',
-        body: text,
+        type: opts.type,
+        body: opts.body,
+        templateName: opts.templateName ?? null,
         fromUserId: actorUserId,
         status: 'PENDING',
       },
     });
 
-    // Auto-atribui se não tinha ninguém
+    // Auto-atribui se não tinha ninguém.
     if (!conv.assignedUserId) {
       await this.prisma.whatsappConversation.update({
         where: { id },
@@ -270,23 +360,15 @@ export class WhatsappConversationsService {
       });
     }
 
-    // Dispara
     try {
-      const res = await this.evolution.sendText(
-        conv.instance.evolutionUrl,
-        conv.instance.apiKey,
-        conv.instance.instanceName,
-        conv.contact.phoneE164,
-        text,
-      );
+      const provider = this.factory.for(conv.instance.channel);
+      const dInst = this.creds.decrypt(conv.instance);
+      const res = await opts.send(provider, dInst);
+
       const updated = await this.prisma.whatsappMessage.update({
         where: { id: local.id },
-        data: {
-          status: 'SENT',
-          evolutionMsgId: res.key?.id ?? null,
-        },
+        data: { status: 'SENT', providerMsgId: res.providerMsgId || null },
       });
-
       await this.prisma.whatsappConversation.update({
         where: { id },
         data: { lastMessageAt: new Date() },
@@ -299,22 +381,20 @@ export class WhatsappConversationsService {
           conversationId: id,
           messageId: updated.id,
           direction: 'OUT',
-          type: 'TEXT',
-          body: text,
+          type: updated.type,
+          body: updated.body,
           createdAt: updated.createdAt,
           fromUserId: actorUserId,
         },
       });
-
       await this.audit.log({
         tenantId,
         userId: actorUserId,
         action: 'whatsapp.message.sent',
         resource: 'whatsapp_message',
         resourceId: updated.id,
-        metadata: { conversationId: id, length: text.length },
+        metadata: opts.auditMeta ?? { conversationId: id },
       });
-
       return updated;
     } catch (e) {
       const failed = await this.prisma.whatsappMessage.update({

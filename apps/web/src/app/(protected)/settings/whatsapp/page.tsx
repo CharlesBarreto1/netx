@@ -1,6 +1,6 @@
 'use client';
 
-import { Plus, RefreshCw, LogOut, Trash2 } from 'lucide-react';
+import { Plus, RefreshCw, LogOut, Trash2, FileText } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
@@ -17,6 +17,9 @@ import {
   listInstances,
   logoutInstance,
   reconnectInstance,
+  syncTemplates,
+  type CreateInstanceInput,
+  type WaChannel,
   type WaInstance,
 } from '@/lib/whatsapp-api';
 
@@ -89,20 +92,52 @@ function NewInstanceForm({
 }) {
   const t = useTranslations('chat.admin');
   const tCommon = useTranslations('common');
+  const [channel, setChannel] = useState<WaChannel>('WAHA');
   const [form, setForm] = useState({
     name: 'Atendimento Principal',
     instanceName: 'atendimento-principal',
-    evolutionUrl: 'http://localhost:8080',
+    // WAHA
+    evolutionUrl: 'http://localhost:3000',
     apiKey: '',
+    // Meta Cloud
+    wabaId: '',
+    phoneNumberId: '',
+    accessToken: '',
+    appSecret: '',
+    verifyToken: '',
   });
   const [busy, setBusy] = useState(false);
 
+  const valid =
+    channel === 'WAHA'
+      ? Boolean(form.apiKey)
+      : Boolean(form.phoneNumberId && form.accessToken && form.appSecret);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (busy) return;
+    if (busy || !valid) return;
     setBusy(true);
     try {
-      await createInstance(form);
+      const payload: CreateInstanceInput =
+        channel === 'WAHA'
+          ? {
+              name: form.name,
+              channel: 'WAHA',
+              instanceName: form.instanceName,
+              evolutionUrl: form.evolutionUrl,
+              apiKey: form.apiKey,
+            }
+          : {
+              name: form.name,
+              channel: 'META_CLOUD',
+              instanceName: form.instanceName,
+              wabaId: form.wabaId || undefined,
+              phoneNumberId: form.phoneNumberId,
+              accessToken: form.accessToken,
+              appSecret: form.appSecret,
+              verifyToken: form.verifyToken || undefined,
+            };
+      await createInstance(payload);
       toast.success(t('created'));
       onCreated();
     } catch (err) {
@@ -119,6 +154,26 @@ function NewInstanceForm({
       className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800"
     >
       <h2 className="text-base font-semibold">{t('formTitle')}</h2>
+
+      {/* Seletor de canal */}
+      <div className="flex gap-2">
+        {(['WAHA', 'META_CLOUD'] as WaChannel[]).map((c) => (
+          <button
+            key={c}
+            type="button"
+            onClick={() => setChannel(c)}
+            className={`flex-1 rounded-lg border p-3 text-left text-sm transition ${
+              channel === c
+                ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
+                : 'border-slate-200 dark:border-slate-700'
+            }`}
+          >
+            <span className="block font-semibold">{t(`channel.${c}.label`)}</span>
+            <span className="block text-xs text-text-muted">{t(`channel.${c}.hint`)}</span>
+          </button>
+        ))}
+      </div>
+
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <div>
           <Label htmlFor="i-name" required>
@@ -143,34 +198,97 @@ function NewInstanceForm({
             placeholder="atendimento-principal"
           />
         </div>
-        <div>
-          <Label htmlFor="i-url">{t('field.evolutionUrl')}</Label>
-          <Input
-            id="i-url"
-            value={form.evolutionUrl}
-            onChange={(e) => setForm((s) => ({ ...s, evolutionUrl: e.target.value }))}
-            placeholder="http://localhost:8080"
-          />
-        </div>
-        <div>
-          <Label htmlFor="i-apikey" required>
-            {t('field.apiKey')}
-          </Label>
-          <Input
-            id="i-apikey"
-            type="password"
-            value={form.apiKey}
-            onChange={(e) => setForm((s) => ({ ...s, apiKey: e.target.value }))}
-            autoComplete="off"
-          />
-        </div>
+
+        {channel === 'WAHA' ? (
+          <>
+            <div>
+              <Label htmlFor="i-url">{t('field.evolutionUrl')}</Label>
+              <Input
+                id="i-url"
+                value={form.evolutionUrl}
+                onChange={(e) => setForm((s) => ({ ...s, evolutionUrl: e.target.value }))}
+                placeholder="http://localhost:3000"
+              />
+            </div>
+            <div>
+              <Label htmlFor="i-apikey" required>
+                {t('field.apiKey')}
+              </Label>
+              <Input
+                id="i-apikey"
+                type="password"
+                value={form.apiKey}
+                onChange={(e) => setForm((s) => ({ ...s, apiKey: e.target.value }))}
+                autoComplete="off"
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <Label htmlFor="i-phoneNumberId" required>
+                {t('field.phoneNumberId')}
+              </Label>
+              <Input
+                id="i-phoneNumberId"
+                value={form.phoneNumberId}
+                onChange={(e) => setForm((s) => ({ ...s, phoneNumberId: e.target.value }))}
+                placeholder="1234567890"
+              />
+            </div>
+            <div>
+              <Label htmlFor="i-wabaId">{t('field.wabaId')}</Label>
+              <Input
+                id="i-wabaId"
+                value={form.wabaId}
+                onChange={(e) => setForm((s) => ({ ...s, wabaId: e.target.value }))}
+                placeholder="WABA id (p/ sync de templates)"
+              />
+            </div>
+            <div>
+              <Label htmlFor="i-accessToken" required>
+                {t('field.accessToken')}
+              </Label>
+              <Input
+                id="i-accessToken"
+                type="password"
+                value={form.accessToken}
+                onChange={(e) => setForm((s) => ({ ...s, accessToken: e.target.value }))}
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <Label htmlFor="i-appSecret" required>
+                {t('field.appSecret')}
+              </Label>
+              <Input
+                id="i-appSecret"
+                type="password"
+                value={form.appSecret}
+                onChange={(e) => setForm((s) => ({ ...s, appSecret: e.target.value }))}
+                autoComplete="off"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Label htmlFor="i-verifyToken">{t('field.verifyToken')}</Label>
+              <Input
+                id="i-verifyToken"
+                value={form.verifyToken}
+                onChange={(e) => setForm((s) => ({ ...s, verifyToken: e.target.value }))}
+                placeholder={t('field.verifyTokenHint')}
+              />
+            </div>
+          </>
+        )}
       </div>
-      <p className="text-xs text-text-muted">{t('formHelp')}</p>
+      <p className="text-xs text-text-muted">
+        {channel === 'WAHA' ? t('formHelp') : t('formHelpMeta')}
+      </p>
       <div className="flex justify-end gap-2 border-t border-slate-200 pt-3 dark:border-slate-700">
         <Button type="button" variant="outline" onClick={onCancel} disabled={busy}>
           {tCommon('cancel')}
         </Button>
-        <Button type="submit" loading={busy} disabled={!form.apiKey}>
+        <Button type="submit" loading={busy} disabled={!valid}>
           {t('createBtn')}
         </Button>
       </div>
@@ -214,9 +332,22 @@ function InstanceCard({
     <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-700 dark:bg-slate-800">
       <header className="flex items-start justify-between">
         <div>
-          <h3 className="text-base font-semibold">{instance.name}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-base font-semibold">{instance.name}</h3>
+            <span
+              className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
+                instance.channel === 'META_CLOUD'
+                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                  : 'bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300'
+              }`}
+            >
+              {t(`channel.${instance.channel}.label`)}
+            </span>
+          </div>
           <p className="text-xs text-text-muted">
-            {instance.instanceName} · {instance.evolutionUrl}
+            {instance.channel === 'META_CLOUD'
+              ? `${instance.instanceName} · phone_id ${instance.phoneNumberId ?? '—'}`
+              : `${instance.instanceName} · ${instance.evolutionUrl}`}
           </p>
           {instance.phoneE164 && (
             <p className="mt-1 text-sm font-medium">{instance.phoneE164}</p>
@@ -254,7 +385,7 @@ function InstanceCard({
           <RefreshCw className="mr-1 h-3.5 w-3.5" />
           {t('reconnect')}
         </Button>
-        {instance.status === 'CONNECTED' && (
+        {instance.channel === 'WAHA' && instance.status === 'CONNECTED' && (
           <Button
             size="sm"
             variant="outline"
@@ -263,6 +394,22 @@ function InstanceCard({
           >
             <LogOut className="mr-1 h-3.5 w-3.5" />
             {t('logout')}
+          </Button>
+        )}
+        {instance.channel === 'META_CLOUD' && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              action(async () => {
+                const r = await syncTemplates(instance.id);
+                return r;
+              }, t('templatesSynced'))
+            }
+            disabled={busy}
+          >
+            <FileText className="mr-1 h-3.5 w-3.5" />
+            {t('syncTemplates')}
           </Button>
         )}
         <Button

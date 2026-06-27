@@ -32,9 +32,12 @@ export type WaMsgType =
   | 'UNKNOWN';
 export type WaMsgStatus = 'PENDING' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED';
 
+export type WaChannel = 'WAHA' | 'META_CLOUD';
+
 export interface WaInstance {
   id: string;
   name: string;
+  channel: WaChannel;
   instanceName: string;
   evolutionUrl: string;
   phoneE164: string | null;
@@ -43,8 +46,19 @@ export interface WaInstance {
   active: boolean;
   connectedAt: string | null;
   lastError: string | null;
+  wabaId?: string | null;
+  phoneNumberId?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface WaTemplate {
+  id: string;
+  name: string;
+  language: string;
+  category: string;
+  status: string;
+  bodyText: string | null;
 }
 
 export interface WaContact {
@@ -71,7 +85,7 @@ export interface WaConversationListItem {
   lastInboundAt: string | null;
   unreadCount: number;
   contact: WaContact;
-  instance: { id: string; name: string; phoneE164: string | null; status: WaInstanceStatus };
+  instance: { id: string; name: string; phoneE164: string | null; status: WaInstanceStatus; channel: WaChannel };
   assignedUser: { id: string; firstName: string; lastName: string; email: string } | null;
   messages: Array<{
     id: string;
@@ -125,6 +139,26 @@ export async function sendMessage(conversationId: string, text: string) {
   return api.post<WaMessage>(`/v1/whatsapp/conversations/${conversationId}/messages`, { text });
 }
 
+export async function sendTemplateMessage(
+  conversationId: string,
+  input: { templateName: string; language: string; variables?: string[]; previewBody?: string },
+) {
+  return api.post<WaMessage>(
+    `/v1/whatsapp/conversations/${conversationId}/messages/template`,
+    input,
+  );
+}
+
+// ---- templates HSM (Meta) ----
+
+export async function listTemplates() {
+  return api.get<WaTemplate[]>(`/v1/whatsapp/templates`);
+}
+
+export async function syncTemplates(instanceId: string) {
+  return api.post<{ synced: number }>(`/v1/whatsapp/instances/${instanceId}/templates/sync`, {});
+}
+
 // ---- IA conselheira (read-only: sugere/resume, nunca envia) ----
 export async function suggestWaReply(conversationId: string) {
   return api.post<WaAiSuggestResponse>(
@@ -148,12 +182,22 @@ export async function getInstance(id: string) {
   return api.get<WaInstance>(`/v1/whatsapp/instances/${id}`);
 }
 
-export async function createInstance(input: {
+export interface CreateInstanceInput {
   name: string;
-  evolutionUrl?: string;
-  apiKey: string;
+  channel: WaChannel;
   instanceName: string;
-}) {
+  // WAHA
+  evolutionUrl?: string;
+  apiKey?: string;
+  // Meta Cloud
+  wabaId?: string;
+  phoneNumberId?: string;
+  accessToken?: string;
+  appSecret?: string;
+  verifyToken?: string;
+}
+
+export async function createInstance(input: CreateInstanceInput) {
   return api.post<WaInstance>(`/v1/whatsapp/instances`, input);
 }
 

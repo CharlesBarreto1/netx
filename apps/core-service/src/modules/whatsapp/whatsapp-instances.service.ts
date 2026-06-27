@@ -307,10 +307,17 @@ export class WhatsappInstancesService {
     return this.prisma.whatsappInstance.findFirst({ where: { instanceName } });
   }
 
-  /** Linha crua por phoneNumberId (roteamento do webhook Meta). */
+  /** Linha crua por phoneNumberId (roteamento do webhook Meta POST). */
   async findByPhoneNumberId(phoneNumberId: string) {
     return this.prisma.whatsappInstance.findFirst({
       where: { phoneNumberId, channel: 'META_CLOUD' },
+    });
+  }
+
+  /** Linha crua por verifyToken (verificação GET do webhook Meta). */
+  async findByVerifyToken(verifyToken: string) {
+    return this.prisma.whatsappInstance.findFirst({
+      where: { verifyToken, channel: 'META_CLOUD' },
     });
   }
 

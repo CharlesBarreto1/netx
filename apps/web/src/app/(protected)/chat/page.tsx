@@ -10,6 +10,7 @@ import {
   UserCheck,
   ArrowRightLeft,
   ExternalLink,
+  FileText,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -28,9 +29,11 @@ import {
   getConversation,
   getWaInsights,
   listConversations,
+  listTemplates,
   resolveConversation,
   resolveMediaUrl,
   sendMessage,
+  sendTemplateMessage,
   suggestWaReply,
   timeAgo,
   type InboxFilter,
@@ -38,6 +41,7 @@ import {
   type WaConversationDetail,
   type WaConversationListItem,
   type WaMessage,
+  type WaTemplate,
 } from '@/lib/whatsapp-api';
 
 /**
@@ -298,6 +302,8 @@ function ChatThread({
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [insights, setInsights] = useState<WaAiInsightsResponse | null>(null);
+  const [templates, setTemplates] = useState<WaTemplate[]>([]);
+  const [showTemplates, setShowTemplates] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Scroll pro fim quando trocar de conversa ou chegar msg nova
@@ -307,8 +313,11 @@ function ChatThread({
     }
   }, [conversation?.messages.length, conversation?.id]);
 
-  // Limpa insights ao trocar de conversa.
-  useEffect(() => setInsights(null), [conversation?.id]);
+  // Limpa insights e picker de template ao trocar de conversa.
+  useEffect(() => {
+    setInsights(null);
+    setShowTemplates(false);
+  }, [conversation?.id]);
 
   // IA conselheira: sugere resposta (preenche o composer) e resume a conversa.
   async function doSuggest() {
@@ -362,8 +371,44 @@ function ChatThread({
       setText('');
       onSent();
     } catch (err) {
+      // Meta fora da janela de 24h → backend pede template. Abre o picker.
+      if (err instanceof ApiError && (err.problem as { requiresTemplate?: boolean })?.requiresTemplate) {
+        toast.message(t('templates.windowClosed'));
+        await openTemplatePicker();
+        return;
+      }
       const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
       toast.error(msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openTemplatePicker() {
+    try {
+      const tpls = await listTemplates();
+      setTemplates(tpls);
+      setShowTemplates(true);
+      if (!tpls.length) toast.error(t('templates.empty'));
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
+    }
+  }
+
+  async function doSendTemplate(tpl: WaTemplate) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await sendTemplateMessage(conversation!.id, {
+        templateName: tpl.name,
+        language: tpl.language,
+        previewBody: tpl.bodyText ?? `[template: ${tpl.name}]`,
+      });
+      setShowTemplates(false);
+      setText('');
+      onSent();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
     } finally {
       setBusy(false);
     }
@@ -472,6 +517,42 @@ function ChatThread({
               : t('thread.unassigned')}
           </div>
         )}
+        {showTemplates && (
+          <div className="mb-2 max-h-56 overflow-y-auto rounded-md border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-900/40">
+            <div className="mb-1 flex items-center justify-between px-1">
+              <span className="text-xs font-semibold">{t('templates.title')}</span>
+              <button
+                type="button"
+                className="text-xs text-text-muted hover:underline"
+                onClick={() => setShowTemplates(false)}
+              >
+                {tCommon('cancel')}
+              </button>
+            </div>
+            {templates.length === 0 ? (
+              <p className="px-1 py-2 text-xs text-text-muted">{t('templates.empty')}</p>
+            ) : (
+              <ul className="space-y-1">
+                {templates.map((tpl) => (
+                  <li key={tpl.id}>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void doSendTemplate(tpl)}
+                      className="w-full rounded p-2 text-left text-xs hover:bg-white disabled:opacity-50 dark:hover:bg-slate-800"
+                    >
+                      <span className="font-medium">{tpl.name}</span>
+                      <span className="ml-1 text-text-muted">· {tpl.language}</span>
+                      {tpl.bodyText && (
+                        <span className="mt-0.5 block truncate text-text-muted">{tpl.bodyText}</span>
+                      )}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
         <div className="flex items-end gap-2">
           <textarea
             value={text}
@@ -487,6 +568,17 @@ function ChatThread({
             rows={2}
             className="flex-1 resize-none rounded-md border border-slate-300 p-2 text-sm focus:border-brand-500 focus:outline-hidden disabled:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
           />
+          {conversation.instance.channel === 'META_CLOUD' && (
+            <Button
+              onClick={() => void openTemplatePicker()}
+              disabled={!canType || busy}
+              size="sm"
+              variant="subtle"
+              title={t('templates.title')}
+            >
+              <FileText className="h-4 w-4" />
+            </Button>
+          )}
           <Button
             onClick={doSuggest}
             disabled={!canType || aiBusy || busy}

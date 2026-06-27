@@ -109,7 +109,7 @@ export class MetaCloudProvider implements ChannelProvider {
       );
       const phone = r?.display_phone_number ? '+' + r.display_phone_number.replace(/\D/g, '') : null;
       return { state: 'CONNECTED', phoneE164: phone };
-    } catch (e) {
+    } catch {
       return { state: 'ERROR', qrCode: null };
     }
   }
@@ -184,6 +184,31 @@ export class MetaCloudProvider implements ChannelProvider {
     });
     if (!res?.id) throw new Error('Meta media upload sem id');
     return res.id;
+  }
+
+  // ---- templates (sync da Graph API) ----
+
+  /**
+   * Lista os templates da WABA. Usado pelo WhatsappTemplatesService pra
+   * sincronizar o catálogo local. Requer `wabaId` + token.
+   */
+  async listRemoteTemplates(inst: DecryptedInstance): Promise<MetaTemplate[]> {
+    if (!inst.accessToken || !inst.wabaId) {
+      throw new Error('Sync de templates exige wabaId e accessToken');
+    }
+    const out: MetaTemplate[] = [];
+    let path: string | null = `/${encodeURIComponent(inst.wabaId)}/message_templates?limit=100&fields=name,language,category,status,components,id`;
+    // Pagina via cursor (paging.next) — corta em 10 páginas por segurança.
+    for (let i = 0; i < 10 && path; i++) {
+      const page: { data?: MetaTemplate[]; paging?: { cursors?: { after?: string } } } =
+        await this.graph(inst.accessToken, path);
+      out.push(...(page?.data ?? []));
+      const after = page?.paging?.cursors?.after;
+      path = after
+        ? `/${encodeURIComponent(inst.wabaId)}/message_templates?limit=100&after=${encodeURIComponent(after)}&fields=name,language,category,status,components,id`
+        : null;
+    }
+    return out;
   }
 
   // ---- webhook ----
@@ -300,6 +325,15 @@ export class MetaCloudProvider implements ChannelProvider {
       return null;
     }
   }
+}
+
+export interface MetaTemplate {
+  id?: string;
+  name: string;
+  language: string;
+  category?: string;
+  status?: string;
+  components?: unknown;
 }
 
 function mapMetaStatus(s?: string): 'DELIVERED' | 'READ' | 'FAILED' | null {

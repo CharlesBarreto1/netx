@@ -30,6 +30,10 @@ async function bootstrap() {
   // Express subjacente — necessário pra `trust proxy` abaixo.
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
+    // rawBody preserva o corpo cru (req.rawBody) — exigido pra validar a
+    // assinatura HMAC dos webhooks WhatsApp (WAHA X-Webhook-Hmac e Meta
+    // X-Hub-Signature-256), que precisa bater byte-a-byte.
+    rawBody: true,
   });
   app.useLogger(app.get(Logger));
 

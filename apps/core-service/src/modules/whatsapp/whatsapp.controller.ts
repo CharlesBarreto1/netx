@@ -20,6 +20,7 @@ import { z } from 'zod';
 import type { AuthenticatedPrincipal } from '@netx/shared';
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { ZodBody } from '../../common/zod.pipe';
+import { RequiresModule } from '../licensing/license.decorators';
 
 import { WhatsappConversationsService, type InboxFilter } from './whatsapp-conversations.service';
 import { WhatsappEventsBus } from './whatsapp-events.bus';
@@ -39,6 +40,15 @@ const SendBodySchema = z.object({
 });
 type SendBody = z.infer<typeof SendBodySchema>;
 
+const SendTemplateBodySchema = z.object({
+  templateName: z.string().min(1).max(120),
+  language: z.string().min(2).max(10),
+  variables: z.array(z.string().max(1024)).max(20).optional(),
+  // Texto renderizado pra exibir no inbox (preview com as variáveis aplicadas).
+  previewBody: z.string().max(4096).optional(),
+});
+type SendTemplateBody = z.infer<typeof SendTemplateBodySchema>;
+
 /**
  * Endpoints HTTP do módulo WhatsApp/Atendimento.
  *
@@ -53,6 +63,7 @@ type SendBody = z.infer<typeof SendBodySchema>;
  */
 @ApiTags('whatsapp')
 @ApiBearerAuth()
+@RequiresModule('netx-call')
 @Controller('whatsapp')
 export class WhatsappController {
   constructor(
@@ -114,6 +125,22 @@ export class WhatsappController {
   ) {
     // Zod já validou min(1) após trim — não precisa re-checar.
     return this.conversations.sendText(user.tenantId, user.sub, id, body.text);
+  }
+
+  @Post('conversations/:id/messages/template')
+  @RequirePermissions('chat.send')
+  sendTemplate(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(SendTemplateBodySchema) body: SendTemplateBody,
+  ) {
+    return this.conversations.sendTemplate(
+      user.tenantId,
+      user.sub,
+      id,
+      { name: body.templateName, language: body.language, variables: body.variables },
+      body.previewBody,
+    );
   }
 
   // ----- realtime SSE -----

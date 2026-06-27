@@ -13,23 +13,41 @@ import { z } from 'zod';
 import type { AuthenticatedPrincipal } from '@netx/shared';
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { ZodBody } from '../../common/zod.pipe';
+import { RequiresModule } from '../licensing/license.decorators';
 
 import { WhatsappInstancesService } from './whatsapp-instances.service';
 
-// Schema inline — endpoint admin-only, contrato pequeno e específico.
-const CreateInstanceBodySchema = z.object({
-  name: z.string().min(1).max(120),
-  evolutionUrl: z.string().url().max(255).optional(),
-  // Evolution API key — comprimento livre, mas algum mínimo razoável.
-  apiKey: z.string().min(8).max(255),
-  // Nome da instance na Evolution: alfanumérico simples + . _ -, sem espaços
-  // (caracteres aceitos pela Evolution + safe pra URL path).
-  instanceName: z
-    .string()
-    .min(1)
-    .max(128)
-    .regex(/^[A-Za-z0-9._\-]+$/u, 'instanceName aceita apenas letras, dígitos, ".", "_", "-"'),
-});
+// Schema inline — endpoint admin-only. Campos variam por canal; validação
+// cruzada no .superRefine (WAHA exige apiKey; Meta exige creds do número).
+const CreateInstanceBodySchema = z
+  .object({
+    name: z.string().min(1).max(120),
+    channel: z.enum(['WAHA', 'META_CLOUD']).default('WAHA'),
+    // Nome interno: alfanumérico + . _ - (safe pra URL path / sessão WAHA).
+    instanceName: z
+      .string()
+      .min(1)
+      .max(128)
+      .regex(/^[A-Za-z0-9._-]+$/u, 'instanceName aceita apenas letras, dígitos, ".", "_", "-"'),
+    // --- WAHA ---
+    evolutionUrl: z.string().url().max(255).optional(), // base URL do WAHA
+    apiKey: z.string().min(8).max(255).optional(), // X-Api-Key do WAHA
+    // --- Meta Cloud ---
+    wabaId: z.string().max(40).optional(),
+    phoneNumberId: z.string().max(40).optional(),
+    accessToken: z.string().max(1024).optional(),
+    appSecret: z.string().max(255).optional(),
+    verifyToken: z.string().max(120).optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (v.channel === 'META_CLOUD') {
+      for (const f of ['phoneNumberId', 'accessToken', 'appSecret'] as const) {
+        if (!v[f]) ctx.addIssue({ code: 'custom', path: [f], message: `${f} é obrigatório no canal Meta` });
+      }
+    } else if (!v.apiKey) {
+      ctx.addIssue({ code: 'custom', path: ['apiKey'], message: 'apiKey é obrigatório no canal WAHA' });
+    }
+  });
 type CreateInstanceBody = z.infer<typeof CreateInstanceBodySchema>;
 
 /**
@@ -47,6 +65,7 @@ type CreateInstanceBody = z.infer<typeof CreateInstanceBodySchema>;
  */
 @ApiTags('whatsapp-instances')
 @ApiBearerAuth()
+@RequiresModule('netx-call')
 @Controller('whatsapp/instances')
 export class WhatsappInstancesController {
   constructor(private readonly instances: WhatsappInstancesService) {}

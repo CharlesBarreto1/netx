@@ -1,43 +1,37 @@
-import { timingSafeEqual } from 'crypto';
-
 import {
-  Body,
   Controller,
   ForbiddenException,
-  Headers,
   HttpCode,
   Logger,
   Post,
+  Req,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import type { RawBodyRequest } from '@nestjs/common';
+import type { Request } from 'express';
 
 import { Public } from '../../common/decorators';
 
+import { WahaProvider } from './providers/waha.provider';
 import { WhatsappEventsBus } from './whatsapp-events.bus';
 import { WhatsappInstancesService } from './whatsapp-instances.service';
 import { WhatsappMessagesService } from './whatsapp-messages.service';
 
 /**
- * Webhook receiver pra Evolution API.
+ * Webhook receiver do WAHA.
  *
- * Endpoint registrado em cada instância:
- *   POST {WEBHOOK_BASE_URL}/v1/webhooks/evolution
+ * Rotas:
+ *   POST /v1/webhooks/waha       — receiver oficial
+ *   POST /v1/webhooks/evolution  — alias legado (transição Evolution→WAHA)
  *
- * Autenticação: header `apikey: <webhookSecret>` configurado no `setWebhook`.
- * Validamos contra o registro local de instância (cada instância tem seu
- * próprio secret randômico).
+ * Autenticação: HMAC-SHA512 em `X-Webhook-Hmac` sobre o corpo CRU, validado
+ * contra o `webhookSecret` por instância. Por isso lemos `req.rawBody`
+ * (habilitado via rawBody:true no main.ts).
  *
- * Eventos suportados:
- *   - MESSAGES_UPSERT       — nova mensagem (in/out)
- *   - MESSAGES_UPDATE       — status update (delivered/read)
- *   - CONNECTION_UPDATE     — open/close/connecting + QR
- *   - CONTACTS_UPSERT       — (ignorado no MVP — atualizamos contato no fluxo de msg)
- *
- * Resposta SEMPRE 200/204 — Evolution reentrega se receber 4xx/5xx,
- * causando duplicatas. Se algo der errado processando, log + 200.
+ * Resposta SEMPRE 200 — WAHA reentrega em 4xx/5xx (geraria duplicatas).
  */
 @ApiTags('webhooks')
-@Controller('webhooks/evolution')
+@Controller('webhooks')
 export class WhatsappWebhookController {
   private readonly logger = new Logger(WhatsappWebhookController.name);
 
@@ -45,133 +39,82 @@ export class WhatsappWebhookController {
     private readonly instances: WhatsappInstancesService,
     private readonly messages: WhatsappMessagesService,
     private readonly events: WhatsappEventsBus,
+    private readonly waha: WahaProvider,
   ) {}
 
   @Public()
-  @Post()
+  @Post('waha')
   @HttpCode(200)
-  async receive(
-    @Headers('apikey') apiKey: string | undefined,
-    @Body() body: any,
-  ) {
-    const event: string = body?.event ?? '';
-    const instanceName: string = body?.instance ?? '';
+  async receiveWaha(@Req() req: RawBodyRequest<Request>) {
+    return this.handle(req);
+  }
 
-    // Pre-validação de SHAPE antes de qualquer DB hit: bloqueia probe externo
-    // de instance names + DoS amp via lookups massivos. Header apikey é
-    // obrigatório; instance precisa ter formato razoável.
-    if (!apiKey || apiKey.length < 16 || apiKey.length > 256) {
-      this.logger.warn('Webhook sem apikey válida — bloqueando antes de lookup');
-      throw new ForbiddenException('Invalid webhook secret');
-    }
-    if (!instanceName || !/^[A-Za-z0-9._\-]{1,128}$/.test(instanceName)) {
-      this.logger.warn(`Webhook com instance inválida (formato): ${instanceName}`);
-      return { ok: false, reason: 'no instance' };
+  @Public()
+  @Post('evolution')
+  @HttpCode(200)
+  async receiveLegacy(@Req() req: RawBodyRequest<Request>) {
+    return this.handle(req);
+  }
+
+  private async handle(req: RawBodyRequest<Request>) {
+    const body: any = req.body ?? {};
+    const session: string = body?.session ?? '';
+
+    if (!session || !/^[A-Za-z0-9._-]{1,128}$/.test(session)) {
+      this.logger.warn(`Webhook WAHA com session inválida: ${session}`);
+      return { ok: false, reason: 'no session' };
     }
 
-    const inst = await this.instances.findByInstanceName(instanceName);
+    const inst = await this.instances.findByInstanceName(session);
     if (!inst) {
-      this.logger.warn(`Webhook pra instância desconhecida: ${instanceName}`);
-      // Retorna 403 (não 404) pra não vazar quais instances existem — opaque
-      // resposta pra probes externos.
-      throw new ForbiddenException('Invalid webhook secret');
+      // 403 opaco — não vaza quais sessões existem.
+      throw new ForbiddenException('Invalid webhook');
     }
 
-    if (!safeStringCompare(apiKey, inst.webhookSecret)) {
-      this.logger.warn(`Webhook com secret inválido em ${instanceName}`);
-      throw new ForbiddenException('Invalid webhook secret');
+    const dInst = this.instances.decrypt(inst);
+    const rawBody = req.rawBody ?? Buffer.from(JSON.stringify(body));
+    const headers = req.headers as Record<string, string | undefined>;
+    if (!this.waha.verifyWebhook(dInst, headers, rawBody)) {
+      throw new ForbiddenException('Invalid webhook signature');
     }
-
-    const data = body?.data ?? {};
 
     try {
-      switch (event) {
-        case 'messages.upsert':
-        case 'MESSAGES_UPSERT':
-          await this.handleMessagesUpsert(inst.id, inst.tenantId, data);
-          break;
-
-        case 'messages.update':
-        case 'MESSAGES_UPDATE':
-          await this.handleMessagesUpdate(inst.tenantId, data);
-          break;
-
-        case 'connection.update':
-        case 'CONNECTION_UPDATE':
-          await this.handleConnectionUpdate(inst.tenantId, instanceName, data);
-          break;
-
-        default:
-          this.logger.debug(`Evento ignorado: ${event}`);
+      const tenantId = inst.tenantId;
+      for (const ev of this.waha.parseWebhook(body)) {
+        if (ev.kind === 'message') {
+          const m = ev.data;
+          if (m.media?.url && !m.media.data) {
+            const dl = await this.waha.downloadMedia(dInst, { url: m.media.url });
+            if (dl) {
+              m.media.data = dl.base64;
+              m.media.mime = dl.mime;
+            }
+          }
+          await this.messages.ingestMessage(inst.id, tenantId, m);
+        } else if (ev.kind === 'status') {
+          await this.messages.ingestStatus(tenantId, ev.data);
+        } else if (ev.kind === 'connection') {
+          const updated = await this.instances.updateConnectionState(session, ev.data.state, {
+            ...(ev.data.phoneE164 ? { phoneE164: ev.data.phoneE164 } : {}),
+          });
+          if (updated) {
+            this.events.emit({
+              type: 'instance.updated',
+              tenantId,
+              payload: {
+                id: updated.id,
+                status: updated.status,
+                phoneE164: updated.phoneE164,
+                qrCode: updated.qrCode,
+              },
+            });
+          }
+        }
       }
     } catch (e) {
-      this.logger.error(`Erro processando ${event}: ${(e as Error).message}`, (e as Error).stack);
-      // Retornamos 200 mesmo com erro pra Evolution não reentregar (logamos pra debug)
+      this.logger.error(`Erro processando webhook WAHA: ${(e as Error).message}`, (e as Error).stack);
     }
 
     return { ok: true };
   }
-
-  private async handleMessagesUpsert(instanceId: string, tenantId: string, data: any) {
-    // Evolution às vezes envia array, às vezes objeto único
-    const items = Array.isArray(data) ? data : [data];
-    for (const item of items) {
-      await this.messages.handleIncoming(instanceId, tenantId, item);
-    }
-  }
-
-  private async handleMessagesUpdate(tenantId: string, data: any) {
-    const items = Array.isArray(data) ? data : [data];
-    for (const item of items) {
-      await this.messages.handleStatusUpdate(tenantId, item);
-    }
-  }
-
-  private async handleConnectionUpdate(
-    tenantId: string,
-    instanceName: string,
-    data: any,
-  ) {
-    const state: string | undefined = data?.state ?? data?.connection;
-    let mapped: 'CONNECTED' | 'DISCONNECTED' | 'CONNECTING' | 'ERROR' = 'CONNECTING';
-    if (state === 'open') mapped = 'CONNECTED';
-    else if (state === 'close') mapped = 'DISCONNECTED';
-    else if (state === 'connecting') mapped = 'CONNECTING';
-
-    const phoneE164: string | null = data?.wuid
-      ? '+' + String(data.wuid).split('@')[0]
-      : data?.phone
-      ? '+' + String(data.phone).replace(/\D/g, '')
-      : null;
-    const qrCode: string | null = data?.qrcode?.base64 ?? data?.qr ?? null;
-
-    const updated = await this.instances.updateConnectionState(instanceName, mapped, {
-      ...(phoneE164 ? { phoneE164 } : {}),
-      ...(qrCode ? { qrCode } : {}),
-    });
-
-    if (updated) {
-      this.events.emit({
-        type: 'instance.updated',
-        tenantId,
-        payload: {
-          id: updated.id,
-          status: updated.status,
-          phoneE164: updated.phoneE164,
-          qrCode: updated.qrCode,
-        },
-      });
-    }
-  }
-}
-
-/**
- * Comparação de string em tempo constante. Sem isso, um atacante pode inferir
- * o webhookSecret byte a byte medindo latência da resposta (mesmo que pequena).
- * `crypto.timingSafeEqual` exige buffers de mesmo tamanho — comparamos
- * tamanhos primeiro (early exit é seguro: tamanho não vaza nada útil).
- */
-function safeStringCompare(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  return timingSafeEqual(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'));
 }

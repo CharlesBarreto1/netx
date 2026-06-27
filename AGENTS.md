@@ -114,7 +114,9 @@ src/modules/
   stock/                 # produtos, fornecedores, locais (ACL), kardex, comodato
   tenants/               # tenant settings + features
   users/                 # CRUD users, MenuAccess
-  whatsapp/              # módulo desativado (Evolution API foi descontinuado)
+  whatsapp/              # módulo Call/Atendimento — 2 canais sob provider:
+                         #   WAHA (QR) + Meta Cloud API (oficial). Cripto at-rest,
+                         #   templates HSM, IA conselheira. Webhooks /v1/webhooks/{waha,meta}
   mobile/                # MobileDevicesService — pair, sync (Fase 1+)
 ```
 

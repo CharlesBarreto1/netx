@@ -11,7 +11,6 @@ import type {
   DecryptedInstance,
   OutboundMedia,
   SendResult,
-  TemplateSend,
 } from './channel-provider';
 
 /**

@@ -165,7 +165,7 @@ export class WhatsappMessagesService {
 
     let mediaUrl: string | null = null;
     let mediaSize: number | null = null;
-    let mediaMime: string | null = msg.media?.mime ?? null;
+    const mediaMime: string | null = msg.media?.mime ?? null;
     if (msg.media?.data && msg.media.mime) {
       try {
         const persisted = await this.persistMedia(msg.media.data, msg.media.mime, msg.providerMsgId);
