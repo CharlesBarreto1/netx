@@ -25,7 +25,13 @@ class CryptoService:
 
     @classmethod
     def from_key_b64(cls, key_b64: str) -> CryptoService:
-        return cls(base64.b64decode(key_b64))
+        # Aceita base64 OU hex de 64 chars (32 bytes). O ecossistema NetX usa
+        # KMS_MASTER_KEY em hex; sem isto, uma chave hex decodifica em 48 bytes
+        # via base64 e crasha o gateway ("chave-mestra deve ter 32 bytes").
+        s = key_b64.strip()
+        if len(s) == 64 and all(c in "0123456789abcdefABCDEF" for c in s):
+            return cls(bytes.fromhex(s))
+        return cls(base64.b64decode(s))
 
     def encrypt(self, plaintext: str) -> str:
         iv = os.urandom(_IV_LEN)

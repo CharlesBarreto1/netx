@@ -59,7 +59,9 @@ POSTGRES_PASSWORD=$(openssl rand -hex 16)
 POSTGRES_DB=netx_nms
 
 JWT_SECRET=$(openssl rand -base64 48 | tr -d '\n')
-MASTER_KEY=$(openssl rand -hex 32)
+# device-gateway/crypto.py espera base64 de 32 bytes (AES-256), NÃO hex —
+# hex-64 decodifica em 48 bytes e crasha o gateway ("chave-mestra deve ter 32 bytes").
+MASTER_KEY=$(openssl rand -base64 32 | tr -d '\n')
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=
 
