@@ -34,7 +34,12 @@ echo "==> Parando serviços NetX"
 systemctl stop netx-web netx-api-gateway netx-core-service 2>/dev/null || true
 systemctl disable netx-web netx-api-gateway netx-core-service 2>/dev/null || true
 
-echo "==> Parando Evolution API (Docker)"
+echo "==> Parando WAHA (Docker)"
+if [ -d /opt/netx-waha ]; then
+  (cd /opt/netx-waha && docker compose down -v 2>/dev/null) || true
+fi
+
+echo "==> Parando Evolution API (Docker, legado)"
 if [ -d /opt/netx-evolution ]; then
   (cd /opt/netx-evolution && docker compose down -v 2>/dev/null) || true
 fi
@@ -102,7 +107,7 @@ if (( PURGE == 1 )); then
   # ATENÇÃO: o post-install do pacote chown'a /var/log/rabbitmq — se vc apagar
   # o dir sem recriar, dpkg falha. Recriar (mkdir+chown) é obrigatório.
 
-  rm -rf /etc/netx /var/lib/netx /opt/netx-evolution
+  rm -rf /etc/netx /var/lib/netx /opt/netx-waha /opt/netx-evolution
   userdel -r netx 2>/dev/null || true
 
   echo "==> Tudo removido."

@@ -127,7 +127,7 @@ export class WhatsappInstancesService {
     instanceName: string,
     webhookSecret: string,
   ) {
-    const evolutionUrl = (input.evolutionUrl ?? 'http://localhost:3000').trim();
+    const evolutionUrl = (input.evolutionUrl ?? 'http://localhost:3010').trim();
     if (!input.apiKey) throw new BadRequestException('apiKey (X-Api-Key do WAHA) é obrigatório');
 
     // Persiste primeiro (cifrado), depois cria a sessão remota e guarda o QR.

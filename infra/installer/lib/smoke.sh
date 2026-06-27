@@ -8,14 +8,14 @@ smoke_test() {
   smoke_http_endpoints
   smoke_postgres_radius
   smoke_freeradius_test
-  smoke_evolution
+  smoke_waha
 }
 
-smoke_evolution() {
-  if curl -fsS "http://127.0.0.1:8080/" >/dev/null 2>&1; then
-    log_ok "Evolution API responde em :8080"
+smoke_waha() {
+  if curl -fsS "http://127.0.0.1:3010/ping" >/dev/null 2>&1; then
+    log_ok "WAHA responde em :3010"
   else
-    log_warn "Evolution API não respondeu (admin pode subir manualmente: cd /opt/netx-evolution && docker compose up -d)"
+    log_warn "WAHA não respondeu (admin pode subir manualmente: cd /opt/netx-waha && docker compose up -d)"
   fi
 }
 

@@ -192,8 +192,8 @@ source "${INSTALLER_DIR}/lib/freeradius.sh"
 source "${INSTALLER_DIR}/lib/chrony.sh"
 # shellcheck source=lib/firewall.sh
 source "${INSTALLER_DIR}/lib/firewall.sh"
-# shellcheck source=lib/evolution.sh
-source "${INSTALLER_DIR}/lib/evolution.sh"
+# shellcheck source=lib/waha.sh
+source "${INSTALLER_DIR}/lib/waha.sh"
 # shellcheck source=lib/traccar.sh
 source "${INSTALLER_DIR}/lib/traccar.sh"
 # shellcheck source=lib/netx_app.sh
@@ -242,14 +242,15 @@ main() {
   step "netx_app"            netx_app_setup
   step "freeradius"          freeradius_setup
   step "chrony"              chrony_setup
-  # Evolution API (WhatsApp) é opcional. Pode pular com NETX_SKIP_EVOLUTION=1.
-  # O módulo Chat do core-service degrada graciosamente sem o serviço — só
-  # endpoints WhatsApp ficam off, resto do app continua normal.
-  if [[ "${NETX_SKIP_EVOLUTION:-0}" != "1" ]]; then
-    step "evolution"           evolution_setup
+  # WAHA (canal QR do módulo Call) é opcional. Pule com NETX_SKIP_WHATSAPP=1
+  # (NETX_SKIP_EVOLUTION ainda é honrado por compat). O módulo Call degrada
+  # graciosamente sem o serviço — o canal QR fica off, o resto (inclusive o
+  # canal oficial Meta Cloud, que não precisa de serviço local) continua.
+  if [[ "${NETX_SKIP_WHATSAPP:-${NETX_SKIP_EVOLUTION:-0}}" != "1" ]]; then
+    step "waha"                waha_setup
   else
-    log_dim "→ evolution: pulado (NETX_SKIP_EVOLUTION=1)"
-    : > "${NETX_STATE_DIR}/evolution.done"
+    log_dim "→ waha: pulado (NETX_SKIP_WHATSAPP=1)"
+    : > "${NETX_STATE_DIR}/waha.done"
   fi
   # Traccar (GPS da Frota) vem HABILITADO por padrão — a frota funciona out-of-
   # the-box (cadastra IMEI na UI → rastreia). Opt-out explícito com

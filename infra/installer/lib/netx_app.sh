@@ -163,12 +163,12 @@ netx_app_render_env() {
   fi
   NETX_CORS_ORIGINS="${origins}"
 
-  # Apikey do Evolution já criada (ou ainda vazia se evolution_setup ainda
-  # não rodou). Se vazia agora, vai ser preenchida na próxima execução —
-  # o installer é idempotente, render_env roda de novo após evolution_setup
-  # se necessário.
-  export EVOLUTION_API_KEY
-  EVOLUTION_API_KEY=$(secret_get_or_create EVOLUTION_API_KEY 48)
+  # X-Api-Key do WAHA (canal QR). secret_get_or_create é idempotente: o mesmo
+  # valor que waha_setup injeta no container é resolvido aqui, independente da
+  # ordem dos steps (netx_app roda antes do waha). render_env roda de novo se
+  # necessário — o installer é idempotente.
+  export WHATSAPP_API_KEY
+  WHATSAPP_API_KEY=$(secret_get_or_create WHATSAPP_API_KEY 48)
 
   # Defaults pra vars que SÓ são setadas em steps opcionais. Sem isso, envsubst
   # deixa o literal `${VAR}` no .env quando o step é pulado, e qualquer source
@@ -218,7 +218,7 @@ netx_app_render_env() {
     NETX_MINIO_ACCESS_KEY NETX_MINIO_SECRET_KEY \
     NETX_TRACCAR_URL NETX_TRACCAR_TOKEN \
     NETX_HUB_URL NETX_LICENSE_KEY NETX_INSTANCE_ID \
-    EVOLUTION_API_KEY
+    WHATSAPP_API_KEY
 
   chown root:"${NETX_USER}" "${env}"
   chmod 640 "${env}"

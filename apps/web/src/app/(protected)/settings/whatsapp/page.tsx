@@ -97,7 +97,7 @@ function NewInstanceForm({
     name: 'Atendimento Principal',
     instanceName: 'atendimento-principal',
     // WAHA
-    evolutionUrl: 'http://localhost:3000',
+    evolutionUrl: 'http://localhost:3010',
     apiKey: '',
     // Meta Cloud
     wabaId: '',
@@ -207,7 +207,7 @@ function NewInstanceForm({
                 id="i-url"
                 value={form.evolutionUrl}
                 onChange={(e) => setForm((s) => ({ ...s, evolutionUrl: e.target.value }))}
-                placeholder="http://localhost:3000"
+                placeholder="http://localhost:3010"
               />
             </div>
             <div>
