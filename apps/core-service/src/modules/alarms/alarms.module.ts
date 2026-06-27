@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 
+import { AiModule } from '../ai/ai.module';
+
 import { AlarmNotifier } from './alarm-notifier.service';
 import { AlarmScopeResolver } from './alarm-scope.resolver';
 import { AlarmStream } from './alarm-stream.service';
@@ -14,6 +16,7 @@ import { IncidentCorrelator } from './incident-correlator.service';
  * ProvisioningModule (evita ciclo).
  */
 @Module({
+  imports: [AiModule],
   controllers: [AlarmsController],
   providers: [
     AlarmsService,

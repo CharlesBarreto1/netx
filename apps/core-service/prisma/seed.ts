@@ -265,6 +265,17 @@ const hubsoftPermissions = [
 ];
 
 // -----------------------------------------------------------------------------
+// Permission catalog — IA (motor @netx/ai: config sensível + copiloto grounded)
+// -----------------------------------------------------------------------------
+const aiPermissions = [
+  // Config do motor (provider, modelo, credenciais de fallback) — admin.
+  { code: 'ai.config.read',  module: 'ai', resource: 'ai_config', action: 'read'  },
+  { code: 'ai.config.write', module: 'ai', resource: 'ai_config', action: 'write' },
+  // Copiloto grounded read-only (perguntar à IA ancorado nos dados).
+  { code: 'ai.ask',          module: 'ai', resource: 'ai_copilot', action: 'ask'  },
+];
+
+// -----------------------------------------------------------------------------
 // Permission catalog — Chat / Atendimento (WhatsApp via Evolution API)
 // -----------------------------------------------------------------------------
 const chatPermissions = [
@@ -613,6 +624,7 @@ async function main() {
     ...btgPermissions,
     ...hubsoftPermissions,
     ...chatPermissions,
+    ...aiPermissions,
     ...locationsPermissions,
   ]) {
     await prisma.permission.upsert({

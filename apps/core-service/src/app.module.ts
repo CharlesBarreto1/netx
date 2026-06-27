@@ -28,6 +28,7 @@ import { PrismaModule } from './modules/prisma/prisma.module';
 import { MobileModule } from './modules/mobile/mobile.module';
 import { ProvisioningModule } from './modules/provisioning/provisioning.module';
 import { AlarmsModule } from './modules/alarms/alarms.module';
+import { AiModule } from './modules/ai/ai.module';
 import { RadiusModule } from './modules/radius/radius.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { MappingModule } from './modules/mapping/mapping.module';
@@ -118,6 +119,7 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
     UfinetModule,
     ProvisioningModule,
     AlarmsModule,
+    AiModule,
     MobileModule,
     WhatsappModule,
   ],

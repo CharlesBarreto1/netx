@@ -43,6 +43,7 @@
     "@nestjs/swagger": "^11.2.0",
     "@nestjs/terminus": "^11.0.0",
     "@nestjs/throttler": "^6.4.0",
+    "@netx/ai": "*",
     "@netx/auth": "*",
     "@netx/config": "*",
     "@netx/core-sdk": "*",

@@ -100,6 +100,26 @@ const baseSchema = z.object({
   NETX_HUB_URL: emptyAsUndefined(z.string().url().optional()),       // ex.: https://hub.netx.com.br
   NETX_LICENSE_KEY: emptyAsUndefined(z.string().min(8).optional()),  // segredo da instância (auth no heartbeat)
   NETX_INSTANCE_ID: emptyAsUndefined(z.string().uuid().optional()),  // uuid da instalação (enrollment)
+
+  // Motor de IA (@netx/ai, módulo netx-ai). Default = Ollama self-hosted na
+  // própria VPS, SEM fallback (100% local). Híbrido: ligue AI_FALLBACK_ENABLED
+  // e configure o provider de nuvem (Anthropic reaproveita ANTHROPIC_API_KEY).
+  // A IA é conselheira — nunca aplica config. Ausente = providers caem nos
+  // defaults; o módulo decide se há backend disponível em runtime.
+  AI_PROVIDER: z.enum(['ollama', 'openai-compat', 'anthropic']).default('ollama'),
+  AI_BASE_URL: emptyAsUndefined(z.string().url().optional()),        // ex.: http://127.0.0.1:11434
+  AI_MODEL: z.string().default('qwen2.5:3b-instruct'),              // 3B: rápido em CPU, cabe em 8GB
+  AI_API_KEY: emptyAsUndefined(z.string().optional()),              // só p/ provider primário de nuvem
+  AI_FALLBACK_ENABLED: booleanFromString.optional(),               // default false (mapeado)
+  AI_FALLBACK_PROVIDER: z.enum(['ollama', 'openai-compat', 'anthropic']).default('anthropic'),
+  AI_FALLBACK_MODEL: z.string().default('claude-haiku-4-5'),
+  AI_FALLBACK_BASE_URL: emptyAsUndefined(z.string().url().optional()),
+  AI_TIMEOUT_MS: z.coerce.number().int().positive().default(180_000), // CPU local é lento (minutos)
+  AI_MAX_TOKENS: z.coerce.number().int().positive().default(1024),
+  AI_REDACT_PII: booleanFromString.optional(),                      // default true (mapeado)
+  // Credencial Anthropic (fallback de nuvem default). Reutilizada pelos
+  // consumidores legados (alarmes, NMS) até migrarem pro @netx/ai.
+  ANTHROPIC_API_KEY: emptyAsUndefined(z.string().optional()),
 });
 
 export type RawEnv = z.infer<typeof baseSchema>;
@@ -164,6 +184,20 @@ export interface Config {
     hubUrl?: string;
     licenseKey?: string;
     instanceId?: string;
+  };
+  ai: {
+    provider: 'ollama' | 'openai-compat' | 'anthropic';
+    baseUrl?: string;
+    model: string;
+    apiKey?: string;
+    fallbackEnabled: boolean;
+    fallbackProvider: 'ollama' | 'openai-compat' | 'anthropic';
+    fallbackModel: string;
+    fallbackBaseUrl?: string;
+    anthropicApiKey?: string;
+    timeoutMs: number;
+    maxTokens: number;
+    redactPii: boolean;
   };
 }
 
@@ -230,6 +264,20 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
       hubUrl: e.NETX_HUB_URL,
       licenseKey: e.NETX_LICENSE_KEY,
       instanceId: e.NETX_INSTANCE_ID,
+    },
+    ai: {
+      provider: e.AI_PROVIDER,
+      baseUrl: e.AI_BASE_URL,
+      model: e.AI_MODEL,
+      apiKey: e.AI_API_KEY,
+      fallbackEnabled: e.AI_FALLBACK_ENABLED ?? false,
+      fallbackProvider: e.AI_FALLBACK_PROVIDER,
+      fallbackModel: e.AI_FALLBACK_MODEL,
+      fallbackBaseUrl: e.AI_FALLBACK_BASE_URL,
+      anthropicApiKey: e.ANTHROPIC_API_KEY,
+      timeoutMs: e.AI_TIMEOUT_MS,
+      maxTokens: e.AI_MAX_TOKENS,
+      redactPii: e.AI_REDACT_PII ?? true,
     },
   };
 }

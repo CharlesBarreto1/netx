@@ -6,40 +6,45 @@
  * best-effort — nunca no caminho crítico do alarme. A correlação já decidiu o
  * "o quê"; a IA escreve o "porquê" legível e ajuda a desambiguar.
  *
- * Sem dependência de SDK: chama a API Anthropic via fetch (Node 20+), com
- * saída estruturada (output_config.format). Desligada sem ANTHROPIC_API_KEY.
- *
- * Env:
- *   ANTHROPIC_API_KEY        — liga a camada (ausente = no-op)
- *   NETX_ALARM_AI_MODEL      — default claude-haiku-4-5 (barato p/ volume)
- *
- * @provenance Y2hhcmxlc2JhcnJldG86MDg0NzI5Njg5MDE=
+ * Usa o motor central @netx/ai (AiService): Ollama self-hosted por padrão, com
+ * fallback de nuvem opcional. Desligado quando o tenant não tem backend
+ * disponível. A IA é conselheira — só escreve texto, nunca aplica ação.
  */
 import { Injectable, Logger } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { AiService } from '../ai/ai.service';
 
 interface AiResult {
   summary: string;
   rootCause: string;
 }
 
+const RESULT_SCHEMA = {
+  type: 'object',
+  properties: {
+    summary: { type: 'string' },
+    rootCause: { type: 'string' },
+  },
+  required: ['summary', 'rootCause'],
+  additionalProperties: false,
+} as const;
+
 @Injectable()
 export class IncidentAiService {
   private readonly logger = new Logger(IncidentAiService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly ai: AiService,
+  ) {}
 
-  get enabled(): boolean {
-    return !!process.env.ANTHROPIC_API_KEY?.trim();
-  }
-
-  /** Enriquece um incident (fire-and-forget). Silencioso se IA desligada. */
+  /** Enriquece um incident (fire-and-forget). Silencioso se IA indisponível. */
   async enrich(incidentId: string): Promise<void> {
-    if (!this.enabled) return;
     try {
       const inc = await this.prisma.incident.findUnique({ where: { id: incidentId } });
       if (!inc || inc.aiSummary) return; // já enriquecido ou sumiu
+      if (!(await this.ai.available(inc.tenantId))) return; // motor desligado
 
       // Contexto: contagem de reasons recentes nas ONTs deste incident.
       const events = await this.prisma.alarmEvent.findMany({
@@ -50,7 +55,7 @@ export class IncidentAiService {
       const power = events.filter((e) => e.reason === 'POWER_LOSS').length;
       const link = events.filter((e) => e.reason === 'LINK_LOSS').length;
 
-      const result = await this.callClaude({
+      const result = await this.summarize(inc.tenantId, {
         scope: inc.scope,
         scopeLabel: inc.scopeLabel,
         rootCause: inc.rootCause,
@@ -72,16 +77,18 @@ export class IncidentAiService {
     }
   }
 
-  private async callClaude(ctx: {
-    scope: string;
-    scopeLabel: string;
-    rootCause: string;
-    affected: number;
-    total: number;
-    powerLoss: number;
-    linkLoss: number;
-  }): Promise<AiResult | null> {
-    const model = process.env.NETX_ALARM_AI_MODEL?.trim() || 'claude-haiku-4-5';
+  private async summarize(
+    tenantId: string,
+    ctx: {
+      scope: string;
+      scopeLabel: string;
+      rootCause: string;
+      affected: number;
+      total: number;
+      powerLoss: number;
+      linkLoss: number;
+    },
+  ): Promise<AiResult | null> {
     const prompt =
       `Você analisa alarmes de rede de um provedor de internet (ISP). Recebe um ` +
       `incidente JÁ correlacionado e escreve um resumo curto e técnico em português ` +
@@ -95,44 +102,13 @@ export class IncidentAiService {
       `Responda com: summary = 1-2 frases acionáveis ("o que houve + provável causa"); ` +
       `rootCause = rótulo curto (ex "Rompimento de cabo backbone", "Queda de energia no bairro", "Problema isolado do cliente").`;
 
-    const body = {
-      model,
-      max_tokens: 400,
-      messages: [{ role: 'user', content: prompt }],
-      output_config: {
-        format: {
-          type: 'json_schema',
-          schema: {
-            type: 'object',
-            properties: {
-              summary: { type: 'string' },
-              rootCause: { type: 'string' },
-            },
-            required: ['summary', 'rootCause'],
-            additionalProperties: false,
-          },
-        },
-      },
-    };
-
-    const resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY ?? '',
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (!resp.ok) {
-      this.logger.warn(`[ai] Anthropic ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
-      return null;
-    }
-    const data = (await resp.json()) as { content?: Array<{ type: string; text?: string }> };
-    const text = data.content?.find((b) => b.type === 'text')?.text;
-    if (!text) return null;
-    const parsed = JSON.parse(text) as AiResult;
+    const parsed = await this.ai.json<AiResult>(
+      tenantId,
+      [{ role: 'user', content: prompt }],
+      RESULT_SCHEMA,
+      { maxTokens: 400 },
+      'alarm.summary',
+    );
     return parsed?.summary ? parsed : null;
   }
 }

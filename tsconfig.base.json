@@ -34,7 +34,9 @@
       "@netx/config": ["packages/config/src/index.ts"],
       "@netx/config/*": ["packages/config/src/*"],
       "@netx/logger": ["packages/logger/src/index.ts"],
-      "@netx/logger/*": ["packages/logger/src/*"]
+      "@netx/logger/*": ["packages/logger/src/*"],
+      "@netx/ai": ["packages/ai/src/index.ts"],
+      "@netx/ai/*": ["packages/ai/src/*"]
     }
   },
   "exclude": ["node_modules", "tmp", "dist"]

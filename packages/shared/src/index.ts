@@ -27,3 +27,4 @@ export * from './fleet';
 export * from './hr';
 export * from './licensing';
 export * from './integrations';
+export * from './ai';

@@ -174,6 +174,10 @@ model Tenant {
   btgCharges           BtgCharge[]
   btgRecurrences       BtgRecurrence[]
 
+  // IA (motor de IA por tenant — pacote @netx/ai)
+  aiConfig             AiConfig?
+  aiUsageLogs          AiUsageLog[]
+
   @@index([status])
   @@index([country])
   @@map("tenants")
@@ -5593,4 +5597,71 @@ model Tr069PendingDevice {
 
   @@index([lastSeenAt])
   @@map("tr069_pending_devices")
+}
+
+// =============================================================================
+// IA (@netx/ai) — config do motor por tenant + log de uso.
+// Motor aberto (Ollama) self-hosted por padrão, com fallback de nuvem opcional.
+// A IA é CONSELHEIRA: resume/explica, NUNCA aplica config nem executa ação.
+// =============================================================================
+enum AiProviderKind {
+  OLLAMA
+  OPENAI_COMPAT
+  ANTHROPIC
+}
+
+model AiConfig {
+  id                String         @id @default(uuid()) @db.Uuid
+  tenantId          String         @unique @map("tenant_id") @db.Uuid
+
+  enabled           Boolean        @default(false)
+
+  // Provider primário (motor aberto por padrão).
+  provider          AiProviderKind @default(OLLAMA)
+  baseUrl           String?        @map("base_url") @db.VarChar(500)
+  model             String         @default("qwen2.5:3b-instruct") @db.VarChar(120)
+  // Credencial do provider primário (só quando nuvem). Cifrada v1:iv:tag:ct.
+  apiKeyEnc         String?        @map("api_key_enc") @db.Text
+
+  // Fallback de nuvem (híbrido). Desligado por padrão.
+  fallbackEnabled   Boolean        @default(false) @map("fallback_enabled")
+  fallbackProvider  AiProviderKind @default(ANTHROPIC) @map("fallback_provider")
+  fallbackModel     String         @default("claude-haiku-4-5") @map("fallback_model") @db.VarChar(120)
+  fallbackBaseUrl   String?        @map("fallback_base_url") @db.VarChar(500)
+  fallbackApiKeyEnc String?        @map("fallback_api_key_enc") @db.Text
+
+  // Limites/comportamento
+  maxTokens         Int            @default(1024) @map("max_tokens")
+  timeoutMs         Int            @default(120000) @map("timeout_ms")
+  redactPii         Boolean        @default(true) @map("redact_pii")
+
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  tenant            Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("ai_configs")
+}
+
+model AiUsageLog {
+  id           String         @id @default(uuid()) @db.Uuid
+  tenantId     String         @map("tenant_id") @db.Uuid
+
+  feature      String         @db.VarChar(80) // rótulo: alarm.summary, copilot.ask...
+  provider     AiProviderKind
+  model        String         @db.VarChar(120)
+  usedFallback Boolean        @default(false) @map("used_fallback")
+  ok           Boolean        @default(true)
+  latencyMs    Int            @default(0) @map("latency_ms")
+  inputTokens  Int?           @map("input_tokens")
+  outputTokens Int?           @map("output_tokens")
+  error        String?        @db.VarChar(500)
+
+  createdAt    DateTime       @default(now()) @map("created_at")
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, feature, createdAt])
+  @@index([tenantId, createdAt])
+  @@map("ai_usage_logs")
 }
