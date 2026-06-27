@@ -79,11 +79,40 @@ export class WhatsappInstancesService {
   }
 
   async list(tenantId: string) {
-    return this.prisma.whatsappInstance.findMany({
+    const rows = await this.prisma.whatsappInstance.findMany({
       where: { tenantId },
       orderBy: { createdAt: 'asc' },
-      select: PUBLIC_SELECT,
     });
+    // Refresh ao vivo das instâncias WAHA que estão conectando: assim o QR
+    // aparece e o status vira CONNECTED no próprio polling da tela (sem
+    // depender só do webhook). Best-effort — falha não derruba a listagem.
+    await Promise.all(
+      rows.map(async (r, i) => {
+        if (r.channel !== 'WAHA' || r.status !== 'CONNECTING') return;
+        try {
+          const conn = await this.factory.for('WAHA').getQr(this.creds.decrypt(r));
+          rows[i] = await this.prisma.whatsappInstance.update({
+            where: { id: r.id },
+            data: {
+              status: conn.state,
+              qrCode: conn.state === 'CONNECTED' ? null : conn.qrCode ?? r.qrCode,
+              ...(conn.phoneE164 ? { phoneE164: conn.phoneE164 } : {}),
+              ...(conn.state === 'CONNECTED' ? { connectedAt: new Date() } : {}),
+            },
+          });
+        } catch {
+          /* WAHA offline/instável — mantém o estado atual */
+        }
+      }),
+    );
+    return rows.map((r) => this.toPublic(r));
+  }
+
+  /** Projeção pública (sem segredos) de uma linha crua. */
+  private toPublic(r: { [k: string]: unknown }) {
+    return Object.fromEntries(
+      Object.keys(PUBLIC_SELECT).map((k) => [k, r[k]]),
+    ) as Record<string, unknown>;
   }
 
   /** Detalhe seguro (sem segredos) — uso do painel admin. */
@@ -127,8 +156,16 @@ export class WhatsappInstancesService {
     instanceName: string,
     webhookSecret: string,
   ) {
-    const evolutionUrl = (input.evolutionUrl ?? 'http://localhost:3010').trim();
-    if (!input.apiKey) throw new BadRequestException('apiKey (X-Api-Key do WAHA) é obrigatório');
+    // URL e X-Api-Key do WAHA são config do SERVIDOR (env), não digitadas por
+    // instância. Provisionadas pelo installer (WAHA_URL / WHATSAPP_API_KEY).
+    // input.* só sobrescreve em casos especiais (ex.: WAHA externo).
+    const evolutionUrl = (input.evolutionUrl ?? process.env.WAHA_URL ?? 'http://localhost:3010').trim();
+    const apiKey = input.apiKey ?? process.env.WHATSAPP_API_KEY;
+    if (!apiKey) {
+      throw new BadRequestException(
+        'WAHA não configurado no servidor (WHATSAPP_API_KEY ausente). Provisione o WAHA antes de criar a instância.',
+      );
+    }
 
     // Persiste primeiro (cifrado), depois cria a sessão remota e guarda o QR.
     const inst = await this.prisma.whatsappInstance.create({
@@ -137,7 +174,7 @@ export class WhatsappInstancesService {
         channel: 'WAHA',
         name: input.name.trim(),
         evolutionUrl,
-        apiKey: this.crypto.encrypt(input.apiKey),
+        apiKey: this.crypto.encrypt(apiKey),
         instanceName,
         webhookSecret,
         status: 'CONNECTING',

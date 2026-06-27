@@ -40,12 +40,12 @@ const CreateInstanceBodySchema = z
     verifyToken: z.string().max(120).optional(),
   })
   .superRefine((v, ctx) => {
+    // WAHA: URL e X-Api-Key vêm do env do servidor (provisionado pelo installer)
+    // — nada obrigatório no request. Meta exige as credenciais do número.
     if (v.channel === 'META_CLOUD') {
       for (const f of ['phoneNumberId', 'accessToken', 'appSecret'] as const) {
         if (!v[f]) ctx.addIssue({ code: 'custom', path: [f], message: `${f} é obrigatório no canal Meta` });
       }
-    } else if (!v.apiKey) {
-      ctx.addIssue({ code: 'custom', path: ['apiKey'], message: 'apiKey é obrigatório no canal WAHA' });
     }
   });
 type CreateInstanceBody = z.infer<typeof CreateInstanceBodySchema>;

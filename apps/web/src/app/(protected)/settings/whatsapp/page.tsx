@@ -110,7 +110,7 @@ function NewInstanceForm({
 
   const valid =
     channel === 'WAHA'
-      ? Boolean(form.apiKey)
+      ? Boolean(form.name.trim() && form.instanceName.trim()) // URL/key vêm do servidor
       : Boolean(form.phoneNumberId && form.accessToken && form.appSecret);
 
   async function submit(e: React.FormEvent) {
@@ -121,11 +121,10 @@ function NewInstanceForm({
       const payload: CreateInstanceInput =
         channel === 'WAHA'
           ? {
+              // URL e X-Api-Key do WAHA são config do servidor — o backend resolve.
               name: form.name,
               channel: 'WAHA',
               instanceName: form.instanceName,
-              evolutionUrl: form.evolutionUrl,
-              apiKey: form.apiKey,
             }
           : {
               name: form.name,
@@ -200,29 +199,9 @@ function NewInstanceForm({
         </div>
 
         {channel === 'WAHA' ? (
-          <>
-            <div>
-              <Label htmlFor="i-url">{t('field.evolutionUrl')}</Label>
-              <Input
-                id="i-url"
-                value={form.evolutionUrl}
-                onChange={(e) => setForm((s) => ({ ...s, evolutionUrl: e.target.value }))}
-                placeholder="http://localhost:3010"
-              />
-            </div>
-            <div>
-              <Label htmlFor="i-apikey" required>
-                {t('field.apiKey')}
-              </Label>
-              <Input
-                id="i-apikey"
-                type="password"
-                value={form.apiKey}
-                onChange={(e) => setForm((s) => ({ ...s, apiKey: e.target.value }))}
-                autoComplete="off"
-              />
-            </div>
-          </>
+          <div className="md:col-span-2 rounded-lg bg-slate-50 p-3 text-xs text-text-muted dark:bg-slate-700/40">
+            {t('field.wahaAuto')}
+          </div>
         ) : (
           <>
             <div>

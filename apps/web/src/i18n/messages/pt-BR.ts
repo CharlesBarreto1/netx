@@ -1169,7 +1169,7 @@ const messages = {
       createBtn: 'Criar instância',
       formTitle: 'Configurar nova instância',
       formHelp:
-        'A apikey é a X-Api-Key do seu servidor WAHA. Escaneie o QR no celular do número após criar.',
+        'Conexão automática com o servidor WAHA. Crie e escaneie o QR no celular do número.',
       formHelpMeta:
         'Use o phone_number_id, o token permanente e o app secret do seu app na Meta. Configure o webhook apontando para /v1/webhooks/meta com o verify token gerado.',
       created: 'Instância criada.',
@@ -1193,6 +1193,7 @@ const messages = {
         instanceName: 'Nome interno (sem espaços)',
         evolutionUrl: 'URL do WAHA',
         apiKey: 'API Key (X-Api-Key)',
+        wahaAuto: 'Conexão com o WAHA configurada no servidor — nada a preencher aqui. Só dê um nome, crie e escaneie o QR.',
         phoneNumberId: 'Phone Number ID',
         wabaId: 'WABA ID',
         accessToken: 'Access Token (permanente)',

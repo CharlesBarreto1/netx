@@ -53,7 +53,7 @@ export class WahaProvider implements ChannelProvider {
     };
     let res: Response;
     try {
-      res = await fetch(url, { ...init, headers });
+      res = await fetch(url, { ...init, headers, signal: AbortSignal.timeout(8000) });
     } catch (e) {
       throw new Error(`WAHA unreachable at ${url}: ${(e as Error).message}`);
     }
@@ -110,6 +110,13 @@ export class WahaProvider implements ChannelProvider {
         /* já iniciada */
       }
     }
+    // A sessão sobe STARTING → SCAN_QR_CODE; o QR não fica pronto na hora.
+    // Faz polling curto pra já devolver o QR no retorno do create.
+    for (let i = 0; i < 6; i++) {
+      const conn = await this.getQr(inst);
+      if (conn.state === 'CONNECTED' || conn.qrCode) return conn;
+      await sleep(1200);
+    }
     return this.getQr(inst);
   }
 
@@ -117,16 +124,26 @@ export class WahaProvider implements ChannelProvider {
     // Primeiro confere status; se já WORKING, não há QR.
     const state = await this.connectionState(inst);
     if (state.state === 'CONNECTED') return state;
+    // O endpoint de QR do WAHA devolve a IMAGEM PNG (binária) com
+    // ?format=image — não JSON. Buscamos os bytes e convertemos pra data URI.
+    const url = `${inst.baseUrl.replace(/\/$/, '')}/api/${encodeURIComponent(inst.instanceName)}/auth/qr?format=image`;
     try {
-      const qr = await this.req<{ mimetype?: string; data?: string }>(
-        inst,
-        `/api/${encodeURIComponent(inst.instanceName)}/auth/qr?format=image`,
-      );
-      const data = qr?.data ?? null;
-      return {
-        state: 'CONNECTING',
-        qrCode: data ? `data:${qr.mimetype ?? 'image/png'};base64,${data}` : null,
-      };
+      const res = await fetch(url, {
+        headers: { 'X-Api-Key': inst.apiKey, Accept: 'image/png,application/json' },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!res.ok) return { state: state.state, qrCode: null };
+      const ct = res.headers.get('content-type') ?? '';
+      if (ct.includes('application/json')) {
+        const j = (await res.json()) as { mimetype?: string; data?: string };
+        const data = j?.data ?? null;
+        if (!data) return { state: 'CONNECTING', qrCode: null };
+        const qr = data.startsWith('data:') ? data : `data:${j.mimetype ?? 'image/png'};base64,${data}`;
+        return { state: 'CONNECTING', qrCode: qr };
+      }
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (!buf.length) return { state: 'CONNECTING', qrCode: null };
+      return { state: 'CONNECTING', qrCode: `data:${ct || 'image/png'};base64,${buf.toString('base64')}` };
     } catch (e) {
       this.logger.warn(`WAHA getQr falhou: ${(e as Error).message}`);
       return { state: state.state, qrCode: null };
@@ -290,7 +307,10 @@ export class WahaProvider implements ChannelProvider {
   ): Promise<{ base64: string; mime: string } | null> {
     if (!ref.url) return null;
     try {
-      const res = await fetch(ref.url, { headers: { 'X-Api-Key': inst.apiKey } });
+      const res = await fetch(ref.url, {
+        headers: { 'X-Api-Key': inst.apiKey },
+        signal: AbortSignal.timeout(15000),
+      });
       if (!res.ok) return null;
       const mime = res.headers.get('content-type') ?? 'application/octet-stream';
       const buf = Buffer.from(await res.arrayBuffer());
@@ -303,6 +323,10 @@ export class WahaProvider implements ChannelProvider {
 }
 
 // ---- helpers de mapeamento ----
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
 
 function mapWahaStatus(s?: string): CanonicalConnection['state'] {
   switch (s) {
