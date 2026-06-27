@@ -14,6 +14,7 @@ import { AiService } from '../ai/ai.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RadacctService } from '../radius/radacct.service';
 import { COPILOT_TOOLS, buildCopilotExecutor } from './copilot-tools';
+import { NmsClient } from './nms-client';
 
 const SYSTEM = [
   'Você é o copiloto do NetX, um sistema de gestão para provedores de internet (ISP).',
@@ -23,9 +24,12 @@ const SYSTEM = [
   'Use as FERRAMENTAS para obter dados reais antes de responder — não invente',
   'números nem nomes. Para diagnóstico de cliente, busque o cliente, depois rode',
   'o diagnóstico e correlacione sessão + ONT + incidentes.',
-  'Se a pergunta exigir dado que NENHUMA ferramenta fornece (ex.: estado de',
-  'sessões BGP, latência para destinos externos, tráfego agregado de uplink),',
-  'diga claramente que o NetX não coleta esse dado hoje — não invente.',
+  'Para rede, use dispositivos_rede para achar o equipamento e depois',
+  'trafego_rede / optica_rede. O tráfego de rede é INSTANTÂNEO (~60min): NÃO há',
+  'histórico nem "pico de ontem" — se pedirem pico/ontem, diga que ainda não é',
+  'coletado. Se a pergunta exigir dado que NENHUMA ferramenta fornece (ex.: estado',
+  'de sessões BGP, latência para destinos externos), diga claramente que o NetX',
+  'não coleta esse dado hoje — não invente.',
 ].join(' ');
 
 @Injectable()
@@ -34,9 +38,10 @@ export class CopilotService {
     private readonly ai: AiService,
     private readonly prisma: PrismaService,
     private readonly radacct: RadacctService,
+    private readonly nms: NmsClient,
   ) {}
 
-  async ask(tenantId: string, question: string): Promise<AiAskResponse> {
+  async ask(tenantId: string, question: string, authToken: string | null): Promise<AiAskResponse> {
     const engine = await this.ai.getEngine(tenantId);
     if (!engine.supportsTools()) {
       throw new ServiceUnavailableException(
@@ -44,7 +49,13 @@ export class CopilotService {
           'Ative o fallback de nuvem em Configurações › Motor de IA.',
       );
     }
-    const executor = buildCopilotExecutor({ prisma: this.prisma, radacct: this.radacct, tenantId });
+    const executor = buildCopilotExecutor({
+      prisma: this.prisma,
+      radacct: this.radacct,
+      nms: this.nms,
+      tenantId,
+      authToken,
+    });
     const r = await engine.agent(
       [{ role: 'user', content: question }],
       COPILOT_TOOLS,

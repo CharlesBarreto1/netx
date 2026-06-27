@@ -12,6 +12,7 @@ import type { ToolDef, ToolExecutor } from '@netx/ai';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { RadacctService } from '../radius/radacct.service';
+import { NmsClient } from './nms-client';
 
 export const COPILOT_TOOLS: ToolDef[] = [
   {
@@ -56,12 +57,43 @@ export const COPILOT_TOOLS: ToolDef[] = [
       'Lista os incidentes de rede abertos (quedas correlacionadas por ONT/PON/CTO/cabo/OLT/bairro) com severidade e causa provável.',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   },
+  {
+    name: 'dispositivos_rede',
+    description:
+      'Lista os equipamentos monitorados pelo NMS (switches/roteadores) com id, hostname, fabricante e status. Use para descobrir o id de um device antes de consultar tráfego/óptica.',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'trafego_rede',
+    description:
+      'Tráfego ATUAL (últimos ~60min) das interfaces de um equipamento de rede (entrada/saída em Mbps, erros, status). Não tem histórico/pico — só o momento.',
+    parameters: {
+      type: 'object',
+      properties: { deviceId: { type: 'string', description: 'id do device (de dispositivos_rede)' } },
+      required: ['deviceId'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'optica_rede',
+    description:
+      'Leituras ópticas (RX/TX em dBm, temperatura do módulo) das interfaces de um equipamento de rede.',
+    parameters: {
+      type: 'object',
+      properties: { deviceId: { type: 'string', description: 'id do device (de dispositivos_rede)' } },
+      required: ['deviceId'],
+      additionalProperties: false,
+    },
+  },
 ];
 
 interface ToolDeps {
   prisma: PrismaService;
   radacct: RadacctService;
+  nms: NmsClient;
   tenantId: string;
+  /** Bearer do operador, encaminhado ao NMS (ponte SSO). */
+  authToken: string | null;
 }
 
 function num(v: unknown): number | null {
@@ -70,8 +102,19 @@ function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** bps → Mbps com 1 casa (legível pro modelo). */
+function mbps(bps: number | null): number | null {
+  return bps == null ? null : Math.round((bps / 1e6) * 10) / 10;
+}
+
 /** Constrói o executor com as deps fechadas (tenantId nunca vai pro modelo). */
-export function buildCopilotExecutor({ prisma, radacct, tenantId }: ToolDeps): ToolExecutor {
+export function buildCopilotExecutor({
+  prisma,
+  radacct,
+  nms,
+  tenantId,
+  authToken,
+}: ToolDeps): ToolExecutor {
   return async (call) => {
     switch (call.name) {
       case 'buscar_cliente': {
@@ -257,6 +300,67 @@ export function buildCopilotExecutor({ prisma, radacct, tenantId }: ToolDeps): T
             totalNoEscopo: i.totalInScope,
           })),
         };
+      }
+
+      case 'dispositivos_rede': {
+        try {
+          const devices = await nms.listDevices(authToken);
+          return {
+            total: devices.length,
+            dispositivos: devices.map((d) => ({
+              deviceId: d.id,
+              hostname: d.hostname,
+              fabricante: d.vendor,
+              modelo: d.model,
+              status: d.status,
+            })),
+          };
+        } catch (e) {
+          return { erro: e instanceof Error ? e.message : String(e) };
+        }
+      }
+
+      case 'trafego_rede': {
+        const deviceId = String(call.args.deviceId ?? '').trim();
+        if (!deviceId) return { erro: 'informe deviceId' };
+        try {
+          const rates = await nms.interfaceRates(deviceId, authToken);
+          const ativas = rates
+            .filter((r) => (r.inBps ?? 0) > 0 || (r.outBps ?? 0) > 0 || (r.inErrors ?? 0) > 0)
+            .sort((a, b) => (b.inBps ?? 0) + (b.outBps ?? 0) - ((a.inBps ?? 0) + (a.outBps ?? 0)))
+            .slice(0, 15);
+          return {
+            obs: 'tráfego instantâneo (~últimos 60min); sem histórico/pico',
+            interfaces: ativas.map((r) => ({
+              interface: r.ifName,
+              entradaMbps: mbps(r.inBps),
+              saidaMbps: mbps(r.outBps),
+              errosEntrada: r.inErrors,
+              errosSaida: r.outErrors,
+              oper: r.operStatus === 1 ? 'up' : r.operStatus === 2 ? 'down' : '?',
+            })),
+          };
+        } catch (e) {
+          return { erro: e instanceof Error ? e.message : String(e) };
+        }
+      }
+
+      case 'optica_rede': {
+        const deviceId = String(call.args.deviceId ?? '').trim();
+        if (!deviceId) return { erro: 'informe deviceId' };
+        try {
+          const optical = await nms.optical(deviceId, authToken);
+          return {
+            leituras: optical.map((o) => ({
+              interface: o.ifName,
+              rxDbm: num(o.rxDbm),
+              txDbm: num(o.txDbm),
+              tempC: num(o.moduleTempC),
+            })),
+          };
+        } catch (e) {
+          return { erro: e instanceof Error ? e.message : String(e) };
+        }
       }
 
       default:
