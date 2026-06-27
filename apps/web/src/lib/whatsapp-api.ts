@@ -11,7 +11,11 @@
  *   /v1/whatsapp/media/:filename       GET (já é absoluto-relative no body do msg)
  */
 
+import type { WaAiInsightsResponse, WaAiSuggestResponse } from '@netx/shared';
+
 import { api } from './api';
+
+export type { WaAiInsightsResponse, WaAiSuggestResponse };
 
 export type WaInstanceStatus = 'DISCONNECTED' | 'CONNECTING' | 'CONNECTED' | 'ERROR';
 export type WaConversationStatus = 'OPEN' | 'RESOLVED' | 'ARCHIVED';
@@ -119,6 +123,19 @@ export async function resolveConversation(id: string) {
 
 export async function sendMessage(conversationId: string, text: string) {
   return api.post<WaMessage>(`/v1/whatsapp/conversations/${conversationId}/messages`, { text });
+}
+
+// ---- IA conselheira (read-only: sugere/resume, nunca envia) ----
+export async function suggestWaReply(conversationId: string) {
+  return api.post<WaAiSuggestResponse>(
+    `/v1/whatsapp/conversations/${conversationId}/ai/suggest`,
+  );
+}
+
+export async function getWaInsights(conversationId: string) {
+  return api.get<WaAiInsightsResponse>(
+    `/v1/whatsapp/conversations/${conversationId}/ai/insights`,
+  );
 }
 
 // ---- instances (admin) ----

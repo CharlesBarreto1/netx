@@ -1,8 +1,11 @@
 import { Module } from '@nestjs/common';
 
+import { AiModule } from '../ai/ai.module';
 import { AuditModule } from '../audit/audit.module';
 
 import { EvolutionClient } from './evolution.client';
+import { WhatsappAiController } from './whatsapp-ai.controller';
+import { WhatsappAiService } from './whatsapp-ai.service';
 import { WhatsappController } from './whatsapp.controller';
 import { WhatsappConversationsService } from './whatsapp-conversations.service';
 import { WhatsappEventsBus } from './whatsapp-events.bus';
@@ -25,11 +28,12 @@ import { WhatsappWebhookController } from './whatsapp-webhook.controller';
  * com auditoria realtime via WhatsappConversationView.
  */
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, AiModule],
   controllers: [
     WhatsappController,
     WhatsappInstancesController,
     WhatsappWebhookController,
+    WhatsappAiController,
   ],
   providers: [
     EvolutionClient,
@@ -37,6 +41,7 @@ import { WhatsappWebhookController } from './whatsapp-webhook.controller';
     WhatsappInstancesService,
     WhatsappConversationsService,
     WhatsappMessagesService,
+    WhatsappAiService,
   ],
   exports: [WhatsappInstancesService],
 })

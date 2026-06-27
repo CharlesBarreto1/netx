@@ -103,3 +103,25 @@ export interface AiAskResponse {
   provider: string;
   usedFallback: boolean;
 }
+
+// -----------------------------------------------------------------------------
+// IA de atendimento (WhatsApp) — conselheira read-only. NUNCA envia mensagem;
+// só sugere/resume/classifica. O envio continua sendo ação humana.
+// -----------------------------------------------------------------------------
+
+/** Resposta sugerida para o operador revisar e enviar (ou descartar). */
+export interface WaAiSuggestResponse {
+  suggestion: string;
+  provider: string;
+  usedFallback: boolean;
+}
+
+/** Insights da conversa: resumo + intenção + sentimento + urgência. */
+export interface WaAiInsightsResponse {
+  summary: string;
+  intent: string;
+  sentiment: 'positivo' | 'neutro' | 'insatisfeito';
+  urgency: 'baixa' | 'media' | 'alta';
+  provider: string;
+  usedFallback: boolean;
+}
