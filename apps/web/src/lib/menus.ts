@@ -102,8 +102,9 @@ export const MENU_GROUPS: MenuGroup[] = [
     key: 'home',
     items: [
       { key: 'dashboard', href: '/dashboard', labelKey: 'dashboard' },
-      // Copiloto de IA (grounded read-only). Módulo netx-ai.
-      { key: 'copilot', href: '/copiloto', labelKey: 'copilot', permission: 'ai.ask', requiredModules: ['netx-ai'] },
+      // Copiloto de IA (grounded read-only). Gate por permissão ai.ask.
+      // (Sem requiredModules: o motor de IA não é gateado por licença hoje.)
+      { key: 'copilot', href: '/copiloto', labelKey: 'copilot', permission: 'ai.ask' },
     ],
   },
 
@@ -352,8 +353,9 @@ export const MENU_GROUPS: MenuGroup[] = [
           // Hubsoft — integração de leitura p/ migração (config + sync). Só BR.
           { key: 'hubsoft', href: '/settings/hubsoft', labelKey: 'hubsoft', permission: 'hubsoft.config.read', visibleIfCountry: ['BR'] },
           { key: 'hubsoftImport', href: '/settings/hubsoft/import', labelKey: 'hubsoftImport', permission: 'hubsoft.config.read', visibleIfCountry: ['BR'] },
-          // Motor de IA (netx-ai): provider/modelo + fallback de nuvem + teste.
-          { key: 'aiConfig', href: '/settings/ai', labelKey: 'aiConfig', permission: 'ai.config.read', requiredModules: ['netx-ai'] },
+          // Motor de IA: provider/modelo + fallback de nuvem + teste.
+          // Gate por permissão ai.config.read (sem gate de licença hoje).
+          { key: 'aiConfig', href: '/settings/ai', labelKey: 'aiConfig', permission: 'ai.config.read' },
         ],
       },
     ],
