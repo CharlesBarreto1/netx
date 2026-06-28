@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   Unplug,
   Wifi,
+  X,
   Zap,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -49,9 +50,12 @@ type Tab = 'resumo' | 'conexao' | 'financeiro';
 export function CustomerPanel({
   conversation,
   onChanged,
+  onClose,
 }: {
   conversation: WaConversationDetail | undefined;
   onChanged: () => void;
+  /** Quando em modo drawer (telas menores), mostra o X de fechar. */
+  onClose?: () => void;
 }) {
   const [tab, setTab] = useState<Tab>('resumo');
   const convId = conversation?.id;
@@ -60,15 +64,15 @@ export function CustomerPanel({
     getCustomerContext(convId as string),
   );
 
-  if (!conversation) return <aside className="hidden md:block" />;
+  if (!conversation) return <aside className="hidden lg:block" />;
 
   const contracts = ctx.data?.contracts ?? [];
   const hasCustomer = Boolean(ctx.data?.customer);
 
   return (
-    <aside className="flex h-[calc(100vh-160px)] flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
+    <aside className="flex h-full min-h-0 flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
       {/* Tabs */}
-      <div className="flex border-b border-slate-200 text-sm dark:border-slate-700">
+      <div className="flex items-center border-b border-slate-200 text-sm dark:border-slate-700">
         {([
           ['resumo', 'Resumo'],
           ['conexao', 'Conexão'],
@@ -77,7 +81,7 @@ export function CustomerPanel({
           <button
             key={key}
             onClick={() => setTab(key)}
-            className={`flex-1 px-3 py-2.5 font-medium transition ${
+            className={`flex-1 px-2 py-2.5 font-medium transition ${
               tab === key
                 ? 'border-b-2 border-brand-500 text-brand-700 dark:text-brand-300'
                 : 'text-text-muted hover:text-text'
@@ -86,6 +90,15 @@ export function CustomerPanel({
             {label}
           </button>
         ))}
+        {onClose && (
+          <button
+            onClick={onClose}
+            aria-label="Fechar"
+            className="px-3 text-text-muted hover:text-text"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">

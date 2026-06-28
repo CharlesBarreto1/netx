@@ -1,12 +1,14 @@
 'use client';
 
 import {
+  ArrowLeft,
   Eye,
   Send,
   Sparkles,
   Volume2,
   VolumeX,
   CheckCircle2,
+  User as UserIcon,
   UserCheck,
   ArrowRightLeft,
   FileText,
@@ -64,6 +66,9 @@ export default function ChatPage() {
 
   const [filter, setFilter] = useState<InboxFilter>('mine');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Painel do cliente como drawer fora do desktop (lg). Fecha ao trocar de conversa.
+  const [panelOpen, setPanelOpen] = useState(false);
+  useEffect(() => setPanelOpen(false), [selectedId]);
 
   const inboxQuery = useSWR<WaConversationListItem[]>(
     `/whatsapp/conversations?${filter}`,
@@ -110,46 +115,65 @@ export default function ChatPage() {
     }
   });
 
+  const refetchAll = () => {
+    void detailQuery.mutate();
+    void inboxQuery.mutate();
+  };
+
   return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-[320px_1fr_320px]">
-      <ChatInbox
-        filter={filter}
-        setFilter={setFilter}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-        items={inboxQuery.data}
-        loading={inboxQuery.isLoading}
-        soundEnabled={soundEnabled}
-        setSoundEnabled={setSoundEnabled}
-      />
-      <ChatThread
-        conversation={detailQuery.data}
-        loading={detailQuery.isLoading}
-        canSend={canSend}
-        canAssign={canAssign}
-        canAudit={canAudit}
-        currentUserId={session?.user.id ?? null}
-        onSent={() => {
-          void detailQuery.mutate();
-          void inboxQuery.mutate();
-        }}
-        onAssigned={() => {
-          void detailQuery.mutate();
-          void inboxQuery.mutate();
-        }}
-        onResolved={() => {
-          void detailQuery.mutate();
-          void inboxQuery.mutate();
-          setSelectedId(null);
-        }}
-      />
-      <CustomerPanel
-        conversation={detailQuery.data}
-        onChanged={() => {
-          void detailQuery.mutate();
-          void inboxQuery.mutate();
-        }}
-      />
+    <div className="grid h-[calc(100dvh-150px)] grid-cols-1 gap-3 md:grid-cols-[clamp(260px,30vw,340px)_1fr] lg:grid-cols-[clamp(280px,24vw,340px)_1fr_clamp(320px,26vw,380px)]">
+      {/* Inbox — no mobile some quando uma conversa está aberta */}
+      <div className={`min-w-0 ${selectedId ? 'hidden md:block' : ''}`}>
+        <ChatInbox
+          filter={filter}
+          setFilter={setFilter}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          items={inboxQuery.data}
+          loading={inboxQuery.isLoading}
+          soundEnabled={soundEnabled}
+          setSoundEnabled={setSoundEnabled}
+        />
+      </div>
+
+      {/* Conversa — no mobile só aparece quando há uma selecionada */}
+      <div className={`min-w-0 ${selectedId ? '' : 'hidden md:block'}`}>
+        <ChatThread
+          conversation={detailQuery.data}
+          loading={detailQuery.isLoading}
+          canSend={canSend}
+          canAssign={canAssign}
+          canAudit={canAudit}
+          currentUserId={session?.user.id ?? null}
+          onBack={() => setSelectedId(null)}
+          onOpenPanel={() => setPanelOpen(true)}
+          onSent={refetchAll}
+          onAssigned={refetchAll}
+          onResolved={() => {
+            refetchAll();
+            setSelectedId(null);
+          }}
+        />
+      </div>
+
+      {/* Painel do cliente — 3ª coluna no desktop (lg) */}
+      <div className="hidden min-w-0 lg:block">
+        <CustomerPanel conversation={detailQuery.data} onChanged={refetchAll} />
+      </div>
+
+      {/* Painel como drawer fora do desktop */}
+      {panelOpen && detailQuery.data && (
+        <div className="fixed inset-0 z-40 lg:hidden">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setPanelOpen(false)} />
+          <div className="absolute right-0 top-0 h-full w-[min(92vw,380px)] p-2">
+            <CustomerPanel
+              conversation={detailQuery.data}
+              onChanged={refetchAll}
+              onClose={() => setPanelOpen(false)}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -187,7 +211,7 @@ function ChatInbox({
   ];
 
   return (
-    <aside className="flex h-[calc(100vh-160px)] flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
+    <aside className="flex h-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
       <header className="flex items-center justify-between border-b border-slate-200 p-3 dark:border-slate-700">
         <h2 className="text-sm font-semibold">{t('inbox.title')}</h2>
         <button
@@ -287,6 +311,8 @@ function ChatThread({
   canAssign,
   canAudit,
   currentUserId,
+  onBack,
+  onOpenPanel,
   onSent,
   onAssigned,
   onResolved,
@@ -297,6 +323,8 @@ function ChatThread({
   canAssign: boolean;
   canAudit: boolean;
   currentUserId: string | null;
+  onBack: () => void;
+  onOpenPanel: () => void;
   onSent: () => void;
   onAssigned: () => void;
   onResolved: () => void;
@@ -353,7 +381,7 @@ function ChatThread({
 
   if (!conversation) {
     return (
-      <section className="flex h-[calc(100vh-160px)] items-center justify-center rounded-xl border border-slate-200 bg-white text-sm text-text-muted dark:border-slate-700 dark:bg-slate-800">
+      <section className="flex h-full items-center justify-center rounded-xl border border-slate-200 bg-white text-sm text-text-muted dark:border-slate-700 dark:bg-slate-800">
         {loading ? t('loading') : t('thread.empty')}
       </section>
     );
@@ -443,13 +471,25 @@ function ChatThread({
   }
 
   return (
-    <section className="flex h-[calc(100vh-160px)] flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
-      <header className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-700">
-        <div>
-          <h2 className="text-base font-semibold">{name}</h2>
-          <p className="text-xs text-text-muted">{conversation.contact.phoneE164}</p>
+    <section className="flex h-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 dark:border-slate-700 sm:px-4">
+        <div className="flex min-w-0 items-center gap-2">
+          <button
+            onClick={onBack}
+            aria-label="Voltar"
+            className="rounded p-1 text-slate-500 hover:bg-slate-100 md:hidden dark:hover:bg-slate-700"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
+          <div className="min-w-0">
+            <h2 className="truncate text-base font-semibold">{name}</h2>
+            <p className="truncate text-xs text-text-muted">{conversation.contact.phoneE164}</p>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button size="sm" variant="subtle" onClick={onOpenPanel} className="lg:hidden">
+            <UserIcon className="mr-1 h-3.5 w-3.5" /> Cliente
+          </Button>
           <Button size="sm" variant="subtle" onClick={doInsights} disabled={aiBusy}>
             <Sparkles className="mr-1 h-3.5 w-3.5" /> {aiBusy ? 'IA…' : 'Insights IA'}
           </Button>
@@ -500,7 +540,7 @@ function ChatThread({
         </div>
       )}
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
+      <div ref={scrollRef} className="min-w-0 flex-1 overflow-y-auto p-4">
         {conversation.messages.length === 0 ? (
           <div className="text-center text-xs text-text-muted">{t('thread.noMessages')}</div>
         ) : (
@@ -610,7 +650,7 @@ function MessageBubble({ message }: { message: WaMessage }) {
   return (
     <div className={`flex ${isOut ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[70%] rounded-lg px-3 py-2 text-sm shadow-sm ${
+        className={`max-w-[85%] min-w-0 rounded-lg px-3 py-2 text-sm shadow-sm sm:max-w-[75%] ${
           isOut
             ? 'bg-brand-600 text-white'
             : 'bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-100'
@@ -630,7 +670,9 @@ function MessageBubble({ message }: { message: WaMessage }) {
             📎 {message.body ?? tx('document')}
           </a>
         )}
-        {message.body && <p className="whitespace-pre-wrap break-words">{message.body}</p>}
+        {message.body && (
+          <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{message.body}</p>
+        )}
         <div
           className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${
             isOut ? 'text-white/70' : 'text-text-muted'
