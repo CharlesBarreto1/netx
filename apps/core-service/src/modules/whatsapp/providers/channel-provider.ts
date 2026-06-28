@@ -68,6 +68,28 @@ export interface CanonicalMessage {
   } | null;
   pushName?: string | null;
   timestamp?: Date;
+
+  // --- Grupos (WAHA) ---
+  /** true quando a mensagem veio de um grupo (`from` termina em `@g.us`). */
+  isGroup?: boolean;
+  /** JID do grupo (ex.: `1203...@g.us`). Chave da conversa de grupo. */
+  groupId?: string | null;
+  /** Assunto/nome do grupo, se o payload trouxer. */
+  groupName?: string | null;
+  /** Telefone (E164, só dígitos) do participante que enviou. */
+  authorPhone?: string | null;
+  /** pushName do participante que enviou. */
+  authorName?: string | null;
+}
+
+/** Grupo do WhatsApp (listagem via `listGroups`). */
+export interface CanonicalGroup {
+  /** JID do grupo (ex.: `1203...@g.us`). */
+  id: string;
+  /** Assunto/nome do grupo. */
+  subject: string | null;
+  /** Quantidade de participantes, se disponível. */
+  participantsCount: number | null;
 }
 
 /** Atualização de status de entrega de uma mensagem já enviada. */
@@ -152,4 +174,11 @@ export interface ChannelProvider {
     inst: DecryptedInstance,
     ref: { url?: string | null; mediaId?: string | null },
   ): Promise<{ base64: string; mime: string } | null>;
+
+  /**
+   * Lista os grupos da conta conectada. Só faz sentido no WAHA (sessão pessoal
+   * via QR); o Meta Cloud não expõe os grupos do número. Opcional: providers
+   * que não suportam simplesmente não implementam.
+   */
+  listGroups?(inst: DecryptedInstance): Promise<CanonicalGroup[]>;
 }

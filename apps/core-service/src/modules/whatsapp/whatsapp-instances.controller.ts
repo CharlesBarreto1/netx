@@ -5,6 +5,7 @@ import {
   HttpCode,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -50,6 +51,12 @@ const CreateInstanceBodySchema = z
   });
 type CreateInstanceBody = z.infer<typeof CreateInstanceBodySchema>;
 
+// Atualização parcial da instância (hoje só o opt-in de grupos).
+const UpdateInstanceBodySchema = z.object({
+  captureGroups: z.boolean(),
+});
+type UpdateInstanceBody = z.infer<typeof UpdateInstanceBodySchema>;
+
 /**
  * CRUD de instâncias WhatsApp (sessões Evolution).
  *
@@ -92,6 +99,25 @@ export class WhatsappInstancesController {
     @ZodBody(CreateInstanceBodySchema) body: CreateInstanceBody,
   ) {
     return this.instances.create(user.tenantId, user.sub, body);
+  }
+
+  @Patch(':id')
+  @RequirePermissions('chat.admin')
+  update(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(UpdateInstanceBodySchema) body: UpdateInstanceBody,
+  ) {
+    return this.instances.setCaptureGroups(user.tenantId, user.sub, id, body.captureGroups);
+  }
+
+  @Get(':id/groups')
+  @RequirePermissions('chat.admin')
+  groups(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.instances.listGroups(user.tenantId, id);
   }
 
   @Post(':id/connect')

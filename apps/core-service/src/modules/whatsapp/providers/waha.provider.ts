@@ -6,6 +6,7 @@ import type { WaChannel, WaMsgType } from '@prisma/client';
 import type {
   CanonicalConnection,
   CanonicalEvent,
+  CanonicalGroup,
   CanonicalMessage,
   ChannelProvider,
   DecryptedInstance,
@@ -278,11 +279,12 @@ export class WahaProvider implements ChannelProvider {
     const from: string = p?.from ?? '';
     const id = extractIncomingId(p?.id);
     if (!from || !id) return null;
-    // Ignora grupos/broadcast no MVP.
-    if (from.endsWith('@g.us') || from.endsWith('@broadcast') || from.includes('status@')) {
+    // Broadcast e status nunca são atendimento. Grupos (@g.us) seguem adiante —
+    // quem decide ingerir é o webhook controller (instance.captureGroups).
+    if (from.endsWith('@broadcast') || from.includes('status@')) {
       return null;
     }
-    const contactPhone = from.split('@')[0];
+    const isGroup = from.endsWith('@g.us');
     const fromMe = Boolean(p?.fromMe);
 
     let type: WaMsgType = 'TEXT';
@@ -299,17 +301,70 @@ export class WahaProvider implements ChannelProvider {
       body = `${p.location.latitude},${p.location.longitude}`;
     }
 
+    const pushName: string | null = p?.notifyName ?? p?._data?.notifyName ?? null;
+
+    if (isGroup) {
+      // Em grupo, `from` é o JID do grupo e o remetente real vem em
+      // participant/author. O contato da conversa é o GRUPO; o autor é metadado
+      // da mensagem.
+      const author = extractIncomingId(p?.participant ?? p?.author ?? p?._data?.author) ?? '';
+      const authorPhone = author ? author.split('@')[0].replace(/\D/g, '') : null;
+      return {
+        providerMsgId: id,
+        direction: fromMe ? 'OUT' : 'IN',
+        contactPhone: from.split('@')[0], // só p/ não ficar vazio; roteamos por groupId
+        chatId: from,
+        type,
+        body,
+        media,
+        pushName: null,
+        isGroup: true,
+        groupId: from,
+        groupName: p?._data?.chat?.name ?? p?.chatName ?? null,
+        authorPhone,
+        authorName: pushName,
+        timestamp: p?.timestamp ? new Date(Number(p.timestamp) * 1000) : undefined,
+      };
+    }
+
     return {
       providerMsgId: id,
       direction: fromMe ? 'OUT' : 'IN',
-      contactPhone,
+      contactPhone: from.split('@')[0],
       chatId: from, // JID exato (pode ser @lid) — respondemos NELE
       type,
       body,
       media,
-      pushName: p?.notifyName ?? p?._data?.notifyName ?? null,
+      pushName,
       timestamp: p?.timestamp ? new Date(Number(p.timestamp) * 1000) : undefined,
     };
+  }
+
+  /**
+   * Lista os grupos da sessão. WAHA (NOWEB): GET /api/{session}/groups devolve
+   * um array de grupos. Os campos variam por engine/versão — somos defensivos.
+   */
+  async listGroups(inst: DecryptedInstance): Promise<CanonicalGroup[]> {
+    const raw = await this.req<any[]>(
+      inst,
+      `/api/${encodeURIComponent(inst.instanceName)}/groups`,
+    );
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map((g): CanonicalGroup | null => {
+        const id = extractIncomingId(g?.id);
+        if (!id) return null;
+        const subject: string | null =
+          g?.subject ?? g?.name ?? g?._data?.subject ?? g?.groupMetadata?.subject ?? null;
+        const participants =
+          g?.participants ?? g?._data?.participants ?? g?.groupMetadata?.participants ?? null;
+        return {
+          id,
+          subject,
+          participantsCount: Array.isArray(participants) ? participants.length : null,
+        };
+      })
+      .filter((g): g is CanonicalGroup => g !== null);
   }
 
   async downloadMedia(

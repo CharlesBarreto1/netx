@@ -122,6 +122,40 @@ export class WhatsappMessagesService {
   }
 
   /**
+   * Resolve ou cria o "contato" que representa um grupo, identificado pelo JID
+   * do grupo. Grupos não têm telefone nem se ligam a Customer; o nome do grupo
+   * fica em `pushName` e atualiza quando o webhook trouxer o assunto.
+   */
+  private async upsertGroupContact(
+    tenantId: string,
+    groupId: string,
+    groupName: string | null,
+  ) {
+    const existing = await this.prisma.whatsappContact.findUnique({
+      where: { tenantId_waGroupId: { tenantId, waGroupId: groupId } },
+    });
+    if (existing) {
+      const patch: { pushName?: string; waChatId?: string } = {};
+      if (groupName && groupName !== existing.pushName) patch.pushName = groupName;
+      if (!existing.waChatId) patch.waChatId = groupId;
+      if (Object.keys(patch).length) {
+        return this.prisma.whatsappContact.update({ where: { id: existing.id }, data: patch });
+      }
+      return existing;
+    }
+    return this.prisma.whatsappContact.create({
+      data: {
+        tenantId,
+        phoneE164: null,
+        isGroup: true,
+        waGroupId: groupId,
+        waChatId: groupId,
+        pushName: groupName,
+      },
+    });
+  }
+
+  /**
    * Persiste media base64 em disco. Retorna URL relativa servida pelo
    * core-service em /v1/whatsapp/media/{filename}.
    */
@@ -152,8 +186,9 @@ export class WhatsappMessagesService {
     tenantId: string,
     msg: CanonicalMessage,
   ): Promise<{ messageId: string; conversationId: string } | null> {
-    if (!msg.providerMsgId || !msg.contactPhone) {
-      this.logger.warn('CanonicalMessage sem providerMsgId/contactPhone — ignorando');
+    const isGroup = msg.isGroup === true;
+    if (!msg.providerMsgId || (!isGroup && !msg.contactPhone) || (isGroup && !msg.groupId)) {
+      this.logger.warn('CanonicalMessage sem providerMsgId/contactPhone/groupId — ignorando');
       return null;
     }
 
@@ -164,12 +199,14 @@ export class WhatsappMessagesService {
     if (existing) return { messageId: existing.id, conversationId: existing.conversationId };
 
     const isInbound = msg.direction === 'IN';
-    const contact = await this.upsertContact(
-      tenantId,
-      msg.contactPhone,
-      msg.pushName ?? null,
-      msg.chatId ?? null,
-    );
+    const contact = isGroup
+      ? await this.upsertGroupContact(tenantId, msg.groupId as string, msg.groupName ?? null)
+      : await this.upsertContact(
+          tenantId,
+          msg.contactPhone,
+          msg.pushName ?? null,
+          msg.chatId ?? null,
+        );
     const conversation = await this.upsertConversation(tenantId, instanceId, contact.id, isInbound);
 
     let mediaUrl: string | null = null;
@@ -196,6 +233,8 @@ export class WhatsappMessagesService {
         mediaSize,
         providerMsgId: msg.providerMsgId,
         status: 'DELIVERED',
+        authorName: isGroup ? msg.authorName ?? null : null,
+        authorPhone: isGroup ? msg.authorPhone ?? null : null,
       },
     });
 
@@ -210,6 +249,8 @@ export class WhatsappMessagesService {
         body: created.body,
         mediaUrl: created.mediaUrl,
         createdAt: created.createdAt,
+        isGroup,
+        authorName: created.authorName,
       },
     });
     this.events.emit({

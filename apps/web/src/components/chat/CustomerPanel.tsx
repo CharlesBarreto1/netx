@@ -139,7 +139,7 @@ function ResumoTab({
           <p className="text-base font-medium">{customer.displayName}</p>
           {customer.code && <p className="text-xs text-text-muted">{customer.code}</p>}
           <dl className="mt-3 space-y-2 text-xs">
-            <Row label="Telefone" value={customer.primaryPhone ?? conversation.contact.phoneE164} />
+            <Row label="Telefone" value={customer.primaryPhone ?? conversation.contact.phoneE164 ?? '—'} />
             {customer.primaryEmail && <Row label="E-mail" value={customer.primaryEmail} />}
             <Row label="Status" value={customer.status} />
           </dl>

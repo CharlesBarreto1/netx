@@ -83,6 +83,8 @@ export class WhatsappWebhookController {
       for (const ev of this.waha.parseWebhook(body)) {
         if (ev.kind === 'message') {
           const m = ev.data;
+          // Grupos só entram se a instância tiver a captura ligada (opt-in).
+          if (m.isGroup && !inst.captureGroups) continue;
           if (m.media?.url && !m.media.data) {
             const dl = await this.waha.downloadMedia(dInst, { url: m.media.url });
             if (dl) {

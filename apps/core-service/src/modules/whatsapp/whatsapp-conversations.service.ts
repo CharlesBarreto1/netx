@@ -15,7 +15,7 @@ import { ChannelProviderFactory } from './providers/channel-provider.factory';
 import { WhatsappCredentials } from './providers/whatsapp-credentials';
 import { WhatsappEventsBus } from './whatsapp-events.bus';
 
-export type InboxFilter = 'mine' | 'unassigned' | 'all' | 'resolved';
+export type InboxFilter = 'mine' | 'unassigned' | 'all' | 'resolved' | 'groups';
 
 /** Janela de atendimento da Meta: 24h desde o último inbound do cliente. */
 const META_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -47,16 +47,24 @@ export class WhatsappConversationsService {
   async list(tenantId: string, userId: string, filter: InboxFilter = 'mine') {
     const where: Prisma.WhatsappConversationWhereInput = { tenantId };
 
-    if (filter === 'mine') {
-      where.assignedUserId = userId;
-      where.status = 'OPEN';
-    } else if (filter === 'unassigned') {
-      where.assignedUserId = null;
-      where.status = 'OPEN';
-    } else if (filter === 'resolved') {
-      where.status = 'RESOLVED';
-    } else {
+    if (filter === 'groups') {
+      // Aba dedicada de grupos: só conversas de grupo (qualquer status aberto).
+      where.contact = { isGroup: true };
       where.status = { in: ['OPEN', 'RESOLVED'] };
+    } else {
+      // Demais filas são atendimento 1:1 — grupos ficam de fora pra não poluir.
+      where.contact = { isGroup: false };
+      if (filter === 'mine') {
+        where.assignedUserId = userId;
+        where.status = 'OPEN';
+      } else if (filter === 'unassigned') {
+        where.assignedUserId = null;
+        where.status = 'OPEN';
+      } else if (filter === 'resolved') {
+        where.status = 'RESOLVED';
+      } else {
+        where.status = { in: ['OPEN', 'RESOLVED'] };
+      }
     }
 
     return this.prisma.whatsappConversation.findMany({
@@ -349,9 +357,10 @@ export class WhatsappConversationsService {
     return this.dispatchOutbound(tenantId, actorUserId, conv, {
       type: 'TEXT',
       body: text,
-      // Responde no JID exato do inbound (pode ser @lid); fallback p/ telefone.
+      // Responde no JID exato do inbound (pode ser @lid / @g.us de grupo);
+      // o telefone é só fallback e em grupos não existe (phoneE164 null).
       send: (provider, dInst) =>
-        provider.sendText(dInst, conv.contact.phoneE164, text, conv.contact.waChatId),
+        provider.sendText(dInst, conv.contact.phoneE164 ?? '', text, conv.contact.waChatId),
       auditMeta: { conversationId: id, length: text.length },
     });
   }
@@ -376,7 +385,7 @@ export class WhatsappConversationsService {
       type: 'TEXT',
       body: previewBody ?? `[template: ${tpl.name}]`,
       templateName: tpl.name,
-      send: (provider, dInst) => provider.sendTemplate(dInst, conv.contact.phoneE164, tpl),
+      send: (provider, dInst) => provider.sendTemplate(dInst, conv.contact.phoneE164 ?? '', tpl),
       auditMeta: { conversationId: id, template: tpl.name },
     });
   }

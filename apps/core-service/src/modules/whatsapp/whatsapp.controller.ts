@@ -81,7 +81,8 @@ export class WhatsappController {
   ) {
     const f: InboxFilter =
       filterParam === 'unassigned' || filterParam === 'all' ||
-      filterParam === 'resolved' || filterParam === 'mine'
+      filterParam === 'resolved' || filterParam === 'mine' ||
+      filterParam === 'groups'
         ? filterParam
         : 'mine';
     return this.conversations.list(user.tenantId, user.sub, f);

@@ -2294,6 +2294,7 @@ model WhatsappInstance {
   apiCredentialsEnc String? @map("api_credentials_enc") @db.Text       // JSON cifrado { accessToken, appSecret }
 
   active        Boolean @default(true)
+  captureGroups Boolean @default(false) @map("capture_groups")        // opt-in: ingerir mensagens de grupos do WhatsApp (WAHA QR)
 
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
@@ -2314,10 +2315,13 @@ model WhatsappContact {
   id          String  @id @default(uuid()) @db.Uuid
   tenantId    String  @map("tenant_id") @db.Uuid
 
-  phoneE164   String  @map("phone_e164") @db.VarChar(20)   // +595981234567
-  pushName    String? @map("push_name") @db.VarChar(255)   // como aparece no WhatsApp
+  phoneE164   String? @map("phone_e164") @db.VarChar(20)   // +595981234567 (null em grupos)
+  pushName    String? @map("push_name") @db.VarChar(255)   // como aparece no WhatsApp (em grupos: assunto do grupo)
   waChatId    String? @map("wa_chat_id") @db.VarChar(80)    // JID real do WhatsApp (@c.us ou @lid) — responder NELE
   customerId  String? @map("customer_id") @db.Uuid          // se reconhecido
+
+  isGroup     Boolean @default(false) @map("is_group")      // true = chat é um grupo do WhatsApp
+  waGroupId   String? @map("wa_group_id") @db.VarChar(80)   // JID do grupo (ex.: 1203...@g.us) — chave do grupo
 
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
@@ -2327,6 +2331,7 @@ model WhatsappContact {
   conversations WhatsappConversation[]
 
   @@unique([tenantId, phoneE164])
+  @@unique([tenantId, waGroupId])
   @@index([tenantId, customerId])
   @@map("whatsapp_contacts")
 }
@@ -2385,6 +2390,8 @@ model WhatsappMessage {
   providerMsgId   String?  @unique @map("provider_msg_id") @db.VarChar(120)
   templateName    String?  @map("template_name") @db.VarChar(120)   // HSM enviado (auditoria Meta)
   fromUserId      String?  @map("from_user_id") @db.Uuid    // null se IN
+  authorName      String?  @map("author_name") @db.VarChar(255)  // em grupos: quem enviou (pushName do participante)
+  authorPhone     String?  @map("author_phone") @db.VarChar(20)  // em grupos: telefone do participante (E164)
   status          WaMsgStatus @default(SENT)
   errorReason     String?  @map("error_reason") @db.Text
 

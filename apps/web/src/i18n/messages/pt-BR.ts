@@ -1126,6 +1126,7 @@ const messages = {
         unassigned: 'Não atribuídas',
         all: 'Todas',
         resolved: 'Resolvidas',
+        groups: 'Grupos',
       },
     },
     thread: {
@@ -1182,6 +1183,17 @@ const messages = {
       deleteConfirm: 'Remover esta instância? As conversas existentes ficam preservadas.',
       syncTemplates: 'Sincronizar templates',
       templatesSynced: 'Templates sincronizados da Meta',
+      groups: {
+        title: 'Grupos do WhatsApp',
+        hint: 'Capturar mensagens dos grupos deste número (aparecem na aba Grupos do atendimento).',
+        enabled: 'Captura de grupos ativada',
+        disabled: 'Captura de grupos desativada',
+        list: 'Ver grupos',
+        needConnected: 'Conecte o número para listar os grupos.',
+        empty: 'Nenhum grupo encontrado.',
+        participants: '{count} participantes',
+        captured: 'capturando',
+      },
       qrHelp:
         'No celular do número da ISP: WhatsApp → ⋮ → Aparelhos conectados → Conectar aparelho',
       channel: {
@@ -3753,6 +3765,7 @@ const messages = {
     media: '(mídia)',
     customerBadge: 'cliente',
     document: 'documento',
+    group: 'Grupo',
   },
   contractCards: {
     diag: {

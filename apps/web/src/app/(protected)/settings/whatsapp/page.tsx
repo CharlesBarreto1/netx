@@ -1,6 +1,6 @@
 'use client';
 
-import { Plus, RefreshCw, LogOut, Trash2, FileText } from 'lucide-react';
+import { Plus, RefreshCw, LogOut, Trash2, FileText, Users } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
@@ -14,12 +14,15 @@ import { hasPermission } from '@/lib/session';
 import {
   createInstance,
   deleteInstance,
+  listInstanceGroups,
   listInstances,
   logoutInstance,
   reconnectInstance,
+  setCaptureGroups,
   syncTemplates,
   type CreateInstanceInput,
   type WaChannel,
+  type WaGroup,
   type WaInstance,
 } from '@/lib/whatsapp-api';
 
@@ -405,6 +408,129 @@ function InstanceCard({
           {t('delete')}
         </Button>
       </div>
+
+      {instance.channel === 'WAHA' && <GroupsSection instance={instance} onChange={onChange} />}
     </article>
+  );
+}
+
+/**
+ * Seção de grupos do WhatsApp (canal WAHA/QR). Toggle de captura (opt-in) +
+ * listagem sob demanda dos grupos da conta conectada.
+ */
+function GroupsSection({
+  instance,
+  onChange,
+}: {
+  instance: WaInstance;
+  onChange: () => void;
+}) {
+  const t = useTranslations('chat.admin');
+  const [busy, setBusy] = useState(false);
+  const [loadingGroups, setLoadingGroups] = useState(false);
+  const [groups, setGroups] = useState<WaGroup[] | null>(null);
+  const capture = instance.captureGroups === true;
+
+  async function toggle() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await setCaptureGroups(instance.id, !capture);
+      toast.success(!capture ? t('groups.enabled') : t('groups.disabled'));
+      onChange();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
+      toast.error(msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function loadGroups() {
+    if (loadingGroups) return;
+    setLoadingGroups(true);
+    try {
+      const r = await listInstanceGroups(instance.id);
+      setGroups(r.groups);
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
+      toast.error(msg);
+    } finally {
+      setLoadingGroups(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="flex items-center gap-1.5 text-sm font-medium">
+            <Users className="h-4 w-4 text-text-muted" />
+            {t('groups.title')}
+          </p>
+          <p className="text-xs text-text-muted">{t('groups.hint')}</p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={capture}
+          aria-label={t('groups.title')}
+          onClick={toggle}
+          disabled={busy}
+          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${
+            capture ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'
+          } ${busy ? 'opacity-50' : ''}`}
+        >
+          <span
+            className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
+              capture ? 'translate-x-5' : 'translate-x-0.5'
+            }`}
+          />
+        </button>
+      </div>
+
+      <div className="mt-3 flex items-center gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={loadGroups}
+          loading={loadingGroups}
+          disabled={instance.status !== 'CONNECTED'}
+        >
+          <Users className="mr-1 h-3.5 w-3.5" />
+          {t('groups.list')}
+        </Button>
+        {instance.status !== 'CONNECTED' && (
+          <span className="text-xs text-text-muted">{t('groups.needConnected')}</span>
+        )}
+      </div>
+
+      {groups && (
+        <div className="mt-3 max-h-64 space-y-1 overflow-y-auto">
+          {groups.length === 0 ? (
+            <p className="py-2 text-center text-xs text-text-muted">{t('groups.empty')}</p>
+          ) : (
+            groups.map((g) => (
+              <div
+                key={g.id}
+                className="flex items-center justify-between gap-2 rounded border border-slate-100 px-2 py-1.5 text-sm dark:border-slate-700"
+              >
+                <span className="min-w-0 flex-1 truncate">{g.subject ?? g.id}</span>
+                {g.participantsCount != null && (
+                  <span className="shrink-0 text-xs text-text-muted">
+                    {t('groups.participants', { count: g.participantsCount })}
+                  </span>
+                )}
+                {g.captured && (
+                  <span className="shrink-0 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                    {t('groups.captured')}
+                  </span>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
   );
 }

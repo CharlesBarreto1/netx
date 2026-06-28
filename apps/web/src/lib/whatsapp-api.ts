@@ -44,6 +44,7 @@ export interface WaInstance {
   status: WaInstanceStatus;
   qrCode?: string | null;
   active: boolean;
+  captureGroups?: boolean;
   connectedAt: string | null;
   lastError: string | null;
   wabaId?: string | null;
@@ -63,9 +64,11 @@ export interface WaTemplate {
 
 export interface WaContact {
   id: string;
-  phoneE164: string;
+  phoneE164: string | null;
   pushName: string | null;
   customerId: string | null;
+  isGroup?: boolean;
+  waGroupId?: string | null;
   customer?: {
     id: string;
     displayName: string;
@@ -108,6 +111,8 @@ export interface WaMessage {
   createdAt: string;
   fromUserId: string | null;
   fromUser?: { id: string; firstName: string; lastName: string } | null;
+  authorName?: string | null;
+  authorPhone?: string | null;
 }
 
 export interface WaConversationDetail extends WaConversationListItem {
@@ -115,7 +120,7 @@ export interface WaConversationDetail extends WaConversationListItem {
   resolvedAt: string | null;
 }
 
-export type InboxFilter = 'mine' | 'unassigned' | 'all' | 'resolved';
+export type InboxFilter = 'mine' | 'unassigned' | 'all' | 'resolved' | 'groups';
 
 // ---- conversations ----
 
@@ -149,7 +154,7 @@ export interface WaContractCtx {
 }
 
 export interface WaCustomerContext {
-  contact: { id: string; phoneE164: string; pushName: string | null; customerId: string | null };
+  contact: { id: string; phoneE164: string | null; pushName: string | null; customerId: string | null };
   customer: {
     id: string;
     displayName: string;
@@ -277,6 +282,31 @@ export async function logoutInstance(id: string) {
 
 export async function deleteInstance(id: string) {
   return api.delete(`/v1/whatsapp/instances/${id}`);
+}
+
+// ---- grupos (WAHA / QR) ----
+
+export interface WaGroup {
+  id: string;
+  subject: string | null;
+  participantsCount: number | null;
+  /** true se o grupo já virou conversa (tem mensagens capturadas). */
+  captured: boolean;
+}
+
+export interface WaGroupsResponse {
+  captureGroups: boolean;
+  groups: WaGroup[];
+}
+
+/** Liga/desliga a captura de mensagens de grupos na instância. */
+export async function setCaptureGroups(id: string, captureGroups: boolean) {
+  return api.patch<WaInstance>(`/v1/whatsapp/instances/${id}`, { captureGroups });
+}
+
+/** Lista os grupos da conta conectada (apenas WAHA). */
+export async function listInstanceGroups(id: string) {
+  return api.get<WaGroupsResponse>(`/v1/whatsapp/instances/${id}/groups`);
 }
 
 // ---- helpers ----

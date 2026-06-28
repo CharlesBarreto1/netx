@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   User as UserIcon,
   UserCheck,
+  Users,
   ArrowRightLeft,
   FileText,
 } from 'lucide-react';
@@ -88,14 +89,20 @@ export default function ChatPage() {
   // nova chega em conversa que não é a aberta no momento.
   useWhatsappStream(true, (e) => {
     if (e.type === 'message.created') {
-      const p = e.payload as { conversationId: string; direction: string; body: string | null };
+      const p = e.payload as {
+        conversationId: string;
+        direction: string;
+        body: string | null;
+        isGroup?: boolean;
+      };
       // Sempre atualiza inbox
       void inboxQuery.mutate();
       // Se for da conversa aberta, atualiza detalhe
       if (p.conversationId === selectedId) {
         void detailQuery.mutate();
-      } else if (p.direction === 'IN') {
-        // Notif pra mensagem que chegou em outra conversa
+      } else if (p.direction === 'IN' && !p.isGroup) {
+        // Notif pra mensagem que chegou em outra conversa (grupos não notificam —
+        // são barulhentos; aparecem na aba Grupos sem som).
         notify({
           title: t('notification.newMessage'),
           body: p.body ?? t('notification.media'),
@@ -208,6 +215,7 @@ function ChatInbox({
     { key: 'unassigned', label: t('inbox.filter.unassigned') },
     { key: 'all', label: t('inbox.filter.all') },
     { key: 'resolved', label: t('inbox.filter.resolved') },
+    { key: 'groups', label: t('inbox.filter.groups') },
   ];
 
   return (
@@ -225,7 +233,7 @@ function ChatInbox({
         </button>
       </header>
 
-      <div className="flex gap-1 border-b border-slate-200 p-2 dark:border-slate-700">
+      <div className="flex flex-wrap gap-1 border-b border-slate-200 p-2 dark:border-slate-700">
         {filters.map((f) => (
           <button
             key={f.key}
@@ -251,7 +259,12 @@ function ChatInbox({
           items.map((c) => {
             const last = c.messages[0];
             const isSelected = c.id === selectedId;
-            const name = c.contact.customer?.displayName ?? c.contact.pushName ?? c.contact.phoneE164;
+            const isGroup = c.contact.isGroup === true;
+            const name =
+              c.contact.customer?.displayName ??
+              c.contact.pushName ??
+              c.contact.phoneE164 ??
+              tx('group');
             return (
               <button
                 key={c.id}
@@ -262,11 +275,14 @@ function ChatInbox({
                 }`}
               >
                 <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700 dark:bg-slate-600 dark:text-slate-200">
-                  {name.charAt(0).toUpperCase()}
+                  {isGroup ? <Users className="h-4 w-4" /> : name.charAt(0).toUpperCase()}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-sm font-medium">{name}</span>
+                    <span className="flex min-w-0 items-center gap-1 truncate text-sm font-medium">
+                      {isGroup && <Users className="h-3 w-3 shrink-0 text-text-muted" />}
+                      <span className="truncate">{name}</span>
+                    </span>
                     <span className="shrink-0 text-[10px] text-text-muted">
                       {timeAgo(c.lastMessageAt)}
                     </span>
@@ -656,6 +672,11 @@ function MessageBubble({ message }: { message: WaMessage }) {
             : 'bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-100'
         }`}
       >
+        {!isOut && message.authorName && (
+          <p className="mb-0.5 text-xs font-semibold text-brand-700 dark:text-brand-300">
+            {message.authorName}
+          </p>
+        )}
         {message.type === 'IMAGE' && mediaUrl && (
           <img src={mediaUrl} alt="" className="mb-1 rounded max-w-full" />
         )}

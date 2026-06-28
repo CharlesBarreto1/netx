@@ -39,6 +39,7 @@ const PUBLIC_SELECT = {
   phoneE164: true,
   status: true,
   active: true,
+  captureGroups: true,
   connectedAt: true,
   lastError: true,
   wabaId: true,
@@ -335,6 +336,65 @@ export class WhatsappInstancesService {
       resource: 'whatsapp_instance',
       resourceId: id,
     });
+  }
+
+  /** Liga/desliga a captura de mensagens de grupos (opt-in). */
+  async setCaptureGroups(tenantId: string, actorUserId: string, id: string, capture: boolean) {
+    await this.findRaw(tenantId, id);
+    await this.prisma.whatsappInstance.update({
+      where: { id },
+      data: { captureGroups: capture },
+    });
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'whatsapp.instance.set_capture_groups',
+      resource: 'whatsapp_instance',
+      resourceId: id,
+      metadata: { captureGroups: capture },
+    });
+    return this.findById(tenantId, id);
+  }
+
+  /**
+   * Lista os grupos da conta conectada (WAHA/QR). Aproveita pra atualizar o
+   * assunto dos grupos que já viraram conversa e marca quais estão capturados.
+   */
+  async listGroups(tenantId: string, id: string) {
+    const inst = await this.findRaw(tenantId, id);
+    const provider = this.factory.for(inst.channel);
+    if (!provider.listGroups) {
+      throw new BadRequestException('Este canal não expõe grupos (disponível apenas no WAHA/QR).');
+    }
+    let groups;
+    try {
+      groups = await provider.listGroups(this.creds.decrypt(inst));
+    } catch (e) {
+      throw new BadRequestException(`Não foi possível listar grupos: ${(e as Error).message}`);
+    }
+
+    // Mantém o assunto atualizado nos grupos que já têm contato/conversa.
+    await Promise.all(
+      groups
+        .filter((g) => g.subject)
+        .map((g) =>
+          this.prisma.whatsappContact.updateMany({
+            where: { tenantId, waGroupId: g.id },
+            data: { pushName: g.subject as string },
+          }),
+        ),
+    );
+
+    const captured = await this.prisma.whatsappContact.findMany({
+      where: { tenantId, isGroup: true, waGroupId: { in: groups.map((g) => g.id) } },
+      select: { waGroupId: true },
+    });
+    const capturedSet = new Set(captured.map((c) => c.waGroupId));
+
+    return {
+      captureGroups: inst.captureGroups,
+      groups: groups.map((g) => ({ ...g, captured: capturedSet.has(g.id) })),
+    };
   }
 
   // -- acesso interno (webhook handlers / conversations) --
