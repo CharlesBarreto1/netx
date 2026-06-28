@@ -31,6 +31,57 @@ function byStatus<T extends { _count: { _all: number } }>(
   return Object.fromEntries(rows.map((r) => [r.status, r._count._all]));
 }
 
+/**
+ * Contexto de negócio injetado no system prompt a cada pergunta: QUEM é o
+ * provedor + a SITUAÇÃO agora. Dá consciência situacional ao copiloto (fala da
+ * operação real, não de um ISP genérico) por um custo de token mínimo.
+ */
+export async function buildBusinessContext(
+  prisma: PrismaService,
+  tenantId: string,
+): Promise<string> {
+  const now = new Date();
+  const [tenant, clientesAtivos, contratosAtivos, vencido, incidentes, osAbertas] =
+    await Promise.all([
+      prisma.tenant.findUnique({
+        where: { id: tenantId },
+        select: { name: true, country: true, currency: true, locale: true },
+      }),
+      prisma.customer.count({ where: { tenantId, deletedAt: null, status: 'ACTIVE' } }),
+      prisma.contract.aggregate({
+        where: { tenantId, deletedAt: null, status: 'ACTIVE' },
+        _sum: { monthlyValue: true },
+        _count: true,
+      }),
+      prisma.contractInvoice.aggregate({
+        where: { tenantId, status: { in: ['OPEN', 'OVERDUE'] }, dueDate: { lt: now } },
+        _sum: { amount: true },
+      }),
+      prisma.incident.count({ where: { tenantId, status: 'OPEN' } }),
+      prisma.serviceOrder.count({
+        where: { tenantId, deletedAt: null, status: { notIn: ['COMPLETED', 'CANCELLED'] } },
+      }),
+    ]);
+
+  const cur = tenant?.currency ?? '';
+  const pais = tenant?.country === 'BR' ? 'Brasil' : tenant?.country === 'PY' ? 'Paraguai' : (tenant?.country ?? '?');
+  const fiscal =
+    tenant?.country === 'BR'
+      ? 'Fiscal: NFCom (modelo 62). '
+      : tenant?.country === 'PY'
+        ? 'Fiscal: SIFEN/KuDE (e-Kuatiá). '
+        : '';
+  const mrr = n(contratosAtivos._sum.monthlyValue);
+
+  return [
+    `PROVEDOR ATUAL: ${tenant?.name ?? '?'} · ${pais} · moeda ${cur} · locale ${tenant?.locale ?? '?'}. ${fiscal}`,
+    `SITUAÇÃO AGORA: ${clientesAtivos} clientes ativos · ${contratosAtivos._count} contratos ativos · ` +
+      `MRR ${mrr} ${cur} · inadimplência vencida ${n(vencido._sum.amount)} ${cur} · ` +
+      `${incidentes} incidente(s) de rede aberto(s) · ${osAbertas} OS aberta(s).`,
+    `Use estes números como ponto de partida; se precisar de detalhe, chame as ferramentas.`,
+  ].join('\n');
+}
+
 export async function computeDomainMetrics(
   prisma: PrismaService,
   tenantId: string,

@@ -14,6 +14,7 @@ import { AiService } from '../ai/ai.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RadacctService } from '../radius/radacct.service';
 import { COPILOT_TOOLS, buildCopilotExecutor } from './copilot-tools';
+import { buildBusinessContext } from './domain-metrics';
 import { NmsClient } from './nms-client';
 
 const SYSTEM = `Você é o copiloto do NetX — um OPERADOR SÊNIOR de operações de provedor de internet (ISP), não um chatbot. Pensa e fala como um gerente de NOC/operações experiente: direto, técnico, em português (pt-BR), com JULGAMENTO — não despeja números crus, interpreta e aponta o que importa.
@@ -28,6 +29,17 @@ LEITURA TÉCNICA (faixas saudáveis — use pra dar veredito, não só repetir o
 - "dying-gasp" numa queda = perda de ENERGIA no cliente; "LOS/loss-of-signal" = problema de FIBRA/link.
 - Incidente correlacionado por PON/CTO/OLT afetando vários = problema de rede (não do cliente). Cliente isolado offline com RX ruim = fibra dele; offline com energia (dying-gasp) e vizinhos ok = falta de luz na casa.
 - Negócio: MRR = receita recorrente mensal (soma dos contratos ativos); ARPU = MRR/contratos ativos; churn > ~3%/mês = atenção; inadimplência vencida alta = risco de caixa.
+
+ESPECIFICIDADES DO NEGÓCIO (NetX)
+- Cobrança: pré-pago (acesso liberado até o fim do período pago; vence → suspende) e pós-pago. Contrato SUSPENDED = pool de IP bloqueado por inadimplência; CANCELLED = cancelado; PENDING_INSTALL = vendido, falta instalar/ativar em campo.
+- Provisionamento de um cliente novo: ONT autorizada na OLT + RADIUS aplicado + TR-069 (Wi-Fi/diagnóstico). Sem isso o PPPoE não sobe.
+- Paraguai: muitas vezes rede neutra (ex.: Ufinet entrega L2 até o PoP; o NetX termina o PPPoE no Mikrotik). Brasil: NFCom (nota fiscal modelo 62); Paraguai: SIFEN/KuDE.
+- Suspensão/inadimplência e churn andam juntos: inadimplência vencida alta hoje vira suspensão e churn amanhã — trate como risco de receita, não só número.
+
+PLAYBOOKS (siga estes raciocínios)
+- "Cliente sem internet": veja a sessão (online?). Offline + dying-gasp = queda de energia na casa; offline + RX crítico/LOS = fibra do cliente; online mas reclamando de lentidão = Wi-Fi/plano/congestionamento; vários vizinhos juntos = incidente de PON/CTO/OLT (problema de rede, não do cliente).
+- "Como está a rede/operação?": cheque incidentes abertos (maiores por afetados) + situação geral; conclua se há algo crítico e o que priorizar.
+- "Saúde financeira": compare inadimplência vencida vs MRR, olhe churn e novos do mês; diga se a receita está saudável ou em risco.
 
 COMO RACIOCINAR (isto é o que te diferencia de um chatbot)
 - Para perguntas AMPLAS ("como está a operação/rede/saúde?", "tem algo preocupante?"), CHAME VÁRIAS ferramentas (ex.: panorama_operacional + incidentes_abertos + metricas_dominio) e entregue um DIAGNÓSTICO: o que está bem, o que está fora do normal (use as faixas acima), e o próximo passo recomendado. Seja proativo em apontar riscos.
@@ -71,13 +83,22 @@ export class CopilotService {
       authToken,
       context,
     });
+    // Consciência situacional + do tenant (quem é o provedor + estado agora).
+    // Best-effort: se falhar, segue só com o conhecimento estático.
+    let situational = '';
+    try {
+      situational = await buildBusinessContext(this.prisma, tenantId);
+    } catch {
+      situational = '';
+    }
+    const system = situational ? `${SYSTEM}\n\n=== CONTEXTO AO VIVO ===\n${situational}` : SYSTEM;
     const r = await engine.agent(
       [{ role: 'user', content: question }],
       COPILOT_TOOLS,
       executor,
       // Mais passos p/ raciocínio multi-ferramenta (panorama + incidentes + ...)
       // e resposta mais rica (diagnóstico com julgamento, não só números).
-      { system: SYSTEM, maxTokens: 1500, maxSteps: 8 },
+      { system, maxTokens: 1500, maxSteps: 8 },
       'copilot.ask',
     );
     return {
