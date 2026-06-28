@@ -30,6 +30,8 @@ interface Turn {
   text: string;
   meta?: string;
   error?: boolean;
+  /** Saída bruta (ex.: traceroute) — render em <pre>, fora do LLM. */
+  raw?: string;
 }
 
 const SUGGESTIONS = [
@@ -112,7 +114,12 @@ export function CopilotRail() {
         const icon = r.reachable ? '✅' : '⚠️';
         setTurns((prev) => [
           ...prev,
-          { role: 'ai', text: `${icon} ${r.testType} ${r.target}${from} — ${r.summary}`, meta: 'resultado' },
+          {
+            role: 'ai',
+            text: `${icon} ${r.testType} ${r.target}${from} — ${r.summary}`,
+            meta: 'resultado',
+            raw: r.raw,
+          },
         ]);
         return;
       }
@@ -223,6 +230,16 @@ export function CopilotRail() {
                 >
                   <p className="whitespace-pre-wrap">{turn.text}</p>
                 </div>
+                {turn.raw && (
+                  <details className="mt-1">
+                    <summary className="cursor-pointer pl-1 text-[10px] text-text-subtle hover:text-text">
+                      ver saída bruta
+                    </summary>
+                    <pre className="mt-1 max-h-60 overflow-auto whitespace-pre rounded-md bg-bg/60 p-2 font-mono text-[10px] leading-snug text-text-muted ring-1 ring-border">
+                      {turn.raw}
+                    </pre>
+                  </details>
+                )}
                 {turn.meta && (
                   <div className="mt-0.5 pl-1 font-mono text-[10px] text-text-subtle">{turn.meta}</div>
                 )}

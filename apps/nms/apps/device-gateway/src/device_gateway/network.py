@@ -82,6 +82,8 @@ def _run_device(
     password: str | None,
     ssh_port: int,
 ) -> str:
+    import time
+
     import paramiko
 
     # Sintaxe Junos (NMS MVP é Juniper-only).
@@ -89,19 +91,37 @@ def _run_device(
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
+        # Timeouts curtos em TODAS as fases: connect, banner e auth — senão um
+        # IP que aceita TCP mas não responde SSH pendura o job (vira "demorou").
         client.connect(
             mgmt_ip,
             port=ssh_port,
             username=username,
             password=password,
-            timeout=10.0,
+            timeout=8.0,
+            banner_timeout=8.0,
+            auth_timeout=8.0,
             allow_agent=False,
             look_for_keys=False,
         )
-        _stdin, stdout, stderr = client.exec_command(cmd, timeout=60)
-        stdout.channel.recv_exit_status()
-        out = stdout.read().decode("utf-8", "replace")
-        return out or stderr.read().decode("utf-8", "replace")
+        chan = client.get_transport().open_session(timeout=8.0)  # type: ignore[union-attr]
+        chan.settimeout(40.0)
+        chan.exec_command(cmd)
+        # Leitura com deadline rígido (recv_exit_status() não tem timeout próprio).
+        deadline = time.time() + 40.0
+        buf = bytearray()
+        while True:
+            while chan.recv_ready():
+                buf += chan.recv(4096)
+            if chan.exit_status_ready():
+                while chan.recv_ready():
+                    buf += chan.recv(4096)
+                break
+            if time.time() > deadline:
+                buf += b"\n[timeout: comando nao concluiu em 40s]"
+                break
+            time.sleep(0.3)
+        return buf.decode("utf-8", "replace")
     finally:
         client.close()
 
