@@ -13,6 +13,7 @@ import type { AiPendingTest } from '@netx/shared';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { RadacctService } from '../radius/radacct.service';
+import { computeDomainMetrics, type MetricDomain } from './domain-metrics';
 import { NmsClient } from './nms-client';
 
 export const COPILOT_TOOLS: ToolDef[] = [
@@ -69,6 +70,22 @@ export const COPILOT_TOOLS: ToolDef[] = [
     description:
       'Projeção simples de faturamento do próximo mês a partir do MRR atual e da tendência recente (novos − cancelados nos últimos 30d). Use para "previsão de faturamento", "quanto vamos faturar".',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'metricas_dominio',
+    description:
+      'Métricas agregadas de um domínio operacional. dominio: "ordens_servico" (OS abertas/atrasadas/por status), "estoque" (produtos, patrimônio, locais), "frota" (veículos, manutenções vencidas, despesa do mês), "vendas" (funil por status, ganhos/perdidos no mês), "caixa" (a receber/a pagar, entradas/saídas do mês), "rh" (colaboradores ativos). Use para qualquer pergunta sobre esses domínios.',
+    parameters: {
+      type: 'object',
+      properties: {
+        dominio: {
+          type: 'string',
+          enum: ['ordens_servico', 'estoque', 'frota', 'vendas', 'caixa', 'rh'],
+        },
+      },
+      required: ['dominio'],
+      additionalProperties: false,
+    },
   },
   {
     name: 'dispositivos_rede',
@@ -511,6 +528,15 @@ export function buildCopilotExecutor({
           metodo:
             'projeção linear simples: MRR atual + (novos − cancelados dos últimos 30d). Não considera sazonalidade, reajustes nem inadimplência.',
         };
+      }
+
+      case 'metricas_dominio': {
+        const valid: MetricDomain[] = ['ordens_servico', 'estoque', 'frota', 'vendas', 'caixa', 'rh'];
+        const dominio = String(call.args.dominio ?? '') as MetricDomain;
+        if (!valid.includes(dominio)) {
+          return { erro: `domínio inválido. Use: ${valid.join(', ')}` };
+        }
+        return computeDomainMetrics(prisma, tenantId, dominio);
       }
 
       default:
