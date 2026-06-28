@@ -11,6 +11,7 @@ import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { ZodBody } from '../../common/zod.pipe';
 
 import { CopilotService } from './copilot.service';
+import { InsightsService } from './insights.service';
 
 /** Extrai o token cru do header Authorization (encaminhado ao NMS). */
 function bearer(authHeader?: string): string | null {
@@ -23,7 +24,10 @@ function bearer(authHeader?: string): string | null {
 @ApiBearerAuth()
 @Controller('ai')
 export class CopilotController {
-  constructor(private readonly copilot: CopilotService) {}
+  constructor(
+    private readonly copilot: CopilotService,
+    private readonly insights: InsightsService,
+  ) {}
 
   @Post('ask')
   @RequirePermissions('ai.ask')
@@ -43,5 +47,22 @@ export class CopilotController {
     @Headers('authorization') authHeader: string | undefined,
   ) {
     return this.copilot.testStatus(jobId, bearer(authHeader));
+  }
+
+  /** Alertas proativos abertos (Nexus). */
+  @Get('insights')
+  @RequirePermissions('ai.ask')
+  listInsights(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.insights.list(user.tenantId);
+  }
+
+  /** Descarta um alerta. */
+  @Post('insights/:id/dismiss')
+  @RequirePermissions('ai.ask')
+  dismissInsight(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.insights.dismiss(user.tenantId, id);
   }
 }

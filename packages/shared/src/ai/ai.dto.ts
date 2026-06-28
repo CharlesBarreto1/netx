@@ -97,6 +97,16 @@ export const AiAskRequestSchema = z
   .strict();
 export type AiAskRequest = z.infer<typeof AiAskRequestSchema>;
 
+/** Alerta proativo gerado pelos detectores (mostrado no Nexus). */
+export interface AiInsightDto {
+  id: string;
+  kind: string;
+  severity: 'INFO' | 'WARNING' | 'CRITICAL';
+  title: string;
+  body: string;
+  createdAt: string;
+}
+
 /** Teste de rede disparado pelo copiloto, cujo resultado chega por polling. */
 export interface AiPendingTest {
   jobId: string;

@@ -12,11 +12,12 @@ import { RadiusModule } from '../radius/radius.module';
 
 import { CopilotController } from './copilot.controller';
 import { CopilotService } from './copilot.service';
+import { InsightsService } from './insights.service';
 import { NmsClient } from './nms-client';
 
 @Module({
   imports: [AiModule, RadiusModule],
   controllers: [CopilotController],
-  providers: [CopilotService, NmsClient],
+  providers: [CopilotService, NmsClient, InsightsService],
 })
 export class CopilotModule {}

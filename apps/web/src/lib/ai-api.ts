@@ -1,6 +1,7 @@
 import type {
   AiAskResponse,
   AiConfigResponse,
+  AiInsightDto,
   AiStatusResponse,
   AiTestResponse,
   AiTestStatusResponse,
@@ -8,6 +9,8 @@ import type {
 } from '@netx/shared';
 
 import { api } from './api';
+
+export type { AiInsightDto };
 
 /**
  * Client do motor de IA (@netx/ai) — config por tenant, status e teste.
@@ -34,6 +37,13 @@ export const aiApi = {
   },
   testStatus(jobId: string) {
     return api.get<AiTestStatusResponse>(`/v1/ai/test/${jobId}`);
+  },
+  insightsPath: () => `/v1/ai/insights`,
+  getInsights() {
+    return api.get<AiInsightDto[]>(this.insightsPath());
+  },
+  dismissInsight(id: string) {
+    return api.post<{ ok: boolean }>(`/v1/ai/insights/${id}/dismiss`);
   },
 };
 

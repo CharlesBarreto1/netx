@@ -12,11 +12,11 @@
  * a transcrição local serve só de histórico visual.
  */
 
-import { ChevronRight, Info, Send, Sparkles } from 'lucide-react';
+import { AlertTriangle, ChevronRight, Info, Send, Sparkles, X } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 
-import type { AiPendingTest } from '@netx/shared';
+import type { AiInsightDto, AiPendingTest } from '@netx/shared';
 
 import { aiApi } from '@/lib/ai-api';
 import { ApiError } from '@/lib/api';
@@ -48,7 +48,39 @@ export function CopilotRail({ floating = false }: { floating?: boolean }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [insights, setInsights] = useState<AiInsightDto[]>([]);
   const endRef = useRef<HTMLDivElement>(null);
+
+  // Alertas proativos: carrega no mount e a cada 60s (só com permissão).
+  useEffect(() => {
+    if (!canUse) return;
+    let alive = true;
+    const load = () =>
+      aiApi
+        .getInsights()
+        .then((data) => {
+          if (alive) setInsights(data);
+        })
+        .catch(() => {});
+    void load();
+    const timer = setInterval(load, 60_000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [canUse]);
+
+  async function dismissInsight(id: string) {
+    setInsights((prev) => prev.filter((i) => i.id !== id));
+    try {
+      await aiApi.dismissInsight(id);
+    } catch {
+      void aiApi
+        .getInsights()
+        .then(setInsights)
+        .catch(() => {});
+    }
+  }
 
   // No modo flutuante (tela imersiva) começa recolhido — surge só quando o
   // usuário chamar, como um balão por cima. No modo coluna respeita o preferido.
@@ -174,6 +206,11 @@ export function CopilotRail({ floating = false }: { floating?: boolean }) {
           className="relative grid h-9 w-9 place-items-center rounded-lg bg-ai-muted text-ai ring-1 ring-ai/30 transition-colors hover:bg-ai/20"
         >
           <Sparkles className="h-[18px] w-[18px]" />
+          {insights.length > 0 && (
+            <span className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-danger px-1 text-[10px] font-semibold text-white">
+              {insights.length}
+            </span>
+          )}
         </button>
         <span className="h-2 w-2 animate-pulse-soft rounded-full bg-success" />
       </aside>
@@ -209,6 +246,39 @@ export function CopilotRail({ floating = false }: { floating?: boolean }) {
           <ChevronRight className="h-4 w-4" />
         </button>
       </div>
+
+      {/* Alertas proativos (a IA avisa sozinha) */}
+      {insights.length > 0 && (
+        <div className="max-h-52 shrink-0 space-y-1.5 overflow-y-auto border-b border-border px-3 py-2">
+          {insights.map((i) => {
+            const tone =
+              i.severity === 'CRITICAL'
+                ? 'bg-danger-muted/50 text-danger ring-danger/20'
+                : i.severity === 'WARNING'
+                  ? 'bg-warning-muted/50 text-warning ring-warning/20'
+                  : 'bg-ai-muted/40 text-ai ring-ai/20';
+            return (
+              <div key={i.id} className={cn('rounded-lg px-2.5 py-2 text-xs ring-1', tone)}>
+                <div className="flex items-start gap-1.5">
+                  <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold leading-snug">{i.title}</div>
+                    <p className="mt-0.5 leading-snug text-text-muted">{i.body}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void dismissInsight(i.id)}
+                    title="Descartar"
+                    className="shrink-0 rounded p-0.5 text-text-subtle hover:text-text"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Conversa */}
       <div className="flex-1 space-y-3 overflow-y-auto px-3 py-3">
