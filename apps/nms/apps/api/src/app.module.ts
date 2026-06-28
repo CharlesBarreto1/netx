@@ -11,6 +11,7 @@ import { DevicesModule } from './devices/devices.module.js';
 import { MetricsModule } from './metrics/metrics.module.js';
 import { PlaybooksModule } from './playbooks/playbooks.module.js';
 import { BackupModule } from './backup/backup.module.js';
+import { DiagnosticsModule } from './diagnostics/diagnostics.module.js';
 import { LlmModule } from './ai/llm.module.js';
 import { AiModule } from './ai/ai.module.js';
 import { EventsModule } from './events/events.module.js';
@@ -32,6 +33,7 @@ import { EventsModule } from './events/events.module.js';
     MetricsModule,
     PlaybooksModule,
     BackupModule,
+    DiagnosticsModule,
     AiModule,
     EventsModule,
   ],

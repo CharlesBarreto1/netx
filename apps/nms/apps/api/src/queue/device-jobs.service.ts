@@ -17,6 +17,15 @@ export interface EnqueueOptions {
   waitMs?: number;
 }
 
+/** Quanto tempo (s) o job fica no Redis após concluir, para polling assíncrono. */
+const POLL_RETENTION_S = 1800;
+
+export type JobStatus =
+  | { state: 'not_found' }
+  | { state: 'waiting' | 'active' | 'delayed' }
+  | { state: 'completed'; result: DeviceJobResult }
+  | { state: 'failed'; error: string };
+
 @Injectable()
 export class DeviceJobsService implements OnModuleDestroy {
   private readonly logger = new Logger(DeviceJobsService.name);
@@ -48,5 +57,36 @@ export class DeviceJobsService implements OnModuleDestroy {
     this.logger.log(`job enfileirado (aguardando): ${safe.kind} para device ${safe.deviceId}`);
     const raw = await added.waitUntilFinished(this.events, opts.waitMs ?? DEFAULT_WAIT_MS);
     return DeviceJobResultSchema.parse(raw);
+  }
+
+  /**
+   * Enfileira SEM aguardar e devolve o jobId. O job fica no Redis por
+   * POLL_RETENTION_S para ser consultado depois (getStatus) — padrão do
+   * diagnóstico ativo do copiloto, que não bloqueia a request HTTP.
+   */
+  async enqueueAsync(job: DeviceJobInput): Promise<string> {
+    const safe = assertJobIsSafe(job);
+    await this.queue.add(safe.kind, safe, {
+      jobId: safe.jobId,
+      removeOnComplete: { age: POLL_RETENTION_S },
+      removeOnFail: { age: POLL_RETENTION_S },
+    });
+    this.logger.log(`job enfileirado (async): ${safe.kind} job=${safe.jobId}`);
+    return safe.jobId;
+  }
+
+  /** Consulta o estado/resultado de um job por id (para polling). */
+  async getStatus(jobId: string): Promise<JobStatus> {
+    const job = await this.queue.getJob(jobId);
+    if (!job) return { state: 'not_found' };
+    const state = await job.getState();
+    if (state === 'completed') {
+      return { state: 'completed', result: DeviceJobResultSchema.parse(job.returnvalue) };
+    }
+    if (state === 'failed') {
+      return { state: 'failed', error: job.failedReason ?? 'job falhou' };
+    }
+    // waiting | active | delayed | (paused → tratamos como waiting)
+    return { state: state === 'active' ? 'active' : state === 'delayed' ? 'delayed' : 'waiting' };
   }
 }
