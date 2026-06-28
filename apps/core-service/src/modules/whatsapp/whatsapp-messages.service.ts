@@ -185,7 +185,7 @@ export class WhatsappMessagesService {
     instanceId: string,
     tenantId: string,
     msg: CanonicalMessage,
-  ): Promise<{ messageId: string; conversationId: string } | null> {
+  ): Promise<{ messageId: string; conversationId: string; created: boolean } | null> {
     const isGroup = msg.isGroup === true;
     if (!msg.providerMsgId || (!isGroup && !msg.contactPhone) || (isGroup && !msg.groupId)) {
       this.logger.warn('CanonicalMessage sem providerMsgId/contactPhone/groupId — ignorando');
@@ -196,7 +196,8 @@ export class WhatsappMessagesService {
     const existing = await this.prisma.whatsappMessage.findUnique({
       where: { providerMsgId: msg.providerMsgId },
     });
-    if (existing) return { messageId: existing.id, conversationId: existing.conversationId };
+    if (existing)
+      return { messageId: existing.id, conversationId: existing.conversationId, created: false };
 
     const isInbound = msg.direction === 'IN';
     const contact = isGroup
@@ -264,7 +265,7 @@ export class WhatsappMessagesService {
       },
     });
 
-    return { messageId: created.id, conversationId: conversation.id };
+    return { messageId: created.id, conversationId: conversation.id, created: true };
   }
 
   /** Atualiza status de entrega (DELIVERED/READ/FAILED). */

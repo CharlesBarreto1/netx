@@ -2,7 +2,14 @@ import { Module } from '@nestjs/common';
 
 import { AiModule } from '../ai/ai.module';
 import { AuditModule } from '../audit/audit.module';
+import { BtgModule } from '../btg/btg.module';
+import { ContractsModule } from '../contracts/contracts.module';
+import { EfiModule } from '../efi/efi.module';
+import { RadiusModule } from '../radius/radius.module';
+import { ServiceOrdersModule } from '../service-orders/service-orders.module';
 
+import { WhatsappBotController } from './bot/whatsapp-bot.controller';
+import { WhatsappBotService } from './bot/whatsapp-bot.service';
 import { ChannelProviderFactory } from './providers/channel-provider.factory';
 import { MetaCloudProvider } from './providers/meta-cloud.provider';
 import { WahaProvider } from './providers/waha.provider';
@@ -39,7 +46,15 @@ import { WhatsappWebhookMetaController } from './whatsapp-webhook-meta.controlle
  * IA conselheira (read-only) via WhatsappAiService, agnóstica de canal.
  */
 @Module({
-  imports: [AuditModule, AiModule],
+  imports: [
+    AuditModule,
+    AiModule,
+    EfiModule,
+    BtgModule,
+    ContractsModule,
+    ServiceOrdersModule,
+    RadiusModule,
+  ],
   controllers: [
     WhatsappController,
     WhatsappContactsController,
@@ -48,6 +63,7 @@ import { WhatsappWebhookMetaController } from './whatsapp-webhook-meta.controlle
     WhatsappWebhookController,
     WhatsappWebhookMetaController,
     WhatsappAiController,
+    WhatsappBotController,
   ],
   providers: [
     WahaProvider,
@@ -61,6 +77,7 @@ import { WhatsappWebhookMetaController } from './whatsapp-webhook-meta.controlle
     WhatsappMessagesService,
     WhatsappTemplatesService,
     WhatsappAiService,
+    WhatsappBotService,
   ],
   exports: [WhatsappInstancesService],
 })

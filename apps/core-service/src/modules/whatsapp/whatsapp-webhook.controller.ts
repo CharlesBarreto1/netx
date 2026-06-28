@@ -12,6 +12,7 @@ import type { Request } from 'express';
 
 import { Public } from '../../common/decorators';
 
+import { WhatsappBotService } from './bot/whatsapp-bot.service';
 import { WahaProvider } from './providers/waha.provider';
 import { WhatsappEventsBus } from './whatsapp-events.bus';
 import { WhatsappInstancesService } from './whatsapp-instances.service';
@@ -40,6 +41,7 @@ export class WhatsappWebhookController {
     private readonly messages: WhatsappMessagesService,
     private readonly events: WhatsappEventsBus,
     private readonly waha: WahaProvider,
+    private readonly bot: WhatsappBotService,
   ) {}
 
   @Public()
@@ -92,7 +94,11 @@ export class WhatsappWebhookController {
               m.media.mime = dl.mime;
             }
           }
-          await this.messages.ingestMessage(inst.id, tenantId, m);
+          const r = await this.messages.ingestMessage(inst.id, tenantId, m);
+          // Mensagem NOVA do cliente (não eco, não grupo) → aciona o chatbot.
+          if (r?.created && m.direction === 'IN' && !m.isGroup) {
+            void this.bot.onInbound(tenantId, r.conversationId);
+          }
         } else if (ev.kind === 'status') {
           await this.messages.ingestStatus(tenantId, ev.data);
         } else if (ev.kind === 'connection') {

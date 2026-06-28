@@ -110,6 +110,7 @@ model Tenant {
   whatsappContacts     WhatsappContact[]
   whatsappConversations WhatsappConversation[]
   whatsappTemplates    WhatsappTemplate[]
+  whatsappBotConfig    WhatsappBotConfig?
 
   // SIFEN — fatura eletrônica Paraguay (módulo opcional, ligado via env)
   sifenDocuments       SifenDocument[]
@@ -178,6 +179,7 @@ model Tenant {
   // IA (motor de IA por tenant — pacote @netx/ai)
   aiConfig             AiConfig?
   aiUsageLogs          AiUsageLog[]
+  aiInsights          AiInsight[]
 
   @@index([status])
   @@index([country])
@@ -2356,6 +2358,9 @@ model WhatsappConversation {
   lastInboundAt  DateTime? @map("last_inbound_at")           // p/ "tem nova msg?"
   unreadCount    Int       @default(0) @map("unread_count")
 
+  botActive      Boolean   @default(false) @map("bot_active")  // chatbot está conduzindo esta conversa
+  botContext     Json?     @map("bot_context")                 // estado da máquina do bot (node, pendências)
+
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
@@ -2390,6 +2395,7 @@ model WhatsappMessage {
   providerMsgId   String?  @unique @map("provider_msg_id") @db.VarChar(120)
   templateName    String?  @map("template_name") @db.VarChar(120)   // HSM enviado (auditoria Meta)
   fromUserId      String?  @map("from_user_id") @db.Uuid    // null se IN
+  isBot           Boolean  @default(false) @map("is_bot")    // OUT enviada pelo chatbot (não por humano)
   authorName      String?  @map("author_name") @db.VarChar(255)  // em grupos: quem enviou (pushName do participante)
   authorPhone     String?  @map("author_phone") @db.VarChar(20)  // em grupos: telefone do participante (E164)
   status          WaMsgStatus @default(SENT)
@@ -2449,6 +2455,31 @@ model WhatsappConversationView {
   @@index([conversationId, viewedAt])
   @@index([viewerUserId, viewedAt])
   @@map("whatsapp_conversation_views")
+}
+
+/// Configuração do chatbot de atendimento (um por tenant). Híbrido: um menu
+/// determinístico (menuJson) cobre os caminhos comuns (2ª via, status, etc.) e,
+/// quando ligado, a IA agêntica (aiEnabled) responde o que sai do menu. O bot
+/// só conduz conversas SEM atendente humano atribuído — ao transferir/assumir,
+/// o humano assume e o bot sai. Ações de escrita são autônomas porém auditadas.
+model WhatsappBotConfig {
+  id            String  @id @default(uuid()) @db.Uuid
+  tenantId      String  @unique @map("tenant_id") @db.Uuid
+
+  enabled       Boolean @default(false)                       // liga o bot
+  aiEnabled     Boolean @default(false) @map("ai_enabled")    // IA agêntica p/ texto livre (exige backend com tools)
+  greeting      String? @db.Text                              // saudação inicial (antes do menu)
+  menuJson      Json?   @map("menu_json")                     // opções do menu (flow determinístico)
+  fallbackText  String? @db.Text @map("fallback_text")        // quando não entende e IA off
+  handoffText   String? @db.Text @map("handoff_text")         // ao transferir p/ humano
+  unknownText   String? @db.Text @map("unknown_text")         // quando o número não bate com nenhum cadastro
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tenant        Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("whatsapp_bot_configs")
 }
 
 // =============================================================================
@@ -5717,4 +5748,39 @@ model AiUsageLog {
   @@index([tenantId, feature, createdAt])
   @@index([tenantId, createdAt])
   @@map("ai_usage_logs")
+}
+
+// =============================================================================
+// IA — insights proativos (detectores por cron empurram alertas pro Nexus).
+// Determinístico (thresholds); a IA é conselheira: alerta, humano decide.
+// =============================================================================
+enum AiInsightSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+enum AiInsightStatus {
+  NEW
+  DISMISSED
+}
+
+model AiInsight {
+  id          String            @id @default(uuid()) @db.Uuid
+  tenantId    String            @map("tenant_id") @db.Uuid
+  kind        String            @db.VarChar(60) // inadimplencia-alta, churn-alto, incidente, os-atrasadas
+  severity    AiInsightSeverity @default(WARNING)
+  status      AiInsightStatus   @default(NEW)
+  title       String            @db.VarChar(200)
+  body        String            @db.Text
+  // Chave de deduplicação (ex.: "inadimplencia-alta:2026-06") — um por condição/período.
+  dedupeKey   String            @map("dedupe_key") @db.VarChar(140)
+  createdAt   DateTime          @default(now()) @map("created_at")
+  dismissedAt DateTime?         @map("dismissed_at")
+
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, dedupeKey])
+  @@index([tenantId, status, createdAt])
+  @@map("ai_insights")
 }

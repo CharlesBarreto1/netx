@@ -2,6 +2,7 @@
 
 import {
   ArrowLeft,
+  Bot,
   Eye,
   Send,
   Sparkles,
@@ -778,6 +779,11 @@ function MessageBubble({ message }: { message: WaMessage }) {
             isOut ? 'text-white/70' : 'text-text-muted'
           }`}
         >
+          {isOut && message.isBot && (
+            <span className="mr-0.5 inline-flex items-center gap-0.5 font-medium">
+              <Bot className="h-3 w-3" /> {tx('bot')}
+            </span>
+          )}
           <span>{time}</span>
           {isOut && (
             <span>

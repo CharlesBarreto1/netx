@@ -111,6 +111,7 @@ export interface WaMessage {
   createdAt: string;
   fromUserId: string | null;
   fromUser?: { id: string; firstName: string; lastName: string } | null;
+  isBot?: boolean;
   authorName?: string | null;
   authorPhone?: string | null;
 }

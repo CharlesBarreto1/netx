@@ -382,14 +382,44 @@ export class WhatsappConversationsService {
       throw new TemplateRequiredException();
     }
 
-    return this.dispatchOutbound(tenantId, actorUserId, conv, {
+    return this.dispatchOutbound(tenantId, conv, {
       type: 'TEXT',
       body: text,
+      actor: actorUserId,
+      fromUserId: actorUserId,
+      autoAssign: true,
       // Responde no JID exato do inbound (pode ser @lid / @g.us de grupo);
       // o telefone é só fallback e em grupos não existe (phoneE164 null).
       send: (provider, dInst) =>
         provider.sendText(dInst, conv.contact.phoneE164 ?? '', text, conv.contact.waChatId),
       auditMeta: { conversationId: id, length: text.length },
+    });
+  }
+
+  /**
+   * Envia texto COMO BOT: sem operador (fromUserId null, isBot) e SEM
+   * auto-atribuir — a conversa segue "livre" pra um humano assumir. Não valida
+   * dono (o bot age em conversas não atribuídas, garantido pelo BotService).
+   */
+  async sendAsBot(tenantId: string, conversationId: string, text: string) {
+    const conv = await this.prisma.whatsappConversation.findFirst({
+      where: { id: conversationId, tenantId },
+      include: { instance: true, contact: true },
+    });
+    if (!conv) throw new NotFoundException('Conversa não encontrada');
+    if (conv.instance.channel === 'WAHA' && conv.instance.status !== 'CONNECTED') {
+      throw new BadRequestException('Instância WhatsApp não conectada.');
+    }
+    return this.dispatchOutbound(tenantId, conv, {
+      type: 'TEXT',
+      body: text,
+      actor: 'system:bot',
+      fromUserId: null,
+      autoAssign: false,
+      isBot: true,
+      send: (provider, dInst) =>
+        provider.sendText(dInst, conv.contact.phoneE164 ?? '', text, conv.contact.waChatId),
+      auditMeta: { conversationId, length: text.length, bot: true },
     });
   }
 
@@ -409,10 +439,13 @@ export class WhatsappConversationsService {
       throw new BadRequestException('Templates HSM só existem no canal oficial Meta.');
     }
 
-    return this.dispatchOutbound(tenantId, actorUserId, conv, {
+    return this.dispatchOutbound(tenantId, conv, {
       type: 'TEXT',
       body: previewBody ?? `[template: ${tpl.name}]`,
       templateName: tpl.name,
+      actor: actorUserId,
+      fromUserId: actorUserId,
+      autoAssign: true,
       send: (provider, dInst) => provider.sendTemplate(dInst, conv.contact.phoneE164 ?? '', tpl),
       auditMeta: { conversationId: id, template: tpl.name },
     });
@@ -453,13 +486,18 @@ export class WhatsappConversationsService {
    */
   private async dispatchOutbound(
     tenantId: string,
-    actorUserId: string,
     conv: Prisma.WhatsappConversationGetPayload<{ include: { instance: true; contact: true } }>,
     opts: {
       type: WaMsgType;
       body: string | null;
       templateName?: string;
       auditMeta?: Prisma.InputJsonObject;
+      // Quem envia: operador (uuid) ou o bot. `fromUserId` é a FK do User (null
+      // p/ bot); `actor` é só p/ auditoria (aceita 'system:bot').
+      actor: string;
+      fromUserId: string | null;
+      autoAssign: boolean;
+      isBot?: boolean;
       send: (
         provider: ReturnType<ChannelProviderFactory['for']>,
         dInst: ReturnType<WhatsappCredentials['decrypt']>,
@@ -476,21 +514,23 @@ export class WhatsappConversationsService {
         type: opts.type,
         body: opts.body,
         templateName: opts.templateName ?? null,
-        fromUserId: actorUserId,
+        fromUserId: opts.fromUserId,
+        isBot: opts.isBot ?? false,
         status: 'PENDING',
       },
     });
 
-    // Auto-atribui se não tinha ninguém.
-    if (!conv.assignedUserId) {
+    // Auto-atribui ao operador se ninguém estava atribuído (bot nunca atribui —
+    // mantém a conversa "livre" pra um humano assumir quando quiser).
+    if (opts.autoAssign && opts.fromUserId && !conv.assignedUserId) {
       await this.prisma.whatsappConversation.update({
         where: { id },
-        data: { assignedUserId: actorUserId, assignedAt: new Date() },
+        data: { assignedUserId: opts.fromUserId, assignedAt: new Date() },
       });
       this.events.emit({
         type: 'conversation.assigned',
         tenantId,
-        payload: { id, assignedUserId: actorUserId, by: actorUserId },
+        payload: { id, assignedUserId: opts.fromUserId, by: opts.fromUserId },
       });
     }
 
@@ -518,13 +558,14 @@ export class WhatsappConversationsService {
           type: updated.type,
           body: updated.body,
           createdAt: updated.createdAt,
-          fromUserId: actorUserId,
+          fromUserId: opts.fromUserId,
+          isBot: updated.isBot,
         },
       });
       await this.audit.log({
         tenantId,
-        userId: actorUserId,
-        action: 'whatsapp.message.sent',
+        userId: opts.actor,
+        action: opts.isBot ? 'whatsapp.bot.message.sent' : 'whatsapp.message.sent',
         resource: 'whatsapp_message',
         resourceId: updated.id,
         metadata: opts.auditMeta ?? { conversationId: id },

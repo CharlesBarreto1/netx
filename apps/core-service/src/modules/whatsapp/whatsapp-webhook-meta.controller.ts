@@ -14,6 +14,7 @@ import type { Request } from 'express';
 
 import { Public } from '../../common/decorators';
 
+import { WhatsappBotService } from './bot/whatsapp-bot.service';
 import { MetaCloudProvider } from './providers/meta-cloud.provider';
 import { WhatsappInstancesService } from './whatsapp-instances.service';
 import { WhatsappMessagesService } from './whatsapp-messages.service';
@@ -40,6 +41,7 @@ export class WhatsappWebhookMetaController {
     private readonly instances: WhatsappInstancesService,
     private readonly messages: WhatsappMessagesService,
     private readonly meta: MetaCloudProvider,
+    private readonly bot: WhatsappBotService,
   ) {}
 
   @Public()
@@ -92,7 +94,10 @@ export class WhatsappWebhookMetaController {
               m.media.mime = dl.mime;
             }
           }
-          await this.messages.ingestMessage(inst.id, tenantId, m);
+          const r = await this.messages.ingestMessage(inst.id, tenantId, m);
+          if (r?.created && m.direction === 'IN' && !m.isGroup) {
+            void this.bot.onInbound(tenantId, r.conversationId);
+          }
         } else if (ev.kind === 'status') {
           await this.messages.ingestStatus(tenantId, ev.data);
         }

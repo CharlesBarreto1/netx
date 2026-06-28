@@ -335,6 +335,8 @@ export const MENU_GROUPS: MenuGroup[] = [
           { key: 'serviceOrderReasons', href: '/settings/service-order-reasons', labelKey: 'serviceOrderReasons', permission: 'service_order_reasons.manage' },
           // Conexão WhatsApp (WAHA QR / Meta Cloud) + templates HSM. Módulo netx-call.
           { key: 'whatsappInstances', href: '/settings/whatsapp', labelKey: 'whatsappInstances', permission: 'chat.admin', requiredModules: ['netx-call'] },
+          // Chatbot de atendimento (menu + IA agêntica). Módulo netx-call.
+          { key: 'chatbot', href: '/settings/whatsapp/bot', labelKey: 'chatbot', permission: 'chat.admin', requiredModules: ['netx-call'] },
         ],
       },
       {
