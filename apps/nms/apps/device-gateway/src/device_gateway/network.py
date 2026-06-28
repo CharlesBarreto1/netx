@@ -18,11 +18,15 @@ _RAW_MAX = 4000
 
 
 def _ping_summary(out: str) -> dict[str, Any]:
-    """Parseia saída de ping (Linux iputils e BSD/Junos têm formato próximo)."""
-    sent = re.search(r"(\d+) packets transmitted", out)
-    recv = re.search(r"(\d+) (?:packets )?received", out)
-    loss = re.search(r"([\d.]+)% packet loss", out)
-    rtt = re.search(r"(?:rtt|round-trip)[^=]*=\s*[\d.]+/([\d.]+)/", out)
+    """Parseia ping de Linux/iputils, BSD/Junos e RouterOS (Mikrotik)."""
+    # RouterOS: "sent=4 received=4 packet-loss=0% ... avg-rtt=11ms"
+    # Linux/Junos: "4 packets transmitted, 4 received, 0% packet loss ... = min/avg/.."
+    sent = re.search(r"(\d+) packets transmitted", out) or re.search(r"sent=(\d+)", out)
+    recv = re.search(r"(\d+) (?:packets )?received", out) or re.search(r"received=(\d+)", out)
+    loss = re.search(r"([\d.]+)% packet loss", out) or re.search(r"packet-loss=([\d.]+)%", out)
+    rtt = re.search(r"(?:rtt|round-trip)[^=]*=\s*[\d.]+/([\d.]+)/", out) or re.search(
+        r"avg-rtt=([\d.]+)", out
+    )
 
     n_sent = int(sent.group(1)) if sent else None
     n_recv = int(recv.group(1)) if recv else None
@@ -74,6 +78,24 @@ def _run_host(test_type: str, target: str) -> str:
         return "timeout ao executar o teste"
 
 
+def _device_cmd(vendor: str, test_type: str, target: str) -> str:
+    """Comando que TERMINA, por vendor (RouterOS/Junos/genérico)."""
+    v = (vendor or "").lower()
+    if v == "mikrotik":
+        # RouterOS: precisa de count= senão roda pra sempre; traceroute idem.
+        if test_type == "traceroute":
+            return f"/tool traceroute {target} count=3 use-dns=no"
+        return f"/ping {target} count=4"
+    if v == "juniper":
+        if test_type == "traceroute":
+            return f"traceroute {target} wait 2"
+        return f"ping {target} count 4"
+    # genérico (Linux): fallback
+    if test_type == "traceroute":
+        return f"traceroute -w 2 -q 1 -m 20 {target}"
+    return f"ping -c 4 -w 10 {target}"
+
+
 def _run_device(
     test_type: str,
     target: str,
@@ -81,13 +103,13 @@ def _run_device(
     username: str,
     password: str | None,
     ssh_port: int,
+    vendor: str,
 ) -> str:
     import time
 
     import paramiko
 
-    # Sintaxe Junos (NMS MVP é Juniper-only).
-    cmd = f"traceroute {target}" if test_type == "traceroute" else f"ping {target} count 4"
+    cmd = _device_cmd(vendor, test_type, target)
     client = paramiko.SSHClient()
     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     try:
@@ -135,12 +157,13 @@ def run_network_test(
     username: str | None = None,
     password: str | None = None,
     ssh_port: int = 22,
+    vendor: str = "",
 ) -> dict[str, Any]:
     """Executa o teste e devolve o dict do NetworkTestResult (sem o envelope)."""
     if source == "device":
         if not mgmt_ip or not username:
             raise RuntimeError("source=device requer mgmtIp e username")
-        out = _run_device(test_type, target, mgmt_ip, username, password, ssh_port)
+        out = _run_device(test_type, target, mgmt_ip, username, password, ssh_port, vendor)
     else:
         out = _run_host(test_type, target)
 

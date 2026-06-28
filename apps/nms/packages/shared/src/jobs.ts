@@ -110,6 +110,8 @@ export const NetworkTestJobSchema = DeviceJobBaseSchema.extend({
     username: z.string().optional(),
     passwordEnc: z.string().optional(),
     sshPort: z.number().int().positive().default(22),
+    // Vendor do equipamento — define a sintaxe do comando (Junos vs RouterOS).
+    vendor: z.string().optional(),
   }),
 });
 

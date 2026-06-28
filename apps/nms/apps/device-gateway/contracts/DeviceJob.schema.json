@@ -395,6 +395,9 @@
                   "type": "integer",
                   "exclusiveMinimum": 0,
                   "default": 22
+                },
+                "vendor": {
+                  "type": "string"
                 }
               },
               "required": [

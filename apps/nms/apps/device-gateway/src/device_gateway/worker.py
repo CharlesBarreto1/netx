@@ -174,6 +174,7 @@ async def _handle_network_test(
         username=params.get("username"),
         password=password,
         ssh_port=params.get("sshPort", 22),
+        vendor=params.get("vendor", ""),
     )
 
 

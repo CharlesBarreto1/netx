@@ -40,6 +40,7 @@ export class NetworkTestService {
       mgmtIp?: string;
       username?: string;
       passwordEnc?: string;
+      vendor?: string;
     } = { testType, target, source };
 
     if (source === 'device') {
@@ -64,6 +65,7 @@ export class NetworkTestService {
       params.mgmtIp = device.mgmtIp;
       params.username = cred.username;
       params.passwordEnc = cred.passwordEnc ?? undefined;
+      params.vendor = device.vendor; // define a sintaxe do comando (junos/routeros)
     }
 
     const jobId = await this.jobs.enqueueAsync({
