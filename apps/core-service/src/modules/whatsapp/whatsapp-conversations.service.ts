@@ -272,6 +272,34 @@ export class WhatsappConversationsService {
     return rows.reverse(); // cronológico (antigas → novas)
   }
 
+  /**
+   * Lista os agentes para quem uma conversa pode ser transferida: usuários
+   * ativos do tenant cujas roles têm alguma permissão de atendimento (chat.*).
+   * Gated por chat.assign no controller.
+   */
+  async listAgents(tenantId: string) {
+    const users = await this.prisma.user.findMany({
+      where: {
+        tenantId,
+        status: 'ACTIVE',
+        deletedAt: null,
+        userRoles: {
+          some: {
+            role: {
+              rolePermissions: {
+                some: { permission: { code: { in: ['chat.read', 'chat.send', 'chat.assign'] } } },
+              },
+            },
+          },
+        },
+      },
+      select: { id: true, firstName: true, lastName: true, email: true },
+      orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
+      take: 200,
+    });
+    return users;
+  }
+
   async assign(tenantId: string, actorUserId: string, id: string, targetUserId: string | null) {
     const conv = await this.prisma.whatsappConversation.findFirst({
       where: { id, tenantId },

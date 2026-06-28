@@ -1123,6 +1123,10 @@ const messages = {
       transferred: 'Conversation transferred',
       resolved: 'Conversation resolved',
     },
+    transfer: {
+      empty: 'No other agent available',
+      you: '(you)',
+    },
     context: {
       title: 'Customer',
       phone: 'Phone',

@@ -122,6 +122,12 @@ export class WhatsappController {
     return this.conversations.messagesBefore(user.tenantId, user.sub, canAudit, id, cursor);
   }
 
+  @Get('agents')
+  @RequirePermissions('chat.assign')
+  agents(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.conversations.listAgents(user.tenantId);
+  }
+
   @Post('conversations/:id/assign')
   @RequirePermissions('chat.assign')
   assign(

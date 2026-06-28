@@ -1147,6 +1147,10 @@ const messages = {
       transferred: 'Conversa transferida',
       resolved: 'Conversa resolvida',
     },
+    transfer: {
+      empty: 'Nenhum outro atendente disponível',
+      you: '(você)',
+    },
     context: {
       title: 'Cliente',
       phone: 'Telefone',

@@ -202,6 +202,18 @@ export async function assignConversation(id: string, userId: string | null) {
   return api.post(`/v1/whatsapp/conversations/${id}/assign`, { userId });
 }
 
+export interface WaAgent {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+}
+
+/** Agentes elegíveis para receber uma transferência (têm permissão chat.*). */
+export async function listAgents() {
+  return api.get<WaAgent[]>(`/v1/whatsapp/agents`);
+}
+
 export async function resolveConversation(id: string) {
   return api.post(`/v1/whatsapp/conversations/${id}/resolve`, {});
 }

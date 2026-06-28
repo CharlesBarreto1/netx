@@ -1139,6 +1139,10 @@ const messages = {
       transferred: 'Conversación transferida',
       resolved: 'Conversación resuelta',
     },
+    transfer: {
+      empty: 'No hay otro agente disponible',
+      you: '(vos)',
+    },
     context: {
       title: 'Cliente',
       phone: 'Teléfono',

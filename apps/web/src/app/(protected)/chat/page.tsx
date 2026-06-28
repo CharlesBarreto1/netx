@@ -30,6 +30,7 @@ import {
   assignConversation,
   getConversation,
   getWaInsights,
+  listAgents,
   listConversations,
   listTemplates,
   resolveConversation,
@@ -40,6 +41,7 @@ import {
   timeAgo,
   type InboxFilter,
   type WaAiInsightsResponse,
+  type WaAgent,
   type WaConversationDetail,
   type WaConversationListItem,
   type WaMessage,
@@ -353,6 +355,9 @@ function ChatThread({
   const [insights, setInsights] = useState<WaAiInsightsResponse | null>(null);
   const [templates, setTemplates] = useState<WaTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [agents, setAgents] = useState<WaAgent[] | null>(null);
+  const [showTransfer, setShowTransfer] = useState(false);
+  const [transferBusy, setTransferBusy] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Scroll pro fim quando trocar de conversa ou chegar msg nova
@@ -362,10 +367,11 @@ function ChatThread({
     }
   }, [conversation?.messages.length, conversation?.id]);
 
-  // Limpa insights e picker de template ao trocar de conversa.
+  // Limpa insights e pickers (template/transferência) ao trocar de conversa.
   useEffect(() => {
     setInsights(null);
     setShowTemplates(false);
+    setShowTransfer(false);
   }, [conversation?.id]);
 
   // IA conselheira: sugere resposta (preenche o composer) e resume a conversa.
@@ -486,6 +492,37 @@ function ChatThread({
     }
   }
 
+  async function openTransfer() {
+    if (showTransfer) {
+      setShowTransfer(false);
+      return;
+    }
+    setShowTransfer(true);
+    if (!agents) {
+      try {
+        setAgents(await listAgents());
+      } catch (err) {
+        toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
+        setShowTransfer(false);
+      }
+    }
+  }
+
+  async function doTransfer(userId: string) {
+    if (transferBusy) return;
+    setTransferBusy(true);
+    try {
+      await assignConversation(conversation!.id, userId);
+      toast.success(t('actions.transferred'));
+      setShowTransfer(false);
+      onAssigned();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
+    } finally {
+      setTransferBusy(false);
+    }
+  }
+
   return (
     <section className="flex h-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 dark:border-slate-700 sm:px-4">
@@ -523,6 +560,48 @@ function ChatThread({
             <Button size="sm" variant="primary" onClick={doAssignToMe}>
               <UserCheck className="mr-1 h-3.5 w-3.5" /> {t('actions.takeIt')}
             </Button>
+          )}
+          {canAssign && (
+            <div className="relative">
+              <Button size="sm" variant="subtle" onClick={openTransfer}>
+                <ArrowRightLeft className="mr-1 h-3.5 w-3.5" /> {t('actions.transfer')}
+              </Button>
+              {showTransfer && (
+                <div className="absolute right-0 z-20 mt-1 max-h-72 w-60 overflow-y-auto rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-800">
+                  {!agents ? (
+                    <p className="px-3 py-2 text-xs text-text-muted">{t('loading')}</p>
+                  ) : (
+                    (() => {
+                      const others = agents.filter((a) => a.id !== conversation.assignedUserId);
+                      if (others.length === 0) {
+                        return (
+                          <p className="px-3 py-2 text-xs text-text-muted">
+                            {t('transfer.empty')}
+                          </p>
+                        );
+                      }
+                      return others.map((a) => (
+                        <button
+                          key={a.id}
+                          type="button"
+                          disabled={transferBusy}
+                          onClick={() => doTransfer(a.id)}
+                          className="flex w-full items-center gap-2 rounded px-3 py-2 text-left text-sm hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-700"
+                        >
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[10px] font-semibold text-slate-700 dark:bg-slate-600 dark:text-slate-200">
+                            {a.firstName.charAt(0).toUpperCase()}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate">
+                            {a.firstName} {a.lastName}
+                            {a.id === currentUserId && ` ${t('transfer.you')}`}
+                          </span>
+                        </button>
+                      ));
+                    })()
+                  )}
+                </div>
+              )}
+            </div>
           )}
           {isMine && canAssign && (
             <Button size="sm" variant="subtle" onClick={doResolve}>
