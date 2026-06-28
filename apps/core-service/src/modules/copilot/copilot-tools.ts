@@ -59,6 +59,18 @@ export const COPILOT_TOOLS: ToolDef[] = [
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
+    name: 'panorama_operacional',
+    description:
+      'Visão agregada do negócio em números: clientes por status (inclui ATIVOS), contratos por status e por plano, MRR (receita recorrente mensal), ARPU, inadimplência, OS abertas, incidentes, e crescimento (novos/cancelados nos últimos 30d, churn%). Use para "quantos clientes ativos", "qual o MRR", "como está a base".',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'previsao_faturamento',
+    description:
+      'Projeção simples de faturamento do próximo mês a partir do MRR atual e da tendência recente (novos − cancelados nos últimos 30d). Use para "previsão de faturamento", "quanto vamos faturar".',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
     name: 'dispositivos_rede',
     description:
       'Lista os equipamentos monitorados pelo NMS (switches/roteadores) com id, hostname, fabricante e status. Use para descobrir o id de um device antes de consultar tráfego/óptica.',
@@ -399,6 +411,106 @@ export function buildCopilotExecutor({
         } catch (e) {
           return { erro: e instanceof Error ? e.message : String(e) };
         }
+      }
+
+      case 'panorama_operacional': {
+        const now = new Date();
+        const since30 = new Date(now.getTime() - 30 * 86_400_000);
+        const inadWhere: Prisma.ContractInvoiceWhereInput = {
+          tenantId,
+          status: { in: ['OPEN', 'OVERDUE'] },
+        };
+        const [tenant, custByStatus, ctByStatus, mrrAgg, novos30, cancel30, osAbertas, incAbertos, emAberto, vencido] =
+          await Promise.all([
+            prisma.tenant.findUnique({ where: { id: tenantId }, select: { currency: true } }),
+            prisma.customer.groupBy({
+              by: ['status'],
+              where: { tenantId, deletedAt: null },
+              _count: { _all: true },
+            }),
+            prisma.contract.groupBy({
+              by: ['status'],
+              where: { tenantId, deletedAt: null },
+              _count: { _all: true },
+              _sum: { monthlyValue: true },
+            }),
+            prisma.contract.aggregate({
+              where: { tenantId, deletedAt: null, status: 'ACTIVE' },
+              _sum: { monthlyValue: true },
+              _count: true,
+            }),
+            prisma.contract.count({ where: { tenantId, activatedAt: { gte: since30 } } }),
+            prisma.contract.count({ where: { tenantId, cancelledAt: { gte: since30 } } }),
+            prisma.serviceOrder.count({ where: { tenantId, status: 'OPEN' } }),
+            prisma.incident.count({ where: { tenantId, status: 'OPEN' } }),
+            prisma.contractInvoice.aggregate({ where: inadWhere, _sum: { amount: true } }),
+            prisma.contractInvoice.aggregate({
+              where: { ...inadWhere, dueDate: { lt: now } },
+              _sum: { amount: true },
+            }),
+          ]);
+        const ativosContratos = mrrAgg._count;
+        const mrr = num(mrrAgg._sum.monthlyValue) ?? 0;
+        return {
+          moeda: tenant?.currency ?? null,
+          clientes: {
+            ativos: custByStatus.find((c) => c.status === 'ACTIVE')?._count._all ?? 0,
+            total: custByStatus.reduce((s, c) => s + c._count._all, 0),
+            por_status: Object.fromEntries(custByStatus.map((c) => [c.status, c._count._all])),
+          },
+          contratos: {
+            ativos: ativosContratos,
+            por_status: Object.fromEntries(ctByStatus.map((c) => [c.status, c._count._all])),
+            mrr_por_status: Object.fromEntries(
+              ctByStatus.map((c) => [c.status, num(c._sum.monthlyValue) ?? 0]),
+            ),
+          },
+          financeiro: {
+            mrr,
+            arpu: ativosContratos > 0 ? Math.round((mrr / ativosContratos) * 100) / 100 : 0,
+            inadimplencia_em_aberto: num(emAberto._sum.amount) ?? 0,
+            inadimplencia_vencida: num(vencido._sum.amount) ?? 0,
+          },
+          operacao: { os_abertas: osAbertas, incidentes_abertos: incAbertos },
+          crescimento: {
+            novos_contratos_30d: novos30,
+            cancelados_30d: cancel30,
+            churn_pct: ativosContratos > 0 ? Math.round((cancel30 / ativosContratos) * 1000) / 10 : 0,
+          },
+        };
+      }
+
+      case 'previsao_faturamento': {
+        const since30 = new Date(Date.now() - 30 * 86_400_000);
+        const [tenant, mrrAgg, novosAgg, cancelAgg] = await Promise.all([
+          prisma.tenant.findUnique({ where: { id: tenantId }, select: { currency: true } }),
+          prisma.contract.aggregate({
+            where: { tenantId, deletedAt: null, status: 'ACTIVE' },
+            _sum: { monthlyValue: true },
+          }),
+          prisma.contract.aggregate({
+            where: { tenantId, activatedAt: { gte: since30 } },
+            _sum: { monthlyValue: true },
+            _count: true,
+          }),
+          prisma.contract.aggregate({
+            where: { tenantId, cancelledAt: { gte: since30 } },
+            _sum: { monthlyValue: true },
+            _count: true,
+          }),
+        ]);
+        const mrr = num(mrrAgg._sum.monthlyValue) ?? 0;
+        const novosValor = num(novosAgg._sum.monthlyValue) ?? 0;
+        const cancelValor = num(cancelAgg._sum.monthlyValue) ?? 0;
+        return {
+          moeda: tenant?.currency ?? null,
+          mrr_atual: mrr,
+          novos_30d: { qtd: novosAgg._count, valor: novosValor },
+          cancelados_30d: { qtd: cancelAgg._count, valor: cancelValor },
+          projecao_proximo_mes: Math.round((mrr + (novosValor - cancelValor)) * 100) / 100,
+          metodo:
+            'projeção linear simples: MRR atual + (novos − cancelados dos últimos 30d). Não considera sazonalidade, reajustes nem inadimplência.',
+        };
       }
 
       default:
