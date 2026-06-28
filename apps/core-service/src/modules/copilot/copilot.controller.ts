@@ -2,7 +2,7 @@
  * Copiloto agêntico — POST /v1/ai/ask. Read-only (perm ai.ask). Mesma rota do
  * F3 anterior; agora servida pelo copiloto tool-using.
  */
-import { Controller, Headers, Post } from '@nestjs/common';
+import { Controller, Get, Headers, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 
 import { AiAskRequestSchema, type AiAskRequest, type AuthenticatedPrincipal } from '@netx/shared';
@@ -33,5 +33,15 @@ export class CopilotController {
     @ZodBody(AiAskRequestSchema) body: AiAskRequest,
   ) {
     return this.copilot.ask(user.tenantId, body.question, bearer(authHeader));
+  }
+
+  /** Polling do resultado de um teste ativo disparado pela IA (render no Nexus). */
+  @Get('test/:jobId')
+  @RequirePermissions('ai.ask')
+  testStatus(
+    @Param('jobId', ParseUUIDPipe) jobId: string,
+    @Headers('authorization') authHeader: string | undefined,
+  ) {
+    return this.copilot.testStatus(jobId, bearer(authHeader));
   }
 }

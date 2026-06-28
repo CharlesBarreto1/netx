@@ -16,6 +16,8 @@ import { ChevronRight, Info, Send, Sparkles } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 
+import type { AiPendingTest } from '@netx/shared';
+
 import { aiApi } from '@/lib/ai-api';
 import { ApiError } from '@/lib/api';
 import { cn } from '@/lib/cn';
@@ -79,6 +81,8 @@ export function CopilotRail() {
           meta: `${r.provider}${r.usedFallback ? ' · nuvem' : ''}`,
         },
       ]);
+      // Teste ativo disparado: o resultado chega por polling (sem novo LLM).
+      if (r.pendingTest) void pollTest(r.pendingTest);
     } catch (e) {
       const msg =
         e instanceof ApiError
@@ -88,6 +92,42 @@ export function CopilotRail() {
     } finally {
       setLoading(false);
     }
+  }
+
+  /** Polling do teste ativo — render determinístico (não toca o LLM). */
+  async function pollTest(p: AiPendingTest) {
+    const from = p.source === 'device' ? ' (do equipamento)' : '';
+    setTurns((prev) => [...prev, { role: 'ai', text: `⏳ Executando ${p.testType} para ${p.target}${from}…`, meta: 'teste' }]);
+    const deadline = Date.now() + 90_000;
+    while (Date.now() < deadline) {
+      await new Promise((res) => setTimeout(res, 2500));
+      let st;
+      try {
+        st = await aiApi.testStatus(p.jobId);
+      } catch {
+        continue;
+      }
+      if (st.state === 'completed' && st.result) {
+        const r = st.result;
+        const icon = r.reachable ? '✅' : '⚠️';
+        setTurns((prev) => [
+          ...prev,
+          { role: 'ai', text: `${icon} ${r.testType} ${r.target}${from} — ${r.summary}`, meta: 'resultado' },
+        ]);
+        return;
+      }
+      if (st.state === 'failed') {
+        setTurns((prev) => [
+          ...prev,
+          { role: 'ai', text: `⚠️ Teste falhou: ${st.error ?? 'sem detalhe'}`, meta: 'erro', error: true },
+        ]);
+        return;
+      }
+    }
+    setTurns((prev) => [
+      ...prev,
+      { role: 'ai', text: '⌛ O teste demorou mais que o esperado.', meta: 'teste' },
+    ]);
   }
 
   // Sem permissão de copiloto → rail não aparece.

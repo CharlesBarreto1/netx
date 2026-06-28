@@ -97,11 +97,38 @@ export const AiAskRequestSchema = z
   .strict();
 export type AiAskRequest = z.infer<typeof AiAskRequestSchema>;
 
+/** Teste de rede disparado pelo copiloto, cujo resultado chega por polling. */
+export interface AiPendingTest {
+  jobId: string;
+  testType: string;
+  target: string;
+  source: string;
+}
+
 export interface AiAskResponse {
   question: string;
   answer: string;
   provider: string;
   usedFallback: boolean;
+  /** Presente quando a IA disparou um teste ativo; o Nexus faz polling do jobId. */
+  pendingTest?: AiPendingTest;
+}
+
+/** Status/resultado de um teste de rede (polling do Nexus). Compacto. */
+export interface AiTestStatusResponse {
+  state: 'waiting' | 'active' | 'completed' | 'failed' | 'not_found';
+  result?: {
+    testType: string;
+    target: string;
+    source: string;
+    reachable: boolean;
+    summary: string;
+    hops?: number;
+    rttMs?: number;
+    lossPct?: number;
+    raw?: string;
+  };
+  error?: string;
 }
 
 // -----------------------------------------------------------------------------

@@ -3,6 +3,7 @@ import type {
   AiConfigResponse,
   AiStatusResponse,
   AiTestResponse,
+  AiTestStatusResponse,
   UpsertAiConfigRequest,
 } from '@netx/shared';
 
@@ -30,6 +31,9 @@ export const aiApi = {
   },
   ask(question: string) {
     return api.post<AiAskResponse>('/v1/ai/ask', { question });
+  },
+  testStatus(jobId: string) {
+    return api.get<AiTestStatusResponse>(`/v1/ai/test/${jobId}`);
   },
 };
 

@@ -9,6 +9,7 @@
 import type { Prisma } from '@prisma/client';
 
 import type { ToolDef, ToolExecutor } from '@netx/ai';
+import type { AiPendingTest } from '@netx/shared';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { RadacctService } from '../radius/radacct.service';
@@ -85,6 +86,22 @@ export const COPILOT_TOOLS: ToolDef[] = [
       additionalProperties: false,
     },
   },
+  {
+    name: 'executar_teste_rede',
+    description:
+      'Dispara um teste de rede ATIVO (ping ou traceroute) a um alvo. NÃO aguarde o resultado — ele chega ao operador automaticamente em segundos. Use para "faça um trace/ping pro X", "qual a latência pro 8.8.8.8". Por padrão roda do servidor (NOC); para rodar de um equipamento específico, informe "device" com o nome dele (ex.: "roteador de Barbosa Ferraz").',
+    parameters: {
+      type: 'object',
+      properties: {
+        testType: { type: 'string', enum: ['ping', 'traceroute'] },
+        target: { type: 'string', description: 'IP ou host alvo (ex.: 8.8.8.8)' },
+        source: { type: 'string', enum: ['host', 'device'], description: 'host = servidor NOC (padrão)' },
+        device: { type: 'string', description: 'nome do equipamento (quando source=device)' },
+      },
+      required: ['testType', 'target'],
+      additionalProperties: false,
+    },
+  },
 ];
 
 interface ToolDeps {
@@ -94,6 +111,8 @@ interface ToolDeps {
   tenantId: string;
   /** Bearer do operador, encaminhado ao NMS (ponte SSO). */
   authToken: string | null;
+  /** Capturado quando a IA dispara um teste ativo (o Nexus faz polling). */
+  context: { pendingTest?: AiPendingTest };
 }
 
 function num(v: unknown): number | null {
@@ -114,6 +133,7 @@ export function buildCopilotExecutor({
   nms,
   tenantId,
   authToken,
+  context,
 }: ToolDeps): ToolExecutor {
   return async (call) => {
     switch (call.name) {
@@ -357,6 +377,24 @@ export function buildCopilotExecutor({
               txDbm: num(o.txDbm),
               tempC: num(o.moduleTempC),
             })),
+          };
+        } catch (e) {
+          return { erro: e instanceof Error ? e.message : String(e) };
+        }
+      }
+
+      case 'executar_teste_rede': {
+        const testType = call.args.testType === 'traceroute' ? 'traceroute' : 'ping';
+        const target = String(call.args.target ?? '').trim();
+        if (!target) return { erro: 'informe o alvo (target)' };
+        const source = call.args.source === 'device' ? 'device' : 'host';
+        const device = call.args.device ? String(call.args.device) : undefined;
+        try {
+          const { jobId } = await nms.enqueueNetworkTest({ testType, target, source, device }, authToken);
+          context.pendingTest = { jobId, testType, target, source };
+          return {
+            enfileirado: true,
+            obs: `${testType} para ${target} disparado. O resultado chega ao operador automaticamente em alguns segundos — apenas confirme que disparou, NÃO invente o resultado.`,
           };
         } catch (e) {
           return { erro: e instanceof Error ? e.message : String(e) };
