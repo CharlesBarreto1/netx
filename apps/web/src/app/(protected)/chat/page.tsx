@@ -130,9 +130,9 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="grid h-[calc(100dvh-104px)] grid-cols-1 gap-3 md:grid-cols-[clamp(260px,30vw,340px)_1fr] lg:grid-cols-[clamp(280px,24vw,340px)_1fr_clamp(320px,26vw,380px)]">
+    <div className="grid h-full min-h-0 grid-cols-1 gap-3 md:grid-cols-[clamp(260px,30vw,340px)_1fr] lg:grid-cols-[clamp(280px,24vw,340px)_1fr_clamp(320px,26vw,380px)]">
       {/* Inbox — no mobile some quando uma conversa está aberta */}
-      <div className={`min-w-0 ${selectedId ? 'hidden md:block' : ''}`}>
+      <div className={`min-h-0 min-w-0 ${selectedId ? 'hidden md:block' : ''}`}>
         <ChatInbox
           filter={filter}
           setFilter={setFilter}
@@ -146,7 +146,7 @@ export default function ChatPage() {
       </div>
 
       {/* Conversa — no mobile só aparece quando há uma selecionada */}
-      <div className={`min-w-0 ${selectedId ? '' : 'hidden md:block'}`}>
+      <div className={`min-h-0 min-w-0 ${selectedId ? '' : 'hidden md:block'}`}>
         <ChatThread
           conversation={detailQuery.data}
           loading={detailQuery.isLoading}
@@ -166,7 +166,7 @@ export default function ChatPage() {
       </div>
 
       {/* Painel do cliente — 3ª coluna no desktop (lg) */}
-      <div className="hidden min-w-0 lg:block">
+      <div className="hidden min-h-0 min-w-0 lg:block">
         <CustomerPanel conversation={detailQuery.data} onChanged={refetchAll} />
       </div>
 
@@ -221,7 +221,7 @@ function ChatInbox({
   ];
 
   return (
-    <aside className="flex h-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
+    <aside className="flex h-full min-h-0 flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
       <header className="flex items-center justify-between border-b border-slate-200 p-3 dark:border-slate-700">
         <h2 className="text-sm font-semibold">{t('inbox.title')}</h2>
         <button
@@ -252,7 +252,7 @@ function ChatInbox({
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {loading ? (
           <div className="p-4 text-center text-xs text-text-muted">{t('loading')}</div>
         ) : !items || items.length === 0 ? (
@@ -524,7 +524,7 @@ function ChatThread({
   }
 
   return (
-    <section className="flex h-full flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
+    <section className="flex h-full min-h-0 flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
       <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-3 py-3 dark:border-slate-700 sm:px-4">
         <div className="flex min-w-0 items-center gap-2">
           <button
@@ -635,7 +635,7 @@ function ChatThread({
         </div>
       )}
 
-      <div ref={scrollRef} className="min-w-0 flex-1 overflow-y-auto p-4">
+      <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4">
         {conversation.messages.length === 0 ? (
           <div className="text-center text-xs text-text-muted">{t('thread.noMessages')}</div>
         ) : (

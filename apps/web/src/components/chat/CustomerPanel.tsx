@@ -101,7 +101,7 @@ export function CustomerPanel({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {ctx.isLoading ? (
           <div className="flex justify-center py-8">
             <Spinner />
