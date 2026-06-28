@@ -265,12 +265,18 @@ export function AppShell({
   const pathname = usePathname();
   const tNav = useTranslations('nav');
 
+  // Telas "app-like" (imersivas): ocupam a largura toda; menu fica slim+overlay
+  // e o copiloto vira flutuante, pra não espremer o conteúdo. Hoje: Atendimento.
+  const isAppScreen = pathname === '/chat' || pathname.startsWith('/chat/');
+
   const [mobileOpen, setMobileOpen] = useState(false);
   const [collapsed, setCollapsed] = useState<boolean>(false);
   // Hover-to-expand: quando colapsada, passar o mouse expande temporariamente
   // (overlay, sem mexer no estado persistido nem empurrar o conteúdo).
   const [hovering, setHovering] = useState(false);
-  const expanded = !collapsed || hovering;
+  // Em tela imersiva o menu fica slim (ícones) independente do estado persistido.
+  const slim = collapsed || isAppScreen;
+  const expanded = !slim || hovering;
 
   // Hidrata estado de collapse do localStorage (evita flash).
   useEffect(() => {
@@ -441,12 +447,12 @@ export function AppShell({
           {/* ============ SIDEBAR DESKTOP ============ */}
           <aside
             onMouseEnter={() => {
-              if (collapsed) setHovering(true);
+              if (slim) setHovering(true);
             }}
             onMouseLeave={() => setHovering(false)}
             className={cn(
               'sticky top-14 hidden h-[calc(100vh-3.5rem)] shrink-0 transition-[width] duration-200 md:block',
-              collapsed ? 'w-[60px]' : 'w-60',
+              slim ? 'w-[60px]' : 'w-60',
             )}
           >
             {/* Painel interno absoluto: quando expande no hover, vira overlay
@@ -456,7 +462,7 @@ export function AppShell({
                 'absolute inset-y-0 left-0 z-20 flex flex-col border-r border-border',
                 'transition-[width,background-color,box-shadow] duration-200',
                 expanded ? 'w-60' : 'w-[60px]',
-                collapsed && hovering ? 'bg-surface shadow-pop' : 'bg-surface/40',
+                slim && hovering ? 'bg-surface shadow-pop' : 'bg-surface/40',
               )}
             >
               <div className="flex-1 overflow-y-auto overflow-x-hidden">
@@ -514,16 +520,24 @@ export function AppShell({
             </div>
           )}
 
-          <main className="min-h-[calc(100vh-3.5rem)] flex-1">
-            <div className="mx-auto w-full max-w-7xl px-4 py-6 md:px-8">
+          <main className="min-h-[calc(100vh-3.5rem)] min-w-0 flex-1">
+            <div
+              className={cn(
+                'w-full',
+                isAppScreen
+                  ? 'px-2 py-3 md:px-3' // imersiva: largura total, padding mínimo
+                  : 'mx-auto max-w-7xl px-4 py-6 md:px-8',
+              )}
+            >
               <LicenseBanner />
               {children}
             </div>
-            <AppFooter />
+            {!isAppScreen && <AppFooter />}
           </main>
 
           {/* ============ RAIL DIREITO — Copiloto IA "Conselheira" ============ */}
-          <CopilotRail />
+          {/* Em tela imersiva o copiloto flutua (balão por cima), não vira coluna. */}
+          <CopilotRail floating={isAppScreen} />
         </div>
 
         <Toaster />

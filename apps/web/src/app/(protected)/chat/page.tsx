@@ -130,7 +130,7 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="grid h-[calc(100dvh-150px)] grid-cols-1 gap-3 md:grid-cols-[clamp(260px,30vw,340px)_1fr] lg:grid-cols-[clamp(280px,24vw,340px)_1fr_clamp(320px,26vw,380px)]">
+    <div className="grid h-[calc(100dvh-104px)] grid-cols-1 gap-3 md:grid-cols-[clamp(260px,30vw,340px)_1fr] lg:grid-cols-[clamp(280px,24vw,340px)_1fr_clamp(320px,26vw,380px)]">
       {/* Inbox — no mobile some quando uma conversa está aberta */}
       <div className={`min-w-0 ${selectedId ? 'hidden md:block' : ''}`}>
         <ChatInbox

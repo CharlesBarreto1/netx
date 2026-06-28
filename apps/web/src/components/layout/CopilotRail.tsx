@@ -40,7 +40,7 @@ const SUGGESTIONS = [
   'Como estão meus clientes por status?',
 ];
 
-export function CopilotRail() {
+export function CopilotRail({ floating = false }: { floating?: boolean }) {
   const t = useTranslations('copilot');
   const canUse = hasPermission('ai.ask');
 
@@ -50,10 +50,16 @@ export function CopilotRail() {
   const [loading, setLoading] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
+  // No modo flutuante (tela imersiva) começa recolhido — surge só quando o
+  // usuário chamar, como um balão por cima. No modo coluna respeita o preferido.
   useEffect(() => {
+    if (floating) {
+      setOpen(false);
+      return;
+    }
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored !== null) setOpen(stored === '1');
-  }, []);
+    setOpen(stored === null ? true : stored === '1');
+  }, [floating]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -62,7 +68,8 @@ export function CopilotRail() {
   const toggle = () => {
     setOpen((prev) => {
       const next = !prev;
-      localStorage.setItem(STORAGE_KEY, next ? '1' : '0');
+      // Só persiste a preferência no modo coluna; toggles flutuantes são da sessão.
+      if (!floating) localStorage.setItem(STORAGE_KEY, next ? '1' : '0');
       return next;
     });
   };
@@ -140,8 +147,23 @@ export function CopilotRail() {
   // Sem permissão de copiloto → rail não aparece.
   if (!canUse) return null;
 
-  // ── Recolhido (52px) ──────────────────────────────────────────────────────
+  // ── Recolhido ─────────────────────────────────────────────────────────────
   if (!open) {
+    // Flutuante: botão redondo fixo no canto (FAB) — não ocupa coluna.
+    if (floating) {
+      return (
+        <button
+          type="button"
+          onClick={toggle}
+          title={t('expand')}
+          aria-label={t('expand')}
+          className="fixed bottom-5 right-5 z-30 hidden h-12 w-12 place-items-center rounded-full bg-ai text-ai-foreground shadow-pop ring-1 ring-ai/30 transition-transform hover:scale-105 lg:grid"
+        >
+          <Sparkles className="h-5 w-5" />
+        </button>
+      );
+    }
+    // Coluna: faixa de 52px com o ícone.
     return (
       <aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-[52px] shrink-0 border-l border-border bg-surface/40 lg:flex lg:flex-col lg:items-center lg:gap-3 lg:pt-3">
         <button
@@ -158,9 +180,16 @@ export function CopilotRail() {
     );
   }
 
-  // ── Aberto (344px): chat ──────────────────────────────────────────────────
+  // ── Aberto: chat. Coluna (344px) OU balão flutuante por cima (360px). ───────
   return (
-    <aside className="sticky top-14 hidden h-[calc(100vh-3.5rem)] w-[344px] shrink-0 flex-col border-l border-border bg-surface/40 lg:flex">
+    <aside
+      className={cn(
+        'hidden flex-col lg:flex',
+        floating
+          ? 'fixed right-3 top-[4.25rem] z-30 h-[calc(100vh-5.25rem)] w-[360px] rounded-xl border border-border bg-surface shadow-pop'
+          : 'sticky top-14 h-[calc(100vh-3.5rem)] w-[344px] shrink-0 border-l border-border bg-surface/40',
+      )}
+    >
       {/* Header */}
       <div className="flex items-start gap-3 border-b border-border px-4 py-3">
         <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-ai-muted text-ai ring-1 ring-ai/30">
