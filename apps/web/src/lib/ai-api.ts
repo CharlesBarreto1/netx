@@ -42,6 +42,9 @@ export const aiApi = {
   getInsights() {
     return api.get<AiInsightDto[]>(this.insightsPath());
   },
+  scanInsights() {
+    return api.post<AiInsightDto[]>(`/v1/ai/insights/scan`);
+  },
   dismissInsight(id: string) {
     return api.post<{ ok: boolean }>(`/v1/ai/insights/${id}/dismiss`);
   },

@@ -55,15 +55,14 @@ export function CopilotRail({ floating = false }: { floating?: boolean }) {
   useEffect(() => {
     if (!canUse) return;
     let alive = true;
-    const load = () =>
-      aiApi
-        .getInsights()
-        .then((data) => {
-          if (alive) setInsights(data);
-        })
-        .catch(() => {});
-    void load();
-    const timer = setInterval(load, 60_000);
+    const apply = (data: AiInsightDto[]) => {
+      if (alive) setInsights(data);
+    };
+    // 1ª carga dispara um scan (alertas frescos); depois só consulta a cada 60s.
+    void aiApi.scanInsights().then(apply).catch(() => aiApi.getInsights().then(apply).catch(() => {}));
+    const timer = setInterval(() => {
+      void aiApi.getInsights().then(apply).catch(() => {});
+    }, 60_000);
     return () => {
       alive = false;
       clearInterval(timer);

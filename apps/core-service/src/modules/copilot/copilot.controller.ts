@@ -56,6 +56,14 @@ export class CopilotController {
     return this.insights.list(user.tenantId);
   }
 
+  /** Roda os detectores agora (on-demand) e devolve os alertas. */
+  @Post('insights/scan')
+  @RequirePermissions('ai.ask')
+  async scanInsights(@CurrentUser() user: AuthenticatedPrincipal) {
+    await this.insights.scanTenant(user.tenantId);
+    return this.insights.list(user.tenantId);
+  }
+
   /** Descarta um alerta. */
   @Post('insights/:id/dismiss')
   @RequirePermissions('ai.ask')
