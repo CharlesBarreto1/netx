@@ -7,7 +7,8 @@ As apps **não** são compiladas no servidor do cliente — o GitHub Actions bui
 
 - **SO**: Debian 12/13 (Trixie) ou Ubuntu, **amd64** (as imagens das apps são amd64; ARM ainda não).
 - **Docker Engine + Compose v2**: o installer instala automaticamente se faltar (ver abaixo).
-- Saída de rede para `ghcr.io` (puxar imagens) e alcance L3 aos equipamentos Juniper (SSH/NETCONF/SNMP).
+- Saída de rede para `ghcr.io` (puxar imagens) e alcance L3 aos equipamentos: Juniper (SSH/NETCONF/SNMP)
+  e Mikrotik (SSH/SNMP). Ver `docs/MULTIVENDOR.md` para o que cada vendor exige.
 - As imagens do GHCR devem estar **públicas** (ou faça `docker login ghcr.io` antes; e use `GITHUB_TOKEN` no installer
   se o Release for privado).
 
