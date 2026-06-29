@@ -12,15 +12,23 @@
  *
  * Mantém tenant/i18n/SWR pra que páginas reusem hooks normais do app.
  */
+import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { SWRConfig } from 'swr';
 
 import { PageLoader } from '@/components/ui/Spinner';
 import { swrFetcher } from '@/lib/api';
+import { AuthI18nProvider } from '@/lib/auth-i18n-provider';
 import { I18nProvider } from '@/lib/i18n-provider';
 import { getSession, type Session } from '@/lib/session';
 import { TenantConfigProvider } from '@/lib/tenant-config';
+
+/** Loader transitório do check de sessão (pré-I18nProvider) — ver nota no ProtectedClientLayout. */
+function SessionCheckLoader() {
+  const t = useTranslations('auth.firstLogin');
+  return <PageLoader label={t('checkingSession')} />;
+}
 
 export default function FullscreenClientLayout({
   children,
@@ -47,7 +55,11 @@ export default function FullscreenClientLayout({
   }, [router, pathname]);
 
   if (!checked || !session) {
-    return <PageLoader label="Verificando sessão…" />;
+    return (
+      <AuthI18nProvider>
+        <SessionCheckLoader />
+      </AuthI18nProvider>
+    );
   }
 
   return (

@@ -19,6 +19,7 @@
  *
  * Ordem importa: SWR → TenantConfig (usa SWR) → I18n (usa TenantConfig).
  */
+import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { SWRConfig } from 'swr';
@@ -26,9 +27,20 @@ import { SWRConfig } from 'swr';
 import { AppShell } from '@/components/layout/AppShell';
 import { PageLoader } from '@/components/ui/Spinner';
 import { swrFetcher } from '@/lib/api';
+import { AuthI18nProvider } from '@/lib/auth-i18n-provider';
 import { I18nProvider } from '@/lib/i18n-provider';
 import { getSession, type Session } from '@/lib/session';
 import { TenantConfigProvider } from '@/lib/tenant-config';
+
+/**
+ * Loader transitório do check de sessão — renderiza ANTES do `I18nProvider`
+ * baseado em tenant, então usa o `AuthI18nProvider` (idioma do navegador) pra
+ * não cravar português. Reaproveita a chave `auth.firstLogin.checkingSession`.
+ */
+function SessionCheckLoader() {
+  const t = useTranslations('auth.firstLogin');
+  return <PageLoader label={t('checkingSession')} />;
+}
 
 export default function ProtectedClientLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -54,7 +66,11 @@ export default function ProtectedClientLayout({ children }: { children: React.Re
   }, [router, pathname]);
 
   if (!checked || !session) {
-    return <PageLoader label="Verificando sessão…" />;
+    return (
+      <AuthI18nProvider>
+        <SessionCheckLoader />
+      </AuthI18nProvider>
+    );
   }
 
   return (

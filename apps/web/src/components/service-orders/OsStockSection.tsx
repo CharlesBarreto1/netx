@@ -12,6 +12,7 @@
  *   - Adicionar consumo: service_orders.write + stock.adjust
  *   - Alocar equipamento: contracts.write + stock.write
  */
+import { useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
 import useSWR from 'swr';
 
@@ -40,6 +41,9 @@ export function OsStockSection({
   contractId,
   isFinalized,
 }: OsStockSectionProps) {
+  const t = useTranslations('osStock');
+  const tCommon = useTranslations('common');
+
   const canConsume =
     hasPermission('service_orders.write') && hasPermission('stock.adjust');
   const canAllocate =
@@ -65,11 +69,14 @@ export function OsStockSection({
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm text-text-muted">
-          Material baixado em estoque por esta OS. Total: <strong>R${' '}
-          {totalConsumed.toLocaleString(undefined, {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          })}</strong>
+          {t('summary.label')}{' '}
+          <strong>
+            R${' '}
+            {totalConsumed.toLocaleString(undefined, {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })}
+          </strong>
         </div>
         {!isFinalized && (
           <div className="flex gap-2">
@@ -79,12 +86,12 @@ export function OsStockSection({
                 size="sm"
                 onClick={() => setAllocating(true)}
               >
-                + Equipamento (comodato)
+                {t('actions.addEquipment')}
               </Button>
             )}
             {canConsume && (
               <Button size="sm" onClick={() => setAddingConsumption(true)}>
-                + Material consumido
+                {t('actions.addMaterial')}
               </Button>
             )}
           </div>
@@ -93,12 +100,12 @@ export function OsStockSection({
 
       {isLoading && <Spinner />}
       {error && (
-        <div className="text-sm text-red-600">Falha ao carregar consumo.</div>
+        <div className="text-sm text-red-600">{t('list.loadError')}</div>
       )}
 
       {consumption && consumption.length === 0 && (
         <p className="text-sm text-text-muted italic">
-          Nenhum material consumido nesta OS.
+          {t('list.empty')}
         </p>
       )}
 
@@ -107,12 +114,12 @@ export function OsStockSection({
           <table className="min-w-full divide-y divide-border text-sm">
             <thead className="bg-bg-soft">
               <tr className="text-left text-xs font-semibold uppercase tracking-wide text-text-muted">
-                <th className="px-3 py-2">Produto</th>
-                <th className="px-3 py-2">Local</th>
-                <th className="px-3 py-2 text-right">Qty</th>
-                <th className="px-3 py-2 text-right">Custo unit.</th>
-                <th className="px-3 py-2 text-right">Total</th>
-                <th className="px-3 py-2 text-xs">Quando</th>
+                <th className="px-3 py-2">{t('table.product')}</th>
+                <th className="px-3 py-2">{t('table.location')}</th>
+                <th className="px-3 py-2 text-right">{t('table.quantity')}</th>
+                <th className="px-3 py-2 text-right">{t('table.unitCost')}</th>
+                <th className="px-3 py-2 text-right">{t('table.total')}</th>
+                <th className="px-3 py-2 text-xs">{t('table.when')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -194,6 +201,9 @@ function AddConsumptionModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('osStock');
+  const tCommon = useTranslations('common');
+
   const { data: products } = useSWR<Product[]>(
     stockApi.productsPath({ isActive: true, type: 'CONSUMIVEL' }),
     () => stockApi.listProducts({ isActive: true, type: 'CONSUMIVEL' }),
@@ -232,11 +242,13 @@ function AddConsumptionModal({
     setError(null);
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
-      if (!it.productId) return setError(`Item ${i + 1}: selecione o produto`);
-      if (!it.locationId) return setError(`Item ${i + 1}: selecione o local`);
+      if (!it.productId)
+        return setError(t('addModal.errors.product', { index: i + 1 }));
+      if (!it.locationId)
+        return setError(t('addModal.errors.location', { index: i + 1 }));
       const qty = Number(it.quantity);
       if (!Number.isFinite(qty) || qty <= 0)
-        return setError(`Item ${i + 1}: quantidade inválida`);
+        return setError(t('addModal.errors.quantity', { index: i + 1 }));
     }
     setSubmitting(true);
     try {
@@ -250,19 +262,16 @@ function AddConsumptionModal({
       });
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      setError(err instanceof ApiError ? err.friendlyMessage : tCommon('error'));
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Modal open onClose={onClose} title="Adicionar material consumido" size="lg">
+    <Modal open onClose={onClose} title={t('addModal.title')} size="lg">
       <form onSubmit={handleSubmit} className="space-y-3">
-        <p className="text-sm text-text-muted">
-          Lista de materiais consumíveis (cabo, conector, etc) que o técnico
-          usou nesta OS. Cada item baixa do estoque no local escolhido.
-        </p>
+        <p className="text-sm text-text-muted">{t('addModal.intro')}</p>
 
         <div className="space-y-2">
           {items.map((it, idx) => (
@@ -272,7 +281,7 @@ function AddConsumptionModal({
             >
               <div className="grid grid-cols-12 gap-2">
                 <div className="col-span-5">
-                  <Label className="text-xs">Produto</Label>
+                  <Label className="text-xs">{t('table.product')}</Label>
                   <select
                     className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
                     value={it.productId}
@@ -289,7 +298,7 @@ function AddConsumptionModal({
                   </select>
                 </div>
                 <div className="col-span-4">
-                  <Label className="text-xs">Local</Label>
+                  <Label className="text-xs">{t('table.location')}</Label>
                   <select
                     className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm dark:border-slate-600 dark:bg-slate-900"
                     value={it.locationId}
@@ -306,7 +315,7 @@ function AddConsumptionModal({
                   </select>
                 </div>
                 <div className="col-span-2">
-                  <Label className="text-xs">Qty</Label>
+                  <Label className="text-xs">{t('table.quantity')}</Label>
                   <Input
                     type="number"
                     step="0.0001"
@@ -324,6 +333,7 @@ function AddConsumptionModal({
                     <button
                       type="button"
                       onClick={() => removeItem(idx)}
+                      aria-label={t('addModal.removeItem')}
                       className="text-xs text-red-600 hover:underline"
                     >
                       X
@@ -336,7 +346,7 @@ function AddConsumptionModal({
         </div>
 
         <Button type="button" variant="ghost" size="sm" onClick={addItem}>
-          + Adicionar outro item
+          {t('addModal.addAnotherItem')}
         </Button>
 
         {error && <FieldError>{error}</FieldError>}
@@ -348,10 +358,10 @@ function AddConsumptionModal({
             onClick={onClose}
             disabled={submitting}
           >
-            Cancelar
+            {tCommon('cancel')}
           </Button>
           <Button type="submit" loading={submitting}>
-            Registrar consumo
+            {t('addModal.submit')}
           </Button>
         </div>
       </form>
@@ -371,19 +381,22 @@ function AllocateEquipmentModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('osStock');
+  const tCommon = useTranslations('common');
+
   const { data: available, isLoading } = useSWR<ComodatoAvailableSerial[]>(
     '/v1/stock/comodato/available',
     () => stockApi.listComodatoAvailable(),
   );
 
   const [serialItemId, setSerialItemId] = useState('');
-  const [notes, setNotes] = useState('Alocado durante OS');
+  const [notes, setNotes] = useState(t('allocateModal.defaultNotes'));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!serialItemId) return setError('Selecione um equipamento');
+    if (!serialItemId) return setError(t('allocateModal.errors.required'));
     setSubmitting(true);
     try {
       await stockApi.allocateComodato({
@@ -393,36 +406,28 @@ function AllocateEquipmentModal({
       });
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.friendlyMessage : 'Erro');
+      setError(err instanceof ApiError ? err.friendlyMessage : tCommon('error'));
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
-    <Modal
-      open
-      onClose={onClose}
-      title="Alocar equipamento ao contrato (comodato)"
-    >
+    <Modal open onClose={onClose} title={t('allocateModal.title')}>
       <form onSubmit={handleSubmit} className="space-y-3">
-        <p className="text-sm text-text-muted">
-          O equipamento sai do estoque (status ALLOCATED) e fica vinculado ao
-          contrato do cliente. Será restituído via "Devolver" na página do
-          contrato quando voltar.
-        </p>
+        <p className="text-sm text-text-muted">{t('allocateModal.intro')}</p>
 
         {isLoading && <Spinner />}
 
         {available && available.length === 0 && (
           <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
-            Nenhum equipamento patrimonial disponível em estoque.
+            {t('allocateModal.empty')}
           </div>
         )}
 
         {available && available.length > 0 && (
           <div>
-            <Label>Equipamento *</Label>
+            <Label>{t('allocateModal.equipmentLabel')}</Label>
             <select
               className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900"
               value={serialItemId}
@@ -441,7 +446,7 @@ function AllocateEquipmentModal({
         )}
 
         <div>
-          <Label>Observações</Label>
+          <Label>{tCommon('notes')}</Label>
           <Textarea
             rows={2}
             value={notes}
@@ -458,10 +463,10 @@ function AllocateEquipmentModal({
             onClick={onClose}
             disabled={submitting}
           >
-            Cancelar
+            {tCommon('cancel')}
           </Button>
           <Button type="submit" loading={submitting} disabled={!serialItemId}>
-            Alocar
+            {t('allocateModal.submit')}
           </Button>
         </div>
       </form>

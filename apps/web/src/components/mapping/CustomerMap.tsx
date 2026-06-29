@@ -20,6 +20,7 @@
  * deve ser usado no wrapping da página.
  */
 import { useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
 
@@ -119,11 +120,12 @@ function FitBoundsToPoints({
 }
 
 function CustomerPopupContent({ point }: { point: CustomerMapPoint }) {
+  const t = useTranslations('mapComponents');
   const statusLabel = (() => {
-    if (point.status === 'ACTIVE') return point.online ? 'Online' : 'Offline';
-    if (point.status === 'SUSPENDED') return 'Suspenso';
-    if (point.status === 'PENDING_INSTALL') return 'Instalação pendente';
-    return 'Cancelado';
+    if (point.status === 'ACTIVE') return point.online ? t('customer.online') : t('customer.offline');
+    if (point.status === 'SUSPENDED') return t('customer.suspended');
+    if (point.status === 'PENDING_INSTALL') return t('customer.pendingInstall');
+    return t('customer.cancelled');
   })();
   const statusColor = colorForPoint(point);
   return (
@@ -135,11 +137,11 @@ function CustomerPopupContent({ point }: { point: CustomerMapPoint }) {
       </div>
       {point.planName && (
         <div style={{ fontSize: 12, marginTop: 6 }}>
-          <strong>Plano:</strong> {point.planName}
+          <strong>{t('customer.plan')}</strong> {point.planName}
         </div>
       )}
       <div style={{ fontSize: 12 }}>
-        <strong>Mensalidade:</strong>{' '}
+        <strong>{t('customer.monthly')}</strong>{' '}
         {point.monthlyValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
       </div>
       {point.radiusIdentifier && (
@@ -149,7 +151,7 @@ function CustomerPopupContent({ point }: { point: CustomerMapPoint }) {
       )}
       <div style={{ fontSize: 12, marginTop: 8 }}>
         <a href={`/contracts/${point.id}`} style={{ color: '#2563eb' }}>
-          Abrir contrato →
+          {t('customer.openContract')}
         </a>
       </div>
     </div>

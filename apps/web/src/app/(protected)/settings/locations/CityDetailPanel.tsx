@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -26,8 +27,8 @@ import {
 
 const STREET_KINDS = ['Rua', 'Avenida', 'Travessa', 'Rodovia', 'Estrada', 'Alameda', 'Praça', 'Outro'];
 
-function errMsg(e: unknown): string {
-  return e instanceof ApiError ? e.friendlyMessage : 'Erro inesperado';
+function errMsg(e: unknown, t: (key: string) => string): string {
+  return e instanceof ApiError ? e.friendlyMessage : t('errors.unexpected');
 }
 
 export function CityDetailPanel({
@@ -49,6 +50,8 @@ export function CityDetailPanel({
 // Bairros
 // ---------------------------------------------------------------------------
 function NeighborhoodsSection({ cityId, canManage }: { cityId: string; canManage: boolean }) {
+  const t = useTranslations('settingsLocations');
+  const tCommon = useTranslations('common');
   const { data, isLoading, mutate } = useSWR<NeighborhoodResponse[]>(
     locationsApi.neighborhoodsPath(cityId),
   );
@@ -59,20 +62,20 @@ function NeighborhoodsSection({ cityId, canManage }: { cityId: string; canManage
   return (
     <section className="rounded-md border border-border bg-surface">
       <header className="flex items-center justify-between border-b border-border px-3 py-2">
-        <h3 className="text-sm font-semibold">Bairros</h3>
+        <h3 className="text-sm font-semibold">{t('neighborhood.sectionTitle')}</h3>
         {canManage && (
           <Button size="sm" variant="ghost" onClick={() => setCreating(true)}>
-            + Novo bairro
+            {t('neighborhood.add')}
           </Button>
         )}
       </header>
 
       {isLoading ? (
         <div className="p-4">
-          <InlineLoader label="Carregando bairros…" />
+          <InlineLoader label={t('neighborhood.loading')} />
         </div>
       ) : !data || data.length === 0 ? (
-        <p className="px-3 py-6 text-center text-sm text-text-muted">Nenhum bairro cadastrado.</p>
+        <p className="px-3 py-6 text-center text-sm text-text-muted">{t('neighborhood.empty')}</p>
       ) : (
         <ul className="divide-y divide-border">
           {data.map((n) => (
@@ -81,10 +84,10 @@ function NeighborhoodsSection({ cityId, canManage }: { cityId: string; canManage
               {canManage && (
                 <div className="flex gap-1">
                   <Button size="sm" variant="ghost" onClick={() => setEditing(n)}>
-                    Editar
+                    {tCommon('edit')}
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => setDeleting(n)}>
-                    Excluir
+                    {tCommon('delete')}
                   </Button>
                 </div>
               )}
@@ -112,19 +115,19 @@ function NeighborhoodsSection({ cityId, canManage }: { cityId: string; canManage
       <ConfirmDialog
         open={!!deleting}
         onClose={() => setDeleting(null)}
-        title="Excluir bairro"
-        message={`Excluir o bairro "${deleting?.name ?? ''}"?`}
+        title={t('neighborhood.deleteTitle')}
+        message={t('neighborhood.deleteMessage', { name: deleting?.name ?? '' })}
         variant="danger"
-        confirmLabel="Excluir"
+        confirmLabel={tCommon('delete')}
         onConfirm={async () => {
           if (!deleting) return;
           try {
             await locationsApi.removeNeighborhood(deleting.id);
-            toast.success('Bairro excluído');
+            toast.success(t('neighborhood.deleted'));
             setDeleting(null);
             await mutate();
           } catch (e) {
-            toast.error(errMsg(e));
+            toast.error(errMsg(e, t));
           }
         }}
       />
@@ -143,6 +146,8 @@ function NeighborhoodFormDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('settingsLocations');
+  const tCommon = useTranslations('common');
   const isEdit = !!initial;
   const [name, setName] = useState(initial?.name ?? '');
   const [submitting, setSubmitting] = useState(false);
@@ -157,10 +162,10 @@ function NeighborhoodFormDialog({
       } else {
         await locationsApi.createNeighborhood({ cityId, name: name.trim() });
       }
-      toast.success('Bairro salvo');
+      toast.success(t('neighborhood.saved'));
       onSaved();
     } catch (e) {
-      toast.error(errMsg(e));
+      toast.error(errMsg(e, t));
     } finally {
       setSubmitting(false);
     }
@@ -171,20 +176,20 @@ function NeighborhoodFormDialog({
       <DialogContent className="max-w-sm">
         <form onSubmit={submit}>
           <DialogHeader>
-            <DialogTitle>{isEdit ? 'Editar bairro' : 'Novo bairro'}</DialogTitle>
+            <DialogTitle>{isEdit ? t('neighborhood.editTitle') : t('neighborhood.newTitle')}</DialogTitle>
           </DialogHeader>
           <DialogBody>
             <Label htmlFor="nb-name" required>
-              Nome
+              {tCommon('name')}
             </Label>
             <Input id="nb-name" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>
-              Cancelar
+              {tCommon('cancel')}
             </Button>
             <Button type="submit" loading={submitting}>
-              Salvar
+              {tCommon('save')}
             </Button>
           </DialogFooter>
         </form>
@@ -197,6 +202,8 @@ function NeighborhoodFormDialog({
 // Logradouros
 // ---------------------------------------------------------------------------
 function StreetsSection({ cityId, canManage }: { cityId: string; canManage: boolean }) {
+  const t = useTranslations('settingsLocations');
+  const tCommon = useTranslations('common');
   const [search, setSearch] = useState('');
   const { data, isLoading, mutate } = useSWR<StreetResponse[]>(
     locationsApi.streetsPath(cityId, { q: search.trim() || undefined }),
@@ -214,17 +221,17 @@ function StreetsSection({ cityId, canManage }: { cityId: string; canManage: bool
   return (
     <section className="rounded-md border border-border bg-surface">
       <header className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-        <h3 className="text-sm font-semibold">Logradouros</h3>
+        <h3 className="text-sm font-semibold">{t('street.sectionTitle')}</h3>
         {canManage && (
           <Button size="sm" variant="ghost" onClick={() => setCreating(true)}>
-            + Novo logradouro
+            {t('street.add')}
           </Button>
         )}
       </header>
 
       <div className="px-3 py-2">
         <Input
-          placeholder="Buscar rua…"
+          placeholder={t('street.searchPlaceholder')}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -232,11 +239,11 @@ function StreetsSection({ cityId, canManage }: { cityId: string; canManage: bool
 
       {isLoading ? (
         <div className="p-4">
-          <InlineLoader label="Carregando logradouros…" />
+          <InlineLoader label={t('street.loading')} />
         </div>
       ) : !data || data.length === 0 ? (
         <p className="px-3 py-6 text-center text-sm text-text-muted">
-          {search ? 'Nenhum logradouro encontrado.' : 'Nenhum logradouro cadastrado.'}
+          {search ? t('street.emptySearch') : t('street.empty')}
         </p>
       ) : (
         <ul className="max-h-96 divide-y divide-border overflow-y-auto">
@@ -244,20 +251,20 @@ function StreetsSection({ cityId, canManage }: { cityId: string; canManage: bool
             <li key={s.id} className="flex items-center justify-between px-3 py-2 text-sm hover:bg-surface-hover">
               <div className="min-w-0">
                 <p className="truncate font-medium text-text">
-                  {s.kind ? `${s.kind} ` : ''}
+                  {s.kind ? `${STREET_KINDS.includes(s.kind) ? t(`street.kind.${s.kind}`) : s.kind} ` : ''}
                   {s.name}
                 </p>
                 <p className="text-xs text-text-muted">
-                  {s.postalCode ? formatCep(s.postalCode) : 'sem CEP'} · {nbName(s.neighborhoodId)}
+                  {s.postalCode ? formatCep(s.postalCode) : t('street.noCep')} · {nbName(s.neighborhoodId)}
                 </p>
               </div>
               {canManage && (
                 <div className="flex shrink-0 gap-1">
                   <Button size="sm" variant="ghost" onClick={() => setEditing(s)}>
-                    Editar
+                    {tCommon('edit')}
                   </Button>
                   <Button size="sm" variant="ghost" onClick={() => setDeleting(s)}>
-                    Excluir
+                    {tCommon('delete')}
                   </Button>
                 </div>
               )}
@@ -286,19 +293,19 @@ function StreetsSection({ cityId, canManage }: { cityId: string; canManage: bool
       <ConfirmDialog
         open={!!deleting}
         onClose={() => setDeleting(null)}
-        title="Excluir logradouro"
-        message={`Excluir "${deleting?.name ?? ''}"?`}
+        title={t('street.deleteTitle')}
+        message={t('street.deleteMessage', { name: deleting?.name ?? '' })}
         variant="danger"
-        confirmLabel="Excluir"
+        confirmLabel={tCommon('delete')}
         onConfirm={async () => {
           if (!deleting) return;
           try {
             await locationsApi.removeStreet(deleting.id);
-            toast.success('Logradouro excluído');
+            toast.success(t('street.deleted'));
             setDeleting(null);
             await mutate();
           } catch (e) {
-            toast.error(errMsg(e));
+            toast.error(errMsg(e, t));
           }
         }}
       />
@@ -319,6 +326,8 @@ function StreetFormDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('settingsLocations');
+  const tCommon = useTranslations('common');
   const isEdit = !!initial;
   const [name, setName] = useState(initial?.name ?? '');
   const [kind, setKind] = useState(initial?.kind ?? '');
@@ -342,10 +351,10 @@ function StreetFormDialog({
       } else {
         await locationsApi.createStreet({ cityId, ...payload });
       }
-      toast.success('Logradouro salvo');
+      toast.success(t('street.saved'));
       onSaved();
     } catch (e) {
-      toast.error(errMsg(e));
+      toast.error(errMsg(e, t));
     } finally {
       setSubmitting(false);
     }
@@ -356,31 +365,31 @@ function StreetFormDialog({
       <DialogContent className="max-w-md">
         <form onSubmit={submit}>
           <DialogHeader>
-            <DialogTitle>{isEdit ? 'Editar logradouro' : 'Novo logradouro'}</DialogTitle>
+            <DialogTitle>{isEdit ? t('street.editTitle') : t('street.newTitle')}</DialogTitle>
           </DialogHeader>
           <DialogBody className="flex flex-col gap-3">
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <Label htmlFor="st-kind">Tipo</Label>
+                <Label htmlFor="st-kind">{tCommon('type')}</Label>
                 <Select id="st-kind" value={kind} onChange={(e) => setKind(e.target.value)}>
                   <option value="">—</option>
                   {STREET_KINDS.map((k) => (
                     <option key={k} value={k}>
-                      {k}
+                      {t(`street.kind.${k}`)}
                     </option>
                   ))}
                 </Select>
               </div>
               <div className="col-span-2">
                 <Label htmlFor="st-name" required>
-                  Nome
+                  {tCommon('name')}
                 </Label>
                 <Input id="st-name" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label htmlFor="st-cep">CEP</Label>
+                <Label htmlFor="st-cep">{t('import.cepLabel')}</Label>
                 <Input
                   id="st-cep"
                   value={cep}
@@ -388,10 +397,10 @@ function StreetFormDialog({
                   placeholder="00000-000"
                   inputMode="numeric"
                 />
-                <FieldHelp>Opcional em cidades de CEP único.</FieldHelp>
+                <FieldHelp>{t('street.cepHelp')}</FieldHelp>
               </div>
               <div>
-                <Label htmlFor="st-nb">Bairro</Label>
+                <Label htmlFor="st-nb">{t('neighborhood.label')}</Label>
                 <Select
                   id="st-nb"
                   value={neighborhoodId}
@@ -409,10 +418,10 @@ function StreetFormDialog({
           </DialogBody>
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>
-              Cancelar
+              {tCommon('cancel')}
             </Button>
             <Button type="submit" loading={submitting}>
-              Salvar
+              {tCommon('save')}
             </Button>
           </DialogFooter>
         </form>

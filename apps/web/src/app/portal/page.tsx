@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
@@ -25,6 +26,7 @@ import {
  * Phase 2: pagar via PIX/boleto, mudar senha do portal, abrir chamado.
  */
 export default function PortalDashboardPage() {
+  const t = useTranslations('portal');
   const router = useRouter();
   const [session, setSession] = useState<PortalSession | null>(null);
   const [me, setMe] = useState<PortalMe | null>(null);
@@ -57,7 +59,7 @@ export default function PortalDashboardPage() {
   if (!session || loading) {
     return (
       <main className="min-h-screen flex items-center justify-center text-sm text-slate-500">
-        Cargando…
+        {t('dashboard.loading')}
       </main>
     );
   }
@@ -94,7 +96,7 @@ export default function PortalDashboardPage() {
             {session.tenant.name}
           </p>
           <h1 className="text-2xl font-bold tracking-tight">
-            Hola, {session.customer.displayName}
+            {t('dashboard.greeting', { name: session.customer.displayName })}
           </h1>
           {me?.taxId && (
             <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -106,7 +108,7 @@ export default function PortalDashboardPage() {
           onClick={logout}
           className="text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-200"
         >
-          Cerrar sesión
+          {t('dashboard.logout')}
         </button>
       </header>
 
@@ -114,14 +116,13 @@ export default function PortalDashboardPage() {
       {openTotal > 0 && (
         <section className="rounded-lg border-2 border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 p-4">
           <p className="text-xs font-semibold uppercase tracking-wider text-amber-800 dark:text-amber-300">
-            Saldo pendiente
+            {t('dashboard.balanceDue')}
           </p>
           <p className="mt-1 text-3xl font-bold text-amber-900 dark:text-amber-200">
             {formatMoney(openTotal)}
           </p>
           <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
-            Acercate al punto de cobro o pagá según las instrucciones de tu
-            proveedor.
+            {t('dashboard.balanceDueHint')}
           </p>
         </section>
       )}
@@ -129,10 +130,10 @@ export default function PortalDashboardPage() {
       {/* Contratos */}
       <section>
         <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
-          Mis servicios
+          {t('contract.sectionTitle')}
         </h2>
         {contracts.length === 0 ? (
-          <p className="text-sm text-slate-500">Sin contratos.</p>
+          <p className="text-sm text-slate-500">{t('contract.empty')}</p>
         ) : (
           <div className="grid gap-3 md:grid-cols-2">
             {contracts.map((c) => (
@@ -148,7 +149,10 @@ export default function PortalDashboardPage() {
                 </div>
                 <p className="mt-2 text-2xl font-bold">{c.bandwidthMbps} Mbps</p>
                 <p className="text-sm text-slate-500 dark:text-slate-400">
-                  {formatMoney(c.monthlyValue)} / mes · vence el día {c.dueDay}
+                  {t('contract.monthlyLine', {
+                    amount: formatMoney(c.monthlyValue),
+                    day: c.dueDay,
+                  })}
                 </p>
                 <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                   {c.installationAddress}
@@ -163,19 +167,19 @@ export default function PortalDashboardPage() {
       {/* Faturas */}
       <section>
         <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
-          Mis facturas
+          {t('invoice.sectionTitle')}
         </h2>
         {allItems.length === 0 ? (
-          <p className="text-sm text-slate-500">Sin facturas.</p>
+          <p className="text-sm text-slate-500">{t('invoice.empty')}</p>
         ) : (
           <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50 dark:bg-slate-900/40 text-left text-[11px] uppercase tracking-wider text-slate-500">
                 <tr>
-                  <th className="px-3 py-2">Descripción</th>
-                  <th className="px-3 py-2">Vencimiento</th>
-                  <th className="px-3 py-2 text-right">Monto</th>
-                  <th className="px-3 py-2">Estado</th>
+                  <th className="px-3 py-2">{t('invoice.colDescription')}</th>
+                  <th className="px-3 py-2">{t('invoice.colDueDate')}</th>
+                  <th className="px-3 py-2 text-right">{t('invoice.colAmount')}</th>
+                  <th className="px-3 py-2">{t('invoice.colStatus')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
@@ -184,7 +188,10 @@ export default function PortalDashboardPage() {
                     <td className="px-3 py-2">
                       <div className="font-medium">{i.description}</div>
                       <div className="text-xs text-slate-500">
-                        {i.code ?? (i.kind === 'INVOICE' ? 'Mensualidad' : 'Cargo puntual')}
+                        {i.code ??
+                          (i.kind === 'INVOICE'
+                            ? t('invoice.kindInvoice')
+                            : t('invoice.kindCharge'))}
                       </div>
                     </td>
                     <td className="px-3 py-2 text-slate-500">
@@ -205,7 +212,7 @@ export default function PortalDashboardPage() {
       </section>
 
       <footer className="text-center text-xs text-slate-400 pt-4">
-        Portal NetX. Para otros cambios contactá a {session.tenant.name}.
+        {t('dashboard.footer', { provider: session.tenant.name })}
       </footer>
     </main>
   );
@@ -217,6 +224,7 @@ export default function PortalDashboardPage() {
  * o contrato não tem ONT TR-069 vinculada (nada pra aplicar).
  */
 function ContractWifiManager({ contractId }: { contractId: string }) {
+  const t = useTranslations('portal');
   const [wifi, setWifi] = useState<PortalWifiStatus | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -267,23 +275,23 @@ function ContractWifiManager({ contractId }: { contractId: string }) {
           onClick={() => setModalOpen(true)}
           className="shrink-0 rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:hover:bg-slate-700"
         >
-          Cambiar
+          {t('wifi.change')}
         </button>
       </div>
 
       {applying && (
         <p className="mt-2 text-xs text-blue-600 dark:text-blue-400">
-          Aplicando cambios en tu router… puede tardar ~1 minuto.
+          {t('wifi.applying')}
         </p>
       )}
       {touched && !applying && wifi.lastTask?.status === 'DONE' && (
         <p className="mt-2 text-xs text-emerald-600 dark:text-emerald-400">
-          Wi-Fi actualizado.
+          {t('wifi.updated')}
         </p>
       )}
       {touched && !applying && wifi.lastTask?.status === 'FAILED' && (
         <p className="mt-2 text-xs text-red-600 dark:text-red-400">
-          No se pudo aplicar el cambio. Intentá de nuevo o contactá a tu proveedor.
+          {t('wifi.failed')}
         </p>
       )}
 
@@ -324,6 +332,8 @@ function WifiChangeModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useTranslations('portal');
+  const tCommon = useTranslations('common');
   const [ssid, setSsid] = useState(initialSsid);
   const [pwd, setPwd] = useState('');
   const [saving, setSaving] = useState(false);
@@ -333,11 +343,11 @@ function WifiChangeModal({
     e.preventDefault();
     setError(null);
     if (ssid.trim().length < 1 || ssid.length > 32) {
-      setError('El nombre de la red debe tener entre 1 y 32 caracteres.');
+      setError(t('wifi.errorSsid'));
       return;
     }
     if (pwd.length < 8 || pwd.length > 63) {
-      setError('La contraseña debe tener entre 8 y 63 caracteres.');
+      setError(t('wifi.errorPassword'));
       return;
     }
     setSaving(true);
@@ -361,16 +371,14 @@ function WifiChangeModal({
         className="w-full max-w-md rounded-t-xl bg-white p-5 shadow-xl dark:bg-slate-800 sm:rounded-xl"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <h3 className="text-lg font-semibold">Cambiar mi Wi-Fi</h3>
+        <h3 className="text-lg font-semibold">{t('wifi.modalTitle')}</h3>
         <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-          El cambio se aplica a las redes 2.4&nbsp;GHz y 5&nbsp;GHz. Tus
-          dispositivos se desconectarán y deberás reconectarlos con la nueva
-          contraseña.
+          {t('wifi.modalHint')}
         </p>
         <form onSubmit={handleSubmit} className="mt-4 space-y-3">
           <div>
             <label className="mb-1 block text-sm font-medium" htmlFor="portal-ssid">
-              Nombre de la red (SSID)
+              {t('wifi.ssidLabel')}
             </label>
             <input
               id="portal-ssid"
@@ -383,7 +391,7 @@ function WifiChangeModal({
           </div>
           <div>
             <label className="mb-1 block text-sm font-medium" htmlFor="portal-pwd">
-              Contraseña
+              {t('wifi.passwordLabel')}
             </label>
             <div className="flex gap-2">
               <input
@@ -393,7 +401,7 @@ function WifiChangeModal({
                 minLength={8}
                 maxLength={63}
                 required
-                placeholder="Mínimo 8 caracteres"
+                placeholder={t('wifi.passwordPlaceholder')}
                 className="block w-full flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900"
               />
               <button
@@ -401,7 +409,7 @@ function WifiChangeModal({
                 onClick={() => setPwd(generateWifiPassword())}
                 className="shrink-0 rounded-md border border-slate-300 px-2.5 text-xs font-medium hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-700"
               >
-                Generar
+                {t('wifi.generate')}
               </button>
             </div>
           </div>
@@ -414,14 +422,14 @@ function WifiChangeModal({
               onClick={onClose}
               className="rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
             >
-              Cancelar
+              {tCommon('cancel')}
             </button>
             <button
               type="submit"
               disabled={saving}
               className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {saving ? 'Guardando…' : 'Guardar'}
+              {saving ? tCommon('saving') : tCommon('save')}
             </button>
           </div>
         </form>
@@ -431,15 +439,21 @@ function WifiChangeModal({
 }
 
 function StatusBadge({ status }: { status: PortalContract['status'] }) {
-  const map: Record<PortalContract['status'], { label: string; cls: string }> = {
-    ACTIVE: { label: 'Activo', cls: 'bg-emerald-100 text-emerald-800' },
-    SUSPENDED: { label: 'Suspendido', cls: 'bg-amber-100 text-amber-800' },
-    CANCELLED: { label: 'Cancelado', cls: 'bg-slate-200 text-slate-700' },
+  const t = useTranslations('portal');
+  const cls: Record<PortalContract['status'], string> = {
+    ACTIVE: 'bg-emerald-100 text-emerald-800',
+    SUSPENDED: 'bg-amber-100 text-amber-800',
+    CANCELLED: 'bg-slate-200 text-slate-700',
   };
-  const m = map[status];
+  const known = ['ACTIVE', 'SUSPENDED', 'CANCELLED'];
+  const label = known.includes(status)
+    ? t(`status.contract.${status}`)
+    : status;
   return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${m.cls}`}>
-      {m.label}
+    <span
+      className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls[status] ?? 'bg-slate-200 text-slate-700'}`}
+    >
+      {label}
     </span>
   );
 }
@@ -449,16 +463,20 @@ function InvoiceStatusBadge({
 }: {
   status: 'OPEN' | 'PAID' | 'OVERDUE' | 'CANCELLED';
 }) {
-  const map: Record<string, { label: string; cls: string }> = {
-    OPEN: { label: 'Pendiente', cls: 'bg-blue-100 text-blue-800' },
-    PAID: { label: 'Pagado', cls: 'bg-emerald-100 text-emerald-800' },
-    OVERDUE: { label: 'Vencido', cls: 'bg-red-100 text-red-800' },
-    CANCELLED: { label: 'Anulado', cls: 'bg-slate-200 text-slate-700' },
+  const t = useTranslations('portal');
+  const cls: Record<string, string> = {
+    OPEN: 'bg-blue-100 text-blue-800',
+    PAID: 'bg-emerald-100 text-emerald-800',
+    OVERDUE: 'bg-red-100 text-red-800',
+    CANCELLED: 'bg-slate-200 text-slate-700',
   };
-  const m = map[status];
+  const known = ['OPEN', 'PAID', 'OVERDUE', 'CANCELLED'];
+  const label = known.includes(status) ? t(`status.invoice.${status}`) : status;
   return (
-    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${m.cls}`}>
-      {m.label}
+    <span
+      className={`px-2 py-0.5 rounded-full text-xs font-medium ${cls[status] ?? 'bg-slate-200 text-slate-700'}`}
+    >
+      {label}
     </span>
   );
 }

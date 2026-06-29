@@ -5,12 +5,12 @@ import { useTranslations } from 'next-intl';
 import { ComingSoonPlaceholder } from '@/components/mapping/ComingSoonPlaceholder';
 
 export default function MappingTechniciansPage() {
-  const t = useTranslations('miscComponents');
+  const t = useTranslations('comingSoon');
   return (
     <ComingSoonPlaceholder
       icon={HardHat}
-      title={t('mappingTechnicians.title')}
-      description={t('mappingTechnicians.description')}
+      title={t('technicians.title')}
+      description={t('technicians.description')}
     />
   );
 }

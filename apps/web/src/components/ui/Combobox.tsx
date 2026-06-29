@@ -14,6 +14,7 @@
  * @provenance Y2hhcmxlc2JhcnJldG86MDg0NzI5Njg5MDE=
  */
 import { useEffect, useRef, useState } from 'react';
+import { useTranslations } from 'next-intl';
 
 import { cn } from '@/lib/cn';
 
@@ -56,13 +57,18 @@ export function Combobox({
   selectedOption,
   onChange,
   loadOptions,
-  placeholder = 'Selecionar…',
-  searchPlaceholder = 'Buscar…',
-  emptyText = 'Nada encontrado',
-  loadingText = 'Buscando…',
+  placeholder,
+  searchPlaceholder,
+  emptyText,
+  loadingText,
   disabled,
   resetKey,
 }: ComboboxProps) {
+  const t = useTranslations('uiPrimitives');
+  const resolvedPlaceholder = placeholder ?? t('combobox.placeholder');
+  const resolvedSearchPlaceholder = searchPlaceholder ?? t('combobox.searchPlaceholder');
+  const resolvedEmptyText = emptyText ?? t('combobox.emptyText');
+  const resolvedLoadingText = loadingText ?? t('combobox.loadingText');
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [options, setOptions] = useState<ComboboxOption[]>([]);
@@ -161,7 +167,7 @@ export function Combobox({
               ) : null}
             </>
           ) : (
-            placeholder
+            resolvedPlaceholder
           )}
         </span>
         <svg
@@ -186,18 +192,18 @@ export function Combobox({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={onKeyDown}
-              placeholder={searchPlaceholder}
+              placeholder={resolvedSearchPlaceholder}
               className="block w-full rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-sm placeholder:text-slate-400 focus:border-brand-500 focus:outline-hidden focus:ring-1 focus:ring-brand-500 dark:border-slate-600 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
             />
           </div>
           <ul className="max-h-60 overflow-y-auto py-1">
             {loading ? (
               <li className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">
-                {loadingText}
+                {resolvedLoadingText}
               </li>
             ) : options.length === 0 ? (
               <li className="px-3 py-2 text-sm text-slate-500 dark:text-slate-400">
-                {emptyText}
+                {resolvedEmptyText}
               </li>
             ) : (
               options.map((opt, i) => (

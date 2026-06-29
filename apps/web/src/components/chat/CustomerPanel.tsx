@@ -13,6 +13,7 @@ import {
   X,
   Zap,
 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useState } from 'react';
 import useSWR from 'swr';
@@ -57,6 +58,8 @@ export function CustomerPanel({
   /** Quando em modo drawer (telas menores), mostra o X de fechar. */
   onClose?: () => void;
 }) {
+  const t = useTranslations('chatCustomerPanel');
+  const tCommon = useTranslations('common');
   const [tab, setTab] = useState<Tab>('resumo');
   const convId = conversation?.id;
 
@@ -74,9 +77,9 @@ export function CustomerPanel({
       {/* Tabs */}
       <div className="flex items-center border-b border-slate-200 text-sm dark:border-slate-700">
         {([
-          ['resumo', 'Resumo'],
-          ['conexao', 'Conexão'],
-          ['financeiro', 'Financeiro'],
+          ['resumo', t('tabs.resumo')],
+          ['conexao', t('tabs.conexao')],
+          ['financeiro', t('tabs.financeiro')],
         ] as [Tab, string][]).map(([key, label]) => (
           <button
             key={key}
@@ -93,7 +96,7 @@ export function CustomerPanel({
         {onClose && (
           <button
             onClick={onClose}
-            aria-label="Fechar"
+            aria-label={tCommon('close')}
             className="px-3 text-text-muted hover:text-text"
           >
             <X className="h-4 w-4" />
@@ -129,6 +132,8 @@ function ResumoTab({
   ctx: Awaited<ReturnType<typeof getCustomerContext>> | undefined;
   onChanged: () => void;
 }) {
+  const t = useTranslations('chatCustomerPanel');
+  const tCommon = useTranslations('common');
   const customer = ctx?.customer;
   const contactId = ctx?.contact.id ?? conversation.contact.id;
 
@@ -139,16 +144,16 @@ function ResumoTab({
           <p className="text-base font-medium">{customer.displayName}</p>
           {customer.code && <p className="text-xs text-text-muted">{customer.code}</p>}
           <dl className="mt-3 space-y-2 text-xs">
-            <Row label="Telefone" value={customer.primaryPhone ?? conversation.contact.phoneE164 ?? '—'} />
-            {customer.primaryEmail && <Row label="E-mail" value={customer.primaryEmail} />}
-            <Row label="Status" value={customer.status} />
+            <Row label={tCommon('phone')} value={customer.primaryPhone ?? conversation.contact.phoneE164 ?? '—'} />
+            {customer.primaryEmail && <Row label={t('emailLabel')} value={customer.primaryEmail} />}
+            <Row label={tCommon('status')} value={customer.status} />
           </dl>
           <div className="mt-3 flex flex-wrap gap-2">
             <Link
               href={`/customers/${customer.id}`}
               className="inline-flex items-center gap-1 rounded-md bg-brand-50 px-3 py-2 text-xs font-medium text-brand-700 hover:bg-brand-100 dark:bg-slate-700 dark:text-brand-300"
             >
-              <ExternalLink className="h-3.5 w-3.5" /> Abrir cadastro
+              <ExternalLink className="h-3.5 w-3.5" /> {t('openCustomerRecord')}
             </Link>
             <LinkCustomerControl contactId={contactId} current={customer.displayName} onChanged={onChanged} />
           </div>
@@ -156,7 +161,7 @@ function ResumoTab({
       ) : (
         <div className="space-y-3">
           <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
-            Contato não vinculado a um cliente.
+            {t('contactNotLinked')}
             <p className="mt-1 font-mono">{conversation.contact.phoneE164}</p>
           </div>
           <LinkCustomerControl contactId={contactId} current={null} onChanged={onChanged} />
@@ -176,6 +181,8 @@ function LinkCustomerControl({
   current: string | null;
   onChanged: () => void;
 }) {
+  const t = useTranslations('chatCustomerPanel');
+  const tCommon = useTranslations('common');
   const canLink = hasPermission('chat.send');
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
@@ -200,7 +207,7 @@ function LinkCustomerControl({
     setBusy(true);
     try {
       await linkContactCustomer(contactId, customerId);
-      toast.success(customerId ? 'Cliente vinculado' : 'Vínculo removido');
+      toast.success(customerId ? t('toast.customerLinked') : t('toast.linkRemoved'));
       setOpen(false);
       setQ('');
       setHits([]);
@@ -216,11 +223,11 @@ function LinkCustomerControl({
     return (
       <div className="flex gap-2">
         <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
-          <Link2 className="mr-1 h-3.5 w-3.5" /> {current ? 'Trocar vínculo' : 'Vincular cliente'}
+          <Link2 className="mr-1 h-3.5 w-3.5" /> {current ? t('changeLink') : t('linkCustomer')}
         </Button>
         {current && (
           <Button size="sm" variant="outline" onClick={() => doLink(null)} disabled={busy}>
-            <Link2Off className="mr-1 h-3.5 w-3.5" /> Desvincular
+            <Link2Off className="mr-1 h-3.5 w-3.5" /> {t('unlink')}
           </Button>
         )}
       </div>
@@ -234,7 +241,7 @@ function LinkCustomerControl({
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), void doSearch())}
-          placeholder="Nome, código ou documento…"
+          placeholder={t('searchPlaceholder')}
           className="text-xs"
         />
         <Button size="sm" onClick={doSearch} disabled={busy}>
@@ -257,7 +264,7 @@ function LinkCustomerControl({
         ))}
       </ul>
       <button className="mt-1 text-xs text-text-muted hover:underline" onClick={() => setOpen(false)}>
-        cancelar
+        {t('cancelLower')}
       </button>
     </div>
   );
@@ -266,9 +273,10 @@ function LinkCustomerControl({
 // ============================ CONEXÃO ============================
 
 function ConexaoTab({ contracts, hasCustomer }: { contracts: WaContractCtx[]; hasCustomer: boolean }) {
+  const t = useTranslations('chatCustomerPanel');
   const [sel, setSel] = useState(0);
-  if (!hasCustomer) return <Hint text="Vincule um cliente para ver a conexão." />;
-  if (!contracts.length) return <Hint text="Cliente sem contratos." />;
+  if (!hasCustomer) return <Hint text={t('linkToSeeConnection')} />;
+  if (!contracts.length) return <Hint text={t('noContracts')} />;
   const contract = contracts[Math.min(sel, contracts.length - 1)];
 
   return (
@@ -292,6 +300,7 @@ function ConexaoTab({ contracts, hasCustomer }: { contracts: WaContractCtx[]; ha
 }
 
 function ContractConnection({ contract }: { contract: WaContractCtx }) {
+  const t = useTranslations('chatCustomerPanel');
   const session = useSWR<ContractSession>(
     radacctApi.sessionPath(contract.id),
     () => radacctApi.session(contract.id),
@@ -327,7 +336,7 @@ function ContractConnection({ contract }: { contract: WaContractCtx }) {
       <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
         <div className="mb-2 flex items-center gap-2 font-semibold">
           <Activity className="h-4 w-4" />
-          Conexão
+          {t('connection')}
           <span
             className={`ml-auto rounded px-2 py-0.5 ${
               s?.online
@@ -335,20 +344,20 @@ function ContractConnection({ contract }: { contract: WaContractCtx }) {
                 : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300'
             }`}
           >
-            {s?.online ? 'Online' : 'Offline'}
+            {s?.online ? t('online') : t('offline')}
           </span>
         </div>
         <dl className="space-y-1">
           <Row label="IP" value={s?.framedIp ?? '—'} />
-          <Row label="Tempo online" value={s?.online ? fmtUptime(s.uptimeSeconds) : '—'} />
-          <Row label="Download / Upload" value={`${fmtBytes(s?.inputBytes)} / ${fmtBytes(s?.outputBytes)}`} />
-          <Row label="Plano" value={contract.planName ?? `${contract.bandwidthMbps} Mbps`} />
+          <Row label={t('uptime')} value={s?.online ? fmtUptime(s.uptimeSeconds) : '—'} />
+          <Row label={t('downloadUpload')} value={`${fmtBytes(s?.inputBytes)} / ${fmtBytes(s?.outputBytes)}`} />
+          <Row label={t('plan')} value={contract.planName ?? `${contract.bandwidthMbps} Mbps`} />
         </dl>
       </div>
 
       <div className="rounded-lg border border-slate-200 p-3 dark:border-slate-700">
         <div className="mb-2 flex items-center gap-2 font-semibold">
-          <Wifi className="h-4 w-4" /> Diagnóstico
+          <Wifi className="h-4 w-4" /> {t('diagnostics')}
           {tr.data?.manufacturer && (
             <span className="ml-auto text-text-muted">{tr.data.manufacturer}</span>
           )}
@@ -356,21 +365,21 @@ function ContractConnection({ contract }: { contract: WaContractCtx }) {
         {d ? (
           <dl className="space-y-1">
             <div className="flex justify-between">
-              <dt className="text-text-muted">Sinal óptico (RX)</dt>
+              <dt className="text-text-muted">{t('opticalSignalRx')}</dt>
               <dd className={rxClass(rxHealth)}>{rx !== null ? `${rx} dBm` : '—'}</dd>
             </div>
             <Row label="TX" value={d.txPower !== null ? `${d.txPower} dBm` : '—'} />
             <Row
-              label="Clientes Wi-Fi"
+              label={t('wifiClients')}
               value={`${(d.wifiClients24 ?? 0) + (d.wifiClients5 ?? 0)}`}
             />
-            {d.wifiWorstRssi !== null && <Row label="Pior RSSI" value={`${d.wifiWorstRssi} dBm`} />}
+            {d.wifiWorstRssi !== null && <Row label={t('worstRssi')} value={`${d.wifiWorstRssi} dBm`} />}
             {tr.data?.lastInformAt && (
-              <Row label="Último contato" value={new Date(tr.data.lastInformAt).toLocaleString()} />
+              <Row label={t('lastContact')} value={new Date(tr.data.lastInformAt).toLocaleString()} />
             )}
           </dl>
         ) : (
-          <p className="text-text-muted">Sem diagnóstico do CPE ainda.</p>
+          <p className="text-text-muted">{t('noCpeDiagnostics')}</p>
         )}
       </div>
 
@@ -381,9 +390,9 @@ function ContractConnection({ contract }: { contract: WaContractCtx }) {
             size="sm"
             variant="outline"
             disabled={busy}
-            onClick={() => act(() => tr069Api.refresh(tr.data!.id), 'Diagnóstico solicitado')}
+            onClick={() => act(() => tr069Api.refresh(tr.data!.id), t('toast.diagnosticsRequested'))}
           >
-            <RefreshCw className="mr-1 h-3.5 w-3.5" /> Coletar
+            <RefreshCw className="mr-1 h-3.5 w-3.5" /> {t('collect')}
           </Button>
         )}
         {canWrite && contract.status !== 'ACTIVE' && (
@@ -391,9 +400,9 @@ function ContractConnection({ contract }: { contract: WaContractCtx }) {
             size="sm"
             variant="outline"
             disabled={busy}
-            onClick={() => act(() => contractsApi.trustExtend(contract.id, 5), 'Religue de confiança aplicado (5 dias)')}
+            onClick={() => act(() => contractsApi.trustExtend(contract.id, 5), t('toast.trustReconnectApplied', { count: 5 }))}
           >
-            <ShieldCheck className="mr-1 h-3.5 w-3.5" /> Religue confiança
+            <ShieldCheck className="mr-1 h-3.5 w-3.5" /> {t('trustReconnect')}
           </Button>
         )}
         {canWrite && (
@@ -401,21 +410,21 @@ function ContractConnection({ contract }: { contract: WaContractCtx }) {
             size="sm"
             variant="outline"
             disabled={busy}
-            onClick={() => act(() => contractsApi.kick(contract.id), 'Cliente desconectado')}
+            onClick={() => act(() => contractsApi.kick(contract.id), t('toast.customerDisconnected'))}
           >
-            <Unplug className="mr-1 h-3.5 w-3.5" /> Desconectar
+            <Unplug className="mr-1 h-3.5 w-3.5" /> {t('disconnect')}
           </Button>
         )}
         <Link
           href={`/contracts/${contract.id}`}
           className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-brand-700 hover:underline dark:text-brand-300"
         >
-          <ExternalLink className="h-3.5 w-3.5" /> Contrato
+          <ExternalLink className="h-3.5 w-3.5" /> {t('contract')}
         </Link>
       </div>
       {contract.trustExtensionUntil && (
         <p className="text-amber-600 dark:text-amber-400">
-          Religue de confiança até {new Date(contract.trustExtensionUntil).toLocaleDateString()}
+          {t('trustReconnectUntil', { date: new Date(contract.trustExtensionUntil).toLocaleDateString() })}
         </p>
       )}
     </div>
@@ -435,9 +444,10 @@ function FinanceiroTab({
   hasCustomer: boolean;
   onSent: () => void;
 }) {
+  const t = useTranslations('chatCustomerPanel');
   const [sel, setSel] = useState(0);
-  if (!hasCustomer) return <Hint text="Vincule um cliente para ver o financeiro." />;
-  if (!contracts.length) return <Hint text="Cliente sem contratos." />;
+  if (!hasCustomer) return <Hint text={t('linkToSeeFinance')} />;
+  if (!contracts.length) return <Hint text={t('noContracts')} />;
   const contract = contracts[Math.min(sel, contracts.length - 1)];
 
   return (
@@ -469,6 +479,7 @@ function ContractFinance({
   conversationId: string;
   onSent: () => void;
 }) {
+  const t = useTranslations('chatCustomerPanel');
   const inv = useSWR(contractInvoicesApi.byContractPath(contractId), () =>
     contractInvoicesApi.byContract(contractId),
   );
@@ -489,13 +500,13 @@ function ContractFinance({
         provider === 'efi'
           ? await efiApi.generate(invoice.id, { kind: kind as 'PIX' | 'BOLIX' })
           : await btgApi.generate(invoice.id, { kind: kind as 'PIX' | 'BOLETO' });
-      const text = buildChargeMessage(charge, invoice);
+      const text = buildChargeMessage(charge, invoice, t);
       if (!text) {
-        toast.error('Cobrança gerada mas sem dados pra enviar.');
+        toast.error(t('toast.chargeGeneratedNoData'));
         return;
       }
       await sendMessage(conversationId, text);
-      toast.success('Cobrança enviada na conversa');
+      toast.success(t('toast.chargeSent'));
       onSent();
       void inv.mutate();
     } catch (e) {
@@ -515,9 +526,9 @@ function ContractFinance({
   return (
     <div className="space-y-3 text-xs">
       <section>
-        <h4 className="mb-1 font-semibold">Em aberto ({open.length})</h4>
+        <h4 className="mb-1 font-semibold">{t('openInvoices', { count: open.length })}</h4>
         {open.length === 0 ? (
-          <p className="text-text-muted">Nenhuma fatura em aberto.</p>
+          <p className="text-text-muted">{t('noOpenInvoices')}</p>
         ) : (
           <ul className="space-y-2">
             {open.map((i) => (
@@ -525,7 +536,7 @@ function ContractFinance({
                 <div className="flex justify-between">
                   <span className="font-medium">{fmtMoney(i.amount)}</span>
                   <span className={i.status === 'OVERDUE' ? 'text-rose-600' : 'text-text-muted'}>
-                    vence {new Date(i.dueDate).toLocaleDateString()}
+                    {t('dueOn', { date: new Date(i.dueDate).toLocaleDateString() })}
                   </span>
                 </div>
                 {(canEfi || canBtg) && (
@@ -552,7 +563,7 @@ function ContractFinance({
 
       {paid.length > 0 && (
         <section>
-          <h4 className="mb-1 font-semibold">Pagas (recentes)</h4>
+          <h4 className="mb-1 font-semibold">{t('paidRecent')}</h4>
           <ul className="space-y-1">
             {paid.map((i) => (
               <li key={i.id} className="flex justify-between text-text-muted">
@@ -624,19 +635,20 @@ function fmtMoney(n: number): string {
 function buildChargeMessage(
   charge: { pixCopiaECola?: string | null; pixEmv?: string | null; barcode?: string | null; digitableLine?: string | null; pdfUrl?: string | null; paymentLink?: string | null },
   invoice: ContractInvoice,
+  t: ReturnType<typeof useTranslations>,
 ): string | null {
   const pix = charge.pixCopiaECola ?? charge.pixEmv ?? null;
   const line = charge.digitableLine ?? charge.barcode ?? null;
   const val = fmtMoney(invoice.amount);
   const due = new Date(invoice.dueDate).toLocaleDateString('pt-BR');
   if (pix) {
-    return `Olá! Segue o Pix da sua fatura de ${val} (vencimento ${due}).\n\nCopie e cole no app do banco:\n\n${pix}`;
+    return t('chargeMessage.pix', { val, due, pix });
   }
   if (line) {
-    let msg = `Olá! Segue o boleto da sua fatura de ${val} (vencimento ${due}).\n\nLinha digitável:\n${line}`;
-    if (charge.pdfUrl || charge.paymentLink) msg += `\n\nPDF: ${charge.pdfUrl ?? charge.paymentLink}`;
+    let msg = t('chargeMessage.boleto', { val, due, line });
+    if (charge.pdfUrl || charge.paymentLink) msg += t('chargeMessage.boletoPdf', { url: charge.pdfUrl ?? charge.paymentLink ?? '' });
     return msg;
   }
-  if (charge.paymentLink) return `Olá! Link de pagamento da fatura de ${val} (venc. ${due}):\n${charge.paymentLink}`;
+  if (charge.paymentLink) return t('chargeMessage.paymentLink', { val, due, link: charge.paymentLink });
   return null;
 }

@@ -1,11 +1,14 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 import { PortalApiError, portalApi } from '@/lib/portal-api';
 
 export default function PortalLoginPage() {
+  const t = useTranslations('portal');
+  const tCommon = useTranslations('common');
   const router = useRouter();
   const [taxId, setTaxId] = useState('');
   const [code, setCode] = useState('');
@@ -23,7 +26,7 @@ export default function PortalLoginPage() {
       setErr(
         e instanceof PortalApiError
           ? e.detail
-          : (e as Error)?.message ?? 'Error',
+          : (e as Error)?.message ?? tCommon('error'),
       );
     } finally {
       setLoading(false);
@@ -37,19 +40,21 @@ export default function PortalLoginPage() {
         className="w-full max-w-md rounded-xl shadow-xl bg-white dark:bg-slate-800 p-8 space-y-4"
       >
         <div className="text-center">
-          <h1 className="text-2xl font-bold">Portal del Cliente</h1>
+          <h1 className="text-2xl font-bold">{t('login.title')}</h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Ingresá con tu CI/RUC y el código que te dio tu proveedor.
+            {t('login.subtitle')}
           </p>
         </div>
 
         <div>
-          <label className="block text-sm font-medium mb-1">CI / RUC</label>
+          <label className="block text-sm font-medium mb-1">
+            {t('login.taxIdLabel')}
+          </label>
           <input
             className="w-full px-3 py-2 rounded-md border border-slate-300 dark:border-slate-600 bg-transparent"
             value={taxId}
             onChange={(e) => setTaxId(e.target.value)}
-            placeholder="1234567 ó 1234567-8"
+            placeholder={t('login.taxIdPlaceholder')}
             required
             autoFocus
           />
@@ -57,7 +62,7 @@ export default function PortalLoginPage() {
 
         <div>
           <label className="block text-sm font-medium mb-1">
-            Código de acceso
+            {t('login.codeLabel')}
           </label>
           <input
             className="w-full px-3 py-2 rounded-md border border-slate-300 dark:border-slate-600 bg-transparent font-mono tracking-widest"
@@ -68,7 +73,7 @@ export default function PortalLoginPage() {
             required
           />
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            8 caracteres. Sin O/0 ni I/1 — son siempre letras y números reales.
+            {t('login.codeHint')}
           </p>
         </div>
 
@@ -83,11 +88,11 @@ export default function PortalLoginPage() {
           disabled={loading || !taxId || code.length < 6}
           className="w-full py-2.5 rounded-md bg-brand-600 text-white font-semibold hover:bg-brand-700 disabled:opacity-60"
         >
-          {loading ? 'Ingresando…' : 'Ingresar'}
+          {loading ? t('login.submitting') : t('login.submit')}
         </button>
 
         <p className="text-center text-xs text-slate-500 dark:text-slate-400">
-          ¿No tenés código? Contactá a tu proveedor.
+          {t('login.noCode')}
         </p>
       </form>
     </main>

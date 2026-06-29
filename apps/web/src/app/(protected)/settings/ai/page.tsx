@@ -13,6 +13,7 @@
  * resume/explica, nunca aplica config. Strings inline pt-BR (padrão novo).
  */
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 
 import { Badge } from '@/components/ui/Badge';
@@ -30,13 +31,14 @@ import {
 } from '@/lib/ai-api';
 import { hasPermission } from '@/lib/session';
 
-const PROVIDERS = [
-  { value: 'OLLAMA', label: 'Ollama (aberto, self-hosted)' },
-  { value: 'OPENAI_COMPAT', label: 'OpenAI-compat (vLLM / Groq / OpenRouter)' },
-  { value: 'ANTHROPIC', label: 'Anthropic (nuvem)' },
-] as const;
-
 export default function AiSettingsPage() {
+  const t = useTranslations('settingsAi');
+  const tCommon = useTranslations('common');
+  const PROVIDERS = [
+    { value: 'OLLAMA', label: t('providers.ollama') },
+    { value: 'OPENAI_COMPAT', label: t('providers.openaiCompat') },
+    { value: 'ANTHROPIC', label: t('providers.anthropic') },
+  ] as const;
   const canWrite = hasPermission('ai.config.write');
   const { data: config, mutate, isLoading } = useSWR<AiConfigResponse>(
     aiApi.configPath(),
@@ -65,11 +67,11 @@ export default function AiSettingsPage() {
     setSaving(true);
     try {
       await aiApi.saveConfig(form);
-      toast.success('Configuração de IA salva.');
+      toast.success(t('toast.saved'));
       setForm({});
       await Promise.all([mutate(), mutateStatus()]);
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'Falha ao salvar.');
+      toast.error(e instanceof ApiError ? e.message : t('toast.saveError'));
     } finally {
       setSaving(false);
     }
@@ -81,15 +83,22 @@ export default function AiSettingsPage() {
       const r = await aiApi.test();
       if (r.ok) {
         toast.success(
-          `OK via ${r.provider}${r.usedFallback ? ' (fallback)' : ''} — ${r.model}, ${r.latencyMs}ms`,
+          t('toast.testOk', {
+            provider: r.provider,
+            fallback: r.usedFallback ? t('toast.testFallbackSuffix') : '',
+            model: r.model,
+            latency: r.latencyMs,
+          }),
           { duration: 8000 },
         );
       } else {
-        toast.error(`Falha no teste: ${r.error ?? 'sem detalhe'}`, { duration: 10000 });
+        toast.error(t('toast.testFail', { error: r.error ?? t('toast.noDetail') }), {
+          duration: 10000,
+        });
       }
       await mutateStatus();
     } catch (e) {
-      toast.error(e instanceof ApiError ? e.message : 'Falha ao testar (timeout?).');
+      toast.error(e instanceof ApiError ? e.message : t('toast.testError'));
     } finally {
       setTesting(false);
     }
@@ -98,51 +107,46 @@ export default function AiSettingsPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-xl font-semibold">Motor de IA</h1>
-        <p className="text-sm text-muted-foreground">
-          IA conselheira (read-only): resume e explica, nunca aplica configuração. Motor aberto
-          (Ollama) por padrão, com fallback de nuvem opcional.
-        </p>
+        <h1 className="text-xl font-semibold">{t('title')}</h1>
+        <p className="text-sm text-muted-foreground">{t('subtitle')}</p>
       </div>
 
       {/* 1. Status */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Status</CardTitle>
+          <CardTitle>{tCommon('status')}</CardTitle>
           <Button variant="outline" onClick={runTest} disabled={testing}>
-            {testing ? 'Testando…' : 'Testar conexão'}
+            {testing ? t('status.testing') : t('status.testConnection')}
           </Button>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
           <div className="flex items-center gap-2">
-            <span>Motor:</span>
+            <span>{t('status.engine')}</span>
             <Badge variant={status?.available ? 'success' : 'warning'}>
-              {status?.available ? 'disponível' : 'indisponível'}
+              {status?.available ? t('status.available') : t('status.unavailable')}
             </Badge>
           </div>
           {status && (
             <div className="text-muted-foreground">
-              Primário: <b>{status.primary.kind}</b> ({status.primary.model}) —{' '}
-              {status.primary.available ? 'ok' : 'off'}
+              {t('status.primary')} <b>{status.primary.kind}</b> ({status.primary.model}) —{' '}
+              {status.primary.available ? t('status.ok') : t('status.off')}
               {status.fallback && (
                 <>
-                  {' · '}Fallback: <b>{status.fallback.kind}</b> ({status.fallback.model}) —{' '}
-                  {status.fallback.available ? 'ok' : 'off'}
+                  {' · '}
+                  {t('status.fallback')} <b>{status.fallback.kind}</b> ({status.fallback.model}) —{' '}
+                  {status.fallback.available ? t('status.ok') : t('status.off')}
                 </>
               )}
             </div>
           )}
-          <FieldHelp>
-            Em CPU sem GPU a inferência local é lenta (minutos); o teste pode exceder o tempo
-            limite. Para uso interativo, ligue o fallback de nuvem.
-          </FieldHelp>
+          <FieldHelp>{t('status.help')}</FieldHelp>
         </CardContent>
       </Card>
 
       {/* 2. Provider primário */}
       <Card>
         <CardHeader>
-          <CardTitle>Provider primário (motor aberto)</CardTitle>
+          <CardTitle>{t('primary.title')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <label className="flex items-start gap-2 rounded-lg bg-ai-muted/30 p-3 text-sm ring-1 ring-ai/20">
@@ -154,16 +158,13 @@ export default function AiSettingsPage() {
               className="mt-0.5"
             />
             <span>
-              <span className="font-medium">Ativar o motor de IA com esta configuração</span>
-              <FieldHelp>
-                Enquanto desligado, a IA ignora os campos abaixo e usa o padrão do servidor (Ollama
-                local). Ligue para usar o provider/fallback configurados aqui.
-              </FieldHelp>
+              <span className="font-medium">{t('primary.enable')}</span>
+              <FieldHelp>{t('primary.enableHelp')}</FieldHelp>
             </span>
           </label>
 
           <div>
-            <Label>Provider</Label>
+            <Label>{t('primary.provider')}</Label>
             <Select
               value={v('provider')}
               disabled={!canWrite}
@@ -178,18 +179,18 @@ export default function AiSettingsPage() {
           </div>
 
           <div>
-            <Label>Endpoint (baseUrl)</Label>
+            <Label>{t('primary.endpoint')}</Label>
             <Input
               value={v('baseUrl') ?? ''}
               placeholder="http://127.0.0.1:11434"
               disabled={!canWrite}
               onChange={(e) => set({ baseUrl: e.target.value || null })}
             />
-            <FieldHelp>Ollama: http://127.0.0.1:11434 · OpenAI-compat: inclua /v1</FieldHelp>
+            <FieldHelp>{t('primary.endpointHelp')}</FieldHelp>
           </div>
 
           <div>
-            <Label>Modelo</Label>
+            <Label>{t('primary.model')}</Label>
             <Input
               value={v('model')}
               placeholder="qwen2.5:3b-instruct"
@@ -199,15 +200,17 @@ export default function AiSettingsPage() {
           </div>
 
           <div>
-            <Label>Chave de API {config.hasApiKey && <Badge variant="success">salva</Badge>}</Label>
+            <Label>
+              {t('primary.apiKey')} {config.hasApiKey && <Badge variant="success">{t('saved')}</Badge>}
+            </Label>
             <Input
               type="password"
               value={form.apiKey ?? ''}
-              placeholder={config.hasApiKey ? '•••••••• (manter)' : 'só para provider de nuvem'}
+              placeholder={config.hasApiKey ? t('primary.apiKeyKeep') : t('primary.apiKeyCloudOnly')}
               disabled={!canWrite}
               onChange={(e) => set({ apiKey: e.target.value })}
             />
-            <FieldHelp>Deixe em branco para manter a atual. Ollama local não precisa.</FieldHelp>
+            <FieldHelp>{t('primary.apiKeyHelp')}</FieldHelp>
           </div>
         </CardContent>
       </Card>
@@ -215,7 +218,7 @@ export default function AiSettingsPage() {
       {/* 3. Fallback de nuvem */}
       <Card>
         <CardHeader>
-          <CardTitle>Fallback de nuvem (híbrido)</CardTitle>
+          <CardTitle>{t('fallback.title')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <label className="flex items-center gap-2 text-sm">
@@ -225,11 +228,11 @@ export default function AiSettingsPage() {
               disabled={!canWrite}
               onChange={(e) => set({ fallbackEnabled: e.target.checked })}
             />
-            Cair para a nuvem quando o motor local falhar ou demorar
+            {t('fallback.enable')}
           </label>
 
           <div>
-            <Label>Provider de fallback</Label>
+            <Label>{t('fallback.provider')}</Label>
             <Select
               value={v('fallbackProvider')}
               disabled={!canWrite}
@@ -246,7 +249,7 @@ export default function AiSettingsPage() {
           </div>
 
           <div>
-            <Label>Modelo de fallback</Label>
+            <Label>{t('fallback.model')}</Label>
             <Input
               value={v('fallbackModel')}
               placeholder="claude-haiku-4-5"
@@ -256,7 +259,7 @@ export default function AiSettingsPage() {
           </div>
 
           <div>
-            <Label>Endpoint de fallback (opcional)</Label>
+            <Label>{t('fallback.endpoint')}</Label>
             <Input
               value={v('fallbackBaseUrl') ?? ''}
               placeholder="https://api.groq.com/openai/v1"
@@ -267,17 +270,19 @@ export default function AiSettingsPage() {
 
           <div>
             <Label>
-              Chave do fallback{' '}
-              {config.hasFallbackApiKey && <Badge variant="success">salva</Badge>}
+              {t('fallback.apiKey')}{' '}
+              {config.hasFallbackApiKey && <Badge variant="success">{t('saved')}</Badge>}
             </Label>
             <Input
               type="password"
               value={form.fallbackApiKey ?? ''}
-              placeholder={config.hasFallbackApiKey ? '•••••••• (manter)' : 'chave da nuvem'}
+              placeholder={
+                config.hasFallbackApiKey ? t('primary.apiKeyKeep') : t('fallback.apiKeyCloud')
+              }
               disabled={!canWrite}
               onChange={(e) => set({ fallbackApiKey: e.target.value })}
             />
-            <FieldHelp>Anthropic reaproveita ANTHROPIC_API_KEY do servidor se vazio.</FieldHelp>
+            <FieldHelp>{t('fallback.apiKeyHelp')}</FieldHelp>
           </div>
         </CardContent>
       </Card>
@@ -285,12 +290,12 @@ export default function AiSettingsPage() {
       {/* 4. Comportamento */}
       <Card>
         <CardHeader>
-          <CardTitle>Comportamento</CardTitle>
+          <CardTitle>{t('behavior.title')}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label>Máx. tokens</Label>
+              <Label>{t('behavior.maxTokens')}</Label>
               <Input
                 type="number"
                 value={v('maxTokens')}
@@ -299,7 +304,7 @@ export default function AiSettingsPage() {
               />
             </div>
             <div>
-              <Label>Timeout (ms)</Label>
+              <Label>{t('behavior.timeout')}</Label>
               <Input
                 type="number"
                 value={v('timeoutMs')}
@@ -315,7 +320,7 @@ export default function AiSettingsPage() {
               disabled={!canWrite}
               onChange={(e) => set({ redactPii: e.target.checked })}
             />
-            Mascarar PII (CPF/CNPJ/e-mail/telefone) antes de enviar à nuvem
+            {t('behavior.redactPii')}
           </label>
         </CardContent>
       </Card>
@@ -323,7 +328,7 @@ export default function AiSettingsPage() {
       {canWrite && (
         <div className="flex justify-end gap-2">
           <Button onClick={save} disabled={saving || Object.keys(form).length === 0}>
-            {saving ? 'Salvando…' : 'Salvar'}
+            {saving ? tCommon('saving') : tCommon('save')}
           </Button>
         </div>
       )}

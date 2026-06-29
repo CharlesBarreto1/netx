@@ -1,20 +1,23 @@
 'use client';
 
 import { Check, X } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 
 import { checkPassword } from '@/lib/password';
 
 /**
  * Checklist visual da política de senha. Exibe abaixo de qualquer input
- * de senha pra indicar quais regras já passaram.
+ * de senha pra indicar quais regras já passaram. Os rótulos reaproveitam as
+ * chaves `auth.firstLogin.check*` (mesmas da tela /first-login).
  */
 export function PasswordChecklist({ value }: { value: string }) {
+  const t = useTranslations('auth.firstLogin');
   const { checks } = checkPassword(value);
   return (
     <ul className="mt-1 space-y-0.5 text-xs">
       {checks.map((c) => (
         <li
-          key={c.label}
+          key={c.id}
           className={
             'flex items-center gap-1.5 ' +
             (c.ok
@@ -27,7 +30,7 @@ export function PasswordChecklist({ value }: { value: string }) {
           ) : (
             <X className="h-3 w-3 opacity-60" />
           )}
-          {c.label}
+          {t(c.id)}
         </li>
       ))}
     </ul>

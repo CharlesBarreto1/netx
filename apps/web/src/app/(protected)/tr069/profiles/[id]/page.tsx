@@ -8,6 +8,7 @@
  * virar regra (o GET Huawei as devolve vazias) — são aplicadas no provisionamento.
  */
 import { ArrowLeft, Plus, Trash2 } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -20,7 +21,6 @@ import { PageLoader } from '@/components/ui/Spinner';
 import { notify } from '@/lib/notify';
 import {
   tr069Api,
-  TR069_RULE_SOURCE_LABELS,
   type Tr069ProfileRuleInput,
   type Tr069RuleMode,
   type Tr069RuleSource,
@@ -37,6 +37,8 @@ const SOURCES: Tr069RuleSource[] = [
 ];
 
 export default function Tr069ProfileEditPage() {
+  const t = useTranslations('tr069Profiles');
+  const tCommon = useTranslations('common');
   const params = useParams<{ id: string }>();
   const id = params.id;
   const router = useRouter();
@@ -97,11 +99,11 @@ export default function Tr069ProfileEditPage() {
 
   async function handleSave() {
     if (!name.trim() || !manufacturer.trim()) {
-      notify.error('Nome e fabricante são obrigatórios');
+      notify.error(t('list.errors.nameManufacturerRequired'));
       return;
     }
     if (rules.some((r) => r.param.trim().length < 3)) {
-      notify.error('Toda regra precisa de um parâmetro TR-069 válido');
+      notify.error(t('detail.errors.ruleParamRequired'));
       return;
     }
     setBusy(true);
@@ -114,8 +116,8 @@ export default function Tr069ProfileEditPage() {
         active,
         rules,
       });
-      notify.success('Profile salvo', {
-        description: 'Os devices casados serão re-reconciliados no próximo ciclo.',
+      notify.success(t('detail.saved'), {
+        description: t('detail.savedDescription'),
       });
       await mutate();
     } catch (e) {
@@ -126,11 +128,11 @@ export default function Tr069ProfileEditPage() {
   }
 
   async function handleDelete() {
-    if (!window.confirm('Excluir este profile? Os devices casados ficam sem profile.')) return;
+    if (!window.confirm(t('detail.deleteConfirm'))) return;
     setBusy(true);
     try {
       await tr069Api.deleteProfile(id);
-      notify.success('Profile excluído');
+      notify.success(t('detail.deleted'));
       router.push('/tr069/profiles');
     } catch (e) {
       notify.apiError(e);
@@ -146,10 +148,10 @@ export default function Tr069ProfileEditPage() {
           href="/tr069/profiles"
           className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700"
         >
-          <ArrowLeft className="h-4 w-4" /> Voltar
+          <ArrowLeft className="h-4 w-4" /> {tCommon('back')}
         </Link>
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
-          Profile não encontrado.
+          {t('detail.notFound')}
         </div>
       </div>
     );
@@ -163,65 +165,63 @@ export default function Tr069ProfileEditPage() {
             href="/tr069/profiles"
             className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700"
           >
-            <ArrowLeft className="h-4 w-4" /> Voltar
+            <ArrowLeft className="h-4 w-4" /> {tCommon('back')}
           </Link>
           <h1 className="text-xl font-bold tracking-tight">
             {data.name}{' '}
             <span className="text-sm font-normal text-slate-400">
-              v{data.version} · {data.deviceCount} device(s)
+              v{data.version} · {t('detail.deviceCount', { count: data.deviceCount })}
             </span>
           </h1>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" loading={busy} onClick={handleDelete}>
-            <Trash2 className="mr-1 h-4 w-4" /> Excluir
+            <Trash2 className="mr-1 h-4 w-4" /> {tCommon('delete')}
           </Button>
           <Button size="sm" loading={busy} onClick={handleSave}>
-            Salvar
+            {tCommon('save')}
           </Button>
         </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Identificação / matching</CardTitle>
+          <CardTitle>{t('detail.identification')}</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2">
           <div>
-            <Label>Nome</Label>
+            <Label>{t('list.fields.name')}</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} />
           </div>
           <div>
-            <Label>Fabricante (match case-insensitive “contém”)</Label>
+            <Label>{t('detail.fields.manufacturerMatch')}</Label>
             <Input value={manufacturer} onChange={(e) => setManufacturer(e.target.value)} />
           </div>
           <div>
-            <Label>Modelo / productClass (vazio = todos)</Label>
+            <Label>{t('detail.fields.productClass')}</Label>
             <Input value={productClass} onChange={(e) => setProductClass(e.target.value)} />
           </div>
           <div>
-            <Label>Firmware (regex, opcional)</Label>
+            <Label>{t('detail.fields.firmware')}</Label>
             <Input value={firmwarePattern} onChange={(e) => setFirmwarePattern(e.target.value)} />
           </div>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
-            Profile ativo
+            {t('detail.profileActive')}
           </label>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="flex-row items-center justify-between">
-          <CardTitle>Regras de conformidade</CardTitle>
+          <CardTitle>{t('detail.complianceRules')}</CardTitle>
           <Button variant="secondary" size="sm" onClick={addRule}>
-            <Plus className="mr-1 h-4 w-4" /> Adicionar regra
+            <Plus className="mr-1 h-4 w-4" /> {t('detail.addRule')}
           </Button>
         </CardHeader>
         <CardContent>
           {rules.length === 0 ? (
-            <p className="text-sm text-slate-500">
-              Sem regras. Adicione parâmetros TR-069 a verificar (ex.: IPv6 Origin, SSID, PPPoE).
-            </p>
+            <p className="text-sm text-slate-500">{t('detail.noRules')}</p>
           ) : (
             <div className="space-y-3">
               {rules.map((r, i) => (
@@ -230,7 +230,7 @@ export default function Tr069ProfileEditPage() {
                   className="grid gap-2 rounded-lg border border-slate-200 p-3 dark:border-slate-800 lg:grid-cols-12"
                 >
                   <div className="lg:col-span-5">
-                    <Label>Parâmetro TR-069</Label>
+                    <Label>{t('detail.fields.tr069Param')}</Label>
                     <Input
                       value={r.param}
                       onChange={(e) => updateRule(i, { param: e.target.value })}
@@ -239,7 +239,7 @@ export default function Tr069ProfileEditPage() {
                     />
                   </div>
                   <div className="lg:col-span-3">
-                    <Label>Origem do valor</Label>
+                    <Label>{t('detail.fields.valueSource')}</Label>
                     <Select
                       value={r.source}
                       onChange={(e) =>
@@ -248,13 +248,17 @@ export default function Tr069ProfileEditPage() {
                     >
                       {SOURCES.map((s) => (
                         <option key={s} value={s}>
-                          {TR069_RULE_SOURCE_LABELS[s]}
+                          {t(`detail.ruleSources.${s}`)}
                         </option>
                       ))}
                     </Select>
                   </div>
                   <div className="lg:col-span-2">
-                    <Label>{r.source === 'STATIC' ? 'Valor fixo' : 'Tipo'}</Label>
+                    <Label>
+                      {r.source === 'STATIC'
+                        ? t('detail.fields.staticValue')
+                        : t('detail.fields.valueType')}
+                    </Label>
                     {r.source === 'STATIC' ? (
                       <Input
                         value={r.staticValue ?? ''}
@@ -270,13 +274,13 @@ export default function Tr069ProfileEditPage() {
                     )}
                   </div>
                   <div className="lg:col-span-2">
-                    <Label>Modo</Label>
+                    <Label>{t('detail.fields.mode')}</Label>
                     <Select
                       value={r.mode}
                       onChange={(e) => updateRule(i, { mode: e.target.value as Tr069RuleMode })}
                     >
-                      <option value="REPORT_ONLY">Só reportar</option>
-                      <option value="ENFORCE">Forçar (enforce)</option>
+                      <option value="REPORT_ONLY">{t('detail.modes.reportOnly')}</option>
+                      <option value="ENFORCE">{t('detail.modes.enforce')}</option>
                     </Select>
                   </div>
                   <div className="flex items-center gap-4 lg:col-span-12">
@@ -286,7 +290,7 @@ export default function Tr069ProfileEditPage() {
                         checked={r.requiresReboot}
                         onChange={(e) => updateRule(i, { requiresReboot: e.target.checked })}
                       />
-                      Exige reboot
+                      {t('detail.requiresReboot')}
                     </label>
                     <label className="flex items-center gap-2 text-xs">
                       <input
@@ -294,17 +298,19 @@ export default function Tr069ProfileEditPage() {
                         checked={r.enabled}
                         onChange={(e) => updateRule(i, { enabled: e.target.checked })}
                       />
-                      Habilitada
+                      {t('detail.enabled')}
                     </label>
                     {r.source === 'STATIC' && (
-                      <span className="text-xs text-slate-400">tipo: {r.valueType}</span>
+                      <span className="text-xs text-slate-400">
+                        {t('detail.typeLabel', { type: r.valueType })}
+                      </span>
                     )}
                     <button
                       type="button"
                       onClick={() => removeRule(i)}
                       className="ml-auto inline-flex items-center gap-1 text-xs text-red-600 hover:underline dark:text-red-400"
                     >
-                      <Trash2 className="h-3.5 w-3.5" /> Remover
+                      <Trash2 className="h-3.5 w-3.5" /> {t('detail.removeRule')}
                     </button>
                   </div>
                 </div>

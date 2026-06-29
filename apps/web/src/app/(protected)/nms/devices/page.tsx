@@ -11,6 +11,7 @@
  * Ver docs/ecosystem/INTEGRATION-RUNBOOK.md §A.
  */
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 import { toast } from 'sonner';
 
@@ -55,6 +56,8 @@ function vendorLabel(v: NmsVendor): string {
 }
 
 export default function NmsDevicesPage() {
+  const t = useTranslations('nms');
+  const tCommon = useTranslations('common');
   const canManage = hasPermission('users.write') || hasPermission('network.write');
   const { data, error, isLoading, mutate } = useSWR<NmsDevice[], unknown>(
     'nms-devices',
@@ -74,7 +77,7 @@ export default function NmsDevicesPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.hostname.trim() || !form.mgmtIp.trim()) {
-      toast.error('Informe hostname e IP de gerência.');
+      toast.error(t('toast.hostnameIpRequired'));
       return;
     }
     setSaving(true);
@@ -96,12 +99,12 @@ export default function NmsDevicesPage() {
           snmpCommunity: form.snmpCommunity.trim() || undefined,
         });
       }
-      toast.success(`Roteador "${device.hostname}" cadastrado.`);
+      toast.success(t('toast.created', { hostname: device.hostname }));
       setOpen(false);
       setForm(EMPTY_FORM);
       await mutate();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Falha ao cadastrar roteador.');
+      toast.error(err instanceof ApiError ? err.message : t('toast.createFailed'));
     } finally {
       setSaving(false);
     }
@@ -113,10 +116,15 @@ export default function NmsDevicesPage() {
       const r = await nmsApi.connectivityTest(d.id);
       const parts = (['ssh', 'netconf', 'snmp'] as const)
         .filter((k) => r[k])
-        .map((k) => `${k.toUpperCase()}: ${r[k]?.ok ? 'ok' : 'falhou'}`);
-      toast.success(`Teste de ${d.hostname} — ${parts.join(' · ') || 'enfileirado'}`);
+        .map((k) => `${k.toUpperCase()}: ${r[k]?.ok ? t('test.ok') : t('test.failed')}`);
+      toast.success(
+        t('toast.testResult', {
+          hostname: d.hostname,
+          result: parts.join(' · ') || t('test.queued'),
+        }),
+      );
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Falha no teste de conexão.');
+      toast.error(err instanceof ApiError ? err.message : t('toast.testFailed'));
     } finally {
       setTesting(null);
     }
@@ -126,10 +134,10 @@ export default function NmsDevicesPage() {
     if (!toDelete) return;
     try {
       await nmsApi.deleteDevice(toDelete.id);
-      toast.success(`Roteador "${toDelete.hostname}" removido.`);
+      toast.success(t('toast.removed', { hostname: toDelete.hostname }));
       await mutate();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : 'Falha ao remover.');
+      toast.error(err instanceof ApiError ? err.message : t('toast.removeFailed'));
     } finally {
       setToDelete(null);
     }
@@ -144,14 +152,12 @@ export default function NmsDevicesPage() {
     <div className="space-y-6">
       <header className="flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold text-text">Roteadores (NMS)</h1>
-          <p className="text-sm text-text-muted">
-            Equipamentos de rede gerenciados pelo NMS — Juniper e Mikrotik.
-          </p>
+          <h1 className="text-xl font-semibold text-text">{t('title')}</h1>
+          <p className="text-sm text-text-muted">{t('subtitle')}</p>
         </div>
         {canManage && !notEntitled && !unreachable && (
           <Button variant="primary" onClick={() => setOpen(true)}>
-            Cadastrar roteador
+            {t('addRouter')}
           </Button>
         )}
       </header>
@@ -160,14 +166,13 @@ export default function NmsDevicesPage() {
 
       {notEntitled && (
         <div className="rounded-md border border-border bg-surface-muted p-6 text-sm text-text-muted">
-          O módulo <strong>NMS</strong> não está habilitado nesta licença.
+          {t.rich('notEntitled', { strong: (chunks) => <strong>{chunks}</strong> })}
         </div>
       )}
 
       {unreachable && (
         <div className="rounded-md border border-warning/40 bg-warning/10 p-6 text-sm text-text">
-          O serviço do <strong>NMS</strong> está fora do ar (gateway não alcançou
-          o módulo). Suba a stack do NMS e tente de novo.
+          {t.rich('unreachable', { strong: (chunks) => <strong>{chunks}</strong> })}
         </div>
       )}
 
@@ -176,11 +181,11 @@ export default function NmsDevicesPage() {
           <table className="w-full text-sm">
             <thead className="bg-surface-muted text-left text-text-muted">
               <tr>
-                <th className="px-4 py-2 font-medium">Hostname</th>
-                <th className="px-4 py-2 font-medium">IP de gerência</th>
-                <th className="px-4 py-2 font-medium">Vendor</th>
-                <th className="px-4 py-2 font-medium">Modelo</th>
-                <th className="px-4 py-2 font-medium">Site</th>
+                <th className="px-4 py-2 font-medium">{t('table.hostname')}</th>
+                <th className="px-4 py-2 font-medium">{t('table.mgmtIp')}</th>
+                <th className="px-4 py-2 font-medium">{t('table.vendor')}</th>
+                <th className="px-4 py-2 font-medium">{t('table.model')}</th>
+                <th className="px-4 py-2 font-medium">{t('table.site')}</th>
                 <th className="px-4 py-2" />
               </tr>
             </thead>
@@ -188,7 +193,7 @@ export default function NmsDevicesPage() {
               {data.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-text-muted">
-                    Nenhum roteador cadastrado ainda.
+                    {t('emptyState')}
                   </td>
                 </tr>
               )}
@@ -207,11 +212,11 @@ export default function NmsDevicesPage() {
                         loading={testing === d.id}
                         onClick={() => void onTest(d)}
                       >
-                        Testar conexão
+                        {t('testConnection')}
                       </Button>
                       {canManage && (
                         <Button variant="ghost" size="sm" onClick={() => setToDelete(d)}>
-                          Excluir
+                          {tCommon('delete')}
                         </Button>
                       )}
                     </div>
@@ -226,15 +231,15 @@ export default function NmsDevicesPage() {
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        title="Cadastrar roteador"
-        description="Adiciona um equipamento ao inventário do NMS."
+        title={t('modal.title')}
+        description={t('modal.description')}
         footer={
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={() => setOpen(false)}>
-              Cancelar
+              {tCommon('cancel')}
             </Button>
             <Button variant="primary" loading={saving} onClick={onSubmit}>
-              Cadastrar
+              {t('modal.submit')}
             </Button>
           </div>
         }
@@ -242,7 +247,7 @@ export default function NmsDevicesPage() {
         <form onSubmit={onSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label>Hostname</Label>
+              <Label>{t('form.hostname')}</Label>
               <Input
                 value={form.hostname}
                 onChange={(e) => set('hostname', e.target.value)}
@@ -251,7 +256,7 @@ export default function NmsDevicesPage() {
               />
             </div>
             <div>
-              <Label>IP de gerência</Label>
+              <Label>{t('form.mgmtIp')}</Label>
               <Input
                 value={form.mgmtIp}
                 onChange={(e) => set('mgmtIp', e.target.value)}
@@ -259,7 +264,7 @@ export default function NmsDevicesPage() {
               />
             </div>
             <div>
-              <Label>Vendor</Label>
+              <Label>{t('form.vendor')}</Label>
               <Select value={form.vendor} onChange={(e) => set('vendor', e.target.value as NmsVendor)}>
                 {NMS_VENDORS.map((v) => (
                   <option key={v.value} value={v.value}>
@@ -269,7 +274,7 @@ export default function NmsDevicesPage() {
               </Select>
             </div>
             <div>
-              <Label>Modelo (opcional)</Label>
+              <Label>{t('form.model')}</Label>
               <Input
                 value={form.model}
                 onChange={(e) => set('model', e.target.value)}
@@ -277,24 +282,25 @@ export default function NmsDevicesPage() {
               />
             </div>
             <div className="col-span-2">
-              <Label>Site (opcional)</Label>
-              <Input value={form.site} onChange={(e) => set('site', e.target.value)} placeholder="POP Centro" />
+              <Label>{t('form.site')}</Label>
+              <Input
+                value={form.site}
+                onChange={(e) => set('site', e.target.value)}
+                placeholder={t('form.sitePlaceholder')}
+              />
             </div>
           </div>
 
           <div className="border-t border-border pt-4">
-            <p className="mb-2 text-sm font-medium text-text">Credenciais (opcional)</p>
-            <FieldHelp>
-              Guardadas cifradas no cofre do NMS — só o device-gateway as lê. Pode
-              deixar em branco e configurar depois.
-            </FieldHelp>
+            <p className="mb-2 text-sm font-medium text-text">{t('form.credentials')}</p>
+            <FieldHelp>{t('form.credentialsHelp')}</FieldHelp>
             <div className="mt-3 grid grid-cols-3 gap-4">
               <div>
-                <Label>Usuário SSH</Label>
+                <Label>{t('form.sshUser')}</Label>
                 <Input value={form.username} onChange={(e) => set('username', e.target.value)} />
               </div>
               <div>
-                <Label>Senha</Label>
+                <Label>{t('form.password')}</Label>
                 <Input
                   type="password"
                   value={form.password}
@@ -302,7 +308,7 @@ export default function NmsDevicesPage() {
                 />
               </div>
               <div>
-                <Label>SNMP community</Label>
+                <Label>{t('form.snmpCommunity')}</Label>
                 <Input
                   value={form.snmpCommunity}
                   onChange={(e) => set('snmpCommunity', e.target.value)}
@@ -318,9 +324,9 @@ export default function NmsDevicesPage() {
         open={!!toDelete}
         onClose={() => setToDelete(null)}
         onConfirm={onDelete}
-        title="Remover roteador"
-        message={`Remover "${toDelete?.hostname}" do inventário do NMS? Esta ação não pode ser desfeita.`}
-        confirmLabel="Remover"
+        title={t('confirmDelete.title')}
+        message={t('confirmDelete.message', { hostname: toDelete?.hostname ?? '' })}
+        confirmLabel={t('confirmDelete.confirm')}
         variant="danger"
       />
     </div>

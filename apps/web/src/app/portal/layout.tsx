@@ -1,12 +1,14 @@
 /**
  * Layout do Portal do Cliente.
  *
- * Isolado do operador: sem AppShell, sem TenantConfigProvider, sem
- * NextIntlClientProvider — strings ficam em es-PY direto no JSX porque o
- * portal é mono-locale no MVP. Multi-locale entra na Phase 2 quando o
- * customer.preferredLanguage virar select.
+ * Isolado do operador: sem AppShell, sem TenantConfigProvider. Agora fornece
+ * i18n multi-locale (pt-BR / es-PY / en-US) via AuthI18nProvider — mesmo
+ * provider das telas pré-login (/login), que resolve o locale pelo idioma do
+ * navegador. Assim todas as páginas do portal recebem o NextIntlClientProvider.
  */
 import type { Metadata } from 'next';
+
+import { AuthI18nProvider } from '@/lib/auth-i18n-provider';
 
 export const metadata: Metadata = {
   title: 'Portal — NetX',
@@ -22,6 +24,8 @@ export default function PortalLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900">{children}</div>
+    <AuthI18nProvider>
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900">{children}</div>
+    </AuthI18nProvider>
   );
 }

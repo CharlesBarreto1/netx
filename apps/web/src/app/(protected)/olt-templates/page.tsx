@@ -9,6 +9,7 @@
  * da OLT) e override por plano. Restrito a `olts.admin`.
  */
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 import { toast } from 'sonner';
 
@@ -51,6 +52,8 @@ function blankProfile(): CreateProvisioningProfileRequest {
 }
 
 export default function OltTemplatesPage() {
+  const t = useTranslations('oltTemplates');
+  const tCommon = useTranslations('common');
   const canAdmin = hasPermission('olts.admin');
   const { data, isLoading, mutate } = useSWR('olt-provisioning-profiles', () =>
     provisioningProfilesApi.list({ pageSize: 100 }),
@@ -68,11 +71,11 @@ export default function OltTemplatesPage() {
     setDeleting(true);
     try {
       await provisioningProfilesApi.remove(confirmDelete.id);
-      toast.success(`Template "${confirmDelete.name}" excluído`);
+      toast.success(t('toast.deleted', { name: confirmDelete.name }));
       setConfirmDelete(null);
       await mutate();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.friendlyMessage : 'Erro ao excluir');
+      toast.error(err instanceof ApiError ? err.friendlyMessage : t('toast.deleteError'));
     } finally {
       setDeleting(false);
     }
@@ -82,28 +85,28 @@ export default function OltTemplatesPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Templates de provisionamento</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
-            Receitas de autorização de ONT (banda + VLANs) aplicadas pelo driver da OLT.
+            {t('subtitle')}
           </p>
         </div>
-        {canAdmin && <Button onClick={() => setCreating(true)}>Novo template</Button>}
+        {canAdmin && <Button onClick={() => setCreating(true)}>{t('newTemplate')}</Button>}
       </header>
 
       {profiles.length === 0 ? (
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-10 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-          Nenhum template cadastrado. Crie um para provisionar ONTs por CLI.
+          {t('empty')}
         </div>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-800">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 dark:bg-slate-900">
               <tr>
-                <th className="px-3 py-2 text-left font-medium">Nome</th>
-                <th className="px-3 py-2 text-left font-medium">Vendor</th>
-                <th className="px-3 py-2 text-left font-medium">Banda (US/DS)</th>
-                <th className="px-3 py-2 text-left font-medium">VLANs</th>
-                <th className="px-3 py-2 text-left font-medium">Uso</th>
+                <th className="px-3 py-2 text-left font-medium">{tCommon('name')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('table.vendor')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('table.bandwidth')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('table.vlans')}</th>
+                <th className="px-3 py-2 text-left font-medium">{t('table.usage')}</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
@@ -121,19 +124,20 @@ export default function OltTemplatesPage() {
                       .join(', ')}
                   </td>
                   <td className="px-3 py-2 text-xs text-slate-500">
-                    {(p.defaultForOltsCount ?? 0)} OLT · {(p.plansCount ?? 0)} plano
+                    {t('usage.olts', { count: p.defaultForOltsCount ?? 0 })} ·{' '}
+                    {t('usage.plans', { count: p.plansCount ?? 0 })}
                   </td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     {canAdmin && (
                       <>
                         <button className="text-blue-600 hover:underline" onClick={() => setEditing(p)}>
-                          Editar
+                          {tCommon('edit')}
                         </button>
                         <button
                           className="ml-3 text-red-600 hover:underline"
                           onClick={() => setConfirmDelete(p)}
                         >
-                          Excluir
+                          {tCommon('delete')}
                         </button>
                       </>
                     )}
@@ -163,9 +167,9 @@ export default function OltTemplatesPage() {
       {confirmDelete && (
         <ConfirmDialog
           open
-          title="Excluir template"
-          message={`Excluir "${confirmDelete.name}"? OLTs/planos vinculados bloqueiam a exclusão.`}
-          confirmLabel="Excluir"
+          title={t('deleteDialog.title')}
+          message={t('deleteDialog.message', { name: confirmDelete.name })}
+          confirmLabel={tCommon('delete')}
           variant="danger"
           loading={deleting}
           onConfirm={handleDelete}
@@ -183,6 +187,8 @@ interface FormProps {
 }
 
 function TemplateFormModal({ profile, onClose, onSaved }: FormProps) {
+  const t = useTranslations('oltTemplates');
+  const tCommon = useTranslations('common');
   const [form, setForm] = useState<CreateProvisioningProfileRequest>(() =>
     profile
       ? {
@@ -259,34 +265,34 @@ function TemplateFormModal({ profile, onClose, onSaved }: FormProps) {
       }
       await onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Erro ao salvar');
+      setError(err instanceof ApiError ? err.message : t('form.saveError'));
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <Modal open onClose={onClose} title={profile ? 'Editar template' : 'Novo template'}>
+    <Modal open onClose={onClose} title={profile ? t('form.editTitle') : t('form.createTitle')}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <Label htmlFor="name">Nome *</Label>
+            <Label htmlFor="name">{t('form.name')}</Label>
             <Input id="name" required value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="ZUX Residencial PPPoE" />
           </div>
           <div className="sm:col-span-2">
-            <Label htmlFor="desc">Descrição</Label>
+            <Label htmlFor="desc">{tCommon('description')}</Label>
             <Input id="desc" value={form.description ?? ''} onChange={(e) => set('description', e.target.value)} />
           </div>
           <div>
-            <Label htmlFor="bwUp">Perfil banda upload *</Label>
+            <Label htmlFor="bwUp">{t('form.bwUp')}</Label>
             <Input id="bwUp" required value={form.bwUpProfileName} onChange={(e) => set('bwUpProfileName', e.target.value)} placeholder="ZUX-MAX-US" />
           </div>
           <div>
-            <Label htmlFor="bwDown">Perfil banda download *</Label>
+            <Label htmlFor="bwDown">{t('form.bwDown')}</Label>
             <Input id="bwDown" required value={form.bwDownProfileName} onChange={(e) => set('bwDownProfileName', e.target.value)} placeholder="ZUX-MAX-DS" />
           </div>
           <div>
-            <Label htmlFor="proto">Protocolo</Label>
+            <Label htmlFor="proto">{t('form.protocol')}</Label>
             <Select id="proto" value={form.serviceProtocol} onChange={(e) => set('serviceProtocol', e.target.value as CreateProvisioningProfileRequest['serviceProtocol'])}>
               <option value="PPPOE">PPPoE</option>
               <option value="IPOE">IPoE</option>
@@ -294,30 +300,30 @@ function TemplateFormModal({ profile, onClose, onSaved }: FormProps) {
             </Select>
           </div>
           <div>
-            <Label htmlFor="uniPort">UNI port (porta-serviço)</Label>
+            <Label htmlFor="uniPort">{t('form.uniPort')}</Label>
             <Input id="uniPort" value={form.uniPort} onChange={(e) => set('uniPort', e.target.value)} placeholder="2-1" />
           </div>
           <div>
-            <Label htmlFor="ontPass">Senha ONT (GPON)</Label>
+            <Label htmlFor="ontPass">{t('form.ontPassword')}</Label>
             <Input id="ontPass" value={form.ontPassword} onChange={(e) => set('ontPassword', e.target.value)} placeholder="DEFAULT" />
           </div>
           <div>
-            <Label htmlFor="ingprof">Ingress profile</Label>
+            <Label htmlFor="ingprof">{t('form.ingressProfile')}</Label>
             <Input id="ingprof" value={form.ingressProfile} onChange={(e) => set('ingressProfile', e.target.value)} placeholder="DEFVAL" />
           </div>
         </div>
 
         <div className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
           <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-xs font-semibold uppercase text-slate-500">VLANs do serviço</h3>
+            <h3 className="text-xs font-semibold uppercase text-slate-500">{t('vlans.heading')}</h3>
             <button type="button" className="text-xs text-blue-600 hover:underline" onClick={addVlan}>
-              + adicionar VLAN
+              {t('vlans.add')}
             </button>
           </div>
           <div className="space-y-2">
             <div className="grid grid-cols-12 gap-2 text-[10px] font-medium uppercase text-slate-400">
               <span className="col-span-2">VID</span>
-              <span className="col-span-3">Papel</span>
+              <span className="col-span-3">{t('vlans.role')}</span>
               <span className="col-span-2">Tag</span>
               <span className="col-span-2">PVID</span>
               <span className="col-span-2">Proto</span>
@@ -337,8 +343,8 @@ function TemplateFormModal({ profile, onClose, onSaved }: FormProps) {
                   value={v.role}
                   onChange={(e) => setVlan(i, { role: e.target.value as ProfileVlan['role'] })}
                 >
-                  <option value="DATA">Dados</option>
-                  <option value="MGMT">Gerência (TR-069)</option>
+                  <option value="DATA">{t('vlans.roleData')}</option>
+                  <option value="MGMT">{t('vlans.roleMgmt')}</option>
                 </Select>
                 <label className="col-span-2 flex items-center gap-1 text-xs">
                   <input type="checkbox" checked={v.tagged} onChange={(e) => setVlan(i, { tagged: e.target.checked })} />
@@ -360,7 +366,7 @@ function TemplateFormModal({ profile, onClose, onSaved }: FormProps) {
                   type="button"
                   className="col-span-1 text-red-500 hover:text-red-700"
                   onClick={() => removeVlan(i)}
-                  aria-label="remover VLAN"
+                  aria-label={t('vlans.remove')}
                 >
                   ✕
                 </button>
@@ -368,15 +374,15 @@ function TemplateFormModal({ profile, onClose, onSaved }: FormProps) {
             ))}
           </div>
           <p className="mt-2 text-[11px] text-slate-500">
-            PVID e Proto apontam pra VLAN de dados (PPPoE). Ex.: 333 dados (pvid+proto) e 33 gerência.
+            {t('vlans.hint')}
           </p>
         </div>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
 
         <div className="flex justify-end gap-2 pt-1">
-          <Button type="button" variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button type="submit" disabled={saving}>{saving ? 'Salvando…' : 'Salvar'}</Button>
+          <Button type="button" variant="secondary" onClick={onClose}>{tCommon('cancel')}</Button>
+          <Button type="submit" disabled={saving}>{saving ? tCommon('saving') : tCommon('save')}</Button>
         </div>
       </form>
     </Modal>

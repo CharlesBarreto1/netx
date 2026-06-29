@@ -16,6 +16,7 @@
  * Output: chama `onChange(points)` toda vez que a polyline muda.
  */
 import { useEffect, useMemo, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import {
   MapContainer,
   Marker,
@@ -49,6 +50,7 @@ export function PolylineEditor({
   initialCenter = DEFAULT_CENTER,
   height = '360px',
 }: Props) {
+  const t = useTranslations('mapComponents');
   const [mode, setMode] = useState<'draw' | 'drag'>('draw');
 
   function removePoint(idx: number) {
@@ -84,7 +86,7 @@ export function PolylineEditor({
               : 'border-border bg-surface'
           }`}
         >
-          ✏ Desenhar (click adiciona ponto)
+          {t('polyline.draw')}
         </button>
         <button
           type="button"
@@ -95,7 +97,7 @@ export function PolylineEditor({
               : 'border-border bg-surface'
           }`}
         >
-          ✋ Ajustar (arrasta vértice)
+          {t('polyline.adjust')}
         </button>
         <button
           type="button"
@@ -103,12 +105,12 @@ export function PolylineEditor({
           disabled={value.length === 0}
           className="rounded-md border border-border bg-surface px-2 py-1 disabled:opacity-40"
         >
-          Limpar
+          {t('polyline.clear')}
         </button>
         <span className="ml-auto text-text-muted">
-          {value.length} ponto(s)
+          {t('polyline.pointCount', { count: value.length })}
           {mode === 'drag' && value.length > 0
-            ? ' · click no vértice pra remover'
+            ? t('polyline.removeHint')
             : ''}
         </span>
       </div>

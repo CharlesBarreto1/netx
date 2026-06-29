@@ -14,6 +14,7 @@
  * Save: PUT /v1/tr069/config. A senha de acesso nunca volta do backend (só a
  * flag hasAccessPassword). Requer permissão tr069.admin.
  */
+import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 
@@ -32,6 +33,7 @@ import {
 import { hasPermission } from '@/lib/session';
 
 export default function Tr069SettingsPage() {
+  const t = useTranslations('settingsTr069');
   const canWrite = hasPermission('tr069.admin');
   const { data: config, mutate, isLoading } = useSWR<Tr069ConfigView>(
     tr069Api.configPath(),
@@ -43,11 +45,8 @@ export default function Tr069SettingsPage() {
   return (
     <div className="space-y-5">
       <header>
-        <h1 className="text-2xl font-bold tracking-tight">TR-069 — Políticas da instância</h1>
-        <p className="mt-1 text-sm text-text-muted">
-          Defina como esta instância trata o template homologado: adoção de ONTs, conformidade,
-          rede, Wi-Fi, acesso e firmware.
-        </p>
+        <h1 className="text-2xl font-bold tracking-tight">{t('title')}</h1>
+        <p className="mt-1 text-sm text-text-muted">{t('subtitle')}</p>
       </header>
 
       <AdoptionCard config={config} canWrite={canWrite} onSaved={() => mutate()} />
@@ -68,6 +67,8 @@ function AdoptionCard({
   canWrite: boolean;
   onSaved: () => void;
 }) {
+  const t = useTranslations('settingsTr069');
+  const tCommon = useTranslations('common');
   const [accept, setAccept] = useState(config.acceptUnknownInforms);
   const [saving, setSaving] = useState(false);
   const { data: pending, mutate: mutatePending } = useSWR<Tr069PendingDeviceRow[]>(
@@ -82,10 +83,10 @@ function AdoptionCard({
     setSaving(true);
     try {
       await tr069Api.saveConfig({ acceptUnknownInforms: accept });
-      toast.success('Política de adoção salva');
+      toast.success(t('adoption.saved'));
       onSaved();
     } catch (err) {
-      toast.error(`Falha: ${msgOf(err)}`);
+      toast.error(t('adoption.saveError', { error: msgOf(err) }));
     } finally {
       setSaving(false);
     }
@@ -94,19 +95,19 @@ function AdoptionCard({
   async function adopt(row: Tr069PendingDeviceRow) {
     try {
       await tr069Api.adoptPending(row.id, {});
-      toast.success(`ONT ${row.serialNumber ?? row.deviceId} adotada`);
+      toast.success(t('adoption.adopted', { device: row.serialNumber ?? row.deviceId }));
       void mutatePending();
     } catch (err) {
-      toast.error(`Falha ao adotar: ${msgOf(err)}`);
+      toast.error(t('adoption.adoptError', { error: msgOf(err) }));
     }
   }
 
   return (
     <Section
-      title="Adoção de ONTs não cadastradas"
+      title={t('adoption.title')}
       rightSlot={
         <Badge tone={config.acceptUnknownInforms ? 'success' : 'neutral'}>
-          {config.acceptUnknownInforms ? 'Ligada' : 'Desligada'}
+          {config.acceptUnknownInforms ? t('adoption.on') : t('adoption.off')}
         </Badge>
       }
     >
@@ -115,31 +116,31 @@ function AdoptionCard({
         checked={accept}
         onChange={setAccept}
         disabled={!canWrite}
-        label="Receber Inform de ONT não cadastrada"
-        help="CPE desconhecido entra na caixa de adoção (sem tenant) em vez de ser ignorado. O operador atribui o tenant/contrato ao adotar."
+        label={t('adoption.acceptLabel')}
+        help={t('adoption.acceptHelp')}
       />
       {canWrite && (
         <div className="mt-3 flex justify-end">
           <Button onClick={saveFlag} loading={saving} size="sm">
-            Salvar
+            {tCommon('save')}
           </Button>
         </div>
       )}
 
       <div className="mt-4">
-        <Label>Pendentes de adoção</Label>
+        <Label>{t('adoption.pendingTitle')}</Label>
         {!pending || pending.length === 0 ? (
-          <p className="text-sm text-text-muted">Nenhum CPE aguardando adoção.</p>
+          <p className="text-sm text-text-muted">{t('adoption.pendingEmpty')}</p>
         ) : (
           <div className="overflow-x-auto rounded-md border border-border">
             <table className="w-full text-sm">
               <thead className="bg-surface-hover text-text-muted">
                 <tr>
-                  <th className="px-3 py-2 text-left font-medium">Device</th>
-                  <th className="px-3 py-2 text-left font-medium">Fabricante</th>
-                  <th className="px-3 py-2 text-left font-medium">Modelo</th>
-                  <th className="px-3 py-2 text-left font-medium">Serial</th>
-                  <th className="px-3 py-2 text-right font-medium">Informs</th>
+                  <th className="px-3 py-2 text-left font-medium">{t('adoption.colDevice')}</th>
+                  <th className="px-3 py-2 text-left font-medium">{t('adoption.colManufacturer')}</th>
+                  <th className="px-3 py-2 text-left font-medium">{t('adoption.colModel')}</th>
+                  <th className="px-3 py-2 text-left font-medium">{t('adoption.colSerial')}</th>
+                  <th className="px-3 py-2 text-right font-medium">{t('adoption.colInforms')}</th>
                   <th className="px-3 py-2" />
                 </tr>
               </thead>
@@ -154,7 +155,7 @@ function AdoptionCard({
                     <td className="px-3 py-2 text-right">
                       {canWrite && (
                         <Button size="sm" variant="secondary" onClick={() => adopt(row)}>
-                          Adotar
+                          {t('adoption.adopt')}
                         </Button>
                       )}
                     </td>
@@ -181,6 +182,7 @@ function PolicyForm({
   canWrite: boolean;
   onSaved: () => void;
 }) {
+  const t = useTranslations('settingsTr069');
   const [f, setF] = useState<UpsertTr069ConfigBody>({});
   const [accessPassword, setAccessPassword] = useState('');
   const [saving, setSaving] = useState(false);
@@ -199,12 +201,12 @@ function PolicyForm({
       const body: UpsertTr069ConfigBody = { ...f };
       if (accessPassword) body.accessPassword = accessPassword;
       await tr069Api.saveConfig(body);
-      toast.success('Políticas salvas');
+      toast.success(t('policies.saved'));
       setF({});
       setAccessPassword('');
       onSaved();
     } catch (err) {
-      toast.error(`Falha: ${msgOf(err)}`);
+      toast.error(t('policies.saveError', { error: msgOf(err) }));
     } finally {
       setSaving(false);
     }
@@ -212,18 +214,18 @@ function PolicyForm({
 
   async function runCampaign() {
     if (!config.firmwareUrl) {
-      toast.error('Configure e salve a URL do firmware antes de rodar a campanha');
+      toast.error(t('firmware.urlRequired'));
       return;
     }
-    if (!window.confirm('Disparar atualização de firmware para a frota online? Isto enfileira DOWNLOAD em cada CPE.')) {
+    if (!window.confirm(t('firmware.confirmCampaign'))) {
       return;
     }
     setCampaigning(true);
     try {
       const r = await tr069Api.firmwareCampaign({});
-      toast.success(`Campanha disparada: ${r.enqueued} CPE(s) enfileirado(s)`);
+      toast.success(t('firmware.campaignStarted', { count: r.enqueued }));
     } catch (err) {
-      toast.error(`Falha na campanha: ${msgOf(err)}`);
+      toast.error(t('firmware.campaignError', { error: msgOf(err) }));
     } finally {
       setCampaigning(false);
     }
@@ -232,11 +234,11 @@ function PolicyForm({
   return (
     <>
       {/* Conformidade */}
-      <Section title="Conformidade (reconciliador)">
+      <Section title={t('compliance.title')}>
         <div className="grid gap-4 md:grid-cols-3">
           <NumField
-            label="Intervalo (min)"
-            help="Vazio = padrão do sistema."
+            label={t('compliance.intervalLabel')}
+            help={t('compliance.intervalHelp')}
             value={v('reconcileIntervalMin')}
             onChange={(n) => set({ reconcileIntervalMin: n })}
             disabled={!canWrite}
@@ -244,7 +246,7 @@ function PolicyForm({
             max={1440}
           />
           <NumField
-            label="Janela início (hora local)"
+            label={t('compliance.windowStartLabel')}
             value={v('reconcileWindowStart')}
             onChange={(n) => set({ reconcileWindowStart: n })}
             disabled={!canWrite}
@@ -252,7 +254,7 @@ function PolicyForm({
             max={23}
           />
           <NumField
-            label="Janela fim (hora local)"
+            label={t('compliance.windowEndLabel')}
             value={v('reconcileWindowEnd')}
             onChange={(n) => set({ reconcileWindowEnd: n })}
             disabled={!canWrite}
@@ -263,22 +265,22 @@ function PolicyForm({
       </Section>
 
       {/* Rede */}
-      <Section title="Rede (PPPoE / VLAN / IPv6)">
+      <Section title={t('network.title')}>
         <div className="grid gap-4 md:grid-cols-2">
           <SelectField
-            label="Origem do PPPoE"
+            label={t('network.pppoeSourceLabel')}
             value={v('pppoeSource')}
             onChange={(val) => set({ pppoeSource: val as Tr069ConfigView['pppoeSource'] })}
             disabled={!canWrite}
             options={[
-              ['CONTRACT', 'Do contrato'],
-              ['STATIC', 'Fixo (regra STATIC)'],
-              ['OLT', 'Do provisionamento de OLT'],
+              ['CONTRACT', t('network.pppoeSource.contract')],
+              ['STATIC', t('network.pppoeSource.static')],
+              ['OLT', t('network.pppoeSource.olt')],
             ]}
           />
           <NumField
-            label="VLAN padrão"
-            help="Aplicada nas regras de VLAN do PPPoE."
+            label={t('network.defaultVlanLabel')}
+            help={t('network.defaultVlanHelp')}
             value={v('defaultVlan')}
             onChange={(n) => set({ defaultVlan: n })}
             disabled={!canWrite}
@@ -290,22 +292,22 @@ function PolicyForm({
             checked={!!v('pullFromOltProvisioning')}
             onChange={(b) => set({ pullFromOltProvisioning: b })}
             disabled={!canWrite}
-            label="Puxar dados do provisionamento de OLT"
+            label={t('network.pullFromOlt')}
           />
           <Toggle
             id="ipv6-enabled"
             checked={!!v('ipv6Enabled')}
             onChange={(b) => set({ ipv6Enabled: b })}
             disabled={!canWrite}
-            label="IPv6 ativo"
+            label={t('network.ipv6Enabled')}
           />
           <SelectField
-            label="Modo do IPv6"
+            label={t('network.ipv6ModeLabel')}
             value={v('ipv6Mode')}
             onChange={(val) => set({ ipv6Mode: val as Tr069ConfigView['ipv6Mode'] })}
             disabled={!canWrite}
             options={[
-              ['AUTOCONFIGURED', 'Automático (AutoConfigured)'],
+              ['AUTOCONFIGURED', t('network.ipv6Mode.autoconfigured')],
               ['DHCPV6', 'DHCPv6'],
             ]}
           />
@@ -313,57 +315,57 @@ function PolicyForm({
       </Section>
 
       {/* Wi-Fi */}
-      <Section title="Wi-Fi">
+      <Section title={t('wifi.title')}>
         <Toggle
           id="wifi-from-contract"
           checked={!!v('wifiFromContract')}
           onChange={(b) => set({ wifiFromContract: b })}
           disabled={!canWrite}
-          label="Wi-Fi puxa do contrato"
-          help="SSID/senha das regras CONTRACT_WIFI_* só são aplicados quando ligado."
+          label={t('wifi.fromContract')}
+          help={t('wifi.fromContractHelp')}
         />
       </Section>
 
       {/* Acesso */}
       <Section
-        title="Acesso (senha padrão / acesso remoto)"
+        title={t('access.title')}
         rightSlot={
           config.hasAccessPassword ? (
-            <Badge tone="success">Senha definida</Badge>
+            <Badge tone="success">{t('access.passwordSet')}</Badge>
           ) : (
-            <Badge tone="neutral">Sem senha</Badge>
+            <Badge tone="neutral">{t('access.noPassword')}</Badge>
           )
         }
       >
         <div className="grid gap-4 md:grid-cols-2">
           <div>
-            <Label>Senha de acesso padrão</Label>
+            <Label>{t('access.passwordLabel')}</Label>
             <Input
               type="password"
               value={accessPassword}
               onChange={(e) => setAccessPassword(e.target.value)}
-              placeholder={config.hasAccessPassword ? '•••••••• (mantém atual)' : 'definir senha'}
+              placeholder={config.hasAccessPassword ? t('access.passwordPlaceholderKeep') : t('access.passwordPlaceholderSet')}
               disabled={!canWrite}
               autoComplete="new-password"
             />
-            <FieldHelp>Write-only: nunca é exibida. Vazio mantém a atual.</FieldHelp>
+            <FieldHelp>{t('access.passwordHelp')}</FieldHelp>
           </div>
           <Toggle
             id="apply-access-pwd"
             checked={!!v('applyAccessPassword')}
             onChange={(b) => set({ applyAccessPassword: b })}
             disabled={!canWrite}
-            label="Aplicar senha de acesso (root/supervisor/admin)"
+            label={t('access.applyPassword')}
           />
           <Toggle
             id="remote-http"
             checked={!!v('remoteHttpEnabled')}
             onChange={(b) => set({ remoteHttpEnabled: b })}
             disabled={!canWrite}
-            label="Acesso remoto HTTP ligado"
+            label={t('access.remoteHttp')}
           />
           <NumField
-            label="Porta de acesso remoto"
+            label={t('access.remotePortLabel')}
             value={v('remoteHttpPort')}
             onChange={(n) => set({ remoteHttpPort: n })}
             disabled={!canWrite}
@@ -371,31 +373,31 @@ function PolicyForm({
             max={65535}
           />
           <SelectField
-            label="Modo de acesso"
+            label={t('access.remoteModeLabel')}
             value={v('remoteMode')}
             onChange={(val) => set({ remoteMode: val as Tr069ConfigView['remoteMode'] })}
             disabled={!canWrite}
             options={[
-              ['LAN_ONLY', 'Só LAN'],
-              ['LAN_WAN', 'LAN + WAN (remoto)'],
+              ['LAN_ONLY', t('access.remoteMode.lanOnly')],
+              ['LAN_WAN', t('access.remoteMode.lanWan')],
             ]}
           />
         </div>
       </Section>
 
       {/* Firmware */}
-      <Section title="Firmware">
+      <Section title={t('firmware.title')}>
         <div className="grid gap-4 md:grid-cols-2">
           <Toggle
             id="fw-auto"
             checked={!!v('firmwareAutoUpdate')}
             onChange={(b) => set({ firmwareAutoUpdate: b })}
             disabled={!canWrite}
-            label="Atualizar firmware de toda a frota"
+            label={t('firmware.autoUpdate')}
           />
           <div />
           <div>
-            <Label>URL do firmware</Label>
+            <Label>{t('firmware.urlLabel')}</Label>
             <Input
               value={(v('firmwareUrl') as string | null) ?? ''}
               onChange={(e) => set({ firmwareUrl: e.target.value || null })}
@@ -404,22 +406,20 @@ function PolicyForm({
             />
           </div>
           <div>
-            <Label>Versão alvo</Label>
+            <Label>{t('firmware.targetVersionLabel')}</Label>
             <Input
               value={(v('firmwareTargetVersion') as string | null) ?? ''}
               onChange={(e) => set({ firmwareTargetVersion: e.target.value || null })}
-              placeholder="ex.: V5.44(ACHK.4)b3"
+              placeholder={t('firmware.targetVersionPlaceholder')}
               disabled={!canWrite}
             />
           </div>
         </div>
         {canWrite && (
           <div className="mt-4 flex items-center justify-between gap-3 border-t border-border pt-3">
-            <FieldHelp>
-              Usa a URL salva. Pula CPEs já na versão alvo e os com download em curso.
-            </FieldHelp>
+            <FieldHelp>{t('firmware.campaignHelp')}</FieldHelp>
             <Button variant="outline" onClick={runCampaign} loading={campaigning}>
-              Rodar campanha agora
+              {t('firmware.runCampaign')}
             </Button>
           </div>
         )}
@@ -428,7 +428,7 @@ function PolicyForm({
       {canWrite && (
         <div className="flex justify-end">
           <Button onClick={save} loading={saving}>
-            Salvar políticas
+            {t('policies.save')}
           </Button>
         </div>
       )}

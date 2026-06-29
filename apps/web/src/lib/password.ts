@@ -10,19 +10,31 @@ export const PASSWORD_RULES = {
   hasSpecial: /[^A-Za-z0-9]/u,
 };
 
+/**
+ * `id` é a chave i18n da regra (namespace `auth.firstLogin`), igual às usadas
+ * pela tela `/first-login`. O componente de UI resolve via `t(id)` — assim o
+ * checklist segue o seletor de idioma sem texto cravado.
+ */
+export type PasswordCheckId =
+  | 'checkMinLength'
+  | 'checkUpper'
+  | 'checkLower'
+  | 'checkDigit'
+  | 'checkSymbol';
+
 export interface PasswordCheckResult {
   ok: boolean;
-  checks: { label: string; ok: boolean }[];
+  checks: { id: PasswordCheckId; ok: boolean }[];
 }
 
 export function checkPassword(value: string): PasswordCheckResult {
   const v = value ?? '';
-  const checks = [
-    { label: `${PASSWORD_RULES.minLength}+ caracteres`, ok: v.length >= PASSWORD_RULES.minLength },
-    { label: '1 maiúscula', ok: PASSWORD_RULES.hasUpper.test(v) },
-    { label: '1 minúscula', ok: PASSWORD_RULES.hasLower.test(v) },
-    { label: '1 número', ok: PASSWORD_RULES.hasDigit.test(v) },
-    { label: '1 caractere especial', ok: PASSWORD_RULES.hasSpecial.test(v) },
+  const checks: { id: PasswordCheckId; ok: boolean }[] = [
+    { id: 'checkMinLength', ok: v.length >= PASSWORD_RULES.minLength },
+    { id: 'checkUpper', ok: PASSWORD_RULES.hasUpper.test(v) },
+    { id: 'checkLower', ok: PASSWORD_RULES.hasLower.test(v) },
+    { id: 'checkDigit', ok: PASSWORD_RULES.hasDigit.test(v) },
+    { id: 'checkSymbol', ok: PASSWORD_RULES.hasSpecial.test(v) },
   ];
   return { ok: checks.every((c) => c.ok), checks };
 }

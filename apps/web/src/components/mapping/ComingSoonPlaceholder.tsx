@@ -6,6 +6,7 @@
  * Clientes (única funcional na v1).
  */
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import type { ComponentType } from 'react';
 
 import { Button } from '@/components/ui/Button';
@@ -19,6 +20,7 @@ export function ComingSoonPlaceholder({
   title: string;
   description: string;
 }) {
+  const t = useTranslations('comingSoon');
   return (
     <div className="space-y-5">
       <header>
@@ -30,14 +32,14 @@ export function ComingSoonPlaceholder({
           <Icon className="h-10 w-10 text-accent" />
         </div>
         <div>
-          <div className="text-lg font-semibold text-text">Em breve</div>
+          <div className="text-lg font-semibold text-text">{t('badge')}</div>
           <p className="mx-auto mt-2 max-w-md text-sm text-text-muted">
             {description}
           </p>
         </div>
         <div className="flex gap-2 pt-2">
           <Link href="/mapping/customers">
-            <Button variant="outline">Ver mapa de clientes</Button>
+            <Button variant="outline">{t('viewCustomerMap')}</Button>
           </Link>
         </div>
       </div>

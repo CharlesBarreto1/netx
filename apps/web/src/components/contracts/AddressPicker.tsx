@@ -1,5 +1,6 @@
 'use client';
 
+import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import useSWR from 'swr';
 
@@ -41,8 +42,8 @@ export const EMPTY_ADDRESS: AddressValue = {
 
 const STREET_KINDS = ['Rua', 'Avenida', 'Travessa', 'Rodovia', 'Estrada', 'Alameda', 'Praça', 'Outro'];
 
-function errMsg(e: unknown): string {
-  return e instanceof ApiError ? e.friendlyMessage : 'Erro inesperado';
+function errMsg(e: unknown, t: (key: string) => string): string {
+  return e instanceof ApiError ? e.friendlyMessage : t('unexpectedError');
 }
 
 function fmtCep(cep: string | null): string {
@@ -141,6 +142,8 @@ function BrAddressPicker({
   disabled?: boolean;
   initialCep?: string;
 }) {
+  const t = useTranslations('addressPicker');
+  const tCommon = useTranslations('common');
   const [cityId, setCityId] = useState('');
   const [neighborhoodId, setNeighborhoodId] = useState('');
   const [streetQuery, setStreetQuery] = useState('');
@@ -207,12 +210,12 @@ function BrAddressPicker({
 
   return (
     <div className="space-y-3 rounded-md border border-border p-3">
-      <p className="text-sm font-semibold">Endereço de instalação</p>
+      <p className="text-sm font-semibold">{t('installationAddress')}</p>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <Label htmlFor="addr-city" required>
-            Cidade
+            {t('city')}
           </Label>
           <Select
             id="addr-city"
@@ -220,7 +223,7 @@ function BrAddressPicker({
             onChange={(e) => changeCity(e.target.value)}
             disabled={disabled}
           >
-            <option value="">Selecione…</option>
+            <option value="">{tCommon('select')}</option>
             {(cities ?? []).map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name}/{c.uf}
@@ -228,20 +231,18 @@ function BrAddressPicker({
             ))}
           </Select>
           {(!cities || cities.length === 0) && (
-            <FieldHelp>
-              Nenhuma cidade cadastrada — cadastre em Configurações → Endereços.
-            </FieldHelp>
+            <FieldHelp>{t('noCities')}</FieldHelp>
           )}
         </div>
         <div>
-          <Label htmlFor="addr-nb">Bairro (filtro)</Label>
+          <Label htmlFor="addr-nb">{t('neighborhoodFilter')}</Label>
           <Select
             id="addr-nb"
             value={neighborhoodId}
             onChange={(e) => setNeighborhoodId(e.target.value)}
             disabled={disabled || !cityId}
           >
-            <option value="">Todos</option>
+            <option value="">{tCommon('all')}</option>
             {(neighborhoods ?? []).map((n) => (
               <option key={n.id} value={n.id}>
                 {n.name}
@@ -254,10 +255,10 @@ function BrAddressPicker({
       {cityId && (
         <div>
           <Label htmlFor="addr-street" required>
-            Logradouro
+            {t('street')}
           </Label>
           <Input
-            placeholder="Buscar rua…"
+            placeholder={t('searchStreet')}
             value={streetQuery}
             onChange={(e) => setStreetQuery(e.target.value)}
             disabled={disabled}
@@ -269,7 +270,7 @@ function BrAddressPicker({
             onChange={(e) => pickStreet(e.target.value)}
             disabled={disabled}
           >
-            <option value="">Selecione o logradouro…</option>
+            <option value="">{t('selectStreet')}</option>
             {/* garante que a rua escolhida apareça mesmo fora do filtro/busca */}
             {pickedStreet && !visibleStreets.some((s) => s.id === pickedStreet.id) && (
               <option value={pickedStreet.id}>
@@ -290,7 +291,7 @@ function BrAddressPicker({
             onClick={() => setCreating(true)}
             disabled={disabled}
           >
-            Não encontrou? Cadastrar logradouro
+            {t('notFoundCreateStreet')}
           </button>
         </div>
       )}
@@ -298,23 +299,23 @@ function BrAddressPicker({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <Label htmlFor="addr-number" required>
-            Número
+            {t('number')}
           </Label>
           <Input
             id="addr-number"
             value={value.addressNumber}
             onChange={(e) => recompute(pickedStreet, e.target.value, value.addressComplement)}
-            placeholder="123 ou S/N"
+            placeholder={t('numberPlaceholder')}
             disabled={disabled || !value.streetId}
           />
         </div>
         <div>
-          <Label htmlFor="addr-complement">Complemento</Label>
+          <Label htmlFor="addr-complement">{t('complement')}</Label>
           <Input
             id="addr-complement"
             value={value.addressComplement}
             onChange={(e) => recompute(pickedStreet, value.addressNumber, e.target.value)}
-            placeholder="Apto 4, Bloco B…"
+            placeholder={t('complementPlaceholder')}
             disabled={disabled || !value.streetId}
           />
         </div>
@@ -362,6 +363,8 @@ function CreateStreetDialog({
   onClose: () => void;
   onCreated: (street: StreetResponse) => void;
 }) {
+  const t = useTranslations('addressPicker');
+  const tCommon = useTranslations('common');
   const [cep, setCep] = useState(initialCep ?? '');
   const [name, setName] = useState('');
   const [kind, setKind] = useState('');
@@ -373,7 +376,7 @@ function CreateStreetDialog({
   async function lookup() {
     const digits = cep.replace(/\D/g, '');
     if (digits.length !== 8) {
-      toast.error('CEP deve ter 8 dígitos');
+      toast.error(t('cepEightDigits'));
       return;
     }
     setLooking(true);
@@ -385,9 +388,9 @@ function CreateStreetDialog({
         (n) => r.bairro && n.name.toLowerCase() === r.bairro.toLowerCase(),
       );
       if (match) setNeighborhoodId(match.id);
-      if (!r.logradouro) toast.info('CEP único: informe o nome da rua manualmente');
+      if (!r.logradouro) toast.info(t('cepUnique'));
     } catch (e) {
-      toast.error(errMsg(e));
+      toast.error(errMsg(e, t));
     } finally {
       setLooking(false);
     }
@@ -395,7 +398,7 @@ function CreateStreetDialog({
 
   async function save() {
     if (!name.trim()) {
-      toast.error('Informe o nome do logradouro');
+      toast.error(t('enterStreetName'));
       return;
     }
     setSaving(true);
@@ -413,10 +416,10 @@ function CreateStreetDialog({
         kind: kind || null,
         postalCode: cep.replace(/\D/g, '') || null,
       });
-      toast.success('Logradouro cadastrado');
+      toast.success(t('streetCreated'));
       onCreated(street);
     } catch (e) {
-      toast.error(errMsg(e));
+      toast.error(errMsg(e, t));
     } finally {
       setSaving(false);
     }
@@ -426,7 +429,7 @@ function CreateStreetDialog({
     <Dialog open onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Cadastrar logradouro</DialogTitle>
+          <DialogTitle>{t('createStreetTitle')}</DialogTitle>
         </DialogHeader>
         <DialogBody className="flex flex-col gap-3">
           <div>
@@ -447,34 +450,34 @@ function CreateStreetDialog({
                 autoFocus
               />
               <Button type="button" variant="secondary" onClick={() => void lookup()} loading={looking}>
-                Buscar CEP
+                {t('lookupCep')}
               </Button>
             </div>
-            <FieldHelp>Preenche a rua pelo ViaCEP. Em CEP único, digite a rua à mão.</FieldHelp>
+            <FieldHelp>{t('cepHelp')}</FieldHelp>
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <Label htmlFor="cs-kind">Tipo</Label>
+              <Label htmlFor="cs-kind">{tCommon('type')}</Label>
               <Select id="cs-kind" value={kind} onChange={(e) => setKind(e.target.value)}>
                 <option value="">—</option>
                 {STREET_KINDS.map((k) => (
                   <option key={k} value={k}>
-                    {k}
+                    {t(`kind.${k}`)}
                   </option>
                 ))}
               </Select>
             </div>
             <div className="col-span-2">
               <Label htmlFor="cs-name" required>
-                Nome
+                {tCommon('name')}
               </Label>
               <Input id="cs-name" value={name} onChange={(e) => setName(e.target.value)} />
             </div>
           </div>
           <div>
-            <Label htmlFor="cs-nb">Bairro</Label>
+            <Label htmlFor="cs-nb">{t('neighborhood')}</Label>
             <Select id="cs-nb" value={neighborhoodId} onChange={(e) => setNeighborhoodId(e.target.value)}>
-              <option value="">{bairroFromCep ? `${bairroFromCep} (novo, do CEP)` : '—'}</option>
+              <option value="">{bairroFromCep ? t('neighborhoodFromCep', { name: bairroFromCep }) : '—'}</option>
               {neighborhoods.map((n) => (
                 <option key={n.id} value={n.id}>
                   {n.name}
@@ -485,10 +488,10 @@ function CreateStreetDialog({
         </DialogBody>
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose} disabled={saving}>
-            Cancelar
+            {tCommon('cancel')}
           </Button>
           <Button type="button" onClick={() => void save()} loading={saving}>
-            Cadastrar
+            {t('createButton')}
           </Button>
         </DialogFooter>
       </DialogContent>

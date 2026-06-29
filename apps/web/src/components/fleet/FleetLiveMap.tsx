@@ -21,6 +21,7 @@
  * visão do usuário a cada poll.
  */
 import { useEffect, useMemo } from 'react';
+import { useTranslations } from 'next-intl';
 import {
   MapContainer,
   Marker,
@@ -53,12 +54,6 @@ const STATUS_COLOR: Record<LiveVehicleStatus, string> = {
   MOVING: '#22c55e',
   STOPPED: '#eab308',
   OFFLINE: '#6b7280',
-};
-
-const STATUS_LABEL: Record<LiveVehicleStatus, string> = {
-  MOVING: 'Em movimento',
-  STOPPED: 'Parado',
-  OFFLINE: 'Offline',
 };
 
 export const DOT_COLOR: Record<LiveDotStatus, string> = {
@@ -132,6 +127,7 @@ export function FleetLiveMap({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function RouteLayer({ route, speedLimit }: { route: FleetRoute; speedLimit: number }) {
+  const t = useTranslations('fleetLiveMap');
   const trechos = useMemo(() => splitTrechos(route.points), [route]);
   const speeding = useMemo(
     () => speedingRuns(route.points, speedLimit),
@@ -156,7 +152,10 @@ function RouteLayer({ route, speedLimit }: { route: FleetRoute; speedLimit: numb
           pathOptions={{ color: SPEEDING_COLOR, weight: 6, opacity: 0.9 }}
         >
           <Tooltip sticky>
-            {`> ${speedLimit} km/h (máx ${Math.round(Math.max(...seg.map((p) => p.speed ?? 0)))} km/h)`}
+            {t('speedingTooltip', {
+              limit: speedLimit,
+              max: Math.round(Math.max(...seg.map((p) => p.speed ?? 0))),
+            })}
           </Tooltip>
         </Polyline>
       ))}
@@ -272,21 +271,29 @@ function PanToSelected({
   return null;
 }
 
+const LIVE_STATUS_KEYS: LiveVehicleStatus[] = ['MOVING', 'STOPPED', 'OFFLINE'];
+
 function PopupContent({ point }: { point: LivePosition }) {
+  const t = useTranslations('fleetLiveMap');
+  const statusLabel = LIVE_STATUS_KEYS.includes(point.status)
+    ? t(`status.${point.status}`)
+    : point.status;
   return (
     <div style={{ minWidth: 200 }}>
       <div style={{ fontWeight: 600, marginBottom: 2 }}>
         {point.plate} <span style={{ fontWeight: 400, color: '#666' }}>{point.label}</span>
       </div>
       <div style={{ fontSize: 12 }}>
-        <span style={{ color: STATUS_COLOR[point.status], fontWeight: 600 }}>{STATUS_LABEL[point.status]}</span>
+        <span style={{ color: STATUS_COLOR[point.status], fontWeight: 600 }}>{statusLabel}</span>
         {point.speed != null ? ` · ${Math.round(point.speed)} km/h` : ''}
-        {point.ignition != null ? ` · ignição ${point.ignition ? 'ligada' : 'desligada'}` : ''}
+        {point.ignition != null
+          ? ` · ${t(point.ignition ? 'ignitionOn' : 'ignitionOff')}`
+          : ''}
       </div>
-      {point.driverName && <div style={{ fontSize: 12, marginTop: 4 }}><strong>Motorista:</strong> {point.driverName}</div>}
+      {point.driverName && <div style={{ fontSize: 12, marginTop: 4 }}><strong>{t('driver')}:</strong> {point.driverName}</div>}
       {point.address && <div style={{ fontSize: 12, color: '#666', marginTop: 4 }}>{point.address}</div>}
       <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>
-        Atualizado: {new Date(point.deviceTime).toLocaleString('pt-BR')}
+        {t('updated')}: {new Date(point.deviceTime).toLocaleString('pt-BR')}
       </div>
     </div>
   );

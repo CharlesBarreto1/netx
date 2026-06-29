@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { useTranslations } from 'next-intl';
 import { cn } from '@/lib/cn';
 import { Button } from './Button';
 
@@ -36,6 +37,7 @@ export function Modal({
   footer?: React.ReactNode;
   dismissable?: boolean;
 }) {
+  const tCommon = useTranslations('common');
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -66,7 +68,7 @@ export function Modal({
     >
       <button
         type="button"
-        aria-label="Fechar"
+        aria-label={tCommon('close')}
         tabIndex={-1}
         className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm"
         onClick={dismissable ? onClose : undefined}
@@ -113,10 +115,10 @@ export function ConfirmDialog({
   open,
   onClose,
   onConfirm,
-  title = 'Confirmar',
+  title,
   message,
-  confirmLabel = 'Confirmar',
-  cancelLabel = 'Cancelar',
+  confirmLabel,
+  cancelLabel,
   variant = 'primary',
   loading,
 }: {
@@ -130,19 +132,23 @@ export function ConfirmDialog({
   variant?: 'primary' | 'danger';
   loading?: boolean;
 }) {
+  const tCommon = useTranslations('common');
+  const resolvedTitle = title ?? tCommon('confirm');
+  const resolvedConfirmLabel = confirmLabel ?? tCommon('confirm');
+  const resolvedCancelLabel = cancelLabel ?? tCommon('cancel');
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={title}
+      title={resolvedTitle}
       size="sm"
       footer={
         <>
           <Button variant="ghost" onClick={onClose} disabled={loading}>
-            {cancelLabel}
+            {resolvedCancelLabel}
           </Button>
           <Button variant={variant} onClick={() => void onConfirm()} loading={loading}>
-            {confirmLabel}
+            {resolvedConfirmLabel}
           </Button>
         </>
       }

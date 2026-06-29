@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import useSWR from 'swr';
 
@@ -29,11 +30,13 @@ import {
 
 import { CityDetailPanel, formatCep } from './CityDetailPanel';
 
-function errMsg(e: unknown): string {
-  return e instanceof ApiError ? e.friendlyMessage : 'Erro inesperado';
+function errMsg(e: unknown, t: (key: string) => string): string {
+  return e instanceof ApiError ? e.friendlyMessage : t('errors.unexpected');
 }
 
 export default function LocationsSettingsPage() {
+  const t = useTranslations('settingsLocations');
+  const tCommon = useTranslations('common');
   const { tenant, isLoading: tenantLoading } = useTenantConfig();
   const canManage = hasPermission('locations.manage');
 
@@ -52,14 +55,12 @@ export default function LocationsSettingsPage() {
   if (tenant?.country !== 'BR') {
     return (
       <div className="rounded-md border border-border bg-surface p-10 text-center">
-        <p className="text-sm text-text-muted">
-          O cadastro estruturado de endereços está disponível apenas para operações no Brasil.
-        </p>
+        <p className="text-sm text-text-muted">{t('list.brOnly')}</p>
       </div>
     );
   }
 
-  if (isLoading || !cities) return <PageLoader label="Carregando cidades…" />;
+  if (isLoading || !cities) return <PageLoader label={t('list.loadingCities')} />;
 
   const selected = cities.find((c) => c.id === selectedId) ?? null;
 
@@ -67,24 +68,21 @@ export default function LocationsSettingsPage() {
     <div className="space-y-5">
       <header className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Endereços (BR)</h1>
-          <p className="text-sm text-text-muted">
-            Cadastro-mestre de cidades (com código IBGE), bairros e logradouros (com CEP). Base do
-            endereço de instalação estruturado e do módulo fiscal (NFCom).
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{t('list.title')}</h1>
+          <p className="text-sm text-text-muted">{t('list.subtitle')}</p>
           <Link
             href="/settings/locations/backfill"
             className="mt-1 inline-block text-sm text-accent hover:underline"
           >
-            Migrar endereços de contratos antigos →
+            {t('list.migrateLink')}
           </Link>
         </div>
         {canManage && (
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => setImporting(true)}>
-              Importar por CEP
+              {t('list.importByCep')}
             </Button>
-            <Button onClick={() => setCreating(true)}>Nova cidade</Button>
+            <Button onClick={() => setCreating(true)}>{t('list.newCity')}</Button>
           </div>
         )}
       </header>
@@ -93,10 +91,10 @@ export default function LocationsSettingsPage() {
         <table className="min-w-full text-sm">
           <thead className="bg-surface-muted text-left text-[11px] font-semibold uppercase tracking-wider text-text-muted">
             <tr>
-              <th className="px-3 py-2">Cidade</th>
-              <th className="px-3 py-2">UF</th>
-              <th className="px-3 py-2">Código IBGE</th>
-              <th className="px-3 py-2">Status</th>
+              <th className="px-3 py-2">{t('list.colCity')}</th>
+              <th className="px-3 py-2">{t('list.colUf')}</th>
+              <th className="px-3 py-2">{t('list.colIbgeCode')}</th>
+              <th className="px-3 py-2">{tCommon('status')}</th>
               <th className="px-3 py-2"></th>
             </tr>
           </thead>
@@ -104,7 +102,7 @@ export default function LocationsSettingsPage() {
             {cities.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-3 py-6 text-center text-text-muted">
-                  Nenhuma cidade cadastrada. Use “Nova cidade” ou “Importar por CEP”.
+                  {t('list.empty')}
                 </td>
               </tr>
             ) : (
@@ -121,13 +119,13 @@ export default function LocationsSettingsPage() {
                   <td className="px-3 py-2 font-mono text-xs text-text-muted">{c.ibgeCode}</td>
                   <td className="px-3 py-2">
                     <Badge tone={c.active ? 'success' : 'neutral'}>
-                      {c.active ? 'Ativa' : 'Inativa'}
+                      {c.active ? t('list.active') : t('list.inactive')}
                     </Badge>
                   </td>
                   <td className="px-3 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                     {canManage && (
                       <Button size="sm" variant="ghost" onClick={() => setDeleting(c)}>
-                        Excluir
+                        {tCommon('delete')}
                       </Button>
                     )}
                   </td>
@@ -141,7 +139,7 @@ export default function LocationsSettingsPage() {
       {selected && (
         <div className="space-y-3">
           <h2 className="text-sm font-semibold text-text-muted">
-            {selected.name}/{selected.uf} — bairros e logradouros
+            {t('list.detailHeading', { city: selected.name, uf: selected.uf })}
           </h2>
           <CityDetailPanel city={selected} canManage={canManage} />
         </div>
@@ -174,20 +172,20 @@ export default function LocationsSettingsPage() {
       <ConfirmDialog
         open={!!deleting}
         onClose={() => setDeleting(null)}
-        title="Excluir cidade"
-        message={`Excluir "${deleting?.name ?? ''}"? Bairros e logradouros sem vínculo a contratos também serão removidos.`}
+        title={t('list.deleteCityTitle')}
+        message={t('list.deleteCityMessage', { name: deleting?.name ?? '' })}
         variant="danger"
-        confirmLabel="Excluir"
+        confirmLabel={tCommon('delete')}
         onConfirm={async () => {
           if (!deleting) return;
           try {
             await locationsApi.removeCity(deleting.id);
-            toast.success('Cidade excluída');
+            toast.success(t('list.cityDeleted'));
             if (selectedId === deleting.id) setSelectedId(null);
             setDeleting(null);
             await mutate();
           } catch (e) {
-            toast.error(errMsg(e));
+            toast.error(errMsg(e, t));
           }
         }}
       />
@@ -207,6 +205,8 @@ function CityFormDialog({
   onClose: () => void;
   onSaved: (city: CityResponse) => void;
 }) {
+  const t = useTranslations('settingsLocations');
+  const tCommon = useTranslations('common');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<IbgeMunicipalityResponse[]>([]);
   const [searching, setSearching] = useState(false);
@@ -220,7 +220,7 @@ function CityFormDialog({
     try {
       setResults(await locationsApi.searchIbge({ q, limit: 20 }));
     } catch (e) {
-      toast.error(errMsg(e));
+      toast.error(errMsg(e, t));
     } finally {
       setSearching(false);
     }
@@ -229,7 +229,7 @@ function CityFormDialog({
   async function submit() {
     if (!picked) return;
     if (existing.some((c) => c.ibgeCode === picked.codigo)) {
-      toast.error('Cidade já cadastrada');
+      toast.error(t('city.alreadyRegistered'));
       return;
     }
     setSubmitting(true);
@@ -240,10 +240,10 @@ function CityFormDialog({
         uf: picked.uf,
         active: true,
       });
-      toast.success('Cidade cadastrada');
+      toast.success(t('city.created'));
       onSaved(city);
     } catch (e) {
-      toast.error(errMsg(e));
+      toast.error(errMsg(e, t));
     } finally {
       setSubmitting(false);
     }
@@ -253,11 +253,11 @@ function CityFormDialog({
     <Dialog open onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Nova cidade</DialogTitle>
+          <DialogTitle>{t('list.newCity')}</DialogTitle>
         </DialogHeader>
         <DialogBody className="flex flex-col gap-3">
           <div>
-            <Label htmlFor="city-q">Buscar município (IBGE)</Label>
+            <Label htmlFor="city-q">{t('city.searchLabel')}</Label>
             <div className="flex gap-2">
               <Input
                 id="city-q"
@@ -269,14 +269,14 @@ function CityFormDialog({
                     void search();
                   }
                 }}
-                placeholder="Ex.: Cascavel"
+                placeholder={t('city.searchPlaceholder')}
                 autoFocus
               />
               <Button type="button" variant="secondary" onClick={() => void search()} loading={searching}>
-                Buscar
+                {tCommon('search')}
               </Button>
             </div>
-            <FieldHelp>Digite o nome e busque na base nacional do IBGE.</FieldHelp>
+            <FieldHelp>{t('city.searchHelp')}</FieldHelp>
           </div>
 
           {results.length > 0 && (
@@ -298,7 +298,7 @@ function CityFormDialog({
                         {m.nome}/{m.uf}
                       </span>
                       <span className="font-mono text-xs text-text-muted">
-                        {already ? 'já cadastrada' : m.codigo}
+                        {already ? t('city.alreadyRegisteredShort') : m.codigo}
                       </span>
                     </button>
                   </li>
@@ -309,17 +309,17 @@ function CityFormDialog({
 
           {picked && (
             <p className="text-sm">
-              Selecionado: <strong>{picked.nome}/{picked.uf}</strong>{' '}
+              {t('city.selected')} <strong>{picked.nome}/{picked.uf}</strong>{' '}
               <span className="font-mono text-xs text-text-muted">IBGE {picked.codigo}</span>
             </p>
           )}
         </DialogBody>
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose} disabled={submitting}>
-            Cancelar
+            {tCommon('cancel')}
           </Button>
           <Button type="button" onClick={() => void submit()} disabled={!picked} loading={submitting}>
-            Cadastrar
+            {t('city.submitRegister')}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -339,6 +339,8 @@ function CepImportDialog({
   onClose: () => void;
   onImported: (cityId: string) => void;
 }) {
+  const t = useTranslations('settingsLocations');
+  const tCommon = useTranslations('common');
   const [cep, setCep] = useState('');
   const [looking, setLooking] = useState(false);
   const [importingNow, setImportingNow] = useState(false);
@@ -347,7 +349,7 @@ function CepImportDialog({
   async function lookup() {
     const digits = cep.replace(/\D/g, '');
     if (digits.length !== 8) {
-      toast.error('CEP deve ter 8 dígitos');
+      toast.error(t('import.cepInvalid'));
       return;
     }
     setLooking(true);
@@ -355,7 +357,7 @@ function CepImportDialog({
     try {
       setResult(await locationsApi.lookupCep(digits));
     } catch (e) {
-      toast.error(errMsg(e));
+      toast.error(errMsg(e, t));
     } finally {
       setLooking(false);
     }
@@ -364,7 +366,7 @@ function CepImportDialog({
   async function doImport() {
     if (!result) return;
     if (!result.ibge || !result.localidade || !result.uf) {
-      toast.error('CEP sem município resolvido — cadastre a cidade manualmente');
+      toast.error(t('import.noCityResolved'));
       return;
     }
     setImportingNow(true);
@@ -407,14 +409,14 @@ function CepImportDialog({
             postalCode: result.cep,
           });
         }
-        toast.success('Endereço importado do CEP');
+        toast.success(t('import.addressImported'));
       } else {
-        toast.info('CEP único: cidade/bairro importados — cadastre a rua manualmente');
+        toast.info(t('import.singleCepImported'));
       }
 
       onImported(city.id);
     } catch (e) {
-      toast.error(errMsg(e));
+      toast.error(errMsg(e, t));
     } finally {
       setImportingNow(false);
     }
@@ -424,11 +426,11 @@ function CepImportDialog({
     <Dialog open onOpenChange={(v) => !v && onClose()}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Importar por CEP</DialogTitle>
+          <DialogTitle>{t('list.importByCep')}</DialogTitle>
         </DialogHeader>
         <DialogBody className="flex flex-col gap-3">
           <div>
-            <Label htmlFor="imp-cep">CEP</Label>
+            <Label htmlFor="imp-cep">{t('import.cepLabel')}</Label>
             <div className="flex gap-2">
               <Input
                 id="imp-cep"
@@ -445,28 +447,28 @@ function CepImportDialog({
                 autoFocus
               />
               <Button type="button" variant="secondary" onClick={() => void lookup()} loading={looking}>
-                Consultar
+                {t('import.lookup')}
               </Button>
             </div>
-            <FieldHelp>Busca no ViaCEP. Cidades de CEP único trazem só cidade/bairro.</FieldHelp>
+            <FieldHelp>{t('import.cepHelp')}</FieldHelp>
           </div>
 
           {result && (
             <dl className="rounded-md border border-border bg-surface-muted p-3 text-sm">
-              <Row label="CEP" value={formatCep(result.cep)} />
-              <Row label="Cidade" value={result.localidade ? `${result.localidade}/${result.uf ?? ''}` : '—'} />
+              <Row label={t('import.cepLabel')} value={formatCep(result.cep)} />
+              <Row label={t('import.rowCity')} value={result.localidade ? `${result.localidade}/${result.uf ?? ''}` : '—'} />
               <Row label="IBGE" value={result.ibge ?? '—'} mono />
-              <Row label="Bairro" value={result.bairro ?? '—'} />
-              <Row label="Logradouro" value={result.logradouro ?? '— (cadastre manualmente)'} />
+              <Row label={t('import.rowNeighborhood')} value={result.bairro ?? '—'} />
+              <Row label={t('import.rowStreet')} value={result.logradouro ?? t('import.streetManualFallback')} />
             </dl>
           )}
         </DialogBody>
         <DialogFooter>
           <Button type="button" variant="ghost" onClick={onClose} disabled={importingNow}>
-            Cancelar
+            {tCommon('cancel')}
           </Button>
           <Button type="button" onClick={() => void doImport()} disabled={!result} loading={importingNow}>
-            Importar
+            {t('import.submitImport')}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,14 +1,16 @@
 'use client';
 
 import { GitBranch } from 'lucide-react';
+import { useTranslations } from 'next-intl';
 import { ComingSoonPlaceholder } from '@/components/mapping/ComingSoonPlaceholder';
 
 export default function MappingBackbonePage() {
+  const t = useTranslations('comingSoon');
   return (
     <ComingSoonPlaceholder
       icon={GitBranch}
-      title="Backbone Óptico"
-      description="Traçados de fibra entre POPs com metadados (capacidade, comprimento, fornecedor). Detecta cortes via alarme do equipamento e destaca o trecho afetado em vermelho."
+      title={t('backbone.title')}
+      description={t('backbone.description')}
     />
   );
 }

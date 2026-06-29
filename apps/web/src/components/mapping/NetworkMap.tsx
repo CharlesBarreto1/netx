@@ -13,6 +13,7 @@
  * (`dynamic(() => import('./NetworkMap'), { ssr: false })`).
  */
 import { useEffect } from 'react';
+import { useTranslations } from 'next-intl';
 import {
   MapContainer,
   Marker,
@@ -379,18 +380,19 @@ function iconForEvent(ev: NetworkMapEvent): L.DivIcon {
 }
 
 function EventPopupContent({ event }: { event: NetworkMapEvent }) {
+  const t = useTranslations('mapComponents');
   const typeLabel =
     event.type === 'BREAK'
-      ? 'Rompimento'
+      ? t('network.eventBreak')
       : event.type === 'BEND'
-        ? 'Curva excessiva'
+        ? t('network.eventBend')
         : event.type === 'REFLECTION'
-          ? 'Reflexão'
+          ? t('network.eventReflection')
           : event.type === 'ATTENUATION'
-            ? 'Atenuação anormal'
+            ? t('network.eventAttenuation')
             : event.type === 'CONNECTOR'
-              ? 'Conector ruim'
-              : 'Outro';
+              ? t('network.eventConnector')
+              : t('network.eventOther');
   const km = event.distanceMeters / 1000;
   return (
     <div style={{ minWidth: 220 }}>
@@ -398,24 +400,24 @@ function EventPopupContent({ event }: { event: NetworkMapEvent }) {
         ⚠ {typeLabel}
       </div>
       <div style={{ fontSize: 12, marginTop: 4 }}>
-        <strong>Cabo:</strong> {event.cableCode}
-        {event.fiberIndex ? ` · fibra ${event.fiberIndex}` : ''}
+        <strong>{t('network.cable')}</strong> {event.cableCode}
+        {event.fiberIndex ? ` · ${t('network.fiber', { index: event.fiberIndex })}` : ''}
       </div>
       <div style={{ fontSize: 12 }}>
-        <strong>Distância:</strong>{' '}
+        <strong>{t('network.distance')}</strong>{' '}
         {km >= 1 ? `${km.toFixed(3)} km` : `${event.distanceMeters} m`}
       </div>
       {event.lossDb != null && (
         <div style={{ fontSize: 12 }}>
-          <strong>Loss:</strong> {event.lossDb.toFixed(2)} dB
+          <strong>{t('network.loss')}</strong> {event.lossDb.toFixed(2)} dB
         </div>
       )}
       <div style={{ fontSize: 11, color: '#666', marginTop: 4 }}>
-        Reportado em {new Date(event.reportedAt).toLocaleString('pt-BR')}
+        {t('network.reportedAt', { date: new Date(event.reportedAt).toLocaleString('pt-BR') })}
       </div>
       <div style={{ fontSize: 12, marginTop: 8 }}>
         <a href="/network/otdr" style={{ color: '#2563eb' }}>
-          Abrir OTDR →
+          {t('network.openOtdr')}
         </a>
       </div>
     </div>
@@ -423,18 +425,19 @@ function EventPopupContent({ event }: { event: NetworkMapEvent }) {
 }
 
 function SplicePopupContent({ splice }: { splice: NetworkMapSplice }) {
+  const t = useTranslations('mapComponents');
   const lossLabel =
     splice.lossClass === 'unmeasured'
-      ? 'Não medido'
+      ? t('network.lossUnmeasured')
       : splice.lossClass === 'good'
-        ? 'OK'
+        ? t('network.lossGood')
         : splice.lossClass === 'warning'
-          ? 'Atenção'
-          : 'Refazer';
+          ? t('network.lossWarning')
+          : t('network.lossBad');
   const lossColor = colorForSpliceLoss(splice.lossClass);
   return (
     <div style={{ minWidth: 220 }}>
-      <div style={{ fontWeight: 600, marginBottom: 4 }}>Fusão</div>
+      <div style={{ fontWeight: 600, marginBottom: 4 }}>{t('network.splice')}</div>
       <div style={{ fontSize: 12 }}>
         <strong>A:</strong> {splice.cableACode} ·{' '}
         <span
@@ -466,13 +469,13 @@ function SplicePopupContent({ splice }: { splice: NetworkMapSplice }) {
         f{splice.fiberBIndex}
       </div>
       <div style={{ fontSize: 12, marginTop: 6 }}>
-        <strong>Loss:</strong>{' '}
+        <strong>{t('network.loss')}</strong>{' '}
         {splice.lossDb != null ? `${splice.lossDb.toFixed(2)} dB` : '—'}{' '}
         <span style={{ color: lossColor, fontWeight: 600 }}>· {lossLabel}</span>
       </div>
       <div style={{ fontSize: 12, marginTop: 8 }}>
         <a href="/network/splices" style={{ color: '#2563eb' }}>
-          Abrir CRUD →
+          {t('network.openCrud')}
         </a>
       </div>
     </div>
@@ -480,25 +483,26 @@ function SplicePopupContent({ splice }: { splice: NetworkMapSplice }) {
 }
 
 function CablePopupContent({ segment }: { segment: NetworkMapSegment }) {
+  const t = useTranslations('mapComponents');
   const typeLabel =
     segment.type === 'BACKBONE'
-      ? 'Backbone'
+      ? t('network.cableBackbone')
       : segment.type === 'DISTRIBUTION'
-        ? 'Distribuição'
-        : 'Drop (cliente)';
+        ? t('network.cableDistribution')
+        : t('network.cableDrop');
   return (
     <div style={{ minWidth: 220 }}>
       <div style={{ fontWeight: 600, marginBottom: 4 }}>{segment.code}</div>
       <div style={{ fontSize: 12, color: '#666' }}>{typeLabel}</div>
       <div style={{ fontSize: 12, marginTop: 6 }}>
-        <strong>Fibras:</strong> {segment.fiberCount}
+        <strong>{t('network.fibers')}</strong> {segment.fiberCount}
       </div>
       <div style={{ fontSize: 12 }}>
-        <strong>Comprimento:</strong> {formatLength(segment.lengthMeters)}
+        <strong>{t('network.length')}</strong> {formatLength(segment.lengthMeters)}
       </div>
       <div style={{ fontSize: 12, marginTop: 8 }}>
         <a href="/network/fiber" style={{ color: '#2563eb' }}>
-          Abrir CRUD →
+          {t('network.openCrud')}
         </a>
       </div>
     </div>
@@ -506,11 +510,12 @@ function CablePopupContent({ segment }: { segment: NetworkMapSegment }) {
 }
 
 function NetworkPopupContent({ point }: { point: NetworkMapPoint }) {
-  const kindLabel = KIND_LABEL[point.kind];
+  const t = useTranslations('mapComponents');
+  const kindLabel = kindLabelFor(point.kind, t);
   const statusBadge = point.isActive ? (
-    <span style={{ color: '#16a34a', fontWeight: 600 }}>Ativo</span>
+    <span style={{ color: '#16a34a', fontWeight: 600 }}>{t('network.active')}</span>
   ) : (
-    <span style={{ color: '#dc2626', fontWeight: 600 }}>Inativo</span>
+    <span style={{ color: '#dc2626', fontWeight: 600 }}>{t('network.inactive')}</span>
   );
   // Linkar pro CRUD certo dependendo do kind. Caixas ópticas vão direto
   // pra a VISTA ESQUEMÁTICA da caixa (R4.5b) — não pra a lista genérica.
@@ -536,7 +541,7 @@ function NetworkPopupContent({ point }: { point: NetworkMapPoint }) {
       </div>
       {point.vendor && (
         <div style={{ fontSize: 12, marginTop: 6 }}>
-          <strong>Fornecedor:</strong> {point.vendor}
+          <strong>{t('network.vendor')}</strong> {point.vendor}
           {point.model ? ` · ${point.model}` : ''}
         </div>
       )}
@@ -547,32 +552,50 @@ function NetworkPopupContent({ point }: { point: NetworkMapPoint }) {
       )}
       {isOptical && point.capacity != null && (
         <div style={{ fontSize: 12, marginTop: 6 }}>
-          <strong>Ocupação:</strong> {point.occupancyPct ?? 0}% · {point.capacity}{' '}
-          portas
+          <strong>{t('network.occupancy')}</strong> {point.occupancyPct ?? 0}% · {point.capacity}{' '}
+          {t('network.ports')}
         </div>
       )}
       <div style={{ fontSize: 12, marginTop: 8 }}>
         <a href={detailHref} style={{ color: '#2563eb' }}>
-          {isOptical ? 'Abrir vista esquemática →' : 'Abrir CRUD →'}
+          {isOptical ? t('network.openSchematic') : t('network.openCrud')}
         </a>
       </div>
     </div>
   );
 }
 
-const KIND_LABEL: Record<NetworkMapPointKind, string> = {
-  POP: 'POP',
-  BNG: 'BNG / NAS',
-  OLT: 'OLT',
-  ROUTER: 'Router',
-  SWITCH: 'Switch',
-  OTHER: 'Outro',
-  CTO: 'CTO',
-  NAP: 'NAP',
-  SPLITTER: 'Splitter',
-  EMENDA: 'Emenda',
-  RESERVA: 'Reserva',
-};
+// Rótulos por kind. Siglas técnicas (POP/OLT/CTO/NAP) ficam literais; os
+// demais traduzem via next-intl.
+function kindLabelFor(
+  kind: NetworkMapPointKind,
+  t: ReturnType<typeof useTranslations>,
+): string {
+  switch (kind) {
+    case 'POP':
+      return 'POP';
+    case 'OLT':
+      return 'OLT';
+    case 'CTO':
+      return 'CTO';
+    case 'NAP':
+      return 'NAP';
+    case 'BNG':
+      return t('network.kindBng');
+    case 'ROUTER':
+      return t('network.kindRouter');
+    case 'SWITCH':
+      return t('network.kindSwitch');
+    case 'OTHER':
+      return t('network.kindOther');
+    case 'SPLITTER':
+      return t('network.kindSplitter');
+    case 'EMENDA':
+      return t('network.kindEmenda');
+    case 'RESERVA':
+      return t('network.kindReserva');
+  }
+}
 
 // ─── Cores e ícones por tipo ────────────────────────────────────────────────
 // Paleta intencionalmente distinta da do CustomerMap (status RADIUS) pra

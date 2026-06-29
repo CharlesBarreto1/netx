@@ -15,6 +15,7 @@
  * server-side, faça `dynamic(() => import(...), { ssr: false })` no caller.
  */
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 
@@ -44,6 +45,7 @@ export function LocationPicker({
   defaultCenter = DEFAULT_CENTER,
   height = '320px',
 }: LocationPickerProps) {
+  const t = useTranslations('mapComponents');
   const [requestingGeo, setRequestingGeo] = useState(false);
   const center: [number, number] = value
     ? [value.latitude, value.longitude]
@@ -51,7 +53,7 @@ export function LocationPicker({
 
   function useMyLocation() {
     if (!('geolocation' in navigator)) {
-      alert('Geolocation não suportada neste navegador');
+      alert(t('location.geoNotSupported'));
       return;
     }
     setRequestingGeo(true);
@@ -64,7 +66,7 @@ export function LocationPicker({
         setRequestingGeo(false);
       },
       (err) => {
-        alert(`Falha ao obter localização: ${err.message}`);
+        alert(t('location.geoFailed', { message: err.message }));
         setRequestingGeo(false);
       },
       { enableHighAccuracy: true, timeout: 10_000 },
@@ -114,10 +116,10 @@ export function LocationPicker({
               <strong className="text-text">
                 {value.latitude.toFixed(6)}, {value.longitude.toFixed(6)}
               </strong>
-              <span className="ml-2">Click no mapa ou arraste o pino pra ajustar.</span>
+              <span className="ml-2">{t('location.adjustHint')}</span>
             </>
           ) : (
-            <span>Click no mapa pra fixar a localização do cliente.</span>
+            <span>{t('location.pickHint')}</span>
           )}
         </div>
         <div className="flex gap-2">
@@ -128,7 +130,7 @@ export function LocationPicker({
             onClick={useMyLocation}
             disabled={requestingGeo}
           >
-            {requestingGeo ? 'Obtendo…' : 'Usar minha localização'}
+            {requestingGeo ? t('location.gettingLocation') : t('location.useMyLocation')}
           </Button>
           {value && (
             <Button
@@ -137,7 +139,7 @@ export function LocationPicker({
               variant="ghost"
               onClick={() => onChange(null)}
             >
-              Limpar
+              {t('location.clear')}
             </Button>
           )}
         </div>

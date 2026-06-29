@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import QRCode from 'qrcode';
 
 /**
@@ -9,6 +10,7 @@ import QRCode from 'qrcode';
  * placeholder do mesmo tamanho pra não pular o layout na impressão.
  */
 export function QrCode({ value, size = 120 }: { value: string; size?: number }) {
+  const t = useTranslations('uiPrimitives');
   const [dataUrl, setDataUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -31,5 +33,5 @@ export function QrCode({ value, size = 120 }: { value: string; size?: number }) 
     );
   }
 
-  return <img src={dataUrl} alt="QR de consulta" width={size} height={size} />;
+  return <img src={dataUrl} alt={t('qrAlt')} width={size} height={size} />;
 }
