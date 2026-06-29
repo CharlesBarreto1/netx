@@ -1180,6 +1180,12 @@ const messages = {
       deleteConfirm: '¿Quitar esta instancia? Las conversaciones existentes se preservan.',
       syncTemplates: 'Sincronizar plantillas',
       templatesSynced: 'Plantillas sincronizadas de Meta',
+      edit: 'Editar',
+      editTitle: 'Editar conexión',
+      editHelp:
+        'Corregí nombre, IDs y credenciales sin borrar la instancia. Dejá los secretos en blanco para mantenerlos. En el canal oficial, guardar revalida el token en Meta.',
+      keepSecret: 'dejá en blanco para mantener',
+      updated: 'Instancia actualizada',
       groups: {
         title: 'Grupos de WhatsApp',
         hint: 'Capturar mensajes de los grupos de este número (aparecen en la pestaña Grupos del chat).',

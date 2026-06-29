@@ -109,8 +109,10 @@ export class MetaCloudProvider implements ChannelProvider {
       );
       const phone = r?.display_phone_number ? '+' + r.display_phone_number.replace(/\D/g, '') : null;
       return { state: 'CONNECTED', phoneE164: phone };
-    } catch {
-      return { state: 'ERROR', qrCode: null };
+    } catch (e) {
+      // Propaga a mensagem real da Graph API (token inválido, phone id errado,
+      // sem permissão...) pro painel — em vez de um "ERROR" opaco.
+      return { state: 'ERROR', qrCode: null, error: (e as Error).message };
     }
   }
 

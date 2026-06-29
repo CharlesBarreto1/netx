@@ -285,6 +285,24 @@ export async function createInstance(input: CreateInstanceInput) {
   return api.post<WaInstance>(`/v1/whatsapp/instances`, input);
 }
 
+export interface UpdateInstanceInput {
+  name?: string;
+  // Meta Cloud
+  wabaId?: string | null;
+  phoneNumberId?: string;
+  accessToken?: string;
+  appSecret?: string;
+  verifyToken?: string;
+  // WAHA
+  evolutionUrl?: string;
+  apiKey?: string;
+}
+
+/** Edita a instância (corrige IDs/segredos sem apagar). Revalida no Meta. */
+export async function updateInstance(id: string, input: UpdateInstanceInput) {
+  return api.patch<WaInstance>(`/v1/whatsapp/instances/${id}`, input);
+}
+
 export async function reconnectInstance(id: string) {
   return api.post<WaInstance>(`/v1/whatsapp/instances/${id}/connect`, {});
 }

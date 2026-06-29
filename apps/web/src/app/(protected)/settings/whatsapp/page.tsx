@@ -1,6 +1,6 @@
 'use client';
 
-import { Plus, RefreshCw, LogOut, Trash2, FileText, Users } from 'lucide-react';
+import { Plus, RefreshCw, LogOut, Trash2, FileText, Users, Pencil } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
@@ -20,7 +20,9 @@ import {
   reconnectInstance,
   setCaptureGroups,
   syncTemplates,
+  updateInstance,
   type CreateInstanceInput,
+  type UpdateInstanceInput,
   type WaChannel,
   type WaGroup,
   type WaInstance,
@@ -287,6 +289,7 @@ function InstanceCard({
 }) {
   const t = useTranslations('chat.admin');
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const statusColor: Record<string, string> = {
     CONNECTED: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
@@ -367,6 +370,10 @@ function InstanceCard({
           <RefreshCw className="mr-1 h-3.5 w-3.5" />
           {t('reconnect')}
         </Button>
+        <Button size="sm" variant="outline" onClick={() => setEditing((v) => !v)} disabled={busy}>
+          <Pencil className="mr-1 h-3.5 w-3.5" />
+          {t('edit')}
+        </Button>
         {instance.channel === 'WAHA' && instance.status === 'CONNECTED' && (
           <Button
             size="sm"
@@ -409,8 +416,171 @@ function InstanceCard({
         </Button>
       </div>
 
+      {editing && (
+        <EditInstanceForm
+          instance={instance}
+          onCancel={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            onChange();
+          }}
+        />
+      )}
+
       {instance.channel === 'WAHA' && <GroupsSection instance={instance} onChange={onChange} />}
     </article>
+  );
+}
+
+/**
+ * Form de edição inline da instância. Corrige nome + IDs/segredos sem apagar.
+ * Segredos ficam em branco (placeholder) — preencher só se for trocar.
+ */
+function EditInstanceForm({
+  instance,
+  onCancel,
+  onSaved,
+}: {
+  instance: WaInstance;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
+  const t = useTranslations('chat.admin');
+  const tCommon = useTranslations('common');
+  const isMeta = instance.channel === 'META_CLOUD';
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState({
+    name: instance.name,
+    phoneNumberId: instance.phoneNumberId ?? '',
+    wabaId: instance.wabaId ?? '',
+    verifyToken: '',
+    accessToken: '',
+    appSecret: '',
+    evolutionUrl: instance.evolutionUrl ?? '',
+    apiKey: '',
+  });
+
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((s) => ({ ...s, [k]: e.target.value }));
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    try {
+      const payload: UpdateInstanceInput = { name: form.name.trim() };
+      if (isMeta) {
+        if (form.phoneNumberId.trim()) payload.phoneNumberId = form.phoneNumberId.trim();
+        payload.wabaId = form.wabaId.trim() || null;
+        if (form.verifyToken.trim()) payload.verifyToken = form.verifyToken.trim();
+        if (form.accessToken.trim()) payload.accessToken = form.accessToken.trim();
+        if (form.appSecret.trim()) payload.appSecret = form.appSecret.trim();
+      } else {
+        if (form.evolutionUrl.trim()) payload.evolutionUrl = form.evolutionUrl.trim();
+        if (form.apiKey.trim()) payload.apiKey = form.apiKey.trim();
+      }
+      await updateInstance(instance.id, payload);
+      toast.success(t('updated'));
+      onSaved();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
+      toast.error(msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      className="mt-4 space-y-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-700/30"
+    >
+      <h4 className="text-sm font-semibold">{t('editTitle')}</h4>
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div className="md:col-span-2">
+          <Label htmlFor={`e-name-${instance.id}`} required>
+            {t('field.name')}
+          </Label>
+          <Input id={`e-name-${instance.id}`} value={form.name} onChange={set('name')} />
+        </div>
+
+        {isMeta ? (
+          <>
+            <div>
+              <Label htmlFor={`e-pnid-${instance.id}`}>{t('field.phoneNumberId')}</Label>
+              <Input
+                id={`e-pnid-${instance.id}`}
+                value={form.phoneNumberId}
+                onChange={set('phoneNumberId')}
+                placeholder="1085842974619872"
+              />
+            </div>
+            <div>
+              <Label htmlFor={`e-waba-${instance.id}`}>{t('field.wabaId')}</Label>
+              <Input id={`e-waba-${instance.id}`} value={form.wabaId} onChange={set('wabaId')} />
+            </div>
+            <div>
+              <Label htmlFor={`e-token-${instance.id}`}>{t('field.accessToken')}</Label>
+              <Input
+                id={`e-token-${instance.id}`}
+                type="password"
+                value={form.accessToken}
+                onChange={set('accessToken')}
+                placeholder={t('keepSecret')}
+                autoComplete="off"
+              />
+            </div>
+            <div>
+              <Label htmlFor={`e-secret-${instance.id}`}>{t('field.appSecret')}</Label>
+              <Input
+                id={`e-secret-${instance.id}`}
+                type="password"
+                value={form.appSecret}
+                onChange={set('appSecret')}
+                placeholder={t('keepSecret')}
+                autoComplete="off"
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Label htmlFor={`e-verify-${instance.id}`}>{t('field.verifyToken')}</Label>
+              <Input
+                id={`e-verify-${instance.id}`}
+                value={form.verifyToken}
+                onChange={set('verifyToken')}
+                placeholder={t('keepSecret')}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <Label htmlFor={`e-url-${instance.id}`}>{t('field.evolutionUrl')}</Label>
+              <Input id={`e-url-${instance.id}`} value={form.evolutionUrl} onChange={set('evolutionUrl')} />
+            </div>
+            <div>
+              <Label htmlFor={`e-key-${instance.id}`}>{t('field.apiKey')}</Label>
+              <Input
+                id={`e-key-${instance.id}`}
+                type="password"
+                value={form.apiKey}
+                onChange={set('apiKey')}
+                placeholder={t('keepSecret')}
+                autoComplete="off"
+              />
+            </div>
+          </>
+        )}
+      </div>
+      <p className="text-xs text-text-muted">{t('editHelp')}</p>
+      <div className="flex justify-end gap-2">
+        <Button type="button" size="sm" variant="outline" onClick={onCancel} disabled={busy}>
+          {tCommon('cancel')}
+        </Button>
+        <Button type="submit" size="sm" loading={busy}>
+          {tCommon('save')}
+        </Button>
+      </div>
+    </form>
   );
 }
 

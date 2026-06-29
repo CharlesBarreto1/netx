@@ -39,6 +39,8 @@ export interface CanonicalConnection {
   state: 'CONNECTED' | 'DISCONNECTED' | 'CONNECTING' | 'ERROR';
   phoneE164?: string | null;
   qrCode?: string | null; // base64 PNG (WAHA)
+  /** Motivo real do erro (ex.: mensagem da Graph API), p/ exibir no painel. */
+  error?: string | null;
 }
 
 /** Mensagem normalizada vinda do webhook (in ou out-echo). */

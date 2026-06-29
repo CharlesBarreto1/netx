@@ -51,10 +51,24 @@ const CreateInstanceBodySchema = z
   });
 type CreateInstanceBody = z.infer<typeof CreateInstanceBodySchema>;
 
-// Atualização parcial da instância (hoje só o opt-in de grupos).
-const UpdateInstanceBodySchema = z.object({
-  captureGroups: z.boolean(),
-});
+// Atualização parcial da instância: opt-in de grupos + edição de nome e
+// identificadores/segredos do canal (corrigir sem apagar/recriar). Segredos
+// em branco mantêm o valor atual. `.refine` garante ao menos um campo.
+const UpdateInstanceBodySchema = z
+  .object({
+    captureGroups: z.boolean().optional(),
+    name: z.string().min(1).max(120).optional(),
+    // Meta Cloud
+    wabaId: z.string().max(40).nullable().optional(),
+    phoneNumberId: z.string().max(40).optional(),
+    accessToken: z.string().max(1024).optional(),
+    appSecret: z.string().max(255).optional(),
+    verifyToken: z.string().max(120).optional(),
+    // WAHA
+    evolutionUrl: z.string().url().max(255).optional(),
+    apiKey: z.string().min(8).max(255).optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: 'Informe ao menos um campo' });
 type UpdateInstanceBody = z.infer<typeof UpdateInstanceBodySchema>;
 
 /**
@@ -108,7 +122,7 @@ export class WhatsappInstancesController {
     @Param('id', new ParseUUIDPipe()) id: string,
     @ZodBody(UpdateInstanceBodySchema) body: UpdateInstanceBody,
   ) {
-    return this.instances.setCaptureGroups(user.tenantId, user.sub, id, body.captureGroups);
+    return this.instances.update(user.tenantId, user.sub, id, body);
   }
 
   @Get(':id/groups')

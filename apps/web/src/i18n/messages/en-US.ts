@@ -1164,6 +1164,12 @@ const messages = {
       deleteConfirm: 'Remove this instance? Existing conversations are preserved.',
       syncTemplates: 'Sync templates',
       templatesSynced: 'Templates synced from Meta',
+      edit: 'Edit',
+      editTitle: 'Edit connection',
+      editHelp:
+        'Fix name, IDs and credentials without deleting the instance. Leave secrets blank to keep them. On the official channel, saving revalidates the token with Meta.',
+      keepSecret: 'leave blank to keep',
+      updated: 'Instance updated',
       groups: {
         title: 'WhatsApp groups',
         hint: 'Capture messages from this number\'s groups (they show up in the chat Groups tab).',

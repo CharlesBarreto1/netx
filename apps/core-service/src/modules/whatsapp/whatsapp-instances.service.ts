@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
-import type { WaChannel } from '@prisma/client';
+import { Prisma, type WaChannel } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 import { CryptoService } from '../crypto/crypto.service';
@@ -27,6 +27,29 @@ export interface CreateInstanceInput {
   accessToken?: string;
   appSecret?: string;
   verifyToken?: string;
+}
+
+/**
+ * Edição parcial. Todo campo é opcional; segredos em branco mantêm o atual.
+ * `captureGroups` continua aqui pra compat com o toggle de grupos.
+ */
+export interface UpdateInstanceInput {
+  name?: string;
+  captureGroups?: boolean;
+  // --- Meta Cloud ---
+  wabaId?: string | null;
+  phoneNumberId?: string;
+  accessToken?: string;
+  appSecret?: string;
+  verifyToken?: string;
+  // --- WAHA ---
+  evolutionUrl?: string;
+  apiKey?: string;
+}
+
+/** Mensagem de erro p/ o painel: usa o motivo real da Graph API se houver. */
+function metaError(conn: { error?: string | null }): string {
+  return conn.error?.trim() || 'Token Meta inválido ou sem permissão';
 }
 
 /** Campos seguros pra retornar ao admin — NUNCA expõe segredos. */
@@ -253,7 +276,7 @@ export class WhatsappInstancesService {
           status: conn.state,
           phoneE164: conn.phoneE164 ?? null,
           connectedAt: conn.state === 'CONNECTED' ? new Date() : null,
-          lastError: conn.state === 'ERROR' ? 'Token Meta inválido ou sem permissão' : null,
+          lastError: conn.state === 'ERROR' ? metaError(conn) : null,
         },
       });
     } catch (e) {
@@ -272,6 +295,89 @@ export class WhatsappInstancesService {
       metadata: { channel: 'META_CLOUD', phoneNumberId: input.phoneNumberId },
     });
     return this.findById(tenantId, inst.id);
+  }
+
+  /**
+   * Edição da instância (admin). Permite corrigir nome + identificadores/segredos
+   * do canal sem apagar e recriar. Segredos em branco MANTÊM o valor atual
+   * (mescla com as creds decifradas). Se mexer em algo que afeta a conexão,
+   * revalida na hora (Meta: token via Graph API).
+   */
+  async update(tenantId: string, actorUserId: string, id: string, input: UpdateInstanceInput) {
+    const inst = await this.findRaw(tenantId, id);
+    const data: Prisma.WhatsappInstanceUpdateInput = {};
+    let connectionAffected = false;
+
+    if (input.name !== undefined) data.name = input.name.trim();
+    if (input.captureGroups !== undefined) data.captureGroups = input.captureGroups;
+
+    if (inst.channel === 'META_CLOUD') {
+      if (input.phoneNumberId !== undefined && input.phoneNumberId.trim()) {
+        data.phoneNumberId = input.phoneNumberId.trim();
+        connectionAffected = true;
+      }
+      if (input.wabaId !== undefined) data.wabaId = input.wabaId?.trim() || null;
+      if (input.verifyToken !== undefined && input.verifyToken.trim()) {
+        data.verifyToken = input.verifyToken.trim();
+      }
+      // accessToken/appSecret: branco = mantém. Recifra o JSON mesclado.
+      const newToken = input.accessToken?.trim();
+      const newSecret = input.appSecret?.trim();
+      if (newToken || newSecret) {
+        const cur = this.creds.decrypt(inst);
+        const accessToken = newToken || cur.accessToken || '';
+        const appSecret = newSecret || cur.appSecret || '';
+        data.apiCredentialsEnc = this.crypto.encrypt(JSON.stringify({ accessToken, appSecret }));
+        if (newToken) data.apiKey = this.crypto.encrypt(accessToken); // espelho (coluna NOT NULL)
+        connectionAffected = true;
+      }
+    } else {
+      // WAHA
+      if (input.evolutionUrl !== undefined && input.evolutionUrl.trim()) {
+        data.evolutionUrl = input.evolutionUrl.trim();
+      }
+      if (input.apiKey !== undefined && input.apiKey.trim()) {
+        data.apiKey = this.crypto.encrypt(input.apiKey.trim());
+      }
+    }
+
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException('Nenhum campo para atualizar');
+    }
+
+    const updated = await this.prisma.whatsappInstance.update({ where: { id }, data });
+
+    // Revalida só o canal oficial: connectionState valida o token na Graph API.
+    // (WAHA depende de QR/sessão — use "Reconectar" após mudar URL/chave.)
+    if (connectionAffected && updated.channel === 'META_CLOUD') {
+      try {
+        const conn = await this.factory.for('META_CLOUD').connectionState(this.creds.decrypt(updated));
+        await this.prisma.whatsappInstance.update({
+          where: { id },
+          data: {
+            status: conn.state,
+            phoneE164: conn.phoneE164 ?? updated.phoneE164,
+            connectedAt: conn.state === 'CONNECTED' ? new Date() : null,
+            lastError: conn.state === 'ERROR' ? metaError(conn) : null,
+          },
+        });
+      } catch (e) {
+        await this.prisma.whatsappInstance.update({
+          where: { id },
+          data: { status: 'ERROR', lastError: (e as Error).message },
+        });
+      }
+    }
+
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'whatsapp.instance.update',
+      resource: 'whatsapp_instance',
+      resourceId: id,
+      metadata: { channel: inst.channel, fields: Object.keys(data) },
+    });
+    return this.findById(tenantId, id);
   }
 
   async refreshQr(tenantId: string, actorUserId: string, id: string) {
@@ -336,24 +442,6 @@ export class WhatsappInstancesService {
       resource: 'whatsapp_instance',
       resourceId: id,
     });
-  }
-
-  /** Liga/desliga a captura de mensagens de grupos (opt-in). */
-  async setCaptureGroups(tenantId: string, actorUserId: string, id: string, capture: boolean) {
-    await this.findRaw(tenantId, id);
-    await this.prisma.whatsappInstance.update({
-      where: { id },
-      data: { captureGroups: capture },
-    });
-    await this.audit.log({
-      tenantId,
-      userId: actorUserId,
-      action: 'whatsapp.instance.set_capture_groups',
-      resource: 'whatsapp_instance',
-      resourceId: id,
-      metadata: { captureGroups: capture },
-    });
-    return this.findById(tenantId, id);
   }
 
   /**
