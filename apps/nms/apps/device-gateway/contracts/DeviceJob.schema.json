@@ -185,6 +185,9 @@
                 "snmpVersion": {
                   "type": "integer",
                   "default": 2
+                },
+                "vendor": {
+                  "type": "string"
                 }
               },
               "required": [

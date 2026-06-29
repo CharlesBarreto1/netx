@@ -273,6 +273,7 @@ def _handle_sync_snmp_config(
         mgmt_ip=params["mgmtIp"],
         community=community,
         version=params.get("snmpVersion", 2),
+        vendor=params.get("vendor"),
     )
     return {"kind": "sync-snmp-config", "action": "written", "file": path}
 

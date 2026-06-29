@@ -1,7 +1,15 @@
-"""Geração da config SNMP do Telegraf por device (ADR 0003).
+"""Geração da config SNMP do Telegraf por device (ADR 0003), multi-vendor.
 
-OIDs numéricos (sem precisar de MIB files): IF-MIB para tráfego/erros/status e jnxOperating
-(Juniper) para temperatura/CPU. DOM óptico entra num incremento seguinte.
+OIDs numéricos (sem precisar de MIB files). IF-MIB (tráfego/erros/status) é comum a
+todos os vendors → measurement `snmp_interface` igual pros dois, então a tela de
+interfaces funciona em Juniper e Mikrotik sem mudança no lado de leitura.
+
+Saúde (temp/CPU) e óptica são por vendor:
+- Juniper: jnxOperating (2636.*) + jnxDom óptico → `snmp_juniper_operating` / `snmp_optical`.
+- Mikrotik: MIKROTIK-MIB (14988.*) + HOST-RESOURCES (CPU) → `snmp_mikrotik_health` /
+  `snmp_host_resources` / `snmp_mikrotik_optical`.
+
+O `metrics.service.ts` lê a tabela certa conforme o vendor do device.
 """
 
 from __future__ import annotations
@@ -15,10 +23,9 @@ def config_path(config_dir: str, device_id: str) -> Path:
     return Path(config_dir) / f"snmp-{device_id}.conf"
 
 
-def render_snmp_config(*, device_id: str, mgmt_ip: str, community: str, version: int = 2) -> str:
-    # community entre aspas; o valor vem do cofre (decifrado só aqui).
-    return f"""{_HEADER}
-[[inputs.snmp]]
+def _agent_block(*, device_id: str, mgmt_ip: str, community: str, version: int, name: str) -> str:
+    """Preâmbulo de um bloco [[inputs.snmp]] (agente + sysName tag). `name` = measurement dos escalares."""
+    return f"""[[inputs.snmp]]
   agents = ["udp://{mgmt_ip}:161"]
   version = {version}
   community = "{community}"
@@ -26,6 +33,7 @@ def render_snmp_config(*, device_id: str, mgmt_ip: str, community: str, version:
   retries = 2
   max_repetitions = 10
   agent_host_tag = "source"
+  name = "{name}"
   [inputs.snmp.tags]
     device_id = "{device_id}"
 
@@ -33,8 +41,11 @@ def render_snmp_config(*, device_id: str, mgmt_ip: str, community: str, version:
     oid = "1.3.6.1.2.1.1.5.0"
     name = "sysName"
     is_tag = true
+"""
 
-  # IF-MIB — tráfego, erros e status por interface
+
+_IF_MIB_TABLE = """
+  # IF-MIB — tráfego, erros e status por interface (comum a todos os vendors)
   [[inputs.snmp.table]]
     name = "snmp_interface"
     inherit_tags = ["device_id", "sysName"]
@@ -66,7 +77,15 @@ def render_snmp_config(*, device_id: str, mgmt_ip: str, community: str, version:
     [[inputs.snmp.table.field]]
       oid = "1.3.6.1.2.1.2.2.1.7"
       name = "ifAdminStatus"
+"""
 
+
+def _render_juniper(*, device_id: str, mgmt_ip: str, community: str, version: int) -> str:
+    block = _agent_block(
+        device_id=device_id, mgmt_ip=mgmt_ip, community=community, version=version, name="snmp"
+    )
+    return f"""{_HEADER}
+{block}{_IF_MIB_TABLE}
   # jnxOperating (Juniper) — temperatura e CPU dos componentes
   [[inputs.snmp.table]]
     name = "snmp_juniper_operating"
@@ -107,14 +126,97 @@ def render_snmp_config(*, device_id: str, mgmt_ip: str, community: str, version:
 """
 
 
+def _render_mikrotik(*, device_id: str, mgmt_ip: str, community: str, version: int) -> str:
+    # Bloco 1: agente + IF-MIB (mesma measurement `snmp_interface` do Juniper).
+    block1 = _agent_block(
+        device_id=device_id, mgmt_ip=mgmt_ip, community=community, version=version, name="snmp"
+    )
+    # Bloco 2: saúde/óptica do RouterOS. Os campos escalares vão pra `snmp_mikrotik_health`.
+    block2 = _agent_block(
+        device_id=device_id,
+        mgmt_ip=mgmt_ip,
+        community=community,
+        version=version,
+        name="snmp_mikrotik_health",
+    )
+    return f"""{_HEADER}
+{block1}{_IF_MIB_TABLE}
+{block2}
+  # MIKROTIK-MIB (mtxrHealth) — temperatura da placa, da CPU e tensão (escalares).
+  # Unidades variam por modelo/versão (alguns reportam deci-°C); a escala fica na apresentação.
+  [[inputs.snmp.field]]
+    oid = "1.3.6.1.4.1.14988.1.1.3.10.0"
+    name = "boardTempC"
+  [[inputs.snmp.field]]
+    oid = "1.3.6.1.4.1.14988.1.1.3.11.0"
+    name = "cpuTempC"
+  [[inputs.snmp.field]]
+    oid = "1.3.6.1.4.1.14988.1.1.3.8.0"
+    name = "voltageDV"
+
+  # HOST-RESOURCES — carga de CPU por núcleo (%). O metrics.service tira a média.
+  [[inputs.snmp.table]]
+    name = "snmp_host_resources"
+    inherit_tags = ["device_id", "sysName"]
+    [[inputs.snmp.table.field]]
+      oid = "1.3.6.1.2.1.25.3.3.1.2"
+      name = "hrProcessorLoad"
+
+  # MIKROTIK-MIB (mtxrOptical) — DOM dos SFP, indexado pela interface (mtxrOpticalName).
+  # rx/tx em centésimos de dBm (mesma convenção do lado Juniper); temp em °C.
+  [[inputs.snmp.table]]
+    name = "snmp_mikrotik_optical"
+    inherit_tags = ["device_id", "sysName"]
+    [[inputs.snmp.table.field]]
+      oid = "1.3.6.1.4.1.14988.1.1.19.1.1.2"
+      name = "ifName"
+      is_tag = true
+    [[inputs.snmp.table.field]]
+      oid = "1.3.6.1.4.1.14988.1.1.19.1.1.9"
+      name = "rxLaserPower"
+    [[inputs.snmp.table.field]]
+      oid = "1.3.6.1.4.1.14988.1.1.19.1.1.8"
+      name = "txLaserOutputPower"
+    [[inputs.snmp.table.field]]
+      oid = "1.3.6.1.4.1.14988.1.1.19.1.1.5"
+      name = "moduleTemperature"
+"""
+
+
+def render_snmp_config(
+    *, device_id: str, mgmt_ip: str, community: str, version: int = 2, vendor: str | None = None
+) -> str:
+    """Renderiza a config SNMP do Telegraf para o device, conforme o vendor."""
+    if (vendor or "").strip().lower() == "mikrotik":
+        return _render_mikrotik(
+            device_id=device_id, mgmt_ip=mgmt_ip, community=community, version=version
+        )
+    return _render_juniper(
+        device_id=device_id, mgmt_ip=mgmt_ip, community=community, version=version
+    )
+
+
 def write_snmp_config(
-    *, config_dir: str, device_id: str, mgmt_ip: str, community: str, version: int = 2
+    *,
+    config_dir: str,
+    device_id: str,
+    mgmt_ip: str,
+    community: str,
+    version: int = 2,
+    vendor: str | None = None,
 ) -> str:
     path = config_path(config_dir, device_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_snmp_config(
-        device_id=device_id, mgmt_ip=mgmt_ip, community=community, version=version
-    ), encoding="utf-8")
+    path.write_text(
+        render_snmp_config(
+            device_id=device_id,
+            mgmt_ip=mgmt_ip,
+            community=community,
+            version=version,
+            vendor=vendor,
+        ),
+        encoding="utf-8",
+    )
     return str(path)
 
 

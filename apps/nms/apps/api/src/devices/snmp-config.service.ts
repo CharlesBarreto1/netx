@@ -34,6 +34,7 @@ export class SnmpConfigService {
         mgmtIp: device.mgmtIp,
         snmpCommunityEnc: cred?.snmpCommunityEnc ?? undefined,
         snmpVersion: 2,
+        vendor: device.vendor,
       },
     });
 

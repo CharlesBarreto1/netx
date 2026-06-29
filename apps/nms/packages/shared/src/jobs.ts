@@ -66,6 +66,8 @@ export const SyncSnmpConfigJobSchema = DeviceJobBaseSchema.extend({
     mgmtIp: z.string().min(1),
     snmpCommunityEnc: z.string().optional(),
     snmpVersion: z.number().int().default(2),
+    /** Define os OIDs de saúde/óptica (Junos jnx* vs RouterOS mtxr*). */
+    vendor: z.string().optional(),
   }),
 });
 
