@@ -31,16 +31,22 @@ export interface BotActionDeps {
 export interface BotActionCtx {
   tenantId: string;
   customerId: string;
+  /** Locale/moeda do provedor p/ formatar valores e datas (default pt-BR/BRL). */
+  locale?: string;
+  currency?: string;
 }
 
 const ACTOR = 'system:bot';
 
-function money(v: unknown): string {
-  return Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+function money(v: unknown, ctx: BotActionCtx): string {
+  return Number(v).toLocaleString(ctx.locale ?? 'pt-BR', {
+    style: 'currency',
+    currency: ctx.currency ?? 'BRL',
+  });
 }
-function dateBR(d: Date | string | null): string {
+function fmtDate(d: Date | string | null, ctx: BotActionCtx): string {
   if (!d) return '—';
-  return new Date(d).toLocaleDateString('pt-BR');
+  return new Date(d).toLocaleDateString(ctx.locale ?? 'pt-BR');
 }
 
 // ---------------------------------------------------------------------------
@@ -64,8 +70,8 @@ export async function listOpenInvoices(deps: BotActionDeps, ctx: BotActionCtx) {
     invoiceId: r.id,
     contrato: r.contract.code ?? '—',
     valor: Number(r.amount),
-    valorFmt: money(r.amount),
-    vencimento: dateBR(r.dueDate),
+    valorFmt: money(r.amount, ctx),
+    vencimento: fmtDate(r.dueDate, ctx),
     status: r.status,
     gateway: r.contract.brBillingGateway,
   }));
@@ -114,8 +120,8 @@ export async function generateSegundaVia(
     return {
       ok: true,
       invoiceId: invoice.id,
-      valorFmt: money(invoice.amount),
-      vencimento: dateBR(invoice.dueDate),
+      valorFmt: money(invoice.amount, ctx),
+      vencimento: fmtDate(invoice.dueDate, ctx),
       pix: c.pixCopiaECola,
       paymentLink: c.paymentLink,
       barcode: c.barcode,
@@ -126,8 +132,8 @@ export async function generateSegundaVia(
     return {
       ok: true,
       invoiceId: invoice.id,
-      valorFmt: money(invoice.amount),
-      vencimento: dateBR(invoice.dueDate),
+      valorFmt: money(invoice.amount, ctx),
+      vencimento: fmtDate(invoice.dueDate, ctx),
       pix: c.pixEmv,
       paymentLink: c.paymentLink,
       barcode: c.digitableLine ?? c.barcode,
@@ -137,8 +143,8 @@ export async function generateSegundaVia(
     ok: false,
     reason: 'gateway manual',
     invoiceId: invoice.id,
-    valorFmt: money(invoice.amount),
-    vencimento: dateBR(invoice.dueDate),
+    valorFmt: money(invoice.amount, ctx),
+    vencimento: fmtDate(invoice.dueDate, ctx),
   };
 }
 
@@ -208,7 +214,7 @@ export async function trustUnblock(
     });
     const until = new Date();
     until.setDate(until.getDate() + days);
-    return { ok: true, contrato: target.code ?? '—', ate: dateBR(until) };
+    return { ok: true, contrato: target.code ?? '—', ate: fmtDate(until, ctx) };
   } catch (e) {
     return { ok: false, reason: (e as Error).message };
   }
