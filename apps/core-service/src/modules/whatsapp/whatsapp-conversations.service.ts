@@ -622,14 +622,22 @@ export class WhatsappConversationsService {
           isBot: updated.isBot,
         },
       });
-      await this.audit.log({
-        tenantId,
-        userId: opts.actor,
-        action: opts.isBot ? 'whatsapp.bot.message.sent' : 'whatsapp.message.sent',
-        resource: 'whatsapp_message',
-        resourceId: updated.id,
-        metadata: opts.auditMeta ?? { conversationId: id },
-      });
+      // Auditoria é não-fatal: a mensagem JÁ foi enviada (provider retornou). Um
+      // erro aqui não pode reverter o status para FAILED. `userId` é o UUID real
+      // (ou null em envios de sistema); o rótulo textual vai em `actor`.
+      try {
+        await this.audit.log({
+          tenantId,
+          userId: opts.fromUserId,
+          actor: opts.actor,
+          action: opts.isBot ? 'whatsapp.bot.message.sent' : 'whatsapp.message.sent',
+          resource: 'whatsapp_message',
+          resourceId: updated.id,
+          metadata: opts.auditMeta ?? { conversationId: id },
+        });
+      } catch (e) {
+        this.logger.warn(`Falha ao auditar envio ${updated.id}: ${(e as Error).message}`);
+      }
       return updated;
     } catch (e) {
       const failed = await this.prisma.whatsappMessage.update({
