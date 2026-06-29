@@ -50,10 +50,16 @@ export class WhatsappMessagesService {
           ? { lastInboundAt: new Date(), unreadCount: { increment: 1 } }
           : {}),
       };
-      // Re-abre se estava resolvida/arquivada e o cliente mandou nova msg.
+      // Re-abre se estava resolvida/arquivada e o cliente mandou nova msg. Além
+      // de reabrir, volta pra FILA: limpa o atendente/resolvedor pra qualquer
+      // operador poder assumir (senão a conversa "reaberta" ficava presa no
+      // operador que tinha resolvido, sem aparecer na fila de espera).
       if ((existingOpen.status === 'RESOLVED' || existingOpen.status === 'ARCHIVED') && isInbound) {
         updates.status = 'OPEN';
         updates.resolvedAt = null;
+        updates.resolvedById = null;
+        updates.assignedUser = { disconnect: true };
+        updates.assignedAt = null;
       }
       return this.prisma.whatsappConversation.update({
         where: { id: existingOpen.id },
