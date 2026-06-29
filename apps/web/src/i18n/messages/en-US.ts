@@ -1147,6 +1147,10 @@ const messages = {
       templatePlaceholder: 'Pick a template',
       send: 'Start conversation',
       success: 'Conversation started',
+      phoneHint: 'Include country code. E.g.: +595984056260',
+      invalidPhone: 'Enter the full phone (with country code) in the Phone field.',
+      pickTemplateFirst: 'Pick a template.',
+      fillVars: 'Fill in all template variables.',
     },
     templates: {
       title: 'Approved templates (Meta)',

@@ -400,6 +400,14 @@ function NewConversationModal({
     phoneDigits.length >= 10 &&
     Boolean(selected) &&
     tplVars.every((v) => v.trim().length > 0);
+  const disabledReason =
+    phoneDigits.length < 10
+      ? t('newConversation.invalidPhone')
+      : !selected
+        ? t('newConversation.pickTemplateFirst')
+        : tplVars.some((v) => !v.trim())
+          ? t('newConversation.fillVars')
+          : '';
 
   async function submit() {
     if (!selected || busy || !valid) return;
@@ -441,6 +449,7 @@ function NewConversationModal({
                 placeholder="+595984053260"
                 className="w-full rounded border border-slate-300 p-1.5 text-sm focus:border-brand-500 focus:outline-hidden dark:border-slate-600 dark:bg-slate-700"
               />
+              <p className="mt-0.5 text-[10px] text-text-muted">{t('newConversation.phoneHint')}</p>
             </div>
             <div>
               <label className="block text-[11px] font-medium text-text-muted">
@@ -505,7 +514,12 @@ function NewConversationModal({
           )}
         </div>
 
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="mt-5 flex items-center justify-end gap-3">
+          {disabledReason && (
+            <span className="mr-auto text-[11px] text-amber-600 dark:text-amber-400">
+              {disabledReason}
+            </span>
+          )}
           <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={busy}>
             {tCommon('cancel')}
           </Button>

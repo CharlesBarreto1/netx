@@ -1163,6 +1163,10 @@ const messages = {
       templatePlaceholder: 'Elegí una plantilla',
       send: 'Iniciar conversación',
       success: 'Conversación iniciada',
+      phoneHint: 'Con código de país. Ej.: +595984056260',
+      invalidPhone: 'Ingresá el teléfono completo (con código de país) en el campo Teléfono.',
+      pickTemplateFirst: 'Elegí una plantilla.',
+      fillVars: 'Completá todas las variables de la plantilla.',
     },
     templates: {
       title: 'Plantillas aprobadas (Meta)',

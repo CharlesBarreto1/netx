@@ -1171,6 +1171,10 @@ const messages = {
       templatePlaceholder: 'Selecione um template',
       send: 'Iniciar conversa',
       success: 'Conversa iniciada',
+      phoneHint: 'Com código do país. Ex.: +595984056260',
+      invalidPhone: 'Informe o telefone completo (com DDI) no campo Telefone.',
+      pickTemplateFirst: 'Selecione um template.',
+      fillVars: 'Preencha todas as variáveis do template.',
     },
     templates: {
       title: 'Templates aprovados (Meta)',
