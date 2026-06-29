@@ -1136,6 +1136,18 @@ const messages = {
       openHub: 'Open customer hub',
       unknownContact: 'Contact not linked to any registered customer.',
     },
+    newConversation: {
+      button: 'New conversation',
+      title: 'Start new conversation',
+      hint: 'On the official channel, the first contact requires an approved template. Enter the phone and pick the template.',
+      phone: 'Phone (E.164)',
+      name: 'Name',
+      namePlaceholder: 'optional',
+      template: 'Template',
+      templatePlaceholder: 'Pick a template',
+      send: 'Start conversation',
+      success: 'Conversation started',
+    },
     templates: {
       title: 'Approved templates (Meta)',
       empty: 'No approved templates. Sync them in the WhatsApp connection (Settings › Support).',

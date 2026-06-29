@@ -1160,6 +1160,18 @@ const messages = {
       openHub: 'Abrir hub do cliente',
       unknownContact: 'Contato não vinculado a nenhum cliente cadastrado.',
     },
+    newConversation: {
+      button: 'Nova conversa',
+      title: 'Iniciar nova conversa',
+      hint: 'No canal oficial, o primeiro contato exige um template aprovado. Informe o telefone e escolha o template.',
+      phone: 'Telefone (E.164)',
+      name: 'Nome',
+      namePlaceholder: 'opcional',
+      template: 'Template',
+      templatePlaceholder: 'Selecione um template',
+      send: 'Iniciar conversa',
+      success: 'Conversa iniciada',
+    },
     templates: {
       title: 'Templates aprovados (Meta)',
       empty: 'Nenhum template aprovado. Sincronize na conexão WhatsApp (Configurações › Atendimento).',

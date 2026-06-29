@@ -14,6 +14,7 @@ import {
   Users,
   ArrowRightLeft,
   FileText,
+  Plus,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
@@ -37,6 +38,7 @@ import {
   resolveConversation,
   resolveMediaUrl,
   sendMessage,
+  sendOutboundTemplate,
   sendTemplateMessage,
   suggestWaReply,
   timeAgo,
@@ -143,6 +145,11 @@ export default function ChatPage() {
           loading={inboxQuery.isLoading}
           soundEnabled={soundEnabled}
           setSoundEnabled={setSoundEnabled}
+          canSend={canSend}
+          onCreated={(id) => {
+            void inboxQuery.mutate();
+            setSelectedId(id);
+          }}
         />
       </div>
 
@@ -201,6 +208,8 @@ function ChatInbox({
   loading,
   soundEnabled,
   setSoundEnabled,
+  canSend,
+  onCreated,
 }: {
   filter: InboxFilter;
   setFilter: (f: InboxFilter) => void;
@@ -210,9 +219,12 @@ function ChatInbox({
   loading: boolean;
   soundEnabled: boolean;
   setSoundEnabled: (v: boolean) => void;
+  canSend: boolean;
+  onCreated: (conversationId: string) => void;
 }) {
   const t = useTranslations('chat');
   const tx = useTranslations('chatExtra');
+  const [showNew, setShowNew] = useState(false);
   const filters: Array<{ key: InboxFilter; label: string }> = [
     { key: 'mine', label: t('inbox.filter.mine') },
     { key: 'unassigned', label: t('inbox.filter.unassigned') },
@@ -225,16 +237,39 @@ function ChatInbox({
     <aside className="flex h-full min-h-0 flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
       <header className="flex items-center justify-between border-b border-slate-200 p-3 dark:border-slate-700">
         <h2 className="text-sm font-semibold">{t('inbox.title')}</h2>
-        <button
-          type="button"
-          aria-label={soundEnabled ? t('sound.disable') : t('sound.enable')}
-          title={soundEnabled ? t('sound.disable') : t('sound.enable')}
-          onClick={() => setSoundEnabled(!soundEnabled)}
-          className="rounded p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
-        >
-          {soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-        </button>
+        <div className="flex items-center gap-1">
+          {canSend && (
+            <button
+              type="button"
+              aria-label={t('newConversation.button')}
+              title={t('newConversation.button')}
+              onClick={() => setShowNew(true)}
+              className="rounded p-1 text-brand-600 hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-slate-700"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+          )}
+          <button
+            type="button"
+            aria-label={soundEnabled ? t('sound.disable') : t('sound.enable')}
+            title={soundEnabled ? t('sound.disable') : t('sound.enable')}
+            onClick={() => setSoundEnabled(!soundEnabled)}
+            className="rounded p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
+          >
+            {soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+          </button>
+        </div>
       </header>
+
+      {showNew && (
+        <NewConversationModal
+          onClose={() => setShowNew(false)}
+          onCreated={(id) => {
+            setShowNew(false);
+            onCreated(id);
+          }}
+        />
+      )}
 
       <div className="flex flex-wrap gap-1 border-b border-slate-200 p-2 dark:border-slate-700">
         {filters.map((f) => (
@@ -316,6 +351,170 @@ function ChatInbox({
         )}
       </div>
     </aside>
+  );
+}
+
+/**
+ * Modal "Nova conversa": inicia uma conversa do zero disparando um template
+ * aprovado para um telefone (canal oficial Meta exige template no 1º contato).
+ * Coleta as variáveis ({{n}}) do template, igual ao picker do chat.
+ */
+function NewConversationModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (conversationId: string) => void;
+}) {
+  const t = useTranslations('chat');
+  const tCommon = useTranslations('common');
+  const [phone, setPhone] = useState('+595');
+  const [name, setName] = useState('');
+  const [templates, setTemplates] = useState<WaTemplate[]>([]);
+  const [tplName, setTplName] = useState('');
+  const [tplVars, setTplVars] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    listTemplates()
+      .then((tpls) => {
+        setTemplates(tpls);
+        if (tpls.length === 1) selectTemplate(tpls[0], tpls);
+      })
+      .catch((err) =>
+        toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message),
+      );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const selected = templates.find((x) => x.name === tplName) ?? null;
+
+  function selectTemplate(tpl: WaTemplate, pool: WaTemplate[] = templates) {
+    void pool;
+    setTplName(tpl.name);
+    setTplVars(Array.from({ length: templateVarCount(tpl) }, () => ''));
+  }
+
+  const phoneDigits = phone.replace(/\D/g, '');
+  const valid =
+    phoneDigits.length >= 10 &&
+    Boolean(selected) &&
+    tplVars.every((v) => v.trim().length > 0);
+
+  async function submit() {
+    if (!selected || busy || !valid) return;
+    setBusy(true);
+    try {
+      const res = await sendOutboundTemplate({
+        phoneE164: `+${phoneDigits}`,
+        templateName: selected.name,
+        language: selected.language,
+        variables: tplVars.length ? tplVars : undefined,
+        name: name.trim() || undefined,
+        previewBody: renderTemplateBody(selected, tplVars),
+      });
+      toast.success(t('newConversation.success'));
+      onCreated(res.conversationId);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-800">
+        <h3 className="text-base font-semibold">{t('newConversation.title')}</h3>
+        <p className="mt-1 text-xs text-text-muted">{t('newConversation.hint')}</p>
+
+        <div className="mt-4 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-medium text-text-muted">
+                {t('newConversation.phone')}
+              </label>
+              <input
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+595984053260"
+                className="w-full rounded border border-slate-300 p-1.5 text-sm focus:border-brand-500 focus:outline-hidden dark:border-slate-600 dark:bg-slate-700"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-medium text-text-muted">
+                {t('newConversation.name')}
+              </label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t('newConversation.namePlaceholder')}
+                className="w-full rounded border border-slate-300 p-1.5 text-sm focus:border-brand-500 focus:outline-hidden dark:border-slate-600 dark:bg-slate-700"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-[11px] font-medium text-text-muted">
+              {t('newConversation.template')}
+            </label>
+            <select
+              value={tplName}
+              onChange={(e) => {
+                const tpl = templates.find((x) => x.name === e.target.value);
+                if (tpl) selectTemplate(tpl);
+                else {
+                  setTplName('');
+                  setTplVars([]);
+                }
+              }}
+              className="w-full rounded border border-slate-300 p-1.5 text-sm focus:border-brand-500 focus:outline-hidden dark:border-slate-600 dark:bg-slate-700"
+            >
+              <option value="">{t('newConversation.templatePlaceholder')}</option>
+              {templates.map((tpl) => (
+                <option key={tpl.id} value={tpl.name}>
+                  {tpl.name} · {tpl.language}
+                </option>
+              ))}
+            </select>
+            {templates.length === 0 && (
+              <p className="mt-1 text-[11px] text-text-muted">{t('templates.empty')}</p>
+            )}
+          </div>
+
+          {selected &&
+            tplVars.map((val, i) => (
+              <div key={i}>
+                <label className="block text-[11px] font-medium text-text-muted">{`{{${i + 1}}}`}</label>
+                <input
+                  value={val}
+                  onChange={(e) =>
+                    setTplVars((s) => s.map((v, j) => (j === i ? e.target.value : v)))
+                  }
+                  placeholder={t('templates.varPlaceholder', { n: i + 1 })}
+                  className="w-full rounded border border-slate-300 p-1.5 text-sm focus:border-brand-500 focus:outline-hidden dark:border-slate-600 dark:bg-slate-700"
+                />
+              </div>
+            ))}
+
+          {selected && (
+            <p className="rounded bg-slate-50 p-2 text-[11px] text-text-muted dark:bg-slate-900/40">
+              {renderTemplateBody(selected, tplVars)}
+            </p>
+          )}
+        </div>
+
+        <div className="mt-5 flex justify-end gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={busy}>
+            {tCommon('cancel')}
+          </Button>
+          <Button size="sm" loading={busy} disabled={!valid} onClick={() => void submit()}>
+            {t('newConversation.send')}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -233,6 +233,25 @@ export async function sendTemplateMessage(
   );
 }
 
+// ---- iniciar conversa (outbound por telefone, sem inbound prévio) ----
+
+export interface OutboundTemplateInput {
+  phoneE164: string;
+  templateName: string;
+  language: string;
+  variables?: string[];
+  name?: string;
+  previewBody?: string;
+}
+
+/** Inicia uma conversa nova disparando um template aprovado para um telefone. */
+export async function sendOutboundTemplate(input: OutboundTemplateInput) {
+  return api.post<WaMessage & { conversationId: string }>(
+    `/v1/whatsapp/outbound/template`,
+    input,
+  );
+}
+
 // ---- templates HSM (Meta) ----
 
 export async function listTemplates() {
