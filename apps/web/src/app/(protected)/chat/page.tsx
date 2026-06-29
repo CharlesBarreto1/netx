@@ -917,9 +917,17 @@ function ChatThread({
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
+          <div
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
+            style={{ background: avatarColor(name ?? conversation.contact.phoneE164 ?? '?') }}
+          >
+            {(name ?? conversation.contact.phoneE164 ?? '?').charAt(0).toUpperCase()}
+          </div>
           <div className="min-w-0">
-            <h2 className="truncate text-base font-semibold">{name}</h2>
-            <p className="truncate text-xs text-text-muted">{conversation.contact.phoneE164}</p>
+            <h2 className="truncate text-[15px] font-semibold leading-tight">{name}</h2>
+            <p className="truncate text-xs text-text-muted">
+              {conversation.instance.name} · {conversation.contact.phoneE164}
+            </p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -1018,11 +1026,18 @@ function ChatThread({
         </div>
       )}
 
-      <div ref={scrollRef} className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4">
+      <div
+        ref={scrollRef}
+        className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-slate-50 px-4 py-4 sm:px-10 dark:bg-slate-900/40"
+        style={{
+          backgroundImage: 'radial-gradient(rgba(120,135,160,0.12) 1px, transparent 0)',
+          backgroundSize: '20px 20px',
+        }}
+      >
         {conversation.messages.length === 0 ? (
           <div className="text-center text-xs text-text-muted">{t('thread.noMessages')}</div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {conversation.messages.map((m) => (
               <MessageBubble key={m.id} message={m} />
             ))}
@@ -1191,10 +1206,10 @@ function MessageBubble({ message }: { message: WaMessage }) {
   return (
     <div className={`flex ${isOut ? 'justify-end' : 'justify-start'}`}>
       <div
-        className={`max-w-[85%] min-w-0 rounded-lg px-3 py-2 text-sm shadow-sm sm:max-w-[75%] ${
+        className={`max-w-[85%] min-w-0 rounded-2xl px-3 py-2 text-sm shadow-sm sm:max-w-[70%] ${
           isOut
-            ? 'bg-brand-600 text-white'
-            : 'bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-100'
+            ? 'rounded-tr-sm bg-brand-50 text-slate-800 ring-1 ring-brand-100 dark:bg-brand-900/30 dark:text-slate-100 dark:ring-brand-900/50'
+            : 'rounded-tl-sm bg-white text-slate-800 ring-1 ring-slate-200 dark:bg-slate-700 dark:text-slate-100 dark:ring-slate-600'
         }`}
       >
         {!isOut && message.authorName && (
@@ -1203,7 +1218,7 @@ function MessageBubble({ message }: { message: WaMessage }) {
           </p>
         )}
         {isOut && message.fromUser && message.fromUser.chatPrefs?.showName !== false && (
-          <p className="mb-0.5 text-xs font-semibold text-brand-100">
+          <p className="mb-0.5 text-xs font-semibold text-brand-700 dark:text-brand-300">
             {[message.fromUser.firstName, message.fromUser.lastName].filter(Boolean).join(' ')}
           </p>
         )}
@@ -1224,11 +1239,7 @@ function MessageBubble({ message }: { message: WaMessage }) {
         {message.body && (
           <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{message.body}</p>
         )}
-        <div
-          className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${
-            isOut ? 'text-white/70' : 'text-text-muted'
-          }`}
-        >
+        <div className="mt-1 flex items-center justify-end gap-1 text-[10px] text-slate-400 dark:text-slate-400">
           {isOut && message.isBot && (
             <span className="mr-0.5 inline-flex items-center gap-0.5 font-medium">
               <Bot className="h-3 w-3" /> {tx('bot')}
@@ -1236,8 +1247,14 @@ function MessageBubble({ message }: { message: WaMessage }) {
           )}
           <span>{time}</span>
           {isOut && (
-            <span>
-              {message.status === 'READ' ? '✓✓' : message.status === 'DELIVERED' ? '✓✓' : message.status === 'SENT' ? '✓' : message.status === 'FAILED' ? '✗' : '⌛'}
+            <span className={message.status === 'READ' ? 'text-brand-500' : ''}>
+              {message.status === 'READ' || message.status === 'DELIVERED'
+                ? '✓✓'
+                : message.status === 'SENT'
+                  ? '✓'
+                  : message.status === 'FAILED'
+                    ? '✗'
+                    : '⌛'}
             </span>
           )}
         </div>
