@@ -74,6 +74,21 @@ export class WhatsappMessagesService {
   }
 
   /**
+   * Garante uma conversa para envio OUTBOUND a um telefone (cobrança, campanha,
+   * primeira abordagem). Cria/reusa contato + conversa SEM marcar inbound — não
+   * conta como janela de 24h. Único caminho para iniciar conversa sem inbound.
+   */
+  async ensureOutboundConversation(
+    tenantId: string,
+    instanceId: string,
+    phoneE164: string,
+    pushName: string | null = null,
+  ) {
+    const contact = await this.upsertContact(tenantId, phoneE164, pushName);
+    return this.upsertConversation(tenantId, instanceId, contact.id, false);
+  }
+
+  /**
    * Resolve ou cria contato pelo número E164. Linka com Customer se houver
    * match em `Customer.primaryPhone` (ignorando formatação).
    */

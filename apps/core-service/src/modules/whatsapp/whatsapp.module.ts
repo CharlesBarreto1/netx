@@ -10,6 +10,7 @@ import { ServiceOrdersModule } from '../service-orders/service-orders.module';
 
 import { WhatsappBotController } from './bot/whatsapp-bot.controller';
 import { WhatsappBotService } from './bot/whatsapp-bot.service';
+import { WhatsappBillingRemindersService } from './whatsapp-billing-reminders.service';
 import { ChannelProviderFactory } from './providers/channel-provider.factory';
 import { MetaCloudProvider } from './providers/meta-cloud.provider';
 import { WahaProvider } from './providers/waha.provider';
@@ -78,6 +79,7 @@ import { WhatsappWebhookMetaController } from './whatsapp-webhook-meta.controlle
     WhatsappTemplatesService,
     WhatsappAiService,
     WhatsappBotService,
+    WhatsappBillingRemindersService,
   ],
   exports: [WhatsappInstancesService],
 })

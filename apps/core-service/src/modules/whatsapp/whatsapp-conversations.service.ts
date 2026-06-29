@@ -14,6 +14,7 @@ import type { TemplateSend } from './providers/channel-provider';
 import { ChannelProviderFactory } from './providers/channel-provider.factory';
 import { WhatsappCredentials } from './providers/whatsapp-credentials';
 import { WhatsappEventsBus } from './whatsapp-events.bus';
+import { WhatsappMessagesService } from './whatsapp-messages.service';
 
 export type InboxFilter = 'mine' | 'unassigned' | 'all' | 'resolved' | 'groups';
 
@@ -42,6 +43,7 @@ export class WhatsappConversationsService {
     private readonly events: WhatsappEventsBus,
     private readonly factory: ChannelProviderFactory,
     private readonly creds: WhatsappCredentials,
+    private readonly messages: WhatsappMessagesService,
   ) {}
 
   async list(tenantId: string, userId: string, filter: InboxFilter = 'mine') {
@@ -448,6 +450,64 @@ export class WhatsappConversationsService {
       autoAssign: true,
       send: (provider, dInst) => provider.sendTemplate(dInst, conv.contact.phoneE164 ?? '', tpl),
       auditMeta: { conversationId: id, template: tpl.name },
+    });
+  }
+
+  /**
+   * Envia um template HSM diretamente para um TELEFONE — sem exigir conversa
+   * prévia nem janela de 24h (templates são liberados pela Meta). Cria/reusa a
+   * conversa e persiste a OUT. Usado por automações (cobrança) e pelo endpoint
+   * de outbound. Resolve a instância Meta ativa do tenant se não for informada.
+   */
+  async sendTemplateToPhone(
+    tenantId: string,
+    opts: {
+      phoneE164: string;
+      templateName: string;
+      language: string;
+      variables?: string[];
+      name?: string | null;
+      instanceId?: string;
+      actor?: string;
+      previewBody?: string;
+    },
+  ) {
+    const instance = opts.instanceId
+      ? await this.prisma.whatsappInstance.findFirst({ where: { id: opts.instanceId, tenantId } })
+      : await this.prisma.whatsappInstance.findFirst({
+          where: { tenantId, channel: 'META_CLOUD', active: true },
+          orderBy: { createdAt: 'asc' },
+        });
+    if (!instance) throw new NotFoundException('Sem instância Meta ativa para envio.');
+    if (instance.channel !== 'META_CLOUD') {
+      throw new BadRequestException('Envio por template exige o canal oficial Meta.');
+    }
+
+    const base = await this.messages.ensureOutboundConversation(
+      tenantId,
+      instance.id,
+      opts.phoneE164,
+      opts.name ?? null,
+    );
+    const conv = await this.prisma.whatsappConversation.findFirstOrThrow({
+      where: { id: base.id },
+      include: { instance: true, contact: true },
+    });
+
+    const tpl: TemplateSend = {
+      name: opts.templateName,
+      language: opts.language,
+      variables: opts.variables,
+    };
+    return this.dispatchOutbound(tenantId, conv, {
+      type: 'TEXT',
+      body: opts.previewBody ?? `[template: ${tpl.name}]`,
+      templateName: tpl.name,
+      actor: opts.actor ?? 'system:outbound',
+      fromUserId: null,
+      autoAssign: false,
+      send: (provider, dInst) => provider.sendTemplate(dInst, conv.contact.phoneE164 ?? '', tpl),
+      auditMeta: { phone: conv.contact.phoneE164, template: tpl.name, outbound: true },
     });
   }
 

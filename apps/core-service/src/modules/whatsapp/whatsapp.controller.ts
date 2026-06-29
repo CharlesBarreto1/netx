@@ -22,6 +22,7 @@ import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { ZodBody } from '../../common/zod.pipe';
 import { RequiresModule } from '../licensing/license.decorators';
 
+import { WhatsappBillingRemindersService } from './whatsapp-billing-reminders.service';
 import { WhatsappConversationsService, type InboxFilter } from './whatsapp-conversations.service';
 import { WhatsappEventsBus } from './whatsapp-events.bus';
 
@@ -49,6 +50,23 @@ const SendTemplateBodySchema = z.object({
 });
 type SendTemplateBody = z.infer<typeof SendTemplateBodySchema>;
 
+// Envio outbound por TELEFONE (sem conversa prévia): cobrança, 1ª abordagem.
+const OutboundTemplateBodySchema = z.object({
+  phoneE164: z.string().min(8).max(20),
+  templateName: z.string().min(1).max(120),
+  language: z.string().min(2).max(10),
+  variables: z.array(z.string().max(1024)).max(20).optional(),
+  name: z.string().max(120).optional(),
+  previewBody: z.string().max(4096).optional(),
+});
+type OutboundTemplateBody = z.infer<typeof OutboundTemplateBodySchema>;
+
+// Disparo manual do lembrete de cobrança (teste). dryRun só loga.
+const BillingRunBodySchema = z.object({
+  dryRun: z.boolean().optional(),
+});
+type BillingRunBody = z.infer<typeof BillingRunBodySchema>;
+
 /**
  * Endpoints HTTP do módulo WhatsApp/Atendimento.
  *
@@ -69,7 +87,38 @@ export class WhatsappController {
   constructor(
     private readonly conversations: WhatsappConversationsService,
     private readonly events: WhatsappEventsBus,
+    private readonly billing: WhatsappBillingRemindersService,
   ) {}
+
+  // ----- outbound por telefone (sem conversa prévia) -----
+
+  /** Dispara um template HSM para um número (cria/reusa conversa). */
+  @Post('outbound/template')
+  @RequirePermissions('chat.admin')
+  outboundTemplate(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @ZodBody(OutboundTemplateBodySchema) body: OutboundTemplateBody,
+  ) {
+    return this.conversations.sendTemplateToPhone(user.tenantId, {
+      phoneE164: body.phoneE164,
+      templateName: body.templateName,
+      language: body.language,
+      variables: body.variables,
+      name: body.name ?? null,
+      previewBody: body.previewBody,
+      actor: user.sub,
+    });
+  }
+
+  /** Roda o lembrete de cobrança agora (teste). Respeita o modo número-de-teste. */
+  @Post('billing/run')
+  @RequirePermissions('chat.admin')
+  runBilling(
+    @CurrentUser() _user: AuthenticatedPrincipal,
+    @ZodBody(BillingRunBodySchema) body: BillingRunBody,
+  ) {
+    return this.billing.runOnce({ dryRun: body.dryRun ?? false });
+  }
 
   // ----- conversations -----
 
