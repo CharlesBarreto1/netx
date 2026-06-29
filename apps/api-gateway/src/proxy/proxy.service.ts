@@ -158,6 +158,11 @@ export class ProxyService {
     // requests seguem com o body já parseado (JSON/urlencoded).
     const contentType = (req.headers['content-type'] ?? '').toString().toLowerCase();
     const isMultipart = contentType.includes('multipart/form-data');
+    // Webhooks assinados (Meta/WAHA): o core valida HMAC sobre os bytes EXATOS.
+    // Repassa o corpo CRU (req.rawBody) em vez do JSON re-serializado, senão
+    // payloads com unicode (acentos/emoji/figurinhas) quebram a assinatura.
+    const rawBody = (req as Request & { rawBody?: Buffer }).rawBody;
+    const isSignedWebhook = targetPath.includes('/webhooks/') && !!rawBody;
     // Rotas que falam com integrações externas lentas (Ufinet: cadeia
     // orquestrador→NCS→OLT→ONT) precisam de mais que os 15s padrão — só a ONT
     // responder já passa disso. Timeout ampliado SÓ pra elas; resto segue 15s.
@@ -175,7 +180,7 @@ export class ProxyService {
           // o que o Express do core parseia como `{ page: ['1','1'] }`. Aí o
           // `z.coerce.number()` recebe array e devolve `NaN`, retornando 400
           // "Expected number, received nan".
-          data: isMultipart ? req : req.body,
+          data: isMultipart ? req : isSignedWebhook ? rawBody : req.body,
           // Streams de upload não devem ser limitados pelo axios (o core aplica
           // o limite real via multer). Sem buffering — o stream é repassado.
           maxBodyLength: Infinity,

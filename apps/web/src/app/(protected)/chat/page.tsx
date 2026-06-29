@@ -1225,6 +1225,9 @@ function MessageBubble({ message }: { message: WaMessage }) {
         {message.type === 'IMAGE' && mediaUrl && (
           <img src={mediaUrl} alt="" className="mb-1 rounded max-w-full" />
         )}
+        {message.type === 'STICKER' && mediaUrl && (
+          <img src={mediaUrl} alt="" className="mb-1 h-32 w-32 object-contain" />
+        )}
         {message.type === 'AUDIO' && mediaUrl && (
           <audio controls src={mediaUrl} className="mb-1 max-w-full" />
         )}

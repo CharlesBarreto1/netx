@@ -41,7 +41,18 @@ async function bootstrap() {
   // típicos (lista grande de customers, upload de logo). Endpoints específicos
   // que precisam de mais (ex.: import CSV gigante) devem fazer upload streaming
   // direto pro core via /uploads, fora do JSON parser.
-  app.use(express.json({ limit: '5mb' }));
+  app.use(
+    express.json({
+      limit: '5mb',
+      // Preserva o corpo CRU em req.rawBody. Webhooks assinados (ex.: Meta
+      // x-hub-signature-256) são validados pelo core sobre os bytes EXATOS;
+      // se o gateway re-serializar o JSON (acentos/emoji que a Meta manda como
+      // \uXXXX viram UTF-8 literal), o HMAC não bate e o webhook toma 403.
+      verify: (req: express.Request & { rawBody?: Buffer }, _res, buf) => {
+        if (buf?.length) req.rawBody = buf;
+      },
+    }),
+  );
   app.use(express.urlencoded({ limit: '5mb', extended: true }));
   // Helmet — em produção habilita HSTS por 1 ano e CSP estrita.
   // Em dev desliga CSP pra Swagger funcionar sem CDNs allowlistadas.
