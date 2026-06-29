@@ -94,7 +94,7 @@ export class WhatsappController {
 
   /** Dispara um template HSM para um número (cria/reusa conversa). */
   @Post('outbound/template')
-  @RequirePermissions('chat.admin')
+  @RequirePermissions('chat.send')
   outboundTemplate(
     @CurrentUser() user: AuthenticatedPrincipal,
     @ZodBody(OutboundTemplateBodySchema) body: OutboundTemplateBody,
