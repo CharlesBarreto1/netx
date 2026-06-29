@@ -20,6 +20,7 @@ import { bps, opticalColor, severityColor, speed, statusColor, tempColor } from 
 import { Terminal } from './Terminal.js';
 import { Login } from './Login.js';
 import { Users } from './Users.js';
+import { DeviceManager } from './DeviceManager.js';
 
 const REFRESH_MS = 30_000;
 
@@ -63,17 +64,23 @@ function Console({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [terminal, setTerminal] = useState(false);
   const [usersPanel, setUsersPanel] = useState(false);
+  const [manage, setManage] = useState(false);
   const canWrite = user.role === 'admin' || user.role === 'operator';
+  const isAdmin = user.role === 'admin';
 
-  useEffect(() => {
+  const loadDevices = useCallback(() => {
     api
       .devices()
       .then((d) => {
         setDevices(d);
-        if (d.length) setSelected((s) => s || d[0]!.id);
+        setSelected((s) => s || (d.length ? d[0]!.id : ''));
       })
       .catch((e: unknown) => setError(String(e)));
   }, []);
+
+  useEffect(() => {
+    loadDevices();
+  }, [loadDevices]);
 
   const device = devices.find((d) => d.id === selected);
 
@@ -85,7 +92,8 @@ function Console({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
           <span className="label">
             {user.username} · <strong>{user.role}</strong>
           </span>
-          {user.role === 'admin' && <button onClick={() => setUsersPanel(true)}>Usuários</button>}
+          {isAdmin && <button onClick={() => setManage(true)}>Equipamentos</button>}
+          {isAdmin && <button onClick={() => setUsersPanel(true)}>Usuários</button>}
           <button onClick={onLogout}>sair</button>
         </div>
       </div>
@@ -94,21 +102,29 @@ function Console({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
         diagnosticar e aplicar.
       </p>
       {error && <p className="err">{error}</p>}
-      {devices.length > 0 && (
+      {devices.length > 0 ? (
         <div className="toolbar">
           <select value={selected} onChange={(e) => setSelected(e.target.value)}>
             {devices.map((d) => (
               <option key={d.id} value={d.id}>
-                {d.hostname} — {d.mgmtIp}
+                {d.hostname} — {d.mgmtIp} ({d.vendor})
               </option>
             ))}
           </select>
           {device && canWrite && <button onClick={() => setTerminal(true)}>⌨ Terminal SSH</button>}
         </div>
+      ) : (
+        <p className="empty">
+          Nenhum equipamento cadastrado.{' '}
+          {isAdmin ? 'Use “Equipamentos” para adicionar.' : 'Peça a um admin para cadastrar.'}
+        </p>
       )}
       {device && <Dashboard device={device} canWrite={canWrite} />}
       {device && terminal && <Terminal deviceId={device.id} onClose={() => setTerminal(false)} />}
       {usersPanel && <Users me={user.username} onClose={() => setUsersPanel(false)} />}
+      {manage && (
+        <DeviceManager onClose={() => setManage(false)} onChanged={loadDevices} />
+      )}
     </div>
   );
 }

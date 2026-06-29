@@ -119,6 +119,16 @@ td.num {
   color: var(--muted);
   font-style: italic;
 }
+.tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--border);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 .err {
   color: var(--danger);
 }

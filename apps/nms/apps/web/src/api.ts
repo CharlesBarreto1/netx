@@ -101,6 +101,34 @@ export interface ConfigChange {
   createdAt: string;
 }
 
+export type Vendor = 'juniper' | 'mikrotik';
+export interface DeviceInput {
+  hostname: string;
+  mgmtIp: string;
+  vendor: Vendor;
+  model?: string;
+  osVersion?: string;
+  site?: string;
+}
+export interface ChannelCheck {
+  reachable: boolean;
+  detail?: string;
+  applicable?: boolean;
+}
+export interface ConnectivityResult {
+  deviceId: string;
+  ok: boolean;
+  checks?: { ssh: ChannelCheck; netconf: ChannelCheck; snmp: ChannelCheck };
+  error?: string;
+}
+export interface CredentialStatus {
+  deviceId: string;
+  username: string;
+  hasPassword: boolean;
+  hasSshKey: boolean;
+  hasSnmpCommunity: boolean;
+}
+
 // ── Autenticação (ADR 0007) ─────────────────────────────────────────────────
 export type Role = 'admin' | 'operator' | 'viewer';
 export interface AuthUser {
@@ -213,6 +241,17 @@ export const api = {
     remove: (id: string) => del(`/users/${id}`),
   },
   devices: () => get<Device[]>('/devices'),
+  createDevice: (body: DeviceInput) => postJson<Device>('/devices', body),
+  updateDevice: (id: string, body: Partial<DeviceInput>) => putJson<Device>(`/devices/${id}`, body),
+  removeDevice: (id: string) => del(`/devices/${id}`),
+  setCredentials: (
+    id: string,
+    body: { username: string; password?: string; sshKey?: string; snmpCommunity?: string },
+  ) => postJson<CredentialStatus>(`/devices/${id}/credentials`, body),
+  testConnectivity: (id: string) => post<ConnectivityResult>(`/devices/${id}/connectivity-test`),
+  syncSnmp: (id: string) => post<{ deviceId: string; action?: string }>(`/devices/${id}/snmp-config/sync`),
+  discoverInterfaces: (id: string) =>
+    post<{ deviceId: string; discovered?: number }>(`/devices/${id}/discover-interfaces`),
   interfaces: (id: string) => get<DeviceInterface[]>(`/devices/${id}/interfaces`),
   rates: (id: string) => get<InterfaceRate[]>(`/devices/${id}/metrics/interfaces`),
   optical: (id: string) => get<OpticalReading[]>(`/devices/${id}/metrics/optical`),

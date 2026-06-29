@@ -7,18 +7,25 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 async function main() {
-  const device = await prisma.device.upsert({
-    where: { mgmtIp: '192.0.2.1' },
-    update: {},
-    create: {
-      hostname: 'lab-mx-01',
-      mgmtIp: '192.0.2.1',
-      vendor: 'juniper',
-      model: 'vMX',
+  // Dois devices de exemplo (multi-vendor), em IPs da faixa de documentação (TEST-NET-1).
+  const samples = [
+    { hostname: 'lab-mx-01', mgmtIp: '192.0.2.1', vendor: 'juniper' as const, model: 'vMX', site: 'lab' },
+    {
+      hostname: 'lab-ccr-01',
+      mgmtIp: '192.0.2.2',
+      vendor: 'mikrotik' as const,
+      model: 'CCR2004',
       site: 'lab',
     },
-  });
-  console.log(`seed: device ${device.hostname} (${device.id})`);
+  ];
+  for (const s of samples) {
+    const device = await prisma.device.upsert({
+      where: { mgmtIp: s.mgmtIp },
+      update: {},
+      create: s,
+    });
+    console.log(`seed: device ${device.hostname} (${device.vendor}) ${device.id}`);
+  }
 }
 
 main()
