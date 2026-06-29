@@ -1187,7 +1187,7 @@ const messages = {
       formHelp:
         'Conexión automática con el servidor WAHA. Creá y escaneá el QR en el celular del número.',
       formHelpMeta:
-        'Usá el phone_number_id, el token permanente y el app secret de tu app en Meta. Configurá el webhook hacia /v1/webhooks/meta con el verify token generado.',
+        'Usá el phone_number_id, el token permanente y el app secret de tu app en Meta. Configurá el webhook hacia https://TU_DOMINIO/api/v1/webhooks/meta con el verify token generado.',
       created: 'Instancia creada.',
       reconnect: 'Reconectar / revalidar',
       reconnected: 'Solicitud enviada',
