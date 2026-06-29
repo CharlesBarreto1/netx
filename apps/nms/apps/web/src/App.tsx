@@ -5,6 +5,7 @@ import {
   getToken,
   onUnauthorized,
   type AuthUser,
+  type ConfigChange,
   type ConfigSnapshot,
   type Device,
   type DeviceEvent,
@@ -492,7 +493,9 @@ function ConfigApplyPanel({ deviceId, vendor }: { deviceId: string; vendor: stri
   const [confirmMinutes, setConfirmMinutes] = useState(5);
   const [diff, setDiff] = useState('');
   const [planned, setPlanned] = useState(false);
-  const [pending, setPending] = useState(false); // apply efetivado, aguardando confirm
+  const [pending, setPending] = useState<ConfigChange | null>(null);
+  const [verify, setVerify] = useState<{ ok: boolean; detail: string } | null>(null);
+  const [history, setHistory] = useState<ConfigChange[]>([]);
   const [busy, setBusy] = useState<'plan' | 'apply' | 'confirm' | null>(null);
   const [msg, setMsg] = useState('');
 
@@ -500,6 +503,22 @@ function ConfigApplyPanel({ deviceId, vendor }: { deviceId: string; vendor: stri
     vendor === 'mikrotik'
       ? '/ip address add address=10.0.0.2/24 interface=ether1'
       : 'set interfaces ge-0/0/0 description "uplink-core"';
+
+  // Estado persistido: mudança pendente (rollback armado) + histórico — sobrevive a reload.
+  const loadState = useCallback(() => {
+    void api.config
+      .pending(deviceId)
+      .then(setPending)
+      .catch(() => setPending(null));
+    void api.config
+      .changes(deviceId)
+      .then(setHistory)
+      .catch(() => setHistory([]));
+  }, [deviceId]);
+
+  useEffect(() => {
+    loadState();
+  }, [loadState]);
 
   // Editar a config invalida o plan anterior (precisa re-planejar antes de aplicar).
   const onEdit = (v: string) => {
@@ -529,11 +548,13 @@ function ConfigApplyPanel({ deviceId, vendor }: { deviceId: string; vendor: stri
       return;
     setBusy('apply');
     setMsg('aplicando…');
+    setVerify(null);
     try {
       const r = await api.config.apply(deviceId, config, confirmMinutes);
       setDiff(r.diff || diff);
-      setPending(r.committed);
+      setVerify(r.verify);
       setMsg(r.detail);
+      loadState();
     } catch (e) {
       setMsg(`erro: ${String(e)}`);
     } finally {
@@ -546,15 +567,18 @@ function ConfigApplyPanel({ deviceId, vendor }: { deviceId: string; vendor: stri
     setMsg('confirmando…');
     try {
       const r = await api.config.confirm(deviceId);
-      setPending(false);
+      setVerify(null);
       setPlanned(false);
       setMsg(r.detail);
+      loadState();
     } catch (e) {
       setMsg(`erro: ${String(e)}`);
     } finally {
       setBusy(null);
     }
   };
+
+  const isPending = pending !== null;
 
   return (
     <div className="panel full">
@@ -569,14 +593,14 @@ function ConfigApplyPanel({ deviceId, vendor }: { deviceId: string; vendor: stri
         placeholder={placeholder}
         value={config}
         onChange={(e) => onEdit(e.target.value)}
-        disabled={pending}
+        disabled={isPending}
       />
       <div className="btns" style={{ marginTop: 8 }}>
-        <button disabled={busy !== null || !config.trim() || pending} onClick={() => void plan()}>
+        <button disabled={busy !== null || !config.trim() || isPending} onClick={() => void plan()}>
           {busy === 'plan' ? '…' : '1· Planejar (diff)'}
         </button>
         <button
-          disabled={busy !== null || !planned || !diff.trim() || pending}
+          disabled={busy !== null || !planned || !diff.trim() || isPending}
           onClick={() => void apply()}
         >
           {busy === 'apply' ? '…' : '2· Aplicar'}
@@ -590,24 +614,59 @@ function ConfigApplyPanel({ deviceId, vendor }: { deviceId: string; vendor: stri
             value={confirmMinutes}
             onChange={(e) => setConfirmMinutes(Number(e.target.value) || 5)}
             style={{ width: 56 }}
-            disabled={pending}
+            disabled={isPending}
           />{' '}
           min
         </label>
-        {pending && (
+        {isPending && (
           <button disabled={busy !== null} onClick={() => void confirm()}>
             {busy === 'confirm' ? '…' : '3· Confirmar (travar)'}
           </button>
         )}
         {msg && <span className="label">{msg}</span>}
       </div>
-      {pending && (
+      {verify && (
+        <p className="label" style={{ color: verify.ok ? 'var(--ok)' : 'var(--warn)' }}>
+          verify: {verify.detail}
+        </p>
+      )}
+      {isPending && (
         <p className="err">
-          ⚠ Mudança aplicada mas NÃO confirmada — verifique o acesso ao equipamento e clique
-          “Confirmar” antes do rollback automático.
+          ⚠ Mudança aplicada mas NÃO confirmada
+          {pending.confirmDeadline
+            ? ` (rollback ~${new Date(pending.confirmDeadline).toLocaleTimeString()})`
+            : ''}{' '}
+          — verifique o acesso ao equipamento e clique “Confirmar” antes do rollback automático.
         </p>
       )}
       {diff.trim() && <DiffView diff={diff} />}
+      {history.length > 0 && (
+        <>
+          <div className="label" style={{ marginTop: 12 }}>
+            Histórico de mudanças
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Quando</th>
+                <th>Quem</th>
+                <th>Status</th>
+                <th>Verify</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.slice(0, 8).map((h) => (
+                <tr key={h.id}>
+                  <td>{new Date(h.createdAt).toLocaleString()}</td>
+                  <td>{h.actor}</td>
+                  <td>{h.status}</td>
+                  <td>{h.verifyOk === null ? '—' : h.verifyOk ? 'ok' : 'falhou'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
     </div>
   );
 }

@@ -30,6 +30,16 @@ enum IfStatus {
   unknown
 }
 
+/// Ciclo de vida de uma aplicação de config (escrita): plan → apply (rollback armado) →
+/// confirm (trava) ou rolled_back (reverteu). `failed` = erro antes de efetivar.
+enum ConfigChangeStatus {
+  planned
+  applied
+  confirmed
+  rolled_back
+  failed
+}
+
 enum EventSeverity {
   info
   warning
@@ -67,11 +77,12 @@ model Device {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  credential DeviceCredential?
-  interfaces Interface[]
-  events     Event[]
-  snapshots  ConfigSnapshot[]
-  auditLogs  AuditLog[]
+  credential    DeviceCredential?
+  interfaces    Interface[]
+  events        Event[]
+  snapshots     ConfigSnapshot[]
+  auditLogs     AuditLog[]
+  configChanges ConfigChange[]
 
   @@unique([mgmtIp])
   @@map("device")
@@ -136,6 +147,33 @@ model ConfigSnapshot {
 
   @@index([deviceId, capturedAt])
   @@map("config_snapshot")
+}
+
+/// Mudança de config aplicada pela ferramenta (escrita), com seu ciclo de vida e o resultado
+/// do verify automático pós-apply. Complementa o AuditLog (que é o registro imutável da ação).
+model ConfigChange {
+  id             String             @id @default(uuid()) @db.Uuid
+  deviceId       String             @map("device_id") @db.Uuid
+  /// Operador humano que aplicou (= approvedBy do job de escrita).
+  actor          String
+  status         ConfigChangeStatus @default(planned)
+  /// Config aplicada (Junos `set ...` / RouterOS `/...`).
+  config         String
+  diff           String?
+  detail         String?
+  confirmMinutes Int                @default(5) @map("confirm_minutes")
+  /// Prazo do rollback automático; após isto o equipamento reverte se não houve confirm.
+  confirmDeadline DateTime?         @map("confirm_deadline")
+  /// Verify automático pós-apply (SSH ainda acessível?).
+  verifyOk       Boolean?           @map("verify_ok")
+  verifyDetail   String?            @map("verify_detail")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  device Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, createdAt])
+  @@map("config_change")
 }
 
 /// Registro IMUTÁVEL de toda ação contra equipamento (AGENTS.md §5).

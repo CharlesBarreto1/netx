@@ -69,6 +69,10 @@ export interface PlanResult {
   diff: string;
   detail: string;
 }
+export interface VerifyResult {
+  ok: boolean;
+  detail: string;
+}
 export interface ConfigApplyResult {
   ok: boolean;
   committed: boolean;
@@ -76,10 +80,25 @@ export interface ConfigApplyResult {
   diff: string;
   detail: string;
   confirmMinutes: number;
+  changeId: string | null;
+  verify: VerifyResult | null;
 }
 export interface ConfirmResult {
   ok: boolean;
   detail: string;
+  changeId: string | null;
+}
+export type ConfigChangeStatus = 'planned' | 'applied' | 'confirmed' | 'rolled_back' | 'failed';
+export interface ConfigChange {
+  id: string;
+  status: ConfigChangeStatus;
+  actor: string;
+  detail: string | null;
+  confirmMinutes: number;
+  confirmDeadline: string | null;
+  verifyOk: boolean | null;
+  verifyDetail: string | null;
+  createdAt: string;
 }
 
 // ── Autenticação (ADR 0007) ─────────────────────────────────────────────────
@@ -217,6 +236,8 @@ export const api = {
         approve: true,
       }),
     confirm: (id: string) => post<ConfirmResult>(`/devices/${id}/config/confirm`),
+    changes: (id: string) => get<ConfigChange[]>(`/devices/${id}/config/changes`),
+    pending: (id: string) => get<ConfigChange | null>(`/devices/${id}/config/pending`),
   },
   aiStatus: () => get<{ available: boolean }>('/ai/status'),
   copilot: (id: string, question: string) =>

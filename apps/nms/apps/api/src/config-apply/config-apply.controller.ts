@@ -1,4 +1,4 @@
-import { Body, Controller, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { ConfigApplyService } from './config-apply.service.js';
 import { ZodValidationPipe } from '../common/zod-validation.pipe.js';
 import { CurrentUser, Roles } from '../auth/auth.decorators.js';
@@ -42,5 +42,17 @@ export class ConfigApplyController {
   @Post('confirm')
   confirm(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
     return this.configApply.confirm(id, user.username);
+  }
+
+  /** Histórico de mudanças de config do device (leitura — qualquer autenticado). */
+  @Get('changes')
+  changes(@Param('id', ParseUUIDPipe) id: string) {
+    return this.configApply.listChanges(id);
+  }
+
+  /** Mudança aplicada e ainda não confirmada (rollback pendente), se houver. */
+  @Get('pending')
+  pending(@Param('id', ParseUUIDPipe) id: string) {
+    return this.configApply.pendingChange(id);
   }
 }
