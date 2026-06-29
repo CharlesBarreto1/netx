@@ -273,6 +273,11 @@ model User {
   // o sidebar intersecta com essa lista — útil pra esconder menus que o user
   // teria permissão mas o admin quer ocultar individualmente.
   menuAccess     Json?      @map("menu_access")
+  // Preferências do operador no Chat/Atendimento: { greeting: string,
+  // showName: boolean }. greeting = saudação automática disparada ao "Assumir"
+  // (placeholders {cliente}/{operador}); showName = exibir o nome do operador
+  // nas mensagens enviadas. Null = padrões (sem saudação, mostra nome).
+  chatPrefs      Json?      @map("chat_prefs")
   invitedById    String?    @map("invited_by_id") @db.Uuid
   createdAt      DateTime   @default(now()) @map("created_at")
   updatedAt      DateTime   @updatedAt @map("updated_at")

@@ -5,6 +5,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   Query,
   Res,
   Sse,
@@ -67,6 +68,13 @@ const BillingRunBodySchema = z.object({
 });
 type BillingRunBody = z.infer<typeof BillingRunBodySchema>;
 
+// Preferências do operador no chat (self-service).
+const AgentSettingsBodySchema = z.object({
+  greeting: z.string().max(1000).optional(),
+  showName: z.boolean().optional(),
+});
+type AgentSettingsBody = z.infer<typeof AgentSettingsBodySchema>;
+
 /**
  * Endpoints HTTP do módulo WhatsApp/Atendimento.
  *
@@ -118,6 +126,23 @@ export class WhatsappController {
     @ZodBody(BillingRunBodySchema) body: BillingRunBody,
   ) {
     return this.billing.runOnce({ dryRun: body.dryRun ?? false });
+  }
+
+  // ----- preferências do operador (saudação + mostrar nome) -----
+
+  @Get('agent-settings')
+  @RequirePermissions('chat.send')
+  getAgentSettings(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.conversations.getAgentSettings(user.tenantId, user.sub);
+  }
+
+  @Put('agent-settings')
+  @RequirePermissions('chat.send')
+  setAgentSettings(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @ZodBody(AgentSettingsBodySchema) body: AgentSettingsBody,
+  ) {
+    return this.conversations.setAgentSettings(user.tenantId, user.sub, body);
   }
 
   // ----- conversations -----

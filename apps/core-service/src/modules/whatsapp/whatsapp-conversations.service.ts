@@ -172,7 +172,7 @@ export class WhatsappConversationsService {
       orderBy: { createdAt: 'asc' },
       take: 200,
       include: {
-        fromUser: { select: { id: true, firstName: true, lastName: true } },
+        fromUser: { select: { id: true, firstName: true, lastName: true, chatPrefs: true } },
       },
     });
 
@@ -269,7 +269,7 @@ export class WhatsappConversationsService {
       where: { conversationId: id, createdAt: { lt: before } },
       orderBy: { createdAt: 'desc' },
       take: Math.min(limit, 100),
-      include: { fromUser: { select: { id: true, firstName: true, lastName: true } } },
+      include: { fromUser: { select: { id: true, firstName: true, lastName: true, chatPrefs: true } } },
     });
     return rows.reverse(); // cronológico (antigas → novas)
   }
@@ -342,7 +342,84 @@ export class WhatsappConversationsService {
       payload: { id, assignedUserId: targetUserId, by: actorUserId },
     });
 
+    // Saudação automática quando o operador ASSUME pra si (não em transferência).
+    // Não-fatal: falha na saudação não derruba o assign.
+    if (targetUserId && targetUserId === actorUserId) {
+      await this.maybeSendGreeting(tenantId, actorUserId, id).catch((e) =>
+        this.logger.warn(`Saudação automática falhou (${id}): ${(e as Error).message}`),
+      );
+    }
+
     return updated;
+  }
+
+  /**
+   * Dispara a saudação automática do operador, se configurada (chatPrefs.greeting)
+   * e a conversa estiver apta a receber texto livre (dentro da janela 24h no Meta /
+   * sessão conectada no WAHA). Placeholders: {operador}, {cliente}.
+   */
+  private async maybeSendGreeting(tenantId: string, userId: string, conversationId: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { id: userId, tenantId },
+      select: { firstName: true, lastName: true, chatPrefs: true },
+    });
+    const prefs = (user?.chatPrefs ?? {}) as { greeting?: string };
+    const greeting = prefs.greeting?.trim();
+    if (!greeting) return;
+
+    const conv = await this.prisma.whatsappConversation.findFirst({
+      where: { id: conversationId, tenantId },
+      include: { instance: true, contact: true },
+    });
+    if (!conv) return;
+    if (conv.instance.channel === 'META_CLOUD' && !this.withinMetaWindow(conv.lastInboundAt)) return;
+    if (conv.instance.channel === 'WAHA' && conv.instance.status !== 'CONNECTED') return;
+
+    const operador = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim();
+    const cliente = conv.contact.pushName?.trim() ?? '';
+    const text = greeting
+      .replace(/\{operador\}/gi, operador)
+      .replace(/\{cliente\}/gi, cliente)
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+
+    await this.dispatchOutbound(tenantId, conv, {
+      type: 'TEXT',
+      body: text,
+      actor: userId,
+      fromUserId: userId,
+      autoAssign: false,
+      send: (provider, dInst) =>
+        provider.sendText(dInst, conv.contact.phoneE164 ?? '', text, conv.contact.waChatId),
+      auditMeta: { conversationId, greeting: true },
+    });
+  }
+
+  /** Preferências do operador no chat (saudação + mostrar nome). Self-service. */
+  async getAgentSettings(tenantId: string, userId: string) {
+    const u = await this.prisma.user.findFirst({
+      where: { id: userId, tenantId },
+      select: { chatPrefs: true },
+    });
+    const p = (u?.chatPrefs ?? {}) as { greeting?: string; showName?: boolean };
+    return { greeting: p.greeting ?? '', showName: p.showName !== false };
+  }
+
+  async setAgentSettings(
+    tenantId: string,
+    userId: string,
+    input: { greeting?: string; showName?: boolean },
+  ) {
+    const current = await this.getAgentSettings(tenantId, userId);
+    const next = {
+      greeting: input.greeting !== undefined ? input.greeting.trim() : current.greeting,
+      showName: input.showName !== undefined ? input.showName : current.showName,
+    };
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { chatPrefs: next as unknown as Prisma.InputJsonValue },
+    });
+    return next;
   }
 
   async resolve(tenantId: string, actorUserId: string, id: string) {
