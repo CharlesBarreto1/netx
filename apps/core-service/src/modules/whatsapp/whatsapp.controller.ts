@@ -153,13 +153,19 @@ export class WhatsappController {
     @CurrentUser() user: AuthenticatedPrincipal,
     @Query('filter') filterParam?: string,
   ) {
+    const valid: InboxFilter[] = [
+      'mine', 'unassigned', 'all', 'resolved', 'groups', 'andamento', 'espera', 'automacao',
+    ];
     const f: InboxFilter =
-      filterParam === 'unassigned' || filterParam === 'all' ||
-      filterParam === 'resolved' || filterParam === 'mine' ||
-      filterParam === 'groups'
-        ? filterParam
-        : 'mine';
+      filterParam && (valid as string[]).includes(filterParam) ? (filterParam as InboxFilter) : 'mine';
     return this.conversations.list(user.tenantId, user.sub, f);
+  }
+
+  // Estático ANTES de :id (senão o ParseUUIDPipe de :id rejeita "counts").
+  @Get('conversations/counts')
+  @RequirePermissions('chat.read')
+  counts(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.conversations.counts(user.tenantId);
   }
 
   @Get('conversations/:id')

@@ -16,7 +16,15 @@ import { WhatsappCredentials } from './providers/whatsapp-credentials';
 import { WhatsappEventsBus } from './whatsapp-events.bus';
 import { WhatsappMessagesService } from './whatsapp-messages.service';
 
-export type InboxFilter = 'mine' | 'unassigned' | 'all' | 'resolved' | 'groups';
+export type InboxFilter =
+  | 'mine'
+  | 'unassigned'
+  | 'all'
+  | 'resolved'
+  | 'groups'
+  | 'andamento'
+  | 'espera'
+  | 'automacao';
 
 /** Janela de atendimento da Meta: 24h desde o último inbound do cliente. */
 const META_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -62,6 +70,20 @@ export class WhatsappConversationsService {
       } else if (filter === 'unassigned') {
         where.assignedUserId = null;
         where.status = 'OPEN';
+      } else if (filter === 'andamento') {
+        // Em atendimento humano: aberta, com operador, fora do bot.
+        where.assignedUserId = { not: null };
+        where.status = 'OPEN';
+        where.botActive = false;
+      } else if (filter === 'espera') {
+        // Na fila: aberta, sem operador, fora do bot.
+        where.assignedUserId = null;
+        where.status = 'OPEN';
+        where.botActive = false;
+      } else if (filter === 'automacao') {
+        // Conduzida pelo chatbot.
+        where.status = 'OPEN';
+        where.botActive = true;
       } else if (filter === 'resolved') {
         where.status = 'RESOLVED';
       } else {
@@ -90,6 +112,22 @@ export class WhatsappConversationsService {
         },
       },
     });
+  }
+
+  /** Contadores por aba do inbox (Andamento / Espera / Automação / Resolvidos). */
+  async counts(tenantId: string) {
+    const base: Prisma.WhatsappConversationWhereInput = { tenantId, contact: { isGroup: false } };
+    const [andamento, espera, automacao, resolved] = await this.prisma.$transaction([
+      this.prisma.whatsappConversation.count({
+        where: { ...base, status: 'OPEN', botActive: false, assignedUserId: { not: null } },
+      }),
+      this.prisma.whatsappConversation.count({
+        where: { ...base, status: 'OPEN', botActive: false, assignedUserId: null },
+      }),
+      this.prisma.whatsappConversation.count({ where: { ...base, status: 'OPEN', botActive: true } }),
+      this.prisma.whatsappConversation.count({ where: { ...base, status: 'RESOLVED' } }),
+    ]);
+    return { andamento, espera, automacao, resolved };
   }
 
   /**

@@ -15,6 +15,7 @@ import {
   ArrowRightLeft,
   FileText,
   Plus,
+  Settings,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
@@ -30,10 +31,13 @@ import { useWhatsappNotify } from '@/lib/use-whatsapp-notify';
 import { useWhatsappStream } from '@/lib/use-whatsapp-stream';
 import {
   assignConversation,
+  getAgentSettings,
   getConversation,
+  getConversationCounts,
   getWaInsights,
   listAgents,
   listConversations,
+  updateAgentSettings,
   listTemplates,
   resolveConversation,
   resolveMediaUrl,
@@ -45,6 +49,8 @@ import {
   type InboxFilter,
   type WaAiInsightsResponse,
   type WaAgent,
+  type WaAgentSettings,
+  type WaConversationCounts,
   type WaConversationDetail,
   type WaConversationListItem,
   type WaMessage,
@@ -70,7 +76,7 @@ export default function ChatPage() {
   const canAssign = hasPermission('chat.assign');
   const canAudit = hasPermission('chat.audit');
 
-  const [filter, setFilter] = useState<InboxFilter>('mine');
+  const [filter, setFilter] = useState<InboxFilter>('andamento');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Painel do cliente como drawer fora do desktop (lg). Fecha ao trocar de conversa.
   const [panelOpen, setPanelOpen] = useState(false);
@@ -80,6 +86,12 @@ export default function ChatPage() {
     `/whatsapp/conversations?${filter}`,
     () => listConversations(filter),
     { refreshInterval: 0 }, // realtime via SSE
+  );
+
+  const countsQuery = useSWR<WaConversationCounts>(
+    '/whatsapp/conversations/counts',
+    () => getConversationCounts(),
+    { refreshInterval: 0 },
   );
 
   const detailQuery = useSWR<WaConversationDetail>(
@@ -100,8 +112,9 @@ export default function ChatPage() {
         body: string | null;
         isGroup?: boolean;
       };
-      // Sempre atualiza inbox
+      // Sempre atualiza inbox + contadores das abas
       void inboxQuery.mutate();
+      void countsQuery.mutate();
       // Se for da conversa aberta, atualiza detalhe
       if (p.conversationId === selectedId) {
         void detailQuery.mutate();
@@ -121,6 +134,7 @@ export default function ChatPage() {
       e.type === 'conversation.resolved'
     ) {
       void inboxQuery.mutate();
+      void countsQuery.mutate();
       if ((e.payload as { id?: string }).id === selectedId) {
         void detailQuery.mutate();
       }
@@ -130,6 +144,7 @@ export default function ChatPage() {
   const refetchAll = () => {
     void detailQuery.mutate();
     void inboxQuery.mutate();
+    void countsQuery.mutate();
   };
 
   return (
@@ -143,6 +158,7 @@ export default function ChatPage() {
           onSelect={setSelectedId}
           items={inboxQuery.data}
           loading={inboxQuery.isLoading}
+          counts={countsQuery.data}
           soundEnabled={soundEnabled}
           setSoundEnabled={setSoundEnabled}
           canSend={canSend}
@@ -206,6 +222,7 @@ function ChatInbox({
   onSelect,
   items,
   loading,
+  counts,
   soundEnabled,
   setSoundEnabled,
   canSend,
@@ -217,6 +234,7 @@ function ChatInbox({
   onSelect: (id: string) => void;
   items: WaConversationListItem[] | undefined;
   loading: boolean;
+  counts: WaConversationCounts | undefined;
   soundEnabled: boolean;
   setSoundEnabled: (v: boolean) => void;
   canSend: boolean;
@@ -225,41 +243,82 @@ function ChatInbox({
   const t = useTranslations('chat');
   const tx = useTranslations('chatExtra');
   const [showNew, setShowNew] = useState(false);
-  const filters: Array<{ key: InboxFilter; label: string }> = [
-    { key: 'mine', label: t('inbox.filter.mine') },
-    { key: 'unassigned', label: t('inbox.filter.unassigned') },
-    { key: 'all', label: t('inbox.filter.all') },
-    { key: 'resolved', label: t('inbox.filter.resolved') },
+  const [showSettings, setShowSettings] = useState(false);
+  const tabs: Array<{ key: InboxFilter; label: string; count?: number }> = [
+    { key: 'andamento', label: t('inbox.filter.andamento'), count: counts?.andamento },
+    { key: 'espera', label: t('inbox.filter.espera'), count: counts?.espera },
+    { key: 'automacao', label: t('inbox.filter.automacao'), count: counts?.automacao },
+    { key: 'resolved', label: t('inbox.filter.resolved'), count: counts?.resolved },
     { key: 'groups', label: t('inbox.filter.groups') },
   ];
 
   return (
     <aside className="flex h-full min-h-0 flex-col rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
-      <header className="flex items-center justify-between border-b border-slate-200 p-3 dark:border-slate-700">
-        <h2 className="text-sm font-semibold">{t('inbox.title')}</h2>
-        <div className="flex items-center gap-1">
+      {/* tabs */}
+      <div className="flex items-center gap-4 overflow-x-auto border-b border-slate-200 px-4 pt-3 dark:border-slate-700">
+        {tabs.map((tab) => {
+          const on = filter === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setFilter(tab.key)}
+              className={`relative whitespace-nowrap pb-2.5 text-[13px] font-medium transition ${
+                on ? 'text-brand-600 dark:text-brand-300' : 'text-text-muted hover:text-slate-700 dark:hover:text-slate-200'
+              }`}
+            >
+              {tab.label}
+              {tab.count != null && tab.count > 0 && (
+                <span
+                  className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                    on ? 'bg-brand-600 text-white' : 'bg-slate-200 text-slate-600 dark:bg-slate-600 dark:text-slate-200'
+                  }`}
+                >
+                  {tab.count}
+                </span>
+              )}
+              {on && <span className="absolute inset-x-0 -bottom-px h-0.5 rounded-full bg-brand-600" />}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* status + ações */}
+      <div className="flex items-center gap-2 px-4 py-2 text-xs text-text-muted">
+        <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.15)]" />
+        {t('inbox.connected')}
+        <div className="ml-auto flex items-center gap-1">
           {canSend && (
             <button
               type="button"
               aria-label={t('newConversation.button')}
               title={t('newConversation.button')}
               onClick={() => setShowNew(true)}
-              className="rounded p-1 text-brand-600 hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-slate-700"
+              className="rounded-md p-1.5 text-brand-600 hover:bg-brand-50 dark:text-brand-300 dark:hover:bg-slate-700"
             >
               <Plus className="h-4 w-4" />
             </button>
           )}
           <button
             type="button"
+            aria-label={t('agentSettings.title')}
+            title={t('agentSettings.title')}
+            onClick={() => setShowSettings(true)}
+            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
+          >
+            <Settings className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
             aria-label={soundEnabled ? t('sound.disable') : t('sound.enable')}
             title={soundEnabled ? t('sound.disable') : t('sound.enable')}
             onClick={() => setSoundEnabled(!soundEnabled)}
-            className="rounded p-1 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
+            className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
           >
             {soundEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
           </button>
         </div>
-      </header>
+      </div>
 
       {showNew && (
         <NewConversationModal
@@ -270,23 +329,7 @@ function ChatInbox({
           }}
         />
       )}
-
-      <div className="flex flex-wrap gap-1 border-b border-slate-200 p-2 dark:border-slate-700">
-        {filters.map((f) => (
-          <button
-            key={f.key}
-            type="button"
-            onClick={() => setFilter(f.key)}
-            className={`flex-1 rounded-md px-2 py-1 text-xs ${
-              filter === f.key
-                ? 'bg-brand-600 text-white'
-                : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-300'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+      {showSettings && <AgentSettingsModal onClose={() => setShowSettings(false)} />}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {loading ? (
@@ -308,42 +351,52 @@ function ChatInbox({
                 key={c.id}
                 type="button"
                 onClick={() => onSelect(c.id)}
-                className={`flex w-full items-start gap-3 border-b border-slate-100 px-3 py-3 text-left hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-700 ${
-                  isSelected ? 'bg-brand-50 dark:bg-slate-700' : ''
+                className={`flex w-full items-start gap-3 border-b border-l-[3px] border-slate-100 px-3 py-3 text-left transition hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-700/50 ${
+                  isSelected
+                    ? 'border-l-brand-600 bg-brand-50 dark:bg-slate-700'
+                    : 'border-l-transparent'
                 }`}
               >
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-700 dark:bg-slate-600 dark:text-slate-200">
-                  {isGroup ? <Users className="h-4 w-4" /> : name.charAt(0).toUpperCase()}
+                <div className="relative shrink-0">
+                  <div
+                    className="flex h-11 w-11 items-center justify-center rounded-full text-sm font-semibold text-white"
+                    style={{ background: isGroup ? '#64748b' : avatarColor(name) }}
+                  >
+                    {isGroup ? <Users className="h-5 w-5" /> : name.charAt(0).toUpperCase()}
+                  </div>
+                  {c.unreadCount > 0 && (
+                    <span className="absolute -bottom-0.5 -right-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full border-2 border-white bg-emerald-500 px-1 text-[10px] font-semibold text-white dark:border-slate-800">
+                      {c.unreadCount}
+                    </span>
+                  )}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="flex min-w-0 items-center gap-1 truncate text-sm font-medium">
-                      {isGroup && <Users className="h-3 w-3 shrink-0 text-text-muted" />}
-                      <span className="truncate">{name}</span>
-                    </span>
-                    <span className="shrink-0 text-[10px] text-text-muted">
-                      {timeAgo(c.lastMessageAt)}
-                    </span>
+                    <span className="truncate text-sm font-semibold">{name}</span>
+                    <span className="shrink-0 text-[11px] text-text-muted">{timeAgo(c.lastMessageAt)}</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="line-clamp-1 flex-1 text-xs text-text-muted">
-                      {last
-                        ? last.direction === 'OUT'
-                          ? `→ ${last.body ?? tx('media')}`
-                          : last.body ?? tx('media')
-                        : '—'}
+                  <p className="mt-0.5 line-clamp-1 text-[12.5px] text-text-muted">
+                    {last
+                      ? last.direction === 'OUT'
+                        ? `→ ${last.body ?? tx('media')}`
+                        : last.body ?? tx('media')
+                      : '—'}
+                  </p>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 rounded-md bg-brand-50 px-2 py-0.5 text-[11px] text-brand-700 dark:bg-brand-900/30 dark:text-brand-300">
+                      {c.instance.name}
                     </span>
-                    {c.unreadCount > 0 && (
-                      <span className="shrink-0 rounded-full bg-brand-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                        {c.unreadCount}
+                    {c.botActive && (
+                      <span className="inline-flex items-center gap-1 rounded-md bg-violet-100 px-2 py-0.5 text-[11px] text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+                        <Bot className="h-3 w-3" /> {t('inbox.filter.automacao')}
+                      </span>
+                    )}
+                    {c.contact.customer && (
+                      <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] uppercase tracking-wider text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                        {tx('customerBadge')}
                       </span>
                     )}
                   </div>
-                  {c.contact.customer && (
-                    <span className="mt-1 inline-block rounded bg-emerald-100 px-1 py-0.5 text-[9px] uppercase tracking-wider text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
-                      {tx('customerBadge')}
-                    </span>
-                  )}
                 </div>
               </button>
             );
@@ -351,6 +404,103 @@ function ChatInbox({
         )}
       </div>
     </aside>
+  );
+}
+
+/** Cor estável do avatar a partir do nome (hash → paleta). */
+const AVATAR_COLORS = [
+  '#0ea5e9', '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899',
+  '#f59e0b', '#10b981', '#0d9488', '#ef4444', '#14b8a6',
+];
+function avatarColor(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+
+/** Modal de preferências do operador: saudação automática + mostrar nome. */
+function AgentSettingsModal({ onClose }: { onClose: () => void }) {
+  const t = useTranslations('chat');
+  const tCommon = useTranslations('common');
+  const [greeting, setGreeting] = useState('');
+  const [showName, setShowName] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    getAgentSettings()
+      .then((s: WaAgentSettings) => {
+        setGreeting(s.greeting ?? '');
+        setShowName(s.showName !== false);
+      })
+      .catch(() => {})
+      .finally(() => setLoaded(true));
+  }, []);
+
+  async function save() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await updateAgentSettings({ greeting: greeting.trim(), showName });
+      toast.success(t('agentSettings.saved'));
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative w-full max-w-md rounded-xl border border-slate-200 bg-white p-5 shadow-xl dark:border-slate-700 dark:bg-slate-800">
+        <h3 className="text-base font-semibold">{t('agentSettings.title')}</h3>
+        <p className="mt-1 text-xs text-text-muted">{t('agentSettings.hint')}</p>
+        <div className="mt-4 space-y-4">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-text-muted">
+              {t('agentSettings.greeting')}
+            </label>
+            <textarea
+              value={greeting}
+              onChange={(e) => setGreeting(e.target.value)}
+              rows={3}
+              disabled={!loaded}
+              placeholder={t('agentSettings.greetingPlaceholder')}
+              className="w-full resize-none rounded-lg border border-slate-300 p-2.5 text-sm focus:border-brand-500 focus:outline-hidden dark:border-slate-600 dark:bg-slate-700"
+            />
+            <p className="mt-1 text-[11px] text-text-muted">{t('agentSettings.greetingVars')}</p>
+          </div>
+          <label className="flex items-center justify-between gap-3">
+            <span className="text-sm">{t('agentSettings.showName')}</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showName}
+              onClick={() => setShowName((v) => !v)}
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${
+                showName ? 'bg-brand-600' : 'bg-slate-300 dark:bg-slate-600'
+              }`}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
+                  showName ? 'translate-x-5' : 'translate-x-0.5'
+                }`}
+              />
+            </button>
+          </label>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={busy}>
+            {tCommon('cancel')}
+          </Button>
+          <Button size="sm" loading={busy} disabled={!loaded} onClick={() => void save()}>
+            {tCommon('save')}
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1050,6 +1200,11 @@ function MessageBubble({ message }: { message: WaMessage }) {
         {!isOut && message.authorName && (
           <p className="mb-0.5 text-xs font-semibold text-brand-700 dark:text-brand-300">
             {message.authorName}
+          </p>
+        )}
+        {isOut && message.fromUser && message.fromUser.chatPrefs?.showName !== false && (
+          <p className="mb-0.5 text-xs font-semibold text-brand-100">
+            {[message.fromUser.firstName, message.fromUser.lastName].filter(Boolean).join(' ')}
           </p>
         )}
         {message.type === 'IMAGE' && mediaUrl && (

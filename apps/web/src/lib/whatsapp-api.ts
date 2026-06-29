@@ -84,6 +84,7 @@ export interface WaConversationListItem {
   id: string;
   status: WaConversationStatus;
   assignedUserId: string | null;
+  botActive?: boolean;
   lastMessageAt: string;
   lastInboundAt: string | null;
   unreadCount: number;
@@ -110,7 +111,12 @@ export interface WaMessage {
   errorReason: string | null;
   createdAt: string;
   fromUserId: string | null;
-  fromUser?: { id: string; firstName: string; lastName: string } | null;
+  fromUser?: {
+    id: string;
+    firstName: string;
+    lastName: string;
+    chatPrefs?: { showName?: boolean } | null;
+  } | null;
   isBot?: boolean;
   authorName?: string | null;
   authorPhone?: string | null;
@@ -121,7 +127,39 @@ export interface WaConversationDetail extends WaConversationListItem {
   resolvedAt: string | null;
 }
 
-export type InboxFilter = 'mine' | 'unassigned' | 'all' | 'resolved' | 'groups';
+export type InboxFilter =
+  | 'mine'
+  | 'unassigned'
+  | 'all'
+  | 'resolved'
+  | 'groups'
+  | 'andamento'
+  | 'espera'
+  | 'automacao';
+
+export interface WaConversationCounts {
+  andamento: number;
+  espera: number;
+  automacao: number;
+  resolved: number;
+}
+
+export async function getConversationCounts() {
+  return api.get<WaConversationCounts>(`/v1/whatsapp/conversations/counts`);
+}
+
+export interface WaAgentSettings {
+  greeting: string;
+  showName: boolean;
+}
+
+export async function getAgentSettings() {
+  return api.get<WaAgentSettings>(`/v1/whatsapp/agent-settings`);
+}
+
+export async function updateAgentSettings(input: Partial<WaAgentSettings>) {
+  return api.put<WaAgentSettings>(`/v1/whatsapp/agent-settings`, input);
+}
 
 // ---- conversations ----
 
