@@ -1,22 +1,25 @@
-"""Execução de playbooks read-only via PyEZ (NETCONF).
+"""Execução de playbooks read-only, despachada por vendor (drivers/).
 
-No MVP só comandos `show ...` — a função recusa qualquer outra coisa (§1/§2: a ferramenta
-não aplica config). PyEZ importado LAZY (extra `devices`).
+O comando vem do catálogo curado da API (playbooks.catalog.ts) — não é texto livre do
+usuário. Juniper: `show ...` via PyEZ. Mikrotik: `/... print` via Netmiko. Cada driver
+ainda aplica sua própria defesa read-only (ex.: o Junos recusa o que não começa com `show`).
 """
 
 from __future__ import annotations
 
+from .drivers import get_driver
+
 
 def run_show_command(
-    *, host: str, username: str, password: str, port: int, command: str
+    *,
+    host: str,
+    username: str,
+    password: str,
+    port: int,
+    command: str,
+    vendor: str | None = None,
 ) -> str:
-    if not command.strip().lower().startswith("show "):
-        raise ValueError(f"comando não permitido (somente show): {command!r}")
-
-    from jnpr.junos import Device
-
-    with Device(
-        host=host, user=username, passwd=password, port=port, gather_facts=False
-    ) as dev:
-        # warning=False suprime o aviso de uso de cli(); saída em texto para exibição N3.
-        return str(dev.cli(command, format="text", warning=False))
+    """Roda um comando read-only no device pelo driver do vendor e devolve a saída em texto."""
+    return get_driver(vendor).run_command(
+        host=host, username=username, password=password, port=port, command=command
+    )

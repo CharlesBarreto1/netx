@@ -64,6 +64,23 @@ export interface BackupResult {
   gitHash: string;
   diffSummary?: string;
 }
+export interface PlanResult {
+  ok: boolean;
+  diff: string;
+  detail: string;
+}
+export interface ConfigApplyResult {
+  ok: boolean;
+  committed: boolean;
+  rolledBack: boolean;
+  diff: string;
+  detail: string;
+  confirmMinutes: number;
+}
+export interface ConfirmResult {
+  ok: boolean;
+  detail: string;
+}
 
 // ── Autenticação (ADR 0007) ─────────────────────────────────────────────────
 export type Role = 'admin' | 'operator' | 'viewer';
@@ -182,13 +199,25 @@ export const api = {
   optical: (id: string) => get<OpticalReading[]>(`/devices/${id}/metrics/optical`),
   system: (id: string) => get<SystemReading[]>(`/devices/${id}/metrics/system`),
   events: (id: string) => get<DeviceEvent[]>(`/devices/${id}/events`),
-  playbooks: () => get<Playbook[]>('/playbooks'),
+  playbooks: (vendor?: string) =>
+    get<Playbook[]>(`/playbooks${vendor ? `?vendor=${encodeURIComponent(vendor)}` : ''}`),
   runPlaybook: (id: string, pb: string) =>
     post<PlaybookResult>(`/devices/${id}/playbooks/${pb}/run`),
   snapshots: (id: string) => get<ConfigSnapshot[]>(`/devices/${id}/snapshots`),
   snapshot: (id: string, snapId: string) =>
     get<SnapshotDetail>(`/devices/${id}/snapshots/${snapId}`),
   backup: (id: string) => post<BackupResult>(`/devices/${id}/backup`),
+  config: {
+    plan: (id: string, config: string) =>
+      postJson<PlanResult>(`/devices/${id}/config/plan`, { config }),
+    apply: (id: string, config: string, confirmMinutes: number) =>
+      postJson<ConfigApplyResult>(`/devices/${id}/config/apply`, {
+        config,
+        confirmMinutes,
+        approve: true,
+      }),
+    confirm: (id: string) => post<ConfirmResult>(`/devices/${id}/config/confirm`),
+  },
   aiStatus: () => get<{ available: boolean }>('/ai/status'),
   copilot: (id: string, question: string) =>
     postJson<CopilotAnswer>(`/devices/${id}/copilot`, { question }),

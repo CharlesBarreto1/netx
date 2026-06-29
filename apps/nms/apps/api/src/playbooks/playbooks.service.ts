@@ -4,7 +4,8 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { DeviceJobsService } from '../queue/device-jobs.service.js';
 import { DevicesService } from '../devices/devices.service.js';
-import { PLAYBOOKS, findPlaybook } from './playbooks.catalog.js';
+import type { DeviceVendor } from '../devices/device.dto.js';
+import { findPlaybook, playbooksForVendor, resolveCommand } from './playbooks.catalog.js';
 
 @Injectable()
 export class PlaybooksService {
@@ -15,15 +16,23 @@ export class PlaybooksService {
     private readonly jobs: DeviceJobsService,
   ) {}
 
-  list() {
-    return PLAYBOOKS.map((p) => ({ id: p.id, name: p.name, command: p.command }));
+  /** Catálogo de playbooks para um vendor (default juniper, compat MVP). */
+  list(vendor: DeviceVendor = 'juniper') {
+    return playbooksForVendor(vendor);
   }
 
-  /** Roda um playbook read-only no device via gateway (PyEZ) e devolve a saída em texto. */
+  /** Roda um playbook read-only no device via gateway e devolve a saída em texto. */
   async run(deviceId: string, playbookId: string, actor: string) {
     const device = await this.devices.findOne(deviceId);
     const playbook = findPlaybook(playbookId);
     if (!playbook) throw new NotFoundException(`Playbook ${playbookId} não existe`);
+
+    const command = resolveCommand(playbook, device.vendor as DeviceVendor);
+    if (!command) {
+      throw new BadRequestException(
+        `Playbook ${playbookId} não tem comando para o vendor ${device.vendor}`,
+      );
+    }
 
     const cred = await this.prisma.deviceCredential.findUnique({ where: { deviceId } });
     if (!cred?.passwordEnc) {
@@ -41,8 +50,9 @@ export class PlaybooksService {
           mgmtIp: device.mgmtIp,
           username: cred.username,
           passwordEnc: cred.passwordEnc,
+          vendor: device.vendor,
           playbookId,
-          command: playbook.command,
+          command,
         },
       },
       { waitMs: 45_000 },
@@ -53,13 +63,13 @@ export class PlaybooksService {
       actor,
       deviceId,
       action: 'device.playbook.run',
-      command: playbook.command,
+      command,
       result: result.ok ? 'ok' : (result.error ?? 'falha'),
     });
 
     if (!result.ok) {
       throw new BadRequestException(`Playbook falhou: ${result.error ?? 'erro desconhecido'}`);
     }
-    return { playbookId, command: playbook.command, output };
+    return { playbookId, command, output };
   }
 }

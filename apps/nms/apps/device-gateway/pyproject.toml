@@ -1,7 +1,7 @@
 [project]
 name = "netx-device-gateway"
 version = "0.0.0"
-description = "NetX NMS — único serviço autorizado a falar com equipamentos (Juniper). Consome jobs da fila."
+description = "NetX NMS — único serviço autorizado a falar com equipamentos (Juniper + Mikrotik). Consome jobs da fila."
 requires-python = ">=3.12"
 dependencies = [
   "bullmq>=2.10.0",

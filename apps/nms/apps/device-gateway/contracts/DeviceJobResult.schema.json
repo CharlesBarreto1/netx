@@ -40,6 +40,9 @@
                     },
                     "detail": {
                       "type": "string"
+                    },
+                    "applicable": {
+                      "type": "boolean"
                     }
                   },
                   "required": [
@@ -201,6 +204,64 @@
                 "source",
                 "reachable",
                 "summary"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "apply-config"
+                },
+                "dryRun": {
+                  "type": "boolean"
+                },
+                "ok": {
+                  "type": "boolean"
+                },
+                "detail": {
+                  "type": "string"
+                },
+                "diff": {
+                  "type": "string"
+                },
+                "committed": {
+                  "type": "boolean"
+                },
+                "rolledBack": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "kind",
+                "dryRun",
+                "ok",
+                "detail"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "confirm-commit"
+                },
+                "ok": {
+                  "type": "boolean"
+                },
+                "detail": {
+                  "type": "string"
+                },
+                "committed": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "kind",
+                "ok",
+                "detail"
               ],
               "additionalProperties": false
             }

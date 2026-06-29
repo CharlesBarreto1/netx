@@ -1,14 +1,16 @@
-"""Coleta da config do equipamento (formato `set`) para backup. PyEZ LAZY (extra `devices`)."""
+"""Coleta da config do equipamento para backup. Despacha por vendor (drivers/). Read-only.
+
+Juniper: `get-config` formato `set`. Mikrotik: `/export`. O resultado (texto diffável) é
+versionado pela API no git.
+"""
 
 from __future__ import annotations
 
+from .drivers import get_driver
 
-def get_config_set(*, host: str, username: str, password: str, port: int) -> str:
-    """Puxa a config completa no formato `set` (diffável e legível). Read-only."""
-    from jnpr.junos import Device
 
-    with Device(
-        host=host, user=username, passwd=password, port=port, gather_facts=False
-    ) as dev:
-        cfg = dev.rpc.get_config(options={"format": "set"})
-        return (cfg.text or "").strip() + "\n"
+def get_config_set(
+    *, host: str, username: str, password: str, port: int, vendor: str | None = None
+) -> str:
+    """Puxa a config completa em texto, pelo driver do vendor. Read-only."""
+    return get_driver(vendor).get_config(host=host, username=username, password=password, port=port)

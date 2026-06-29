@@ -1,16 +1,18 @@
-import { Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { PlaybooksService } from './playbooks.service.js';
 import { CurrentUser, Roles } from '../auth/auth.decorators.js';
 import type { AuthUser } from '../auth/auth.types.js';
+import { DeviceVendorSchema } from '../devices/device.dto.js';
 
 @Controller()
 export class PlaybooksController {
   constructor(private readonly playbooks: PlaybooksService) {}
 
-  /** Catálogo de playbooks disponíveis. */
+  /** Catálogo de playbooks disponíveis (opcionalmente filtrado por vendor). */
   @Get('playbooks')
-  list() {
-    return this.playbooks.list();
+  list(@Query('vendor') vendor?: string) {
+    const parsed = DeviceVendorSchema.safeParse(vendor);
+    return this.playbooks.list(parsed.success ? parsed.data : 'juniper');
   }
 
   /** Executa um playbook no device. */

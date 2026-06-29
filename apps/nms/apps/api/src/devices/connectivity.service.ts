@@ -39,6 +39,7 @@ export class ConnectivityService {
           username: cred.username,
           passwordEnc: cred.passwordEnc ?? undefined,
           snmpCommunityEnc: cred.snmpCommunityEnc ?? undefined,
+          vendor: device.vendor,
         },
       },
       { waitMs: 45_000, removeOnComplete: true },

@@ -27,6 +27,15 @@ def _iso_z(dt: datetime) -> str:
     return dt.isoformat().replace("+00:00", "Z")
 
 
+def _mgmt_port(vendor: str | None, params: dict[str, Any]) -> int:
+    """Porta de gerência por vendor: NETCONF/830 no Junos, SSH/22 nos demais (Mikrotik)."""
+    from .drivers import get_driver
+
+    if get_driver(vendor).has_secondary:  # Juniper fala NETCONF
+        return int(params.get("netconfPort", 830))
+    return int(params.get("sshPort", 22))
+
+
 async def process_job(
     job: Job, crypto: CryptoService | None, telegraf_dir: str
 ) -> dict[str, Any]:
@@ -51,6 +60,10 @@ async def process_job(
         result_data = await _handle_backup_config(data, crypto)
     elif kind == "network-test":
         result_data = await _handle_network_test(data, crypto)
+    elif kind == "apply-config":
+        result_data = await _handle_apply_config(data, crypto)
+    elif kind == "confirm-commit":
+        result_data = await _handle_confirm_commit(data, crypto)
     else:
         raise ValueError(f"tipo de job desconhecido: {kind!r}")
 
@@ -81,6 +94,7 @@ async def _handle_connectivity_test(
             snmp_community = crypto.decrypt(params["snmpCommunityEnc"])
 
     checks = await run_connectivity_checks(
+        vendor=params.get("vendor"),
         host=params["mgmtIp"],
         username=params["username"],
         password=password,
@@ -123,7 +137,8 @@ async def _handle_backup_config(
         host=params["mgmtIp"],
         username=params["username"],
         password=password,
-        port=params.get("netconfPort", 830),
+        port=_mgmt_port(params.get("vendor"), params),
+        vendor=params.get("vendor"),
     )
     return {"kind": "backup-config", "config": config}
 
@@ -146,8 +161,9 @@ async def _handle_run_playbook(
         host=params["mgmtIp"],
         username=params["username"],
         password=password,
-        port=params.get("netconfPort", 830),
+        port=_mgmt_port(params.get("vendor"), params),
         command=params["command"],
+        vendor=params.get("vendor"),
     )
     return {"kind": "run-playbook", "playbookId": params["playbookId"], "output": output}
 
@@ -176,6 +192,61 @@ async def _handle_network_test(
         ssh_port=params.get("sshPort", 22),
         vendor=params.get("vendor", ""),
     )
+
+
+async def _handle_apply_config(
+    job: dict[str, Any], crypto: CryptoService | None
+) -> dict[str, Any]:
+    """Aplica config no device (ESCRITA). O safety.py já garantiu accessMode=write + approvedBy.
+
+    Despacha pelo driver do vendor com rede de segurança (Junos: commit confirmed; RouterOS:
+    backup + auto-revert agendado). `dryRun=true` só valida/plana sem efetivar.
+    """
+    import asyncio
+
+    from .drivers import get_driver
+
+    params: dict[str, Any] = job["params"]
+    if crypto is None or not params.get("passwordEnc"):
+        raise RuntimeError("credencial indisponível para aplicar config")
+    password = crypto.decrypt(params["passwordEnc"])
+    driver = get_driver(params.get("vendor"))
+
+    result = await asyncio.to_thread(
+        driver.apply_config,
+        host=params["mgmtIp"],
+        username=params["username"],
+        password=password,
+        port=_mgmt_port(params.get("vendor"), params),
+        config=params["config"],
+        confirm_minutes=int(params.get("confirmMinutes", 5)),
+        dry_run=bool(params.get("dryRun", False)),
+    )
+    return {"kind": "apply-config", "dryRun": bool(params.get("dryRun", False)), **result.as_dict()}
+
+
+async def _handle_confirm_commit(
+    job: dict[str, Any], crypto: CryptoService | None
+) -> dict[str, Any]:
+    """Confirma um apply pendente (trava o rollback automático). ESCRITA — exige approvedBy."""
+    import asyncio
+
+    from .drivers import get_driver
+
+    params: dict[str, Any] = job["params"]
+    if crypto is None or not params.get("passwordEnc"):
+        raise RuntimeError("credencial indisponível para confirmar o commit")
+    password = crypto.decrypt(params["passwordEnc"])
+    driver = get_driver(params.get("vendor"))
+
+    result = await asyncio.to_thread(
+        driver.confirm_commit,
+        host=params["mgmtIp"],
+        username=params["username"],
+        password=password,
+        port=_mgmt_port(params.get("vendor"), params),
+    )
+    return {"kind": "confirm-commit", **result.as_dict()}
 
 
 def _handle_sync_snmp_config(

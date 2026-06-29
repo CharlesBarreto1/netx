@@ -24,8 +24,9 @@ export const DeviceJobBaseSchema = z.object({
 });
 
 /**
- * Fase 1 — valida os três canais de gerência de um Juniper: SSH, NETCONF (830) e SNMP.
- * A API envia mgmtIp + as credenciais CIFRADAS (lidas do banco); o gateway decifra e testa.
+ * Fase 1 — valida os canais de gerência: SSH, 2º canal (NETCONF/830 no Junos; N/A no
+ * RouterOS) e SNMP. A API envia mgmtIp + vendor + as credenciais CIFRADAS (lidas do banco);
+ * o gateway decifra, resolve o driver do vendor e testa.
  */
 export const ConnectivityTestJobSchema = DeviceJobBaseSchema.extend({
   kind: z.literal('connectivity-test'),
@@ -36,6 +37,8 @@ export const ConnectivityTestJobSchema = DeviceJobBaseSchema.extend({
     snmpCommunityEnc: z.string().optional(),
     sshPort: z.number().int().positive().default(22),
     netconfPort: z.number().int().positive().default(830),
+    /** Define o driver (junos vs routeros). Ausente → juniper (compat MVP). */
+    vendor: z.string().optional(),
   }),
 });
 
@@ -67,8 +70,10 @@ export const SyncSnmpConfigJobSchema = DeviceJobBaseSchema.extend({
 });
 
 /**
- * Fase 2b — executa um playbook (bloco de comando nomeado) read-only via PyEZ. No MVP só
- * comandos `show ...`; o gateway recusa qualquer coisa que não comece com "show " (§1/§2).
+ * Fase 2b — executa um playbook (bloco de comando nomeado) read-only. O comando vem do
+ * CATÁLOGO curado da API (não é texto livre do usuário) e é vendor-aware: `show ...` no
+ * Junos, `/... print` no RouterOS. O driver do vendor ainda aplica sua própria defesa
+ * read-only (o Junos recusa o que não começa com `show`).
  */
 export const RunPlaybookJobSchema = DeviceJobBaseSchema.extend({
   kind: z.literal('run-playbook'),
@@ -76,20 +81,64 @@ export const RunPlaybookJobSchema = DeviceJobBaseSchema.extend({
     mgmtIp: z.string().min(1),
     username: z.string().min(1),
     passwordEnc: z.string().optional(),
+    sshPort: z.number().int().positive().default(22),
     netconfPort: z.number().int().positive().default(830),
+    vendor: z.string().optional(),
     playbookId: z.string().min(1),
-    command: z.string().regex(/^show\s/i, 'somente comandos show (read-only)'),
+    command: z.string().min(1),
   }),
 });
 
-/** Fase 3 — puxa a config do device (formato `set`) para backup versionado. Read-only. */
+/** Fase 3 — puxa a config do device (Junos `set` / RouterOS `/export`) para backup. Read-only. */
 export const BackupConfigJobSchema = DeviceJobBaseSchema.extend({
   kind: z.literal('backup-config'),
   params: z.object({
     mgmtIp: z.string().min(1),
     username: z.string().min(1),
     passwordEnc: z.string().optional(),
+    sshPort: z.number().int().positive().default(22),
     netconfPort: z.number().int().positive().default(830),
+    vendor: z.string().optional(),
+  }),
+});
+
+/**
+ * Fase 2 (multi-vendor) — ESCRITA: aplica config no device com rede de segurança. SEMPRE
+ * exige `approvedBy` (trava em assertJobIsSafe/safety.py, independente de accessMode). A IA
+ * nunca preenche `approvedBy`. Junos: `commit confirmed`. RouterOS: backup + auto-revert
+ * agendado. `dryRun=true` apenas valida/plana (diff) sem efetivar.
+ */
+export const ApplyConfigJobSchema = DeviceJobBaseSchema.extend({
+  kind: z.literal('apply-config'),
+  params: z.object({
+    mgmtIp: z.string().min(1),
+    username: z.string().min(1),
+    passwordEnc: z.string().optional(),
+    sshPort: z.number().int().positive().default(22),
+    netconfPort: z.number().int().positive().default(830),
+    vendor: z.string().optional(),
+    /** Config a aplicar (Junos: linhas `set ...`; RouterOS: comandos `/...`). */
+    config: z.string().min(1),
+    /** Janela do rollback automático (commit confirmed / auto-revert). */
+    confirmMinutes: z.number().int().positive().default(5),
+    /** Só valida/plana o diff, não efetiva. */
+    dryRun: z.boolean().default(false),
+  }),
+});
+
+/**
+ * Fase 2 (multi-vendor) — ESCRITA: confirma um apply pendente (trava o rollback automático).
+ * SEMPRE exige `approvedBy`. Junos: 2º commit. RouterOS: cancela o scheduler de auto-revert.
+ */
+export const ConfirmCommitJobSchema = DeviceJobBaseSchema.extend({
+  kind: z.literal('confirm-commit'),
+  params: z.object({
+    mgmtIp: z.string().min(1),
+    username: z.string().min(1),
+    passwordEnc: z.string().optional(),
+    sshPort: z.number().int().positive().default(22),
+    netconfPort: z.number().int().positive().default(830),
+    vendor: z.string().optional(),
   }),
 });
 
@@ -123,7 +172,12 @@ export const DeviceJobSchema = z.discriminatedUnion('kind', [
   RunPlaybookJobSchema,
   BackupConfigJobSchema,
   NetworkTestJobSchema,
+  ApplyConfigJobSchema,
+  ConfirmCommitJobSchema,
 ]);
+
+/** Kinds inerentemente de ESCRITA — exigem approvedBy mesmo se accessMode vier 'read'. */
+export const WRITE_KINDS = new Set<DeviceJobKind>(['apply-config', 'confirm-commit']);
 /** Job já validado (accessMode resolvido). */
 export type DeviceJob = z.infer<typeof DeviceJobSchema>;
 /** Job como o chamador o constrói (accessMode/params opcionais — têm default). */
@@ -137,6 +191,8 @@ export type DeviceJobKind = DeviceJob['kind'];
 const ChannelCheck = z.object({
   reachable: z.boolean(),
   detail: z.string().optional(),
+  /** Falso quando o canal não existe no vendor (ex.: NETCONF no RouterOS) — UI mostra "N/A". */
+  applicable: z.boolean().optional(),
 });
 
 export const ConnectivityTestResultSchema = z.object({
@@ -169,8 +225,28 @@ export const RunPlaybookResultSchema = z.object({
 
 export const BackupConfigResultSchema = z.object({
   kind: z.literal('backup-config'),
-  /** Config no formato `set` (diffável, legível). */
+  /** Config em texto diffável (Junos `set` / RouterOS `/export`). */
   config: z.string(),
+});
+
+/** Resultado do apply (escrita): diff aplicado/planado + estado do rollback automático. */
+export const ApplyConfigResultSchema = z.object({
+  kind: z.literal('apply-config'),
+  dryRun: z.boolean(),
+  ok: z.boolean(),
+  detail: z.string(),
+  diff: z.string().optional(),
+  /** True quando efetivou (não dry-run) e há rollback automático armado/pendente. */
+  committed: z.boolean().optional(),
+  rolledBack: z.boolean().optional(),
+});
+
+/** Resultado do confirm (escrita): trava do rollback automático. */
+export const ConfirmCommitResultSchema = z.object({
+  kind: z.literal('confirm-commit'),
+  ok: z.boolean(),
+  detail: z.string(),
+  committed: z.boolean().optional(),
 });
 
 /**
@@ -207,6 +283,8 @@ export const DeviceJobResultSchema = z.object({
       RunPlaybookResultSchema,
       BackupConfigResultSchema,
       NetworkTestResultSchema,
+      ApplyConfigResultSchema,
+      ConfirmCommitResultSchema,
     ])
     .optional(),
   error: z.string().optional(),
@@ -220,7 +298,10 @@ export type DeviceJobResult = z.infer<typeof DeviceJobResultSchema>;
  */
 export function assertJobIsSafe(job: DeviceJobInput): DeviceJob {
   const parsed = DeviceJobSchema.parse(job);
-  if (parsed.accessMode === 'write' && !parsed.approvedBy) {
+  // Kinds de escrita exigem aprovação MESMO se accessMode vier 'read' (defesa: ninguém
+  // burla a aprovação rotulando um apply como leitura).
+  const isWrite = parsed.accessMode === 'write' || WRITE_KINDS.has(parsed.kind);
+  if (isWrite && !parsed.approvedBy) {
     throw new Error(
       `Job ${parsed.jobId} (${parsed.kind}) é de escrita e não tem approvedBy. ` +
         'Escrita em equipamento exige aprovação humana explícita.',

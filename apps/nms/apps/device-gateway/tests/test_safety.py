@@ -27,3 +27,20 @@ def test_write_without_approval_rejected():
 
 def test_write_with_approval_ok():
     assert assert_job_is_safe({**BASE, "accessMode": "write", "approvedBy": "noc-lead"})
+
+
+def test_apply_config_requires_approval_even_as_read():
+    # apply-config é WRITE_KIND: exige approvedBy mesmo rotulado como leitura.
+    with pytest.raises(UnsafeJobError):
+        assert_job_is_safe({**BASE, "kind": "apply-config", "accessMode": "read"})
+
+
+def test_apply_config_with_approval_ok():
+    assert assert_job_is_safe(
+        {**BASE, "kind": "apply-config", "accessMode": "read", "approvedBy": "noc-lead"}
+    )
+
+
+def test_confirm_commit_requires_approval():
+    with pytest.raises(UnsafeJobError):
+        assert_job_is_safe({**BASE, "kind": "confirm-commit"})

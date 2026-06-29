@@ -41,7 +41,12 @@ export class BackupService {
         requestedBy: actor,
         requestedAt: new Date().toISOString(),
         kind: 'backup-config',
-        params: { mgmtIp: device.mgmtIp, username: cred.username, passwordEnc: cred.passwordEnc },
+        params: {
+          mgmtIp: device.mgmtIp,
+          username: cred.username,
+          passwordEnc: cred.passwordEnc,
+          vendor: device.vendor,
+        },
       },
       { waitMs: 60_000 },
     );

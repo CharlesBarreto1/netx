@@ -64,6 +64,9 @@
                   "type": "integer",
                   "exclusiveMinimum": 0,
                   "default": 830
+                },
+                "vendor": {
+                  "type": "string"
                 }
               },
               "required": [
@@ -239,10 +242,18 @@
                 "passwordEnc": {
                   "type": "string"
                 },
+                "sshPort": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "default": 22
+                },
                 "netconfPort": {
                   "type": "integer",
                   "exclusiveMinimum": 0,
                   "default": 830
+                },
+                "vendor": {
+                  "type": "string"
                 },
                 "playbookId": {
                   "type": "string",
@@ -250,7 +261,7 @@
                 },
                 "command": {
                   "type": "string",
-                  "pattern": "^show\\s"
+                  "minLength": 1
                 }
               },
               "required": [
@@ -311,10 +322,18 @@
                 "passwordEnc": {
                   "type": "string"
                 },
+                "sshPort": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "default": 22
+                },
                 "netconfPort": {
                   "type": "integer",
                   "exclusiveMinimum": 0,
                   "default": 830
+                },
+                "vendor": {
+                  "type": "string"
                 }
               },
               "required": [
@@ -402,6 +421,160 @@
               },
               "required": [
                 "target"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "jobId",
+            "deviceId",
+            "requestedBy",
+            "requestedAt",
+            "kind",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jobId": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/jobId"
+            },
+            "deviceId": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/deviceId"
+            },
+            "requestedBy": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/requestedBy"
+            },
+            "requestedAt": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/requestedAt"
+            },
+            "accessMode": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/accessMode"
+            },
+            "approvedBy": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/approvedBy"
+            },
+            "kind": {
+              "type": "string",
+              "const": "apply-config"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "mgmtIp": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "username": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "passwordEnc": {
+                  "type": "string"
+                },
+                "sshPort": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "default": 22
+                },
+                "netconfPort": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "default": 830
+                },
+                "vendor": {
+                  "type": "string"
+                },
+                "config": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "confirmMinutes": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "default": 5
+                },
+                "dryRun": {
+                  "type": "boolean",
+                  "default": false
+                }
+              },
+              "required": [
+                "mgmtIp",
+                "username",
+                "config"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "jobId",
+            "deviceId",
+            "requestedBy",
+            "requestedAt",
+            "kind",
+            "params"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jobId": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/jobId"
+            },
+            "deviceId": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/deviceId"
+            },
+            "requestedBy": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/requestedBy"
+            },
+            "requestedAt": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/requestedAt"
+            },
+            "accessMode": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/accessMode"
+            },
+            "approvedBy": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/approvedBy"
+            },
+            "kind": {
+              "type": "string",
+              "const": "confirm-commit"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "mgmtIp": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "username": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "passwordEnc": {
+                  "type": "string"
+                },
+                "sshPort": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "default": 22
+                },
+                "netconfPort": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "default": 830
+                },
+                "vendor": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mgmtIp",
+                "username"
               ],
               "additionalProperties": false
             }
