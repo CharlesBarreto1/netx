@@ -17,7 +17,13 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   ) {
     const cfg = loadConfig();
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      // Header é o padrão. `access_token` na query é só pra SSE/EventSource,
+      // que não suporta header customizado (ex.: /v1/whatsapp/stream). Token é
+      // de curta duração (15min); o trade-off de ir na URL é aceitável p/ SSE.
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+        ExtractJwt.fromUrlQueryParameter('access_token'),
+      ]),
       ignoreExpiration: false,
       secretOrKey: cfg.jwt.accessSecret,
       issuer: 'netx',
