@@ -2424,7 +2424,7 @@ model WhatsappTemplate {
   language       String  @db.VarChar(10)                    // ex: pt_BR
   category       String  @db.VarChar(40)                    // MARKETING | UTILITY | AUTHENTICATION
   status         String  @db.VarChar(20)                    // APPROVED | PENDING | REJECTED
-  bodyText       String? @db.Text                           // preview do corpo com {{1}}
+  bodyText       String? @map("body_text") @db.Text         // preview do corpo com {{1}}
   components     Json?                                       // estrutura crua da Graph API
   metaTemplateId String? @map("meta_template_id") @db.VarChar(60)
 
