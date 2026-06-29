@@ -1140,6 +1140,8 @@ const messages = {
       title: 'Approved templates (Meta)',
       empty: 'No approved templates. Sync them in the WhatsApp connection (Settings › Support).',
       windowClosed: 'Outside the 24h window — pick an approved template to reply.',
+      send: 'Send template',
+      varPlaceholder: 'Value for variable {n}',
     },
     admin: {
       title: 'WhatsApp connection',

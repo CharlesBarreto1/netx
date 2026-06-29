@@ -1156,6 +1156,8 @@ const messages = {
       title: 'Plantillas aprobadas (Meta)',
       empty: 'Sin plantillas aprobadas. Sincronizá en la conexión WhatsApp (Configuración › Atención).',
       windowClosed: 'Fuera de la ventana de 24h — elegí una plantilla aprobada para responder.',
+      send: 'Enviar plantilla',
+      varPlaceholder: 'Valor de la variable {n}',
     },
     admin: {
       title: 'Conexión WhatsApp',

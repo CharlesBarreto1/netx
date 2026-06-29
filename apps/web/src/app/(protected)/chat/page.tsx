@@ -356,6 +356,9 @@ function ChatThread({
   const [insights, setInsights] = useState<WaAiInsightsResponse | null>(null);
   const [templates, setTemplates] = useState<WaTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
+  // Template selecionado p/ preencher variáveis ({{1}}, {{2}}...) antes de enviar.
+  const [selectedTpl, setSelectedTpl] = useState<WaTemplate | null>(null);
+  const [tplVars, setTplVars] = useState<string[]>([]);
   const [agents, setAgents] = useState<WaAgent[] | null>(null);
   const [showTransfer, setShowTransfer] = useState(false);
   const [transferBusy, setTransferBusy] = useState(false);
@@ -451,16 +454,32 @@ function ChatThread({
     }
   }
 
-  async function doSendTemplate(tpl: WaTemplate) {
+  // Seleciona o template: se tiver variáveis ({{1}}...), abre o form pra
+  // preencher; sem variáveis, envia direto. Evita o erro #132000 da Meta
+  // (qtd de parâmetros enviada tem que bater com a do template).
+  function pickTemplate(tpl: WaTemplate) {
+    const n = templateVarCount(tpl);
+    if (n === 0) {
+      void doSendTemplate(tpl, []);
+      return;
+    }
+    setSelectedTpl(tpl);
+    setTplVars(Array.from({ length: n }, () => ''));
+  }
+
+  async function doSendTemplate(tpl: WaTemplate, variables: string[]) {
     if (busy) return;
     setBusy(true);
     try {
       await sendTemplateMessage(conversation!.id, {
         templateName: tpl.name,
         language: tpl.language,
-        previewBody: tpl.bodyText ?? `[template: ${tpl.name}]`,
+        variables: variables.length ? variables : undefined,
+        previewBody: renderTemplateBody(tpl, variables),
       });
       setShowTemplates(false);
+      setSelectedTpl(null);
+      setTplVars([]);
       setText('');
       onSent();
     } catch (err) {
@@ -665,12 +684,55 @@ function ChatThread({
               <button
                 type="button"
                 className="text-xs text-text-muted hover:underline"
-                onClick={() => setShowTemplates(false)}
+                onClick={() => {
+                  setShowTemplates(false);
+                  setSelectedTpl(null);
+                  setTplVars([]);
+                }}
               >
                 {tCommon('cancel')}
               </button>
             </div>
-            {templates.length === 0 ? (
+            {selectedTpl ? (
+              // Form de variáveis do template escolhido ({{1}}, {{2}}...).
+              <div className="space-y-2 px-1">
+                <button
+                  type="button"
+                  className="text-xs text-text-muted hover:underline"
+                  onClick={() => {
+                    setSelectedTpl(null);
+                    setTplVars([]);
+                  }}
+                >
+                  ← {selectedTpl.name} · {selectedTpl.language}
+                </button>
+                {tplVars.map((val, i) => (
+                  <div key={i}>
+                    <label className="block text-[11px] font-medium text-text-muted">{`{{${i + 1}}}`}</label>
+                    <input
+                      value={val}
+                      onChange={(e) =>
+                        setTplVars((s) => s.map((v, j) => (j === i ? e.target.value : v)))
+                      }
+                      className="w-full rounded border border-slate-300 p-1.5 text-xs focus:border-brand-500 focus:outline-hidden dark:border-slate-600 dark:bg-slate-700"
+                      placeholder={t('templates.varPlaceholder', { n: i + 1 })}
+                    />
+                  </div>
+                ))}
+                <p className="rounded bg-white p-2 text-[11px] text-text-muted dark:bg-slate-800">
+                  {renderTemplateBody(selectedTpl, tplVars)}
+                </p>
+                <Button
+                  size="sm"
+                  className="w-full"
+                  loading={busy}
+                  disabled={tplVars.some((v) => !v.trim())}
+                  onClick={() => void doSendTemplate(selectedTpl, tplVars)}
+                >
+                  {t('templates.send')}
+                </Button>
+              </div>
+            ) : templates.length === 0 ? (
               <p className="px-1 py-2 text-xs text-text-muted">{t('templates.empty')}</p>
             ) : (
               <ul className="space-y-1">
@@ -679,7 +741,7 @@ function ChatThread({
                     <button
                       type="button"
                       disabled={busy}
-                      onClick={() => void doSendTemplate(tpl)}
+                      onClick={() => pickTemplate(tpl)}
                       className="w-full rounded p-2 text-left text-xs hover:bg-white disabled:opacity-50 dark:hover:bg-slate-800"
                     >
                       <span className="font-medium">{tpl.name}</span>
@@ -736,6 +798,26 @@ function ChatThread({
       </footer>
     </section>
   );
+}
+
+/** Nº de variáveis do template = maior índice {{n}} no corpo (0 se não houver). */
+function templateVarCount(tpl: WaTemplate): number {
+  const body = tpl.bodyText ?? '';
+  let max = 0;
+  for (const m of body.matchAll(/\{\{\s*(\d+)\s*\}\}/g)) {
+    const n = Number(m[1]);
+    if (n > max) max = n;
+  }
+  return max;
+}
+
+/** Renderiza o corpo do template substituindo {{n}} pelos valores (preview/inbox). */
+function renderTemplateBody(tpl: WaTemplate, variables: string[]): string {
+  const body = tpl.bodyText ?? `[template: ${tpl.name}]`;
+  return body.replace(/\{\{\s*(\d+)\s*\}\}/g, (_match, d) => {
+    const v = variables[Number(d) - 1];
+    return v && v.trim() ? v : `{{${d}}}`;
+  });
 }
 
 function MessageBubble({ message }: { message: WaMessage }) {

@@ -1164,6 +1164,8 @@ const messages = {
       title: 'Templates aprovados (Meta)',
       empty: 'Nenhum template aprovado. Sincronize na conexão WhatsApp (Configurações › Atendimento).',
       windowClosed: 'Fora da janela de 24h — escolha um template aprovado para responder.',
+      send: 'Enviar template',
+      varPlaceholder: 'Valor da variável {n}',
     },
     admin: {
       title: 'Conexão WhatsApp',
