@@ -17,6 +17,14 @@
 #   7. seed (idempotente — aplica perms/roles novas se houver)
 #   8. restart dos 3 serviços systemd
 #   9. smoke test rápido
+#  10. NMS (módulo Docker, se instalado): atualiza a stack via o updater próprio do NMS
+#      (pull GHCR + migrations + healthcheck + rollback). Não-fatal se ausente/falhar.
+#
+# Variáveis úteis pro NMS:
+#   NETX_NMS_DIR        diretório da stack NMS (default /opt/netx-nms)
+#   NETX_NMS_SKIP=1     não tocar no NMS neste run
+#   NETX_NMS_INSTALL=1  se o NMS não estiver instalado, instala (one-liner) em vez de só avisar
+#   GITHUB_TOKEN        repassado ao updater do NMS (releases/imagens privadas)
 #
 # O que NÃO faz (diferente do installer):
 #   - Não reinstala pacotes APT (postgres, redis, freeradius, etc)
@@ -306,6 +314,68 @@ else
     dim "  RADIUS sync: pequena diferença (active=${ACTIVE_TOTAL} radcheck=${RADCHECK_TOTAL}) — dentro da tolerância"
   fi
 fi
+
+# -----------------------------------------------------------------------------
+# 11. NMS — módulo Docker (apps/nms), deploy independente em /opt/netx-nms
+# -----------------------------------------------------------------------------
+# O NMS roda em Docker (timescaledb + redis + telegraf + device-gateway + api + web)
+# e tem seu PRÓPRIO updater (pull de imagens GHCR + migrations no boot + healthcheck +
+# rollback automático). Aqui só o ORQUESTRAMOS, pra que `sudo netx-update` deixe a
+# instância inteira (plataforma + NMS) na versão atual num comando só. Tudo best-effort:
+# se o NMS não estiver instalado ou o update falhar, avisamos mas NÃO derrubamos o update
+# da plataforma (que já concluiu acima).
+NETX_NMS_DIR="${NETX_NMS_DIR:-/opt/netx-nms}"
+
+update_nms() {
+  if [[ "${NETX_NMS_SKIP:-0}" == "1" ]]; then
+    dim "  NMS: pulado (NETX_NMS_SKIP=1)"
+    return 0
+  fi
+
+  if ! command -v docker >/dev/null 2>&1; then
+    dim "  NMS: docker não instalado — pulando (o NMS é um módulo opcional em Docker)"
+    return 0
+  fi
+
+  if [[ -f "${NETX_NMS_DIR}/docker-compose.yml" && -f "${NETX_NMS_DIR}/.env" ]]; then
+    log "NMS detectado em ${NETX_NMS_DIR} — atualizando a stack"
+    if [[ -f "${NETX_NMS_DIR}/update.sh" ]]; then
+      # O updater do NMS resolve a última release, puxa imagens, roda migrations no boot,
+      # faz healthcheck e ROLLBACK da tag em caso de falha. Repassa GITHUB_TOKEN se houver.
+      if GITHUB_TOKEN="${GITHUB_TOKEN:-}" NETX_DIR="${NETX_NMS_DIR}" \
+           bash "${NETX_NMS_DIR}/update.sh"; then
+        ok "NMS atualizado"
+      else
+        warn "NMS: update.sh falhou (rollback automático cuida da tag). Veja ${NETX_NMS_DIR} e 'docker compose logs api'"
+      fi
+    else
+      # Sem updater versionado: pull + up -d direto (estrutura antiga do bundle).
+      warn "NMS: update.sh ausente — fazendo 'docker compose pull && up -d' direto"
+      ( cd "${NETX_NMS_DIR}" \
+        && docker compose --env-file .env -f docker-compose.yml pull \
+        && docker compose --env-file .env -f docker-compose.yml up -d ) \
+        || warn "NMS: pull/up direto falhou — investigue em ${NETX_NMS_DIR}"
+    fi
+    return 0
+  fi
+
+  # NMS não instalado.
+  if [[ "${NETX_NMS_INSTALL:-0}" == "1" ]] && command -v curl >/dev/null 2>&1; then
+    log "NMS não instalado e NETX_NMS_INSTALL=1 — instalando em ${NETX_NMS_DIR}"
+    if NETX_DIR="${NETX_NMS_DIR}" NETX_YES=1 GITHUB_TOKEN="${GITHUB_TOKEN:-}" \
+         bash -c 'curl -fsSL https://raw.githubusercontent.com/CharlesBarreto1/NetX-NMS/main/scripts/install.sh | bash'; then
+      ok "NMS instalado em ${NETX_NMS_DIR}"
+    else
+      warn "NMS: instalação automática falhou — rode o one-liner manualmente"
+    fi
+  else
+    dim "  NMS não instalado em ${NETX_NMS_DIR} — pulando."
+    dim "  Pra instalar: NETX_NMS_INSTALL=1 sudo netx-update  (ou rode o one-liner do NetX-NMS)"
+  fi
+}
+
+log "verificando módulo NMS (Docker)"
+update_nms
 
 # -----------------------------------------------------------------------------
 # Done
