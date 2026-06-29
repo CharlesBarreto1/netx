@@ -19,6 +19,15 @@ export class ProxyController {
   async forward(@Req() req: Request, @Res() res: Response) {
     // Map /api/v1/... → core-service /v1/...
     const path = req.originalUrl.replace(/^\/api/, '');
+
+    // SSE (EventSource manda `Accept: text/event-stream`): repassa como STREAM,
+    // sem bufferizar nem timeout — senão o realtime do chat nunca chega.
+    const accept = (req.headers.accept ?? '').toString();
+    if (accept.includes('text/event-stream')) {
+      await this.proxy.streamFromCore(req, res, path);
+      return;
+    }
+
     const result = await this.proxy.forwardToCore(req, path);
 
     res.status(result.status);

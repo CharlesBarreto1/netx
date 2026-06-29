@@ -1,7 +1,8 @@
 import { HttpService } from '@nestjs/axios';
 import { Injectable, HttpException } from '@nestjs/common';
 import { firstValueFrom } from 'rxjs';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
+import type { Readable } from 'node:stream';
 
 import { loadConfig } from '@netx/config';
 
@@ -37,24 +38,17 @@ export class ProxyService {
     return this.forward(req, base, targetPath);
   }
 
-  private async forward(req: Request, base: string, targetPath: string): Promise<ProxyResult> {
-    const url = `${base}${targetPath}`;
-
-    // Headers que NÃO repassamos pro core-service:
-    //
-    // - Hop-by-hop standard (RFC 7230 §6.1): host, connection, content-length,
-    //   transfer-encoding — proxy não deve forwardar.
-    //
-    // - Tenant/auth headers controlados pelo gateway/core: o gateway NÃO
-    //   resolve tenant — quem decide é o core-service via TENANT_RESOLUTION_STRATEGY
-    //   (subdomain | header | jwt). Se o cliente envia `x-tenant-id` num cenário
-    //   onde a strategy é `subdomain` ou `jwt`, ele tentaria forçar tenant
-    //   arbitrário. Stripping aqui é defesa em profundidade — qualquer cliente
-    //   que precise setar tenant via header DEVE estar com TENANT_RESOLUTION_STRATEGY=header
-    //   explicitamente (e nesse caso o gateway propaga normalmente, vide config).
-    //
-    // - `x-forwarded-*` exceto os que renomeamos: cliente NÃO deveria poder
-    //   spoofar o IP visto pelo backend. Sobrescrevemos com `req.ip` mais abaixo.
+  /**
+   * Monta os headers repassados ao backend, removendo hop-by-hop e headers de
+   * tenant/IP que o cliente não pode spoofar.
+   *
+   * - Hop-by-hop standard (RFC 7230 §6.1): host, connection, content-length,
+   *   transfer-encoding — proxy não deve forwardar.
+   * - Tenant header: removido quando a strategy NÃO é `header` (defesa contra
+   *   header injection de tenant arbitrário).
+   * - `x-forwarded-*`/`x-real-ip`: sobrescritos com `req.ip` (anti-spoof).
+   */
+  private buildForwardedHeaders(req: Request): Record<string, string> {
     const STRIP_HEADERS = new Set([
       'host',
       'connection',
@@ -73,31 +67,87 @@ export class ProxyService {
       if (!v) continue;
       const key = k.toLowerCase();
       if (STRIP_HEADERS.has(key)) continue;
-      // Strip do header de tenant quando a strategy NÃO é `header` —
-      // impede um cliente de forçar tenant arbitrário via header injection.
       if (key === tenantHeader && tenancyStrategy !== 'header') continue;
       forwardedHeaders[key] = Array.isArray(v) ? v.join(', ') : (v as string);
     }
-    // Always propagate tenant and correlation context
     if (req.headers['x-correlation-id']) {
       forwardedHeaders['x-correlation-id'] = req.headers['x-correlation-id'] as string;
     }
-    // Garantir IP real do cliente. Quando vem via Nginx, X-Forwarded-For já
-    // está populado e é só repassar. Quando o gateway recebe direto (dev,
-    // healthcheck), `req.ip` aqui já está correto graças ao trust proxy do
-    // gateway. Forçamos o header pra que o core-service NUNCA veja
-    // 127.0.0.1 (que era o caso antes — log de auditoria com IP do
-    // gateway ao invés do cliente).
     const clientIp = req.ip;
     if (clientIp) {
       const existing = forwardedHeaders['x-forwarded-for'];
-      forwardedHeaders['x-forwarded-for'] = existing
-        ? `${existing}, ${clientIp}`
-        : clientIp;
+      forwardedHeaders['x-forwarded-for'] = existing ? `${existing}, ${clientIp}` : clientIp;
     }
     if (!forwardedHeaders['x-real-ip'] && clientIp) {
       forwardedHeaders['x-real-ip'] = clientIp;
     }
+    return forwardedHeaders;
+  }
+
+  /** Encaminha o Core como STREAM (SSE) — pipe direto, sem buffering nem timeout. */
+  streamFromCore(req: Request, res: Response, targetPath: string): Promise<void> {
+    const base = `http://${this.config.coreService.host}:${this.config.coreService.port}`;
+    return this.streamResponse(req, res, base, targetPath);
+  }
+
+  /**
+   * Repassa uma resposta de streaming (Server-Sent Events) sem bufferizar.
+   *
+   * O `forward()` normal usa `firstValueFrom` + timeout, que NUNCA resolve num
+   * stream infinito (SSE) — a conexão estoura em 15s e o EventSource do cliente
+   * fica reconectando sem receber eventos (o chat só atualizava no reload).
+   *
+   * Aqui pedimos `responseType: 'stream'`, timeout 0, e damos `pipe` direto.
+   * `X-Accel-Buffering: no` diz ao Nginx pra não bufferizar a resposta. Ao
+   * cliente desconectar, abortamos o upstream.
+   */
+  private async streamResponse(
+    req: Request,
+    res: Response,
+    base: string,
+    targetPath: string,
+  ): Promise<void> {
+    const url = `${base}${targetPath}`;
+    const controller = new AbortController();
+    req.on('close', () => controller.abort());
+
+    try {
+      const upstream = await firstValueFrom(
+        this.http.request<Readable>({
+          method: req.method,
+          url,
+          headers: this.buildForwardedHeaders(req),
+          responseType: 'stream',
+          timeout: 0,
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity,
+          validateStatus: () => true,
+          signal: controller.signal,
+        }),
+      );
+
+      res.status(upstream.status);
+      res.setHeader('Content-Type', (upstream.headers['content-type'] as string) ?? 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache, no-transform');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no'); // Nginx: não bufferizar
+      res.flushHeaders?.();
+
+      const stream = upstream.data;
+      stream.pipe(res);
+      stream.on('error', () => res.end());
+      stream.on('end', () => res.end());
+      res.on('close', () => stream.destroy());
+    } catch (err: any) {
+      if (err?.name === 'CanceledError' || err?.name === 'AbortError') return; // cliente fechou
+      if (!res.headersSent) res.status(502);
+      res.end();
+    }
+  }
+
+  private async forward(req: Request, base: string, targetPath: string): Promise<ProxyResult> {
+    const url = `${base}${targetPath}`;
+    const forwardedHeaders = this.buildForwardedHeaders(req);
 
     // Multipart (uploads, ex.: import KMZ/KML, fotos): o Express do gateway NÃO
     // parseia multipart, então `req.body` fica vazio. Re-enviar `req.body` aqui

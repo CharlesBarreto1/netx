@@ -14,7 +14,7 @@ import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import { Observable, filter, map } from 'rxjs';
+import { Observable, filter, interval, map, merge } from 'rxjs';
 import { z } from 'zod';
 
 import type { AuthenticatedPrincipal } from '@netx/shared';
@@ -244,13 +244,20 @@ export class WhatsappController {
   @RequirePermissions('chat.read')
   stream(@CurrentUser() user: AuthenticatedPrincipal): Observable<MessageEvent> {
     const tenantId = user.tenantId;
-    return this.events.subject.asObservable().pipe(
+    const events$ = this.events.subject.asObservable().pipe(
       filter((e) => e.tenantId === tenantId),
       map((e) => ({
         type: e.type,
         data: JSON.stringify({ type: e.type, payload: e.payload }),
       })),
     );
+    // Heartbeat a cada 25s: mantém a conexão viva através dos timeouts de proxy
+    // (nginx proxy_read_timeout ~60s, Cloudflare). Evento 'ping' não é ouvido
+    // pelo cliente (só os named events conhecidos), então é inofensivo.
+    const heartbeat$: Observable<MessageEvent> = interval(25_000).pipe(
+      map(() => ({ type: 'ping', data: '{}' })),
+    );
+    return merge(events$, heartbeat$);
   }
 
   // ----- media (servir mídia baixada) -----
