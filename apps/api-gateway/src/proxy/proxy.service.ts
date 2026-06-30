@@ -181,6 +181,12 @@ export class ProxyService {
           // `z.coerce.number()` recebe array e devolve `NaN`, retornando 400
           // "Expected number, received nan".
           data: isMultipart ? req : isSignedWebhook ? rawBody : req.body,
+          // arraybuffer: o axios padrão (responseType json) lê QUALQUER resposta
+          // como texto e re-serializa — o que CORROMPE binário (imagem, áudio,
+          // figurinha .webp: bytes inflam e o arquivo fica inválido). Pegando o
+          // corpo cru como Buffer, repassamos intacto. JSON continua funcionando
+          // (os bytes são o próprio JSON; o cliente faz .json() normal).
+          responseType: 'arraybuffer',
           // Streams de upload não devem ser limitados pelo axios (o core aplica
           // o limite real via multer). Sem buffering — o stream é repassado.
           maxBodyLength: Infinity,
@@ -189,7 +195,7 @@ export class ProxyService {
           timeout: isMultipart ? 60_000 : isSlowExternal ? 90_000 : 15_000,
         }),
       );
-      return { status: res.status, headers: res.headers as any, body: res.data };
+      return { status: res.status, headers: res.headers as any, body: Buffer.from(res.data as ArrayBuffer) };
     } catch (err: any) {
       throw new HttpException(
         {
