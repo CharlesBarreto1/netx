@@ -57,4 +57,28 @@ export class WhatsappTranscriptionService {
       await fs.unlink(wav).catch(() => {});
     }
   }
+
+  /**
+   * Converte um áudio gravado no navegador (webm/opus, mp4...) para OGG/Opus —
+   * formato de NOTA DE VOZ aceito pela Meta. Re-encoda em opus mono 48kHz.
+   */
+  async toVoiceOgg(input: Buffer): Promise<Buffer> {
+    const inPath = join(tmpdir(), `wa-vin-${randomUUID()}`);
+    const outPath = join(tmpdir(), `wa-vout-${randomUUID()}.ogg`);
+    await fs.writeFile(inPath, input);
+    try {
+      await exec(
+        FFMPEG,
+        ['-y', '-i', inPath, '-c:a', 'libopus', '-b:a', '32k', '-ar', '48000', '-ac', '1', '-f', 'ogg', outPath],
+        { timeout: 60_000 },
+      );
+      return await fs.readFile(outPath);
+    } catch (e) {
+      this.logger.warn(`Conversão de áudio falhou: ${(e as Error).message}`);
+      throw new BadRequestException('Não consegui processar o áudio gravado.');
+    } finally {
+      await fs.unlink(inPath).catch(() => {});
+      await fs.unlink(outPath).catch(() => {});
+    }
+  }
 }

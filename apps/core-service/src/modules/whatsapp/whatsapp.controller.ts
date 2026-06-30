@@ -10,7 +10,10 @@ import {
   Res,
   Sse,
   MessageEvent,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { promises as fs } from 'node:fs';
@@ -252,6 +255,22 @@ export class WhatsappController {
       { name: body.templateName, language: body.language, variables: body.variables },
       body.previewBody,
     );
+  }
+
+  /** Envia uma nota de voz gravada no atendente (upload multipart 'file'). */
+  @Post('conversations/:id/messages/audio')
+  @RequirePermissions('chat.send')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 16 * 1024 * 1024 } }))
+  sendAudio(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ) {
+    if (!file?.buffer?.length) throw new BadRequestException('Áudio ausente.');
+    return this.conversations.sendAudio(user.tenantId, user.sub, id, {
+      buffer: file.buffer,
+      mimetype: file.mimetype,
+    });
   }
 
   /** Transcreve uma mensagem de áudio (sob demanda, whisper.cpp local). */

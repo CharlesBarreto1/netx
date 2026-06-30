@@ -5,6 +5,9 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
+import { promises as fsp } from 'node:fs';
+import { join } from 'node:path';
 import type { Prisma, WaConversationStatus, WaMsgType } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
@@ -29,6 +32,9 @@ export type InboxFilter =
 
 /** Janela de atendimento da Meta: 24h desde o último inbound do cliente. */
 const META_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/** Onde a mídia (áudio enviado) é gravada, servida por GET /v1/whatsapp/media. */
+const MEDIA_ROOT = process.env.WHATSAPP_MEDIA_ROOT ?? '/var/lib/netx/whatsapp/media';
 
 /** Erro estruturado: envio livre bloqueado fora da janela 24h (Meta). */
 export class TemplateRequiredException extends BadRequestException {
@@ -559,6 +565,48 @@ export class WhatsappConversationsService {
   }
 
   /**
+   * Envia uma NOTA DE VOZ gravada no atendente. Converte o áudio do navegador
+   * (webm/opus) para OGG/Opus (formato da Meta), salva pra tocar no inbox e
+   * dispara. Respeita a janela de 24h (mídia é fora de template).
+   */
+  async sendAudio(
+    tenantId: string,
+    actorUserId: string,
+    id: string,
+    file: { buffer: Buffer; mimetype?: string },
+  ) {
+    const conv = await this.loadSendableConversation(tenantId, actorUserId, id);
+    if (conv.instance.channel === 'META_CLOUD' && !this.withinMetaWindow(conv.lastInboundAt)) {
+      throw new TemplateRequiredException();
+    }
+
+    const ogg = await this.transcription.toVoiceOgg(file.buffer);
+    const filename = `out-${randomUUID()}.ogg`;
+    await fsp.mkdir(MEDIA_ROOT, { recursive: true }).catch(() => {});
+    await fsp.writeFile(join(MEDIA_ROOT, filename), ogg);
+    const base64 = ogg.toString('base64');
+
+    return this.dispatchOutbound(tenantId, conv, {
+      type: 'AUDIO',
+      body: null,
+      mediaUrl: `/v1/whatsapp/media/${filename}`,
+      mediaMimeType: 'audio/ogg',
+      mediaSize: ogg.length,
+      actor: actorUserId,
+      fromUserId: actorUserId,
+      autoAssign: true,
+      send: (provider, dInst) =>
+        provider.sendMedia(
+          dInst,
+          conv.contact.phoneE164 ?? '',
+          { mediatype: 'audio', mimetype: 'audio/ogg', media: base64 },
+          conv.contact.waChatId,
+        ),
+      auditMeta: { conversationId: id, audio: true, bytes: ogg.length },
+    });
+  }
+
+  /**
    * Envia texto COMO BOT: sem operador (fromUserId null, isBot) e SEM
    * auto-atribuir — a conversa segue "livre" pra um humano assumir. Não valida
    * dono (o bot age em conversas não atribuídas, garantido pelo BotService).
@@ -718,6 +766,10 @@ export class WhatsappConversationsService {
       fromUserId: string | null;
       autoAssign: boolean;
       isBot?: boolean;
+      // Mídia de saída (ex.: áudio gravado) — persistida pra tocar no inbox.
+      mediaUrl?: string | null;
+      mediaMimeType?: string | null;
+      mediaSize?: number | null;
       send: (
         provider: ReturnType<ChannelProviderFactory['for']>,
         dInst: ReturnType<WhatsappCredentials['decrypt']>,
@@ -736,6 +788,9 @@ export class WhatsappConversationsService {
         templateName: opts.templateName ?? null,
         fromUserId: opts.fromUserId,
         isBot: opts.isBot ?? false,
+        mediaUrl: opts.mediaUrl ?? null,
+        mediaMimeType: opts.mediaMimeType ?? null,
+        mediaSize: opts.mediaSize ?? null,
         status: 'PENDING',
       },
     });

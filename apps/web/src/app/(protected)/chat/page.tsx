@@ -16,6 +16,8 @@ import {
   FileText,
   Plus,
   Settings,
+  Mic,
+  Trash2,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
@@ -42,6 +44,7 @@ import {
   resolveConversation,
   resolveMediaUrl,
   sendMessage,
+  sendAudioMessage,
   sendOutboundTemplate,
   sendTemplateMessage,
   suggestWaReply,
@@ -1172,6 +1175,19 @@ function ChatThread({
           >
             <Sparkles className="h-4 w-4" />
           </Button>
+          {canType && (
+            <AudioRecorder
+              disabled={busy}
+              onRecorded={async (blob) => {
+                try {
+                  await sendAudioMessage(conversation.id, blob);
+                  onSent();
+                } catch (err) {
+                  toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
+                }
+              }}
+            />
+          )}
           <Button onClick={doSend} disabled={!canType || !text.trim() || busy} size="sm">
             <Send className="h-4 w-4" />
           </Button>
@@ -1199,6 +1215,104 @@ function renderTemplateBody(tpl: WaTemplate, variables: string[]): string {
     const v = variables[Number(d) - 1];
     return v && v.trim() ? v : `{{${d}}}`;
   });
+}
+
+/** Gravador de nota de voz no compositor (MediaRecorder → webm → backend). */
+function AudioRecorder({
+  onRecorded,
+  disabled,
+}: {
+  onRecorded: (blob: Blob) => Promise<void>;
+  disabled?: boolean;
+}) {
+  const [recording, setRecording] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const recRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cancelRef = useRef(false);
+
+  function cleanup() {
+    if (timerRef.current) clearInterval(timerRef.current);
+    recRef.current?.stream.getTracks().forEach((t) => t.stop());
+  }
+  useEffect(() => () => cleanup(), []);
+
+  async function start() {
+    if (disabled || busy) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : 'audio/webm';
+      const rec = new MediaRecorder(stream, { mimeType: mime });
+      chunksRef.current = [];
+      cancelRef.current = false;
+      rec.ondataavailable = (e) => {
+        if (e.data.size) chunksRef.current.push(e.data);
+      };
+      rec.onstop = async () => {
+        cleanup();
+        if (cancelRef.current) return;
+        const blob = new Blob(chunksRef.current, { type: mime });
+        if (blob.size < 800) return;
+        setBusy(true);
+        try {
+          await onRecorded(blob);
+        } finally {
+          setBusy(false);
+        }
+      };
+      recRef.current = rec;
+      rec.start();
+      setRecording(true);
+      setSeconds(0);
+      timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
+    } catch {
+      toast.error('Não consegui acessar o microfone. Permita o acesso no navegador.');
+    }
+  }
+
+  function stop(cancel: boolean) {
+    cancelRef.current = cancel;
+    setRecording(false);
+    try {
+      recRef.current?.stop();
+    } catch {
+      cleanup();
+    }
+  }
+
+  if (busy) return <span className="px-2 text-xs text-text-muted">enviando…</span>;
+  if (recording) {
+    const mm = Math.floor(seconds / 60);
+    const ss = String(seconds % 60).padStart(2, '0');
+    return (
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => stop(true)}
+          title="Cancelar"
+          className="rounded-md p-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-700"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+        <span className="flex items-center gap-1 text-xs font-medium text-rose-600">
+          <span className="h-2 w-2 animate-pulse rounded-full bg-rose-500" />
+          {mm}:{ss}
+        </span>
+        <Button onClick={() => stop(false)} size="sm" title="Enviar áudio">
+          <Send className="h-4 w-4" />
+        </Button>
+      </div>
+    );
+  }
+  return (
+    <Button onClick={start} disabled={disabled} size="sm" variant="subtle" title="Gravar áudio">
+      <Mic className="h-4 w-4" />
+    </Button>
+  );
 }
 
 function MessageBubble({ message, conversationId }: { message: WaMessage; conversationId: string }) {

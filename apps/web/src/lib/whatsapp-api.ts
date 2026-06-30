@@ -13,7 +13,7 @@
 
 import type { WaAiInsightsResponse, WaAiSuggestResponse } from '@netx/shared';
 
-import { api } from './api';
+import { api, apiUpload } from './api';
 
 export type { WaAiInsightsResponse, WaAiSuggestResponse };
 
@@ -260,6 +260,13 @@ export async function resolveConversation(id: string) {
 
 export async function sendMessage(conversationId: string, text: string) {
   return api.post<WaMessage>(`/v1/whatsapp/conversations/${conversationId}/messages`, { text });
+}
+
+/** Envia uma nota de voz gravada no navegador (multipart). */
+export async function sendAudioMessage(conversationId: string, blob: Blob) {
+  const fd = new FormData();
+  fd.append('file', blob, 'voice.webm');
+  return apiUpload<WaMessage>(`/v1/whatsapp/conversations/${conversationId}/messages/audio`, fd);
 }
 
 /** Transcreve uma mensagem de áudio (sob demanda). */
