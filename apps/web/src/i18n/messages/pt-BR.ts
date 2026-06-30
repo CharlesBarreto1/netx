@@ -4689,6 +4689,7 @@ const messages = {
     },
     modal: {
       description: 'Adiciona um equipamento ao inventário do NMS.',
+      editTitle: 'Editar roteador',
       submit: 'Cadastrar',
       title: 'Cadastrar roteador',
     },
@@ -4716,6 +4717,8 @@ const messages = {
       removed: 'Roteador "{hostname}" removido.',
       testFailed: 'Falha no teste de conexão.',
       testResult: 'Teste de {hostname} — {result}',
+      updateFailed: 'Falha ao atualizar roteador.',
+      updated: 'Roteador "{hostname}" atualizado.',
     },
     unreachable: 'O serviço do <strong>NMS</strong> está fora do ar (gateway não alcançou o módulo). Suba a stack do NMS e tente de novo.',
   },

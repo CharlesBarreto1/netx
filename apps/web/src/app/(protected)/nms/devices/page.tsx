@@ -27,6 +27,7 @@ import {
   type CreateNmsDeviceRequest,
   type NmsDevice,
   type NmsVendor,
+  type UpdateNmsDeviceRequest,
 } from '@/lib/nms-api';
 
 interface FormState {
@@ -66,6 +67,7 @@ export default function NmsDevicesPage() {
   );
 
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<NmsDevice | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
@@ -73,6 +75,28 @@ export default function NmsDevicesPage() {
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm((f) => ({ ...f, [k]: v }));
+
+  function openCreate() {
+    setEditing(null);
+    setForm(EMPTY_FORM);
+    setOpen(true);
+  }
+
+  function openEdit(d: NmsDevice) {
+    setEditing(d);
+    // Credenciais não voltam do cofre — ficam em branco; preencher só se quiser trocar.
+    setForm({
+      hostname: d.hostname,
+      mgmtIp: d.mgmtIp,
+      vendor: d.vendor,
+      model: d.model ?? '',
+      site: d.site ?? '',
+      username: '',
+      password: '',
+      snmpCommunity: '',
+    });
+    setOpen(true);
+  }
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -82,16 +106,22 @@ export default function NmsDevicesPage() {
     }
     setSaving(true);
     try {
-      const body: CreateNmsDeviceRequest = {
+      const fields = {
         hostname: form.hostname.trim(),
         mgmtIp: form.mgmtIp.trim(),
         vendor: form.vendor,
         model: form.model.trim() || undefined,
         site: form.site.trim() || undefined,
       };
-      const device = await nmsApi.createDevice(body);
 
-      // Credenciais são opcionais no cadastro; se preencheu usuário, grava no cofre do NMS.
+      let device: NmsDevice;
+      if (editing) {
+        device = await nmsApi.updateDevice(editing.id, fields satisfies UpdateNmsDeviceRequest);
+      } else {
+        device = await nmsApi.createDevice(fields satisfies CreateNmsDeviceRequest);
+      }
+
+      // Credenciais opcionais; se preencheu usuário, (re)grava no cofre do NMS.
       if (form.username.trim()) {
         await nmsApi.setCredentials(device.id, {
           username: form.username.trim(),
@@ -99,12 +129,18 @@ export default function NmsDevicesPage() {
           snmpCommunity: form.snmpCommunity.trim() || undefined,
         });
       }
-      toast.success(t('toast.created', { hostname: device.hostname }));
+      toast.success(
+        editing
+          ? t('toast.updated', { hostname: device.hostname })
+          : t('toast.created', { hostname: device.hostname }),
+      );
       setOpen(false);
+      setEditing(null);
       setForm(EMPTY_FORM);
       await mutate();
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : t('toast.createFailed'));
+      const fallback = editing ? t('toast.updateFailed') : t('toast.createFailed');
+      toast.error(err instanceof ApiError ? err.message : fallback);
     } finally {
       setSaving(false);
     }
@@ -156,7 +192,7 @@ export default function NmsDevicesPage() {
           <p className="text-sm text-text-muted">{t('subtitle')}</p>
         </div>
         {canManage && !notEntitled && !unreachable && (
-          <Button variant="primary" onClick={() => setOpen(true)}>
+          <Button variant="primary" onClick={openCreate}>
             {t('addRouter')}
           </Button>
         )}
@@ -215,6 +251,11 @@ export default function NmsDevicesPage() {
                         {t('testConnection')}
                       </Button>
                       {canManage && (
+                        <Button variant="ghost" size="sm" onClick={() => openEdit(d)}>
+                          {tCommon('edit')}
+                        </Button>
+                      )}
+                      {canManage && (
                         <Button variant="ghost" size="sm" onClick={() => setToDelete(d)}>
                           {tCommon('delete')}
                         </Button>
@@ -231,7 +272,7 @@ export default function NmsDevicesPage() {
       <Modal
         open={open}
         onClose={() => setOpen(false)}
-        title={t('modal.title')}
+        title={editing ? t('modal.editTitle') : t('modal.title')}
         description={t('modal.description')}
         footer={
           <div className="flex justify-end gap-2">
@@ -239,7 +280,7 @@ export default function NmsDevicesPage() {
               {tCommon('cancel')}
             </Button>
             <Button variant="primary" loading={saving} onClick={onSubmit}>
-              {t('modal.submit')}
+              {editing ? tCommon('save') : t('modal.submit')}
             </Button>
           </div>
         }

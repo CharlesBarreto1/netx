@@ -4681,6 +4681,7 @@ const messages = {
     },
     modal: {
       description: 'Agrega un equipo al inventario del NMS.',
+      editTitle: 'Editar router',
       submit: 'Registrar',
       title: 'Registrar router',
     },
@@ -4708,6 +4709,8 @@ const messages = {
       removed: 'Router "{hostname}" eliminado.',
       testFailed: 'Error en la prueba de conexión.',
       testResult: 'Prueba de {hostname} — {result}',
+      updateFailed: 'Error al actualizar el router.',
+      updated: 'Router "{hostname}" actualizado.',
     },
     unreachable: 'El servicio del <strong>NMS</strong> está caído (el gateway no alcanzó el módulo). Levantá el stack del NMS e intentá de nuevo.',
   },

@@ -4659,6 +4659,7 @@ const messages = {
     },
     modal: {
       description: 'Adds a device to the NMS inventory.',
+      editTitle: 'Edit router',
       submit: 'Add',
       title: 'Add router',
     },
@@ -4686,6 +4687,8 @@ const messages = {
       removed: 'Router "{hostname}" removed.',
       testFailed: 'Connection test failed.',
       testResult: 'Test of {hostname} — {result}',
+      updateFailed: 'Failed to update router.',
+      updated: 'Router "{hostname}" updated.',
     },
     unreachable: 'The <strong>NMS</strong> service is down (gateway could not reach the module). Start the NMS stack and try again.',
   },

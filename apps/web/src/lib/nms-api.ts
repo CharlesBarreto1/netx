@@ -32,6 +32,8 @@ export interface CreateNmsDeviceRequest {
   site?: string;
 }
 
+export type UpdateNmsDeviceRequest = Partial<CreateNmsDeviceRequest>;
+
 export interface SetNmsCredentialRequest {
   username: string;
   password?: string;
@@ -52,6 +54,8 @@ export const nmsApi = {
   listDevices: () => api.get<NmsDevice[]>(`${BASE}/devices`),
   createDevice: (body: CreateNmsDeviceRequest) =>
     api.post<NmsDevice>(`${BASE}/devices`, body),
+  updateDevice: (id: string, body: UpdateNmsDeviceRequest) =>
+    api.put<NmsDevice>(`${BASE}/devices/${id}`, body),
   deleteDevice: (id: string) => api.delete<void>(`${BASE}/devices/${id}`),
   setCredentials: (id: string, body: SetNmsCredentialRequest) =>
     api.post<{ ok: true }>(`${BASE}/devices/${id}/credentials`, body),
