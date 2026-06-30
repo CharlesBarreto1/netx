@@ -406,8 +406,13 @@ export async function listInstanceGroups(id: string) {
 export function resolveMediaUrl(mediaUrl: string | null): string | null {
   if (!mediaUrl) return null;
   const base = (process.env.NEXT_PUBLIC_API_URL ?? '/api').replace(/\/$/, '');
+  // O endpoint /media exige chat.read; o <img>/<video> não manda header de
+  // auth, então passamos o token na query (mesma auth do SSE). Sem isso a
+  // mídia (figurinha/imagem/vídeo) volta 401 e não renderiza.
+  const token = typeof window !== 'undefined' ? localStorage.getItem('netx.accessToken') : null;
+  const sep = mediaUrl.includes('?') ? '&' : '?';
   // mediaUrl já vem como /v1/...
-  return `${base}${mediaUrl}`;
+  return `${base}${mediaUrl}${token ? `${sep}access_token=${encodeURIComponent(token)}` : ''}`;
 }
 
 export function isToday(iso: string): boolean {

@@ -147,7 +147,7 @@ const DEFAULTS_BY_LANG: Record<BotLang, Pick<BotConfigDto, 'greeting' | 'fallbac
     greeting: 'Olá! 👋 Sou o assistente virtual. Como posso ajudar você hoje?',
     fallbackText: 'Não entendi 🤔. Responda com o número de uma opção ou digite *menu*.',
     handoffText: 'Certo! Já estou te encaminhando para um de nossos atendentes. 👤',
-    unknownText: 'Não localizei seu cadastro por este número. Vou te transferir para um atendente. 👤',
+    unknownText: 'Quero te ajudar! 😊 Já estou te conectando com um de nossos consultores. 🧑‍💼',
     options: [
       { key: '1', label: '2ª via / Pix do boleto', action: 'tool', tool: 'segunda_via' },
       { key: '2', label: 'Status da minha conexão', action: 'tool', tool: 'status_conexao' },
@@ -160,7 +160,7 @@ const DEFAULTS_BY_LANG: Record<BotLang, Pick<BotConfigDto, 'greeting' | 'fallbac
     greeting: '¡Hola! 👋 Soy el asistente virtual. ¿Cómo puedo ayudarte hoy?',
     fallbackText: 'No entendí 🤔. Respondé con el número de una opción o escribí *menú*.',
     handoffText: '¡Listo! Te estoy derivando a uno de nuestros agentes. 👤',
-    unknownText: 'No encontré tu registro por este número. Te transfiero a un agente. 👤',
+    unknownText: '¡Con gusto te ayudo! 😊 Ya te estoy conectando con uno de nuestros asesores. 🧑‍💼',
     options: [
       { key: '1', label: '2ª vía / Pix de la factura', action: 'tool', tool: 'segunda_via' },
       { key: '2', label: 'Estado de mi conexión', action: 'tool', tool: 'status_conexao' },
@@ -173,7 +173,7 @@ const DEFAULTS_BY_LANG: Record<BotLang, Pick<BotConfigDto, 'greeting' | 'fallbac
     greeting: 'Hi! 👋 I am the virtual assistant. How can I help you today?',
     fallbackText: "I didn't get that 🤔. Reply with an option number or type *menu*.",
     handoffText: 'Got it! Connecting you to one of our agents. 👤',
-    unknownText: "I couldn't find your account for this number. I'll transfer you to an agent. 👤",
+    unknownText: "Happy to help! 😊 I'm connecting you with one of our advisors. 🧑‍💼",
     options: [
       { key: '1', label: 'Invoice / Pix copy', action: 'tool', tool: 'segunda_via' },
       { key: '2', label: 'My connection status', action: 'tool', tool: 'status_conexao' },

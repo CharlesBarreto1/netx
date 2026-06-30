@@ -499,6 +499,17 @@ export class WhatsappConversationsService {
       throw new TemplateRequiredException();
     }
 
+    // Prefixo "*Nome do operador*" — vai NO TEXTO enviado ao WhatsApp do cliente
+    // (o netx mostra o nome via label separado; por isso o `body` salvo fica
+    // SEM o prefixo, pra não duplicar). Respeita o toggle "mostrar nome".
+    const sender = await this.prisma.user.findFirst({
+      where: { id: actorUserId, tenantId },
+      select: { firstName: true, lastName: true, chatPrefs: true },
+    });
+    const showName = ((sender?.chatPrefs ?? {}) as { showName?: boolean }).showName !== false;
+    const opName = [sender?.firstName, sender?.lastName].filter(Boolean).join(' ').trim();
+    const outgoing = showName && opName ? `*${opName}*\n${text}` : text;
+
     return this.dispatchOutbound(tenantId, conv, {
       type: 'TEXT',
       body: text,
@@ -508,7 +519,7 @@ export class WhatsappConversationsService {
       // Responde no JID exato do inbound (pode ser @lid / @g.us de grupo);
       // o telefone é só fallback e em grupos não existe (phoneE164 null).
       send: (provider, dInst) =>
-        provider.sendText(dInst, conv.contact.phoneE164 ?? '', text, conv.contact.waChatId),
+        provider.sendText(dInst, conv.contact.phoneE164 ?? '', outgoing, conv.contact.waChatId),
       auditMeta: { conversationId: id, length: text.length },
     });
   }

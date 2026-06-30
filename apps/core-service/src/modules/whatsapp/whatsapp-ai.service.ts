@@ -18,18 +18,38 @@ import { PrismaService } from '../prisma/prisma.service';
 /** Quantas mensagens recentes entram no contexto (limita custo/latência). */
 const HISTORY_LIMIT = 20;
 
-const SUGGEST_SYSTEM = [
-  'Você é um assistente de atendimento ao cliente de um provedor de internet (ISP), via WhatsApp.',
-  'Leia o histórico e sugira UMA resposta para o ATENDENTE enviar ao cliente.',
-  'Tom profissional, cordial e objetivo, em português (pt-BR). No máximo 2 frases.',
-  'Baseie-se só no histórico; não invente dados (planos, valores, prazos) que não apareçam.',
-  'Responda APENAS com o texto da resposta sugerida, sem aspas nem explicações.',
-].join(' ');
+// Idioma da sugestão/insights = idioma do cliente (DDI), fallback no provedor.
+type AiLang = 'pt' | 'es' | 'en';
+function langFromLocale(locale?: string | null): AiLang {
+  const l = (locale ?? '').toLowerCase();
+  if (l.startsWith('es')) return 'es';
+  if (l.startsWith('en')) return 'en';
+  return 'pt';
+}
+function langForPhone(phone?: string | null, tenantLocale?: string | null): AiLang {
+  const d = (phone ?? '').replace(/\D/g, '');
+  if (d.startsWith('595')) return 'es';
+  if (d.startsWith('55')) return 'pt';
+  return langFromLocale(tenantLocale);
+}
+const LANG_NAME: Record<AiLang, string> = { pt: 'português (pt-BR)', es: 'español', en: 'English' };
 
-const INSIGHTS_SYSTEM = [
-  'Você analisa uma conversa de atendimento (ISP, WhatsApp) e extrai insights para o atendente.',
-  'Responda em português (pt-BR), com base SOMENTE no histórico.',
-].join(' ');
+function suggestSystem(lang: AiLang): string {
+  return [
+    'Você é um assistente de atendimento ao cliente de um provedor de internet (ISP), via WhatsApp.',
+    'Leia o histórico e sugira UMA resposta para o ATENDENTE enviar ao cliente.',
+    `Tom profissional, cordial e objetivo. Escreva a resposta sugerida em ${LANG_NAME[lang]} (o MESMO idioma do cliente). No máximo 2 frases.`,
+    'Baseie-se só no histórico; não invente dados (planos, valores, prazos) que não apareçam.',
+    'Responda APENAS com o texto da resposta sugerida, sem aspas nem explicações.',
+  ].join(' ');
+}
+function insightsSystem(lang: AiLang): string {
+  return [
+    'Você analisa uma conversa de atendimento (ISP, WhatsApp) e extrai insights para o atendente.',
+    `Escreva summary e intent em ${LANG_NAME[lang]} (o idioma do cliente), com base SOMENTE no histórico.`,
+    'Os campos sentiment e urgency DEVEM usar exatamente os valores do enum (em português).',
+  ].join(' ');
+}
 
 const INSIGHTS_SCHEMA = {
   type: 'object',
@@ -59,11 +79,12 @@ export class WhatsappAiService {
 
   /** Sugere uma resposta para o atendente revisar e enviar. */
   async suggestReply(tenantId: string, conversationId: string): Promise<WaAiSuggestResponse> {
+    const lang = await this.convLang(tenantId, conversationId);
     const transcript = await this.transcript(tenantId, conversationId);
     const r = await this.ai.chat(
       tenantId,
       [{ role: 'user', content: `Histórico da conversa:\n${transcript}\n\nResposta sugerida:` }],
-      { system: SUGGEST_SYSTEM, maxTokens: 200 },
+      { system: suggestSystem(lang), maxTokens: 200 },
       'chat.suggest_reply',
     );
     return {
@@ -75,6 +96,7 @@ export class WhatsappAiService {
 
   /** Resumo + intenção + sentimento + urgência da conversa. */
   async insights(tenantId: string, conversationId: string): Promise<WaAiInsightsResponse> {
+    const lang = await this.convLang(tenantId, conversationId);
     const transcript = await this.transcript(tenantId, conversationId);
     // Usa chat (não json) para também obter provider/usedFallback no retorno.
     const r = await this.ai.chat(
@@ -88,7 +110,7 @@ export class WhatsappAiService {
             `sentiment (positivo|neutro|insatisfeito), urgency (baixa|media|alta).`,
         },
       ],
-      { system: INSIGHTS_SYSTEM, maxTokens: 400, schema: INSIGHTS_SCHEMA },
+      { system: insightsSystem(lang), maxTokens: 400, schema: INSIGHTS_SCHEMA },
       'chat.insights',
     );
     let out: InsightsRaw;
@@ -105,6 +127,19 @@ export class WhatsappAiService {
       provider: r.provider,
       usedFallback: r.usedFallback,
     };
+  }
+
+  /** Idioma da conversa: DDI do contato, com fallback no locale do provedor. */
+  private async convLang(tenantId: string, conversationId: string): Promise<AiLang> {
+    const conv = await this.prisma.whatsappConversation.findFirst({
+      where: { id: conversationId, tenantId },
+      select: { contact: { select: { phoneE164: true } } },
+    });
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { locale: true },
+    });
+    return langForPhone(conv?.contact?.phoneE164, tenant?.locale);
   }
 
   /**
