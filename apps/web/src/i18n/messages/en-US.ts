@@ -3780,6 +3780,8 @@ const messages = {
     document: 'document',
     group: 'Group',
     bot: 'Bot',
+    transcribe: 'Transcribe audio',
+    transcribing: 'Transcribing…',
   },
   chatBot: {
     title: 'Support chatbot',

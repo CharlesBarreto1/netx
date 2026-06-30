@@ -27,6 +27,7 @@ import { WhatsappInstancesService } from './whatsapp-instances.service';
 import { WhatsappMessagesService } from './whatsapp-messages.service';
 import { WhatsappTemplatesController } from './whatsapp-templates.controller';
 import { WhatsappTemplatesService } from './whatsapp-templates.service';
+import { WhatsappTranscriptionService } from './whatsapp-transcription.service';
 import { WhatsappWebhookController } from './whatsapp-webhook.controller';
 import { WhatsappWebhookMetaController } from './whatsapp-webhook-meta.controller';
 
@@ -80,6 +81,7 @@ import { WhatsappWebhookMetaController } from './whatsapp-webhook-meta.controlle
     WhatsappAiService,
     WhatsappBotService,
     WhatsappBillingRemindersService,
+    WhatsappTranscriptionService,
   ],
   exports: [WhatsappInstancesService],
 })

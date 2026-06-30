@@ -254,6 +254,17 @@ export class WhatsappController {
     );
   }
 
+  /** Transcreve uma mensagem de áudio (sob demanda, whisper.cpp local). */
+  @Post('conversations/:id/messages/:messageId/transcribe')
+  @RequirePermissions('chat.read')
+  transcribe(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('messageId', new ParseUUIDPipe()) messageId: string,
+  ) {
+    return this.conversations.transcribeMessage(user.tenantId, id, messageId);
+  }
+
   // ----- realtime SSE -----
 
   /**

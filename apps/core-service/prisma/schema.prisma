@@ -2396,6 +2396,7 @@ model WhatsappMessage {
   mediaUrl        String? @map("media_url") @db.VarChar(500) // path local ou URL
   mediaMimeType   String? @map("media_mime_type") @db.VarChar(100)
   mediaSize       Int?    @map("media_size")               // bytes
+  transcription   String? @db.Text                         // transcrição de áudio (whisper, sob demanda)
 
   providerMsgId   String?  @unique @map("provider_msg_id") @db.VarChar(120)
   templateName    String?  @map("template_name") @db.VarChar(120)   // HSM enviado (auditoria Meta)

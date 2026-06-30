@@ -15,6 +15,7 @@ import { ChannelProviderFactory } from './providers/channel-provider.factory';
 import { WhatsappCredentials } from './providers/whatsapp-credentials';
 import { WhatsappEventsBus } from './whatsapp-events.bus';
 import { WhatsappMessagesService } from './whatsapp-messages.service';
+import { WhatsappTranscriptionService } from './whatsapp-transcription.service';
 
 export type InboxFilter =
   | 'mine'
@@ -52,7 +53,40 @@ export class WhatsappConversationsService {
     private readonly factory: ChannelProviderFactory,
     private readonly creds: WhatsappCredentials,
     private readonly messages: WhatsappMessagesService,
+    private readonly transcription: WhatsappTranscriptionService,
   ) {}
+
+  /**
+   * Transcreve uma mensagem de áudio (sob demanda) via whisper.cpp local.
+   * Persiste a transcrição na mensagem (idempotente — re-chamadas devolvem a
+   * já existente) e emite SSE para a thread atualizar.
+   */
+  async transcribeMessage(tenantId: string, conversationId: string, messageId: string) {
+    const msg = await this.prisma.whatsappMessage.findFirst({
+      where: { id: messageId, conversationId, conversation: { tenantId } },
+      select: { id: true, type: true, mediaUrl: true, transcription: true },
+    });
+    if (!msg) throw new NotFoundException('Mensagem não encontrada');
+    if (msg.transcription) return { transcription: msg.transcription };
+    if (msg.type !== 'AUDIO' && msg.type !== 'VIDEO') {
+      throw new BadRequestException('Só dá para transcrever áudio (ou vídeo).');
+    }
+    if (!msg.mediaUrl) throw new BadRequestException('Áudio sem arquivo no servidor.');
+
+    const filename = msg.mediaUrl.split('/').pop() ?? '';
+    const transcription = await this.transcription.transcribeFile(filename);
+
+    await this.prisma.whatsappMessage.update({
+      where: { id: msg.id },
+      data: { transcription },
+    });
+    this.events.emit({
+      type: 'message.updated',
+      tenantId,
+      payload: { id: msg.id, conversationId, transcription },
+    });
+    return { transcription };
+  }
 
   async list(tenantId: string, userId: string, filter: InboxFilter = 'mine') {
     const where: Prisma.WhatsappConversationWhereInput = { tenantId };

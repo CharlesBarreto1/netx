@@ -46,6 +46,7 @@ import {
   sendTemplateMessage,
   suggestWaReply,
   timeAgo,
+  transcribeMessage,
   type InboxFilter,
   type WaAiInsightsResponse,
   type WaAgent,
@@ -1041,7 +1042,7 @@ function ChatThread({
         ) : (
           <div className="space-y-1.5">
             {conversation.messages.map((m) => (
-              <MessageBubble key={m.id} message={m} />
+              <MessageBubble key={m.id} message={m} conversationId={conversation.id} />
             ))}
           </div>
         )}
@@ -1200,11 +1201,26 @@ function renderTemplateBody(tpl: WaTemplate, variables: string[]): string {
   });
 }
 
-function MessageBubble({ message }: { message: WaMessage }) {
+function MessageBubble({ message, conversationId }: { message: WaMessage; conversationId: string }) {
   const tx = useTranslations('chatExtra');
   const isOut = message.direction === 'OUT';
   const time = new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   const mediaUrl = resolveMediaUrl(message.mediaUrl);
+  const [transcription, setTranscription] = useState<string | null>(message.transcription ?? null);
+  const [transcribing, setTranscribing] = useState(false);
+
+  async function doTranscribe() {
+    if (transcribing) return;
+    setTranscribing(true);
+    try {
+      const r = await transcribeMessage(conversationId, message.id);
+      setTranscription(r.transcription);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
+    } finally {
+      setTranscribing(false);
+    }
+  }
   return (
     <div className={`flex ${isOut ? 'justify-end' : 'justify-start'}`}>
       <div
@@ -1231,7 +1247,23 @@ function MessageBubble({ message }: { message: WaMessage }) {
           <img src={mediaUrl} alt="" className="mb-1 h-32 w-32 object-contain" />
         )}
         {message.type === 'AUDIO' && mediaUrl && (
-          <audio controls src={mediaUrl} className="mb-1 max-w-full" />
+          <div className="mb-1">
+            <audio controls src={mediaUrl} className="max-w-full" />
+            {transcription ? (
+              <p className="mt-1 rounded-md bg-black/5 px-2 py-1 text-xs italic text-slate-600 dark:bg-white/10 dark:text-slate-300">
+                <span className="mr-1 not-italic">📝</span>“{transcription}”
+              </p>
+            ) : (
+              <button
+                type="button"
+                onClick={doTranscribe}
+                disabled={transcribing}
+                className="mt-1 inline-flex items-center gap-1 text-xs text-brand-600 hover:underline disabled:opacity-50 dark:text-brand-300"
+              >
+                📝 {transcribing ? tx('transcribing') : tx('transcribe')}
+              </button>
+            )}
+          </div>
         )}
         {message.type === 'VIDEO' && mediaUrl && (
           <video controls src={mediaUrl} className="mb-1 max-w-full" />

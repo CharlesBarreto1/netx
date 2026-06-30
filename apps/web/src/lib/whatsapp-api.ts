@@ -120,6 +120,7 @@ export interface WaMessage {
   isBot?: boolean;
   authorName?: string | null;
   authorPhone?: string | null;
+  transcription?: string | null;
 }
 
 export interface WaConversationDetail extends WaConversationListItem {
@@ -259,6 +260,14 @@ export async function resolveConversation(id: string) {
 
 export async function sendMessage(conversationId: string, text: string) {
   return api.post<WaMessage>(`/v1/whatsapp/conversations/${conversationId}/messages`, { text });
+}
+
+/** Transcreve uma mensagem de áudio (sob demanda). */
+export async function transcribeMessage(conversationId: string, messageId: string) {
+  return api.post<{ transcription: string }>(
+    `/v1/whatsapp/conversations/${conversationId}/messages/${messageId}/transcribe`,
+    {},
+  );
 }
 
 export async function sendTemplateMessage(

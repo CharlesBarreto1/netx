@@ -3802,6 +3802,8 @@ const messages = {
     document: 'documento',
     group: 'Grupo',
     bot: 'Bot',
+    transcribe: 'Transcribir audio',
+    transcribing: 'Transcribiendo…',
   },
   chatBot: {
     title: 'Chatbot de atención',
