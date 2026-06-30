@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -60,6 +60,10 @@ export class WhatsappMessagesService {
         updates.resolvedById = null;
         updates.assignedUser = { disconnect: true };
         updates.assignedAt = null;
+        // Reseta o estado do bot — ele volta a saudar/menu nesta nova conversa
+        // (senão um node 'handed_off' antigo o deixaria mudo pra sempre).
+        updates.botActive = false;
+        updates.botContext = Prisma.JsonNull;
       }
       return this.prisma.whatsappConversation.update({
         where: { id: existingOpen.id },

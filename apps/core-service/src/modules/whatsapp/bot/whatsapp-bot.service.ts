@@ -200,7 +200,7 @@ function botSystem(lang: BotLang): string {
 }
 
 interface BotContext {
-  node?: 'menu' | 'ai' | 'await_ticket';
+  node?: 'menu' | 'ai' | 'await_ticket' | 'handed_off';
 }
 
 @Injectable()
@@ -324,6 +324,17 @@ export class WhatsappBotService {
     const text = (conv.messages[0]?.body ?? '').trim();
     const lower = text.toLowerCase();
     const ctxState = (conv.botContext as BotContext | null) ?? {};
+
+    // Já encaminhado a um humano: o bot fica EM SILÊNCIO (a conversa está na
+    // fila esperando atendente) — evita o loop de re-saudar a cada mensagem.
+    // Só volta a agir se o cliente pedir o menu explicitamente.
+    if (ctxState.node === 'handed_off') {
+      if (MENU_WORDS.includes(lower)) {
+        await this.setContext(conv.id, { node: 'menu' }, true);
+        await this.send(tenantId, conv.id, `${config.greeting}\n\n${this.renderMenu(config, lang)}`);
+      }
+      return;
+    }
 
     // Pedido explícito de humano em qualquer ponto.
     if (HANDOFF_WORDS.some((w) => lower.includes(w))) {
@@ -575,9 +586,12 @@ export class WhatsappBotService {
     customText?: string,
   ): Promise<void> {
     await this.send(tenantId, conversationId, customText ?? config.handoffText);
+    // Marca handed_off: o bot fica em silêncio (não re-saúda) enquanto a conversa
+    // espera um humano. botActive=false → cai na fila "Espera". O node handed_off
+    // é checado no início do handle(); é limpo ao reabrir (whatsapp-messages.service).
     await this.prisma.whatsappConversation.update({
       where: { id: conversationId },
-      data: { botActive: false, botContext: Prisma.JsonNull },
+      data: { botActive: false, botContext: { node: 'handed_off' } as object },
     });
     // Avisa o inbox: a conversa (não atribuída) está esperando um humano.
     this.events.emit({
