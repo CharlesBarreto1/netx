@@ -352,7 +352,17 @@ update_nms() {
     log "NMS (ecossistema) — subindo/atualizando via up-netx.sh (build local, API em :${NETX_NMS_API_PORT})"
     # up-netx.sh é idempotente: gera .env.netx (puxa CORE_JWT_SECRET/RabbitMQ do /etc/netx)
     # só se faltar, depois `docker compose ... up -d --build`. Repassa GITHUB_TOKEN se houver.
-    if GITHUB_TOKEN="${GITHUB_TOKEN:-}" bash "${eco}"; then
+    #
+    # IMPORTANTE: env LIMPO (env -i). A seção 10 (RADIUS) faz `. /etc/netx/.env` no shell
+    # principal, trazendo WEB_PORT (=3200 do netx-web), POSTGRES_*, etc. No `docker compose`,
+    # variável de ambiente SOBREPÕE o `--env-file` — então sem isolar o env, a stack do NMS
+    # interpolaria com os valores da PLATAFORMA (web do NMS colide na :3200, e creds do banco
+    # poderiam vazar). `env -i` garante que só o .env.netx alimenta a interpolação.
+    if env -i \
+         PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+         HOME="${HOME:-/root}" \
+         GITHUB_TOKEN="${GITHUB_TOKEN:-}" \
+         bash "${eco}"; then
       ok "NMS no ar (stack do ecossistema; API em 127.0.0.1:${NETX_NMS_API_PORT})"
     else
       warn "NMS: up-netx.sh falhou. Veja: docker compose -f ${NETX_HOME}/apps/nms/infra/docker-compose.netx.yml --env-file ${NETX_HOME}/apps/nms/infra/.env.netx logs api"
