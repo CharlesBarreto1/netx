@@ -167,6 +167,8 @@ export class ProxyService {
     // orquestrador→NCS→OLT→ONT) precisam de mais que os 15s padrão — só a ONT
     // responder já passa disso. Timeout ampliado SÓ pra elas; resto segue 15s.
     const isSlowExternal = /\/v1\/ufinet\/.*ont-action/.test(targetPath);
+    // Transcrição de áudio (whisper local) pode levar dezenas de segundos.
+    const isTranscribe = /\/transcribe$/.test(targetPath);
 
     try {
       const res = await firstValueFrom(
@@ -192,7 +194,7 @@ export class ProxyService {
           maxBodyLength: Infinity,
           maxContentLength: Infinity,
           validateStatus: () => true, // never throw on 4xx/5xx
-          timeout: isMultipart ? 60_000 : isSlowExternal ? 90_000 : 15_000,
+          timeout: isMultipart ? 60_000 : isTranscribe ? 240_000 : isSlowExternal ? 90_000 : 15_000,
         }),
       );
       return { status: res.status, headers: res.headers as any, body: Buffer.from(res.data as ArrayBuffer) };
