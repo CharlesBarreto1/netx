@@ -115,17 +115,19 @@ export default function ChatPage() {
       // Sempre atualiza inbox + contadores das abas
       void inboxQuery.mutate();
       void countsQuery.mutate();
-      // Se for da conversa aberta, atualiza detalhe
+      // Se for da conversa aberta, atualiza o detalhe.
       if (p.conversationId === selectedId) {
         void detailQuery.mutate();
-      } else if (p.direction === 'IN' && !p.isGroup) {
-        // Notif pra mensagem que chegou em outra conversa (grupos não notificam —
-        // são barulhentos; aparecem na aba Grupos sem som).
+      }
+      // Toca som em TODA mensagem recebida (aberta ou não); a notificação do
+      // browser só aparece quando a aba não está em foco (tratado no hook).
+      // Grupos não tocam (são barulhentos; aparecem na aba Grupos).
+      if (p.direction === 'IN' && !p.isGroup) {
         notify({
           title: t('notification.newMessage'),
           body: p.body ?? t('notification.media'),
           tag: p.conversationId,
-          onClick: () => setSelectedId(p.conversationId),
+          onClick: p.conversationId === selectedId ? undefined : () => setSelectedId(p.conversationId),
         });
       }
     } else if (

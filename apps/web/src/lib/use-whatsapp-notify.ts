@@ -21,17 +21,54 @@ export function useWhatsappNotify() {
     return stored === null ? true : stored === '1';
   });
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  // Som via Web Audio API (oscilador) — não depende de arquivo/asset e evita
+  // o problema do <audio> com src inválido. O AudioContext nasce "suspended"
+  // por política de autoplay; é resumido no primeiro gesto do usuário (abaixo).
+  const ctxRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
-    // Cria <audio> com data URI (beep ~200ms, evita ter que servir arquivo extra)
     if (typeof window === 'undefined') return;
-    const a = new Audio();
-    // Beep WAV 440Hz 200ms encoded base64 (gerado offline; barra está limpa)
-    a.src =
-      'data:audio/wav;base64,UklGRl9vT19XQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YT9vT19/f39/f39/f3+AgICAgICAgIB/f39/f39/f3+AgICAgICAgA==';
-    a.volume = 0.4;
-    audioRef.current = a;
+    const AC: typeof AudioContext | undefined =
+      window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC) return;
+    const ctx = new AC();
+    ctxRef.current = ctx;
+    // Desbloqueia o áudio no primeiro gesto (clique/tecla) — exigência dos browsers.
+    const unlock = () => {
+      if (ctx.state === 'suspended') void ctx.resume();
+    };
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+      void ctx.close();
+    };
+  }, []);
+
+  const playBeep = useCallback(() => {
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+    if (ctx.state === 'suspended') void ctx.resume();
+    const now = ctx.currentTime;
+    // Dois tons curtos (ding-ding) tipo notificação.
+    for (const [start, freq] of [
+      [0, 880],
+      [0.18, 1175],
+    ] as const) {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const t = now + start;
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.exponentialRampToValueAtTime(0.3, t + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.15);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.16);
+    }
   }, []);
 
   const setSoundEnabled = useCallback((v: boolean) => {
@@ -61,14 +98,7 @@ export function useWhatsappNotify() {
       void requestPermissionIfNeeded();
 
       // Som
-      if (soundEnabled && audioRef.current) {
-        try {
-          audioRef.current.currentTime = 0;
-          void audioRef.current.play().catch(() => {});
-        } catch {
-          /* ignora */
-        }
-      }
+      if (soundEnabled) playBeep();
 
       // Notificação browser apenas se aba não está focada
       if (
@@ -95,7 +125,7 @@ export function useWhatsappNotify() {
         }
       }
     },
-    [soundEnabled, requestPermissionIfNeeded],
+    [soundEnabled, requestPermissionIfNeeded, playBeep],
   );
 
   return { notify, soundEnabled, setSoundEnabled };
