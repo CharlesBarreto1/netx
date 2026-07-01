@@ -235,6 +235,7 @@ export const MENU_GROUPS: MenuGroup[] = [
         children: [
           { key: 'pops', href: '/network/pops', labelKey: 'pops', permission: 'network.read' },
           { key: 'equipment', href: '/network/equipment', labelKey: 'equipment', permission: 'network.read' },
+          { key: 'ipam', href: '/network/ipam', labelKey: 'ipam', permission: 'ipam.read' },
           { key: 'opticalEnclosures', href: '/network/optical', labelKey: 'opticalEnclosures', permission: 'network.read' },
           { key: 'fiberCables', href: '/network/fiber', labelKey: 'fiberCables', permission: 'network.read' },
           { key: 'fiberSplices', href: '/network/splices', labelKey: 'fiberSplices', permission: 'network.read' },
@@ -337,6 +338,8 @@ export const MENU_GROUPS: MenuGroup[] = [
           { key: 'whatsappInstances', href: '/settings/whatsapp', labelKey: 'whatsappInstances', permission: 'chat.admin', requiredModules: ['netx-call'] },
           // Chatbot de atendimento (menu + IA agêntica). Módulo netx-call.
           { key: 'chatbot', href: '/settings/whatsapp/bot', labelKey: 'chatbot', permission: 'chat.admin', requiredModules: ['netx-call'] },
+          // Respostas rápidas (mensagens predefinidas). chat.send pra ver/usar; gestão da equipe via chat.admin.
+          { key: 'quickReplies', href: '/settings/whatsapp/quick-replies', labelKey: 'quickReplies', permission: 'chat.send', requiredModules: ['netx-call'] },
         ],
       },
       {
