@@ -26,6 +26,7 @@ import { IpamModule } from './modules/ipam/ipam.module';
 import { OpticalModule } from './modules/optical/optical.module';
 import { PortalModule } from './modules/portal/portal.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
+import { IdempotencyModule } from './common/idempotency.module';
 import { MobileModule } from './modules/mobile/mobile.module';
 import { ProvisioningModule } from './modules/provisioning/provisioning.module';
 import { AlarmsModule } from './modules/alarms/alarms.module';
@@ -45,6 +46,7 @@ import { UfinetModule } from './modules/ufinet/ufinet.module';
 import { TenantsModule } from './modules/tenants/tenants.module';
 import { UsersModule } from './modules/users/users.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
+import { FieldModule } from './modules/field/field.module';
 
 @Module({
   imports: [
@@ -85,6 +87,9 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
     HealthModule,
     CryptoModule,
     DisconnectModule,
+    // Idempotência global (opt-in pelo header Idempotency-Key) — replay-safe
+    // pro NetX Field. Passthrough quando o header não vem (web/produção atual).
+    IdempotencyModule,
     // Licenciamento — registra o LicenseGuard global (fail-open quando off).
     LicensingModule,
     // Bus de eventos do ecossistema — global; DESLIGADO por default (no-op até
@@ -126,6 +131,8 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
     CopilotModule,
     MobileModule,
     WhatsappModule,
+    // NetX Field — BFF read-only (Assinante 360), cobertura e ações de campo.
+    FieldModule,
   ],
 })
 export class AppModule {}

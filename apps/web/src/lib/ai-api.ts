@@ -32,21 +32,23 @@ export const aiApi = {
   test() {
     return api.post<AiTestResponse>('/v1/ai/config/test');
   },
+  // Copiloto agêntico (Nexus) — prefixo /copilot (CopilotController), separado
+  // do /ai do motor/config acima (AiController).
   ask(question: string) {
-    return api.post<AiAskResponse>('/v1/ai/ask', { question });
+    return api.post<AiAskResponse>('/v1/copilot/ask', { question });
   },
   testStatus(jobId: string) {
-    return api.get<AiTestStatusResponse>(`/v1/ai/test/${jobId}`);
+    return api.get<AiTestStatusResponse>(`/v1/copilot/test/${jobId}`);
   },
-  insightsPath: () => `/v1/ai/insights`,
+  insightsPath: () => `/v1/copilot/insights`,
   getInsights() {
     return api.get<AiInsightDto[]>(this.insightsPath());
   },
   scanInsights() {
-    return api.post<AiInsightDto[]>(`/v1/ai/insights/scan`);
+    return api.post<AiInsightDto[]>(`/v1/copilot/insights/scan`);
   },
   dismissInsight(id: string) {
-    return api.post<{ ok: boolean }>(`/v1/ai/insights/${id}/dismiss`);
+    return api.post<{ ok: boolean }>(`/v1/copilot/insights/${id}/dismiss`);
   },
 };
 

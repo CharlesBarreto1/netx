@@ -14,6 +14,7 @@ import type { PairDeviceRequest, PairDeviceResponse } from '@netx/shared';
 import { api, ApiError } from './api';
 import { authStorage, type SessionUser, type SessionTenant } from './auth-storage';
 import { config } from './config';
+import { database } from '../db/database';
 
 interface LoginInput {
   email: string;
@@ -67,6 +68,15 @@ export async function logout(): Promise<void> {
   // falhe, limpa local. Quem está sem rede deve conseguir deslogar.
   try {
     await api('/auth/logout', { method: 'POST' });
+  } catch {
+    // ignore
+  }
+  // Limpa o cache local (O.S, outbox) — device compartilhado não pode vazar
+  // dados entre usuários. Best-effort: mesmo se falhar, os tokens já foram embora.
+  try {
+    await database.write(async () => {
+      await database.unsafeResetDatabase();
+    });
   } catch {
     // ignore
   }

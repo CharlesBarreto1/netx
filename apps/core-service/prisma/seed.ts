@@ -334,6 +334,26 @@ const locationsPermissions = [
   { code: 'locations.manage', module: 'locations', resource: 'locations', action: 'manage' },
 ];
 
+// -----------------------------------------------------------------------------
+// Permission catalog — NetX Field (app mobile do técnico + surfaces do atendente)
+// Field é CONSUMIDOR: não tem schema próprio; toda escrita vai pela API do módulo
+// dono (service-orders, provisioning, contracts, crm...). Estas permissões só
+// GATEKEEPEM as rotas Field-específicas (BFF Assinante 360, cobertura CTO,
+// desbloqueio com step-up) e servem de marcador de capacidade pro app revelar
+// telas por papel + entitlement.
+// -----------------------------------------------------------------------------
+const fieldPermissions = [
+  // Lê o agregado Assinante 360 (BFF read-only ERP+CPE+NMS numa chamada).
+  { code: 'field.subscriber360.read', module: 'field', resource: 'subscriber360', action: 'read' },
+  // Consulta de cobertura: existe CTO com porta livre perto deste endereço?
+  { code: 'field.coverage.read',      module: 'field', resource: 'coverage',      action: 'read' },
+  // Desbloqueio de cliente em campo/balcão (reativa PPPoE de inadimplente).
+  // Ação PRIVILEGIADA — exige step-up (reautenticação) e é sempre auditada.
+  { code: 'field.unblock',            module: 'field', resource: 'field_unblock', action: 'unblock' },
+  // Uso do app mobile (pareamento/sync). Marcador de acesso ao NetX Field.
+  { code: 'mobile.use',               module: 'field', resource: 'mobile',        action: 'use' },
+];
+
 // Role → permission mapping
 const systemRoles = [
   {
@@ -482,6 +502,11 @@ const systemRoles = [
       'ai.ask',
       'ai.config.read',
       'ai.config.write',
+      // NetX Field — admin tem tudo (inclusive o desbloqueio privilegiado)
+      'field.subscriber360.read',
+      'field.coverage.read',
+      'field.unblock',
+      'mobile.use',
     ],
   },
   {
@@ -580,6 +605,11 @@ const systemRoles = [
       'mapping.read',
       // IA — copiloto (Nexus) read-only; config do motor fica pro admin
       'ai.ask',
+      // NetX Field — operador vê 360 e cobertura e usa o app (sem desbloqueio,
+      // ação sensível reservada a admin/atendente com step-up).
+      'field.subscriber360.read',
+      'field.coverage.read',
+      'mobile.use',
     ],
   },
   {
@@ -610,6 +640,91 @@ const systemRoles = [
       'nfcom.read',
       'locations.read',
       'mapping.read',
+      // NetX Field — viewer enxerga o 360 (read-only)
+      'field.subscriber360.read',
+    ],
+  },
+  {
+    // NetX Field — TÉCNICO de campo. Executa O.S (captura + provisionamento em
+    // campo), lê Assinante 360 e cobertura, consome mapa/estoque. Sem finance,
+    // sem desbloqueio. Majoritariamente mobile.
+    name: 'tecnico',
+    description: 'Técnico de campo (NetX Field) — O.S, provisionamento, 360, mapa',
+    priority: 60,
+    permissions: [
+      'self.read',
+      'mobile.use',
+      // Clientes/contratos — leitura pro 360 e execução de O.S
+      'customers.read',
+      'contracts.read',
+      // Ordens de Serviço — executa em campo
+      'service_orders.read',
+      'service_orders.write',
+      // Provisionamento — ativa/reprovisiona ONU em campo
+      'provisioning.read',
+      'provisioning.write',
+      // Ufinet — lê status e níveis ópticos (STATUS_ONT) e reprocessa
+      'ufinet.orders.read',
+      'ufinet.orders.retry',
+      // Estoque — baixa material da van na O.S
+      'stock.read',
+      'stock.adjust',
+      // Rede/mapa — mapa operacional (leitura)
+      'network.read',
+      'mapping.read',
+      // NetX Field
+      'field.subscriber360.read',
+      'field.coverage.read',
+    ],
+  },
+  {
+    // NetX Field — ATENDENTE (omnichannel/balcão). Pode operar desktop (web) ou
+    // mobile. Atende (WhatsApp), abre venda/O.S, lê 360/cobertura e desbloqueia
+    // (com step-up). Sem provisionar rede diretamente.
+    name: 'atendente',
+    description: 'Atendente omnichannel (NetX Field) — chat, venda/O.S, 360, desbloqueio',
+    priority: 55,
+    permissions: [
+      'self.read',
+      'mobile.use',
+      // CRM/venda
+      'customers.create',
+      'customers.read',
+      'customers.update',
+      'customers.notes.manage',
+      'deals.read',
+      'deals.write',
+      'activities.read',
+      'activities.write',
+      // Contratos — abre/edita (venda) e desbloqueia via endpoint Field (step-up)
+      'contracts.read',
+      'contracts.write',
+      // Ordens de Serviço — abre e acompanha
+      'service_orders.read',
+      'service_orders.write',
+      // Chat / atendimento
+      'chat.read',
+      'chat.send',
+      'chat.assign',
+      // Cobrança avulsa + gateways (dá pra cobrar no atendimento)
+      'finance.charges.read',
+      'finance.charges.write',
+      'efi.charges.read',
+      'efi.charges.write',
+      'btg.charges.read',
+      'btg.charges.write',
+      // Ufinet — acompanha status
+      'ufinet.orders.read',
+      // Endereços + mapa
+      'locations.read',
+      'locations.manage',
+      'mapping.read',
+      // IA — copiloto conselheiro
+      'ai.ask',
+      // NetX Field — inclui o desbloqueio privilegiado (com step-up)
+      'field.subscriber360.read',
+      'field.coverage.read',
+      'field.unblock',
     ],
   },
   {
@@ -650,6 +765,7 @@ async function main() {
     ...chatPermissions,
     ...aiPermissions,
     ...locationsPermissions,
+    ...fieldPermissions,
   ]) {
     await prisma.permission.upsert({
       where: { code: p.code },
@@ -720,9 +836,9 @@ async function main() {
   // Idempotente: roda na seed e a cada release. Custom roles (não-system,
   // criadas pelo admin do tenant manualmente) NÃO são tocadas.
   // ────────────────────────────────────────────────────────────────────────
-  console.log('  → Sincronizando roles admin/operator/viewer em todos os tenants');
+  console.log('  → Sincronizando roles de sistema (admin/operator/viewer/tecnico/atendente) em todos os tenants');
   const allTenants = await prisma.tenant.findMany({ select: { id: true, slug: true } });
-  const SYSTEM_ROLE_NAMES = ['admin', 'operator', 'viewer'] as const;
+  const SYSTEM_ROLE_NAMES = ['admin', 'operator', 'viewer', 'tecnico', 'atendente'] as const;
 
   for (const t of allTenants) {
     for (const roleName of SYSTEM_ROLE_NAMES) {

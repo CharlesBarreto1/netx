@@ -193,6 +193,7 @@ const ICON_BY_KEY: Record<string, ComponentType<{ className?: string }>> = {
   meNews: Newspaper,
   // Atendimento
   serviceOrders: Wrench,
+  subscriber360: IdCard,
   // Técnico
   techProvisioning: Router, // sub-árvore
   techNetworkPlant: Cable, // sub-árvore

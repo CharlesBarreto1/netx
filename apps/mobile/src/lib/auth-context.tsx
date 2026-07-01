@@ -21,6 +21,7 @@ import {
   type SessionUser,
 } from './auth-storage';
 import { login as apiLogin, logout as apiLogout, pairThisDevice } from './auth';
+import { startOutboxSync } from '../sync/outbox';
 
 interface AuthState {
   status: 'loading' | 'authenticated' | 'unauthenticated';
@@ -68,6 +69,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
       void handleLogout();
     });
   }, [handleLogout]);
+
+  // Sync da outbox — liga quando autenticado (drena ao reconectar), desliga no
+  // logout. Primeiro uso de netinfo no app (ver sync/outbox.ts).
+  useEffect(() => {
+    if (state.status !== 'authenticated') return;
+    const stop = startOutboxSync();
+    return () => stop();
+  }, [state.status]);
 
   // Boot — carrega snapshot
   useEffect(() => {

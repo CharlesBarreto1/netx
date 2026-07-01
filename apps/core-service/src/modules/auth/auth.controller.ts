@@ -14,6 +14,7 @@ import {
   DisableMfaRequestSchema,
   LoginRequestSchema,
   RefreshTokenRequestSchema,
+  StepUpRequestSchema,
   VerifyMfaRequestSchema,
 } from '@netx/shared';
 import type {
@@ -23,6 +24,7 @@ import type {
   LoginRequest,
   LoginResponse,
   RefreshTokenRequest,
+  StepUpRequest,
   VerifyMfaRequest,
 } from '@netx/shared';
 
@@ -114,5 +116,21 @@ export class AuthController {
   @HttpCode(200)
   regenerateBackupCodes(@CurrentUser() user: AuthenticatedPrincipal) {
     return this.mfa.regenerateBackupCodes(user.tenantId, user.sub);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Step-up (reautenticação pra ações privilegiadas do NetX Field)
+  // ---------------------------------------------------------------------------
+  @ApiBearerAuth()
+  @Post('step-up')
+  @HttpCode(200)
+  // Mesmo throttle do mfa/verify: reautenticação é alvo de brute-force.
+  @Throttle({ default: { ttl: 60_000, limit: 5 } })
+  stepUp(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @ZodBody(StepUpRequestSchema) body: StepUpRequest,
+    @Req() req: Request,
+  ) {
+    return this.auth.stepUp(user, body, req.ip, req.headers['user-agent']);
   }
 }

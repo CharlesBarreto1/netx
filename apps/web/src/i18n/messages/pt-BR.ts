@@ -153,6 +153,7 @@ const messages = {
     customers: 'Clientes',
     contracts: 'Contratos',
     serviceOrders: 'Ordens de Serviço',
+    subscriber360: 'Assinante 360',
     whatsappInstances: 'Conexão WhatsApp',
     chatbot: 'Chatbot',
     quickReplies: 'Respostas rápidas',

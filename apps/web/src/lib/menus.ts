@@ -203,6 +203,8 @@ export const MENU_GROUPS: MenuGroup[] = [
     labelKey: 'group.support',
     items: [
       { key: 'serviceOrders', href: '/service-orders', labelKey: 'serviceOrders', permission: 'service_orders.read' },
+      // Assinante 360 — console do atendente (BFF read-only ERP+CPE+NMS). NetX Field.
+      { key: 'subscriber360', href: '/subscriber360', labelKey: 'subscriber360', permission: 'field.subscriber360.read' },
       // Inbox de Atendimento WhatsApp (Call). Módulo netx-call.
       { key: 'chat', href: '/chat', labelKey: 'chat', permission: 'chat.read', requiredModules: ['netx-call'] },
     ],

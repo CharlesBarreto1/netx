@@ -3,6 +3,14 @@ import type { AuthenticatedPrincipal } from '@netx/shared';
 
 export const PERMISSIONS_KEY = 'permissions';
 export const IS_PUBLIC_KEY = 'isPublic';
+export const STEP_UP_KEY = 'stepUp';
+
+/**
+ * Requer que a sessão do chamador esteja ELEVADA (reautenticação recente via
+ * senha/MFA — ver POST /auth/step-up + StepUpGuard). Use em ações privilegiadas
+ * do NetX Field (ex.: desbloqueio de cliente). Combina com @RequirePermissions.
+ */
+export const RequireStepUp = () => SetMetadata(STEP_UP_KEY, true);
 
 /** Marks a route as not requiring authentication. */
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);

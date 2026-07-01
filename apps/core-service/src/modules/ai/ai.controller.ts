@@ -1,6 +1,6 @@
 /**
  * AiController — status, config (admin) e teste do motor de IA do tenant.
- * O copiloto grounded (/ai/ask) entra na F3. Webhooks/uso interno não passam aqui.
+ * O copiloto grounded (/copilot/ask) é o CopilotController. Webhooks/uso interno não passam aqui.
  */
 import { Controller, Get, Post, Put } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';

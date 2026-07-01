@@ -19,6 +19,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { Paginated } from '@netx/shared';
 
+import { useRouter } from 'expo-router';
+
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 
@@ -61,6 +63,7 @@ const STATUS_COLOR: Record<ServiceOrderStatus, string> = {
 
 export default function MyServiceOrdersScreen() {
   const { user, logout } = useAuth();
+  const router = useRouter();
   const [items, setItems] = useState<ServiceOrderItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -140,7 +143,22 @@ export default function MyServiceOrdersScreen() {
               tintColor="#3b82f6"
             />
           }
-          renderItem={({ item }) => <OrderCard order={item} />}
+          renderItem={({ item }) => (
+            <Pressable
+              onPress={() =>
+                router.push({
+                  pathname: '/os/[id]',
+                  params: {
+                    id: item.id,
+                    code: item.code,
+                    customerName: item.contract?.customer.displayName ?? '',
+                  },
+                })
+              }
+            >
+              <OrderCard order={item} />
+            </Pressable>
+          )}
         />
       )}
     </SafeAreaView>

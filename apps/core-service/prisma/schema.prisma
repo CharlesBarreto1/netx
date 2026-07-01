@@ -466,6 +466,13 @@ model Session {
   createdAt        DateTime  @default(now()) @map("created_at")
   lastUsedAt       DateTime  @default(now()) @map("last_used_at")
 
+  // Step-up (reautenticação) pra ações privilegiadas do NetX Field (ex.:
+  // desbloqueio de cliente). elevatedUntil = janela curta (5min) em que a
+  // sessão está "elevada". Sobrevive a refresh (a flag mora na sessão, não no
+  // token — o claim mfa decai no refresh). Ver StepUpGuard.
+  elevatedAt       DateTime? @map("elevated_at")
+  elevatedUntil    DateTime? @map("elevated_until")
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -529,6 +536,32 @@ model AuditLog {
   @@index([resource, resourceId])
   @@index([userId])
   @@map("audit_logs")
+}
+
+// -----------------------------------------------------------------------------
+// Idempotência de requisições (replay-safe) — NetX Field / offline-first.
+// A outbox do app reenvia mutações com o header `Idempotency-Key`. O servidor
+// dedupa por (tenant, key): se a op já completou, devolve a resposta guardada
+// em vez de reaplicar (ex.: NUNCA reconsome material da van num retry). Ver
+// IdempotencyInterceptor (common/interceptors). Sem FK Prisma pro tenant pra
+// não exigir back-relation em Tenant — a FK/RLS moram na migration.
+// -----------------------------------------------------------------------------
+model IdempotencyKey {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  userId       String?  @map("user_id") @db.Uuid
+  key          String   @db.VarChar(200)
+  method       String   @db.VarChar(8)
+  path         String   @db.VarChar(500)
+  status       String   @db.VarChar(16) // 'pending' | 'completed'
+  statusCode   Int?     @map("status_code")
+  responseBody Json?    @map("response_body")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, key])
+  @@index([tenantId, createdAt])
+  @@map("idempotency_keys")
 }
 
 // =============================================================================
