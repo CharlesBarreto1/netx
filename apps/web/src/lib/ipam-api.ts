@@ -211,13 +211,13 @@ export const ipamApi = {
     if (params?.role) qs.set('role', params.role);
     if (params?.q) qs.set('q', params.q);
     const s = qs.toString();
-    return api.get<IpamPrefix[]>(`/ipam/prefixes${s ? `?${s}` : ''}`);
+    return api.get<IpamPrefix[]>(`/v1/ipam/prefixes${s ? `?${s}` : ''}`);
   },
-  getPrefix: (id: string) => api.get<IpamPrefix>(`/ipam/prefixes/${id}`),
-  createPrefix: (body: CreatePrefixInput) => api.post<IpamPrefix>('/ipam/prefixes', body),
+  getPrefix: (id: string) => api.get<IpamPrefix>(`/v1/ipam/prefixes/${id}`),
+  createPrefix: (body: CreatePrefixInput) => api.post<IpamPrefix>('/v1/ipam/prefixes', body),
   updatePrefix: (id: string, body: Partial<CreatePrefixInput>) =>
-    api.patch<IpamPrefix>(`/ipam/prefixes/${id}`, body),
-  deletePrefix: (id: string) => api.delete(`/ipam/prefixes/${id}`),
+    api.patch<IpamPrefix>(`/v1/ipam/prefixes/${id}`, body),
+  deletePrefix: (id: string) => api.delete(`/v1/ipam/prefixes/${id}`),
 
   // Endereços
   listAddresses: (params?: {
@@ -231,47 +231,47 @@ export const ipamApi = {
       Object.entries(params ?? {}).filter(([, v]) => v) as [string, string][],
     );
     const s = qs.toString();
-    return api.get<IpamAddress[]>(`/ipam/addresses${s ? `?${s}` : ''}`);
+    return api.get<IpamAddress[]>(`/v1/ipam/addresses${s ? `?${s}` : ''}`);
   },
-  createAddress: (body: CreateAddressInput) => api.post<IpamAddress>('/ipam/addresses', body),
+  createAddress: (body: CreateAddressInput) => api.post<IpamAddress>('/v1/ipam/addresses', body),
   updateAddress: (id: string, body: Partial<CreateAddressInput>) =>
-    api.patch<IpamAddress>(`/ipam/addresses/${id}`, body),
-  releaseAddress: (id: string) => api.delete(`/ipam/addresses/${id}`),
-  allocate: (body: AllocateInput) => api.post<IpamAddress>('/ipam/addresses/allocate', body),
+    api.patch<IpamAddress>(`/v1/ipam/addresses/${id}`, body),
+  releaseAddress: (id: string) => api.delete(`/v1/ipam/addresses/${id}`),
+  allocate: (body: AllocateInput) => api.post<IpamAddress>('/v1/ipam/addresses/allocate', body),
 
   // Pools
   listPools: (prefixId?: string) =>
-    api.get<IpamPool[]>(`/ipam/pools${prefixId ? `?prefixId=${prefixId}` : ''}`),
+    api.get<IpamPool[]>(`/v1/ipam/pools${prefixId ? `?prefixId=${prefixId}` : ''}`),
   createPool: (body: {
     name: string;
     prefixId: string;
     rangeStart: string;
     rangeEnd: string;
     description?: string | null;
-  }) => api.post<IpamPool>('/ipam/pools', body),
-  deletePool: (id: string) => api.delete(`/ipam/pools/${id}`),
+  }) => api.post<IpamPool>('/v1/ipam/pools', body),
+  deletePool: (id: string) => api.delete(`/v1/ipam/pools/${id}`),
 
   // CGNAT
-  listCgnat: () => api.get<IpamCgnatPlan[]>('/ipam/cgnat/plans'),
-  getCgnat: (id: string) => api.get<IpamCgnatPlan>(`/ipam/cgnat/plans/${id}`),
-  createCgnat: (body: CreateCgnatInput) => api.post<IpamCgnatPlan>('/ipam/cgnat/plans', body),
+  listCgnat: () => api.get<IpamCgnatPlan[]>('/v1/ipam/cgnat/plans'),
+  getCgnat: (id: string) => api.get<IpamCgnatPlan>(`/v1/ipam/cgnat/plans/${id}`),
+  createCgnat: (body: CreateCgnatInput) => api.post<IpamCgnatPlan>('/v1/ipam/cgnat/plans', body),
   updateCgnat: (id: string, body: Partial<CreateCgnatInput>) =>
-    api.patch<IpamCgnatPlan>(`/ipam/cgnat/plans/${id}`, body),
-  deleteCgnat: (id: string) => api.delete(`/ipam/cgnat/plans/${id}`),
+    api.patch<IpamCgnatPlan>(`/v1/ipam/cgnat/plans/${id}`, body),
+  deleteCgnat: (id: string) => api.delete(`/v1/ipam/cgnat/plans/${id}`),
   previewCgnat: (id: string, offset = 0, limit = 100) =>
-    api.get<CgnatPreview>(`/ipam/cgnat/plans/${id}/preview?offset=${offset}&limit=${limit}`),
+    api.get<CgnatPreview>(`/v1/ipam/cgnat/plans/${id}/preview?offset=${offset}&limit=${limit}`),
   materializeCgnat: (id: string) =>
-    api.post<{ entryCount: number }>(`/ipam/cgnat/plans/${id}/materialize`),
+    api.post<{ entryCount: number }>(`/v1/ipam/cgnat/plans/${id}/materialize`),
   exportCgnatUrl: (id: string, format: 'csv' | 'mikrotik') =>
-    `/ipam/cgnat/plans/${id}/export?format=${format}`,
+    `/v1/ipam/cgnat/plans/${id}/export?format=${format}`,
   exportCgnat: (id: string, format: 'csv' | 'mikrotik') =>
-    api.get<string>(`/ipam/cgnat/plans/${id}/export?format=${format}`),
+    api.get<string>(`/v1/ipam/cgnat/plans/${id}/export?format=${format}`),
 
   // Busca reversa
   lookup: (ip: string, port?: string, at?: string) => {
     const qs = new URLSearchParams({ ip });
     if (port) qs.set('port', port);
     if (at) qs.set('at', at);
-    return api.get<IpamLookupResult>(`/ipam/lookup?${qs.toString()}`);
+    return api.get<IpamLookupResult>(`/v1/ipam/lookup?${qs.toString()}`);
   },
 };
