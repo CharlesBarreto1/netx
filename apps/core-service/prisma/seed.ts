@@ -140,6 +140,15 @@ const networkPermissions = [
 ];
 
 // -----------------------------------------------------------------------------
+// Permission catalog — IPAM (documentação de IPs + CGNAT determinístico)
+// -----------------------------------------------------------------------------
+const ipamPermissions = [
+  { code: 'ipam.read', module: 'ipam', resource: 'ipam', action: 'read' },
+  { code: 'ipam.write', module: 'ipam', resource: 'ipam', action: 'write' },
+  { code: 'ipam.delete', module: 'ipam', resource: 'ipam', action: 'delete' },
+];
+
+// -----------------------------------------------------------------------------
 // Permission catalog — Estoque
 // -----------------------------------------------------------------------------
 const stockPermissions = [
@@ -411,6 +420,10 @@ const systemRoles = [
       'network.read',
       'network.write',
       'network.delete',
+      // IPAM (admin tem tudo)
+      'ipam.read',
+      'ipam.write',
+      'ipam.delete',
       // Estoque (admin tem tudo, inclusive gerenciar locais e ACL)
       'stock.read',
       'stock.write',
@@ -519,6 +532,9 @@ const systemRoles = [
       'reports.read',
       // Rede — só leitura pra operador
       'network.read',
+      // IPAM — operador consulta/documenta (read + write, sem delete)
+      'ipam.read',
+      'ipam.write',
       // Estoque — operador faz leitura, compra, ajuste, transferência.
       // Sem `stock.admin` (gerenciar locais e ACL fica pro admin) e sem `stock.delete`
       // (remover catálogo é decisão administrativa).
@@ -583,6 +599,7 @@ const systemRoles = [
       'finance.payables.read',
       'reports.read',
       'network.read',
+      'ipam.read',
       'stock.read',
       'fleet.read',
       'fleet.live.read',
@@ -621,6 +638,7 @@ async function main() {
     ...reportsPermissions,
     ...backupsPermissions,
     ...networkPermissions,
+    ...ipamPermissions,
     ...stockPermissions,
     ...fleetPermissions,
     ...hrPermissions,

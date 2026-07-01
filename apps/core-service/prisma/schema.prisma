@@ -111,6 +111,7 @@ model Tenant {
   whatsappConversations WhatsappConversation[]
   whatsappTemplates    WhatsappTemplate[]
   whatsappBotConfig    WhatsappBotConfig?
+  whatsappQuickReplies WhatsappQuickReply[]
 
   // SIFEN — fatura eletrônica Paraguay (módulo opcional, ligado via env)
   sifenDocuments       SifenDocument[]
@@ -180,6 +181,14 @@ model Tenant {
   aiConfig             AiConfig?
   aiUsageLogs          AiUsageLog[]
   aiInsights          AiInsight[]
+
+  // IPAM (documentação de IPs + CGNAT determinístico)
+  ipamVrfs             IpamVrf[]
+  ipamPrefixes         IpamPrefix[]
+  ipamAddresses        IpamAddress[]
+  ipamPools            IpamPool[]
+  ipamCgnatPlans       IpamCgnatPlan[]
+  ipamCgnatEntries     IpamCgnatEntry[]
 
   @@index([status])
   @@index([country])
@@ -340,6 +349,8 @@ model User {
   whatsappConversationsAssigned WhatsappConversation[] @relation("WaConversationAssignee")
   whatsappMessagesSent          WhatsappMessage[]      @relation("WaMessageFromUser")
   whatsappConversationViews     WhatsappConversationView[]
+  whatsappConversationMembers   WhatsappConversationMember[] @relation("WaConversationMember")
+  whatsappQuickReplies          WhatsappQuickReply[]   @relation("WaQuickReplyOwner")
 
   // Estoque (Fase 1)
   stockLocationAccess  StockLocationUser[]
@@ -680,6 +691,11 @@ model Customer {
   contracts       Contract[]
   oneTimeCharges  OneTimeCharge[]
   whatsappContacts WhatsappContact[]
+
+  // IPAM — blocos/IPs corporativos atribuídos direto ao cliente
+  ipamPrefixes    IpamPrefix[]
+  ipamAddresses   IpamAddress[]
+  ipamCgnatEntries IpamCgnatEntry[]
 
   @@unique([tenantId, code])
   @@unique([tenantId, taxId, taxIdType])
@@ -1434,6 +1450,10 @@ model Contract {
   // pra liberar a porta — mantém histórico via audit log.
   opticalPort         OpticalPort?
 
+  // IPAM — IP fixo documentado (1:1, espelha framedIpAddress) + entradas CGNAT.
+  ipamAddress         IpamAddress?
+  ipamCgnatEntries    IpamCgnatEntry[]
+
   // pppoeUsername é unique por tenant quando preenchido (Postgres trata
   // múltiplos NULLs como distintos por padrão, então o unique normal funciona
   // — não precisa de index parcial). Mesmo critério vale pra circuitId/MAC.
@@ -2097,6 +2117,7 @@ model NetworkPop {
   updatedBy   User?  @relation("NetworkPopUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   equipment   NetworkEquipment[]
   olts        Olt[]
+  ipamPrefixes IpamPrefix[]
 
   @@unique([tenantId, name])
   @@unique([tenantId, code])
@@ -2208,12 +2229,306 @@ model NetworkEquipment {
   tenant      Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   createdBy   User?       @relation("NetworkEquipmentCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy   User?       @relation("NetworkEquipmentUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  // IPAM — IPs documentados deste equipamento (gerência, loopback, etc.)
+  ipamPrefixes  IpamPrefix[]
+  ipamAddresses IpamAddress[]
 
   @@unique([tenantId, name])
   @@unique([tenantId, ipAddress])
   @@index([tenantId, type])
   @@index([popId])
   @@map("network_equipment")
+}
+
+// =============================================================================
+// MODULE — IPAM (documentação de IPs) + CGNAT determinístico
+// =============================================================================
+//
+// IPAM no estilo phpIPAM/NetBox (focado): supernets → subnets/prefixos → IPs
+// individuais, com VLAN, status, vínculo a POP/equipamento e a cliente/contrato.
+// Suporta IPv4 E IPv6 de forma uniforme: além do CIDR textual, guardamos os
+// limites numéricos (firstAddr/lastAddr) como Decimal(40,0) — numeric(40,0)
+// comporta 2^128, então a MESMA query de overlap/containment serve v4 e v6.
+//
+// Princípio: IPAM é a FONTE DE DOCUMENTAÇÃO. Ele não escreve no RADIUS direto —
+// o contrato continua aplicando Framed-IP no radreply (radius-applier). O que
+// fazemos é SINCRONIZAR bidirecionalmente (IpamSyncService): atribuir um IP
+// fixo a um contrato registra automaticamente no IPAM (e vice-versa), e o mesmo
+// vale pro ipAddress de NetworkEquipment. Assim nunca há 2 clientes/equipamentos
+// no mesmo IP, e o operador instala um IP fixo pegando "o próximo livre" do pool.
+//
+// CGNAT determinístico (estilo cgnat.remontti.com.br): a partir de um bloco
+// público + um bloco privado (ex.: 100.64.0.0/10) + nº de portas por cliente,
+// uma fórmula linear mapeia cada IP privado → (IP público, faixa de portas).
+// Materializamos em IpamCgnatEntry pra consulta e BUSCA REVERSA (Marco Civil:
+// dado IP público + porta + horário → qual cliente/contrato).
+// =============================================================================
+
+enum IpVersion {
+  V4
+  V6
+}
+
+/// Papel do prefixo na rede (orienta UI, cálculo de CGNAT e validações).
+enum IpamPrefixRole {
+  SUPERNET     // agregado/raiz (RIR, bloco do ISP)
+  CUSTOMER     // bloco delegado a cliente corporativo (ex.: /29, /48 v6)
+  CGNAT_POOL   // bloco PRIVADO de CGNAT (ex.: 100.64.0.0/10)
+  PUBLIC_POOL  // bloco PÚBLICO usado como saída de CGNAT / atribuição direta
+  MANAGEMENT   // rede de gerência de equipamentos
+  LOOPBACK
+  P2P          // ponto-a-ponto (/30, /31, /127)
+  DHCP         // faixa servida por DHCP
+  OTHER
+}
+
+enum IpamPrefixStatus {
+  ACTIVE
+  RESERVED
+  DEPRECATED
+}
+
+enum IpamAddressStatus {
+  FREE
+  USED
+  RESERVED
+  DHCP
+  DEPRECATED
+}
+
+/// O que ocupa o IP — usado pra montar a busca e evitar sobrescrever vínculo.
+enum IpamAddressKind {
+  CONTRACT
+  EQUIPMENT
+  CUSTOMER
+  GATEWAY
+  OTHER
+}
+
+enum IpamCgnatAlgo {
+  LINEAR // port-block sequencial (Remontti): blocos de N portas por IP público
+}
+
+/// VRF / espaço de roteamento. Opcional — a maioria dos ISPs usa só o default.
+/// Existe pra permitir blocos privados sobrepostos isolados (ex.: CGNAT por POP).
+model IpamVrf {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  name        String   @db.VarChar(64)
+  rd          String?  @db.VarChar(32) // route distinguisher (opcional)
+  description String?  @db.Text
+  isDefault   Boolean  @default(false) @map("is_default")
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  prefixes    IpamPrefix[]
+
+  @@unique([tenantId, name])
+  @@map("ipam_vrfs")
+}
+
+/// Prefixo CIDR hierárquico (supernet → subnet). v4 e v6.
+model IpamPrefix {
+  id          String           @id @default(uuid()) @db.Uuid
+  tenantId    String           @map("tenant_id") @db.Uuid
+  vrfId       String?          @map("vrf_id") @db.Uuid
+  parentId    String?          @map("parent_id") @db.Uuid
+
+  cidr        String           @db.VarChar(49) // ex.: "2001:db8::/32" ou "10.0.0.0/8"
+  version     IpVersion
+  prefixLen   Int              @map("prefix_len")
+  // Limites numéricos do bloco (inclusive). numeric(40,0) comporta IPv6 (2^128).
+  firstAddr   Decimal          @map("first_addr") @db.Decimal(40, 0)
+  lastAddr    Decimal          @map("last_addr") @db.Decimal(40, 0)
+
+  role        IpamPrefixRole   @default(OTHER)
+  status      IpamPrefixStatus @default(ACTIVE)
+  vlanId      Int?             @map("vlan_id")
+  gateway     String?          @db.VarChar(45)
+  description String?          @db.VarChar(255)
+
+  // Vínculos (todos opcionais)
+  popId       String?          @map("pop_id") @db.Uuid
+  equipmentId String?          @map("equipment_id") @db.Uuid
+  customerId  String?          @map("customer_id") @db.Uuid // bloco corporativo direto no cliente
+
+  createdById String?          @map("created_by_id") @db.Uuid
+  updatedById String?          @map("updated_by_id") @db.Uuid
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  deletedAt   DateTime?        @map("deleted_at")
+
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  vrf         IpamVrf?          @relation(fields: [vrfId], references: [id], onDelete: SetNull)
+  parent      IpamPrefix?       @relation("IpamPrefixTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    IpamPrefix[]      @relation("IpamPrefixTree")
+  pop         NetworkPop?       @relation(fields: [popId], references: [id], onDelete: SetNull)
+  equipment   NetworkEquipment? @relation(fields: [equipmentId], references: [id], onDelete: SetNull)
+  customer    Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  addresses   IpamAddress[]
+  pools       IpamPool[]
+  cgnatPlansPublic  IpamCgnatPlan[] @relation("CgnatPublicPrefix")
+  cgnatPlansPrivate IpamCgnatPlan[] @relation("CgnatPrivatePrefix")
+
+  @@unique([tenantId, vrfId, cidr])
+  @@index([tenantId, firstAddr, lastAddr])
+  @@index([tenantId, role])
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
+  @@index([equipmentId])
+  @@index([parentId])
+  @@map("ipam_prefixes")
+}
+
+/// IP individual documentado. addrNum = valor numérico do IP (v4/v6 uniforme).
+model IpamAddress {
+  id          String            @id @default(uuid()) @db.Uuid
+  tenantId    String            @map("tenant_id") @db.Uuid
+  prefixId    String            @map("prefix_id") @db.Uuid
+  vrfId       String?           @map("vrf_id") @db.Uuid // desnormalizado p/ unicidade/lookup
+
+  address     String            @db.VarChar(45)
+  addrNum     Decimal           @map("addr_num") @db.Decimal(40, 0)
+  version     IpVersion
+
+  status      IpamAddressStatus @default(FREE)
+  kind        IpamAddressKind?
+
+  // Vínculos (no máximo um "dono" — contrato OU equipamento OU cliente)
+  customerId  String?           @map("customer_id") @db.Uuid
+  contractId  String?           @map("contract_id") @db.Uuid
+  equipmentId String?           @map("equipment_id") @db.Uuid
+
+  macAddress  String?           @map("mac_address") @db.VarChar(17)
+  hostname    String?           @db.VarChar(255)
+  description String?           @db.VarChar(255)
+  isGateway   Boolean           @default(false) @map("is_gateway")
+
+  // Origem do registro — distingue sync automático de cadastro manual e
+  // evita laço infinito de sincronização. CONTRACT | EQUIPMENT | MANUAL | POOL
+  source      String?           @db.VarChar(16)
+
+  createdById String?           @map("created_by_id") @db.Uuid
+  updatedById String?           @map("updated_by_id") @db.Uuid
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  tenant      Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  prefix      IpamPrefix        @relation(fields: [prefixId], references: [id], onDelete: Cascade)
+  customer    Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  contract    Contract?         @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  equipment   NetworkEquipment? @relation(fields: [equipmentId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, vrfId, addrNum])
+  @@unique([contractId]) // 1 contrato ↔ no máximo 1 IP fixo documentado
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
+  @@index([tenantId, prefixId])
+  @@index([equipmentId])
+  @@index([addrNum])
+  @@map("ipam_addresses")
+}
+
+/// Pool de IPs do IPAM (não é radippool do FreeRADIUS). Serve pro operador
+/// pegar "o próximo IP livre" e fixar no contrato (Framed-IP). Faixa dentro de
+/// um prefixo.
+model IpamPool {
+  id          String     @id @default(uuid()) @db.Uuid
+  tenantId    String     @map("tenant_id") @db.Uuid
+  prefixId    String     @map("prefix_id") @db.Uuid
+  vrfId       String?    @map("vrf_id") @db.Uuid
+
+  name        String     @db.VarChar(64)
+  version     IpVersion
+  rangeStart  String     @map("range_start") @db.VarChar(45)
+  rangeEnd    String     @map("range_end") @db.VarChar(45)
+  startNum    Decimal    @map("start_num") @db.Decimal(40, 0)
+  endNum      Decimal    @map("end_num") @db.Decimal(40, 0)
+  description String?    @db.VarChar(255)
+  isActive    Boolean    @default(true) @map("is_active")
+
+  createdById String?    @map("created_by_id") @db.Uuid
+  updatedById String?    @map("updated_by_id") @db.Uuid
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  prefix      IpamPrefix @relation(fields: [prefixId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, name])
+  @@index([tenantId, prefixId])
+  @@map("ipam_pools")
+}
+
+/// Plano de CGNAT determinístico. Guarda os parâmetros; a tabela de mapeamento
+/// (IpamCgnatEntry) é derivável por fórmula e materializada sob demanda.
+model IpamCgnatPlan {
+  id             String        @id @default(uuid()) @db.Uuid
+  tenantId       String        @map("tenant_id") @db.Uuid
+  name           String        @db.VarChar(64)
+
+  publicPrefixId String        @map("public_prefix_id") @db.Uuid
+  cgnatPrefixId  String        @map("cgnat_prefix_id") @db.Uuid
+
+  portsPerClient Int           @default(1000) @map("ports_per_client")
+  portBase       Int           @default(1024) @map("port_base")
+  maxPort        Int           @default(65535) @map("max_port")
+  algorithm      IpamCgnatAlgo @default(LINEAR)
+  description    String?       @db.VarChar(255)
+
+  // Materialização
+  generatedAt    DateTime?     @map("generated_at")
+  entryCount     Int           @default(0) @map("entry_count")
+
+  createdById    String?       @map("created_by_id") @db.Uuid
+  updatedById    String?       @map("updated_by_id") @db.Uuid
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  deletedAt      DateTime?     @map("deleted_at")
+
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  publicPrefix   IpamPrefix       @relation("CgnatPublicPrefix", fields: [publicPrefixId], references: [id], onDelete: Restrict)
+  cgnatPrefix    IpamPrefix       @relation("CgnatPrivatePrefix", fields: [cgnatPrefixId], references: [id], onDelete: Restrict)
+  entries        IpamCgnatEntry[]
+
+  @@unique([tenantId, name])
+  @@map("ipam_cgnat_plans")
+}
+
+/// Linha materializada do mapeamento CGNAT: IP privado → (IP público, portas).
+/// Indexada por IP público + porta pra busca reversa (Marco Civil).
+model IpamCgnatEntry {
+  id         String        @id @default(uuid()) @db.Uuid
+  tenantId   String        @map("tenant_id") @db.Uuid
+  planId     String        @map("plan_id") @db.Uuid
+
+  privateIp  String        @map("private_ip") @db.VarChar(45)
+  privateNum Decimal       @map("private_num") @db.Decimal(40, 0)
+  publicIp   String        @map("public_ip") @db.VarChar(45)
+  publicNum  Decimal       @map("public_num") @db.Decimal(40, 0)
+  portStart  Int           @map("port_start")
+  portEnd    Int           @map("port_end")
+
+  // Vínculo opcional ao cliente/contrato (resolvido via IP privado = Framed-IP)
+  contractId String?       @map("contract_id") @db.Uuid
+  customerId String?       @map("customer_id") @db.Uuid
+
+  createdAt  DateTime      @default(now()) @map("created_at")
+  updatedAt  DateTime      @updatedAt @map("updated_at")
+
+  tenant     Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plan       IpamCgnatPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  contract   Contract?     @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  customer   Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  @@unique([planId, privateNum])
+  @@index([tenantId, publicNum, portStart])
+  @@index([tenantId, publicIp])
+  @@index([tenantId, privateIp])
+  @@index([tenantId, contractId])
+  @@map("ipam_cgnat_entries")
 }
 
 // =============================================================================
@@ -2376,11 +2691,32 @@ model WhatsappConversation {
 
   messages       WhatsappMessage[]
   views          WhatsappConversationView[]
+  members        WhatsappConversationMember[]
 
   @@index([tenantId, status, lastMessageAt])
   @@index([tenantId, assignedUserId])
   @@index([instanceId, contactId])
   @@map("whatsapp_conversations")
+}
+
+/// Operadores que ENTRARAM numa conversa de GRUPO (atendimento compartilhado do
+/// NOC). Diferente do `assignedUserId` (dono único, usado no 1:1), um grupo pode
+/// ter VÁRIOS membros simultâneos: todos podem responder e todos são notificados.
+/// Entrar = clicar "Atender"; sair = "Sair". Sem membros, o grupo fica só na aba
+/// de Grupos, sem notificar ninguém.
+model WhatsappConversationMember {
+  id             String   @id @default(uuid()) @db.Uuid
+  conversationId String   @map("conversation_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+
+  joinedAt       DateTime @default(now()) @map("joined_at")
+
+  conversation   WhatsappConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User @relation("WaConversationMember", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@map("whatsapp_conversation_members")
 }
 
 /// Mensagem individual. Direction IN = recebida do cliente; OUT = enviada
@@ -2486,6 +2822,34 @@ model WhatsappBotConfig {
   tenant        Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("whatsapp_bot_configs")
+}
+
+/// Mensagem predefinida ("resposta rápida") do atendimento — saudações,
+/// encerramentos, negativa de viabilidade, planos, prazos, etc. Inserida no
+/// compositor (editável) com 1 clique. `ownerUserId` null = biblioteca
+/// COMPARTILHADA da equipe (gerida em Configurações por chat.admin);
+/// preenchido = resposta PESSOAL daquele operador. Suporta os placeholders
+/// {cliente} e {operador}, interpolados na inserção.
+model WhatsappQuickReply {
+  id          String  @id @default(uuid()) @db.Uuid
+  tenantId    String  @map("tenant_id") @db.Uuid
+  ownerUserId String? @map("owner_user_id") @db.Uuid   // null = compartilhada (equipe); set = pessoal do operador
+
+  category    String  @default("geral") @db.VarChar(40) // saudacao | encerramento | viabilidade | planos | prazos | geral
+  title       String  @db.VarChar(120)                  // rótulo curto pra achar rápido
+  body        String  @db.Text                          // texto (até 4096) com {cliente}/{operador}
+  shortcut    String? @db.VarChar(40)                   // atalho opcional (ex.: /ola)
+  sortOrder   Int     @default(0) @map("sort_order")
+  createdById String? @map("created_by_id") @db.Uuid
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  owner       User?  @relation("WaQuickReplyOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, ownerUserId])
+  @@map("whatsapp_quick_replies")
 }
 
 // =============================================================================
