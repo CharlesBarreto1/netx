@@ -57,6 +57,12 @@ export class IpamSyncService {
       return;
     }
 
+    // customerId do contrato — pra o IP aparecer na aba IPAM do cliente.
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: contractId },
+      select: { customerId: true },
+    });
+
     // Documenta/ocupa o IP vinculado ao contrato (lança em colisão real).
     try {
       await this.addresses.create(
@@ -68,6 +74,7 @@ export class IpamSyncService {
           status: 'USED',
           kind: 'CONTRACT',
           contractId,
+          customerId: contract?.customerId ?? null,
           isGateway: false,
         } as never,
         'CONTRACT',

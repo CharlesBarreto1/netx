@@ -17,6 +17,7 @@ import { ConsentsTab } from '@/components/crm/ConsentsTab';
 import { ContactsTab } from '@/components/crm/ContactsTab';
 import { ContractsTab } from '@/components/crm/ContractsTab';
 import { CustomerTagsTab } from '@/components/crm/CustomerTagsTab';
+import { CustomerIpamTab } from '@/components/crm/CustomerIpamTab';
 import { FinanceTab } from '@/components/crm/FinanceTab';
 import { NotesTab } from '@/components/crm/NotesTab';
 import { Badge, statusTone, useStatusLabel } from '@/components/ui/Badge';
@@ -39,6 +40,7 @@ type TabKey =
   | 'tags'
   | 'consentimentos'
   | 'anotacoes'
+  | 'ipam'
   | 'auditoria';
 
 const DEFAULT_TAB: TabKey = 'dados';
@@ -54,6 +56,7 @@ function validTab(t: string | null): TabKey {
     'tags',
     'consentimentos',
     'anotacoes',
+    'ipam',
     'auditoria',
   ];
   return (all as string[]).includes(t ?? '') ? (t as TabKey) : DEFAULT_TAB;
@@ -116,6 +119,9 @@ export default function CustomerDetailPage() {
     { value: 'tags', label: tTabs('tags'), badge: customer.tags?.length ?? 0 },
     { value: 'consentimentos', label: tTabs('consents') },
     { value: 'anotacoes', label: tTabs('notes') },
+    ...(hasPermission('ipam.read')
+      ? [{ value: 'ipam' as const, label: tTabs('ipam') }]
+      : []),
     ...(hasPermission('audit.read')
       ? [{ value: 'auditoria' as const, label: tTabs('audit') }]
       : []),
@@ -220,6 +226,7 @@ export default function CustomerDetailPage() {
         )}
         {activeTab === 'consentimentos' && <ConsentsTab customerId={customer.id} />}
         {activeTab === 'anotacoes' && <NotesTab customerId={customer.id} />}
+        {activeTab === 'ipam' && <CustomerIpamTab customerId={customer.id} />}
         {activeTab === 'auditoria' && (
           <AuditTrail resource="customers" resourceId={customer.id} />
         )}

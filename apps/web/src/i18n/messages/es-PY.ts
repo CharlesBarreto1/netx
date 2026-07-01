@@ -340,6 +340,7 @@ const messages = {
       serviceOrders: 'O.S',
       consents: 'Consentimientos',
       notes: 'Anotaciones',
+      ipam: 'IPAM',
       audit: 'Auditoría',
     },
     fields: {

@@ -350,6 +350,7 @@ const messages = {
       tags: 'Tags',
       consents: 'Consentimentos',
       notes: 'Anotações',
+      ipam: 'IPAM',
       audit: 'Auditoria',
     },
     fields: {
