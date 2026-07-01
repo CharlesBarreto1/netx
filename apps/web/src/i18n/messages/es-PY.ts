@@ -1211,6 +1211,13 @@ const messages = {
       templateHint: 'Plantillas aprobadas en Meta. El primer parámetro recibe el nombre del cliente.',
       ruleLabel: 'Etiqueta (opcional)',
       ruleLabelPlaceholder: 'Ej.: Aviso previo al vencimiento',
+      history: {
+        title: 'Historial de envíos',
+        loading: 'Cargando historial…',
+        empty: 'Aún no hay envíos registrados.',
+        sent: 'Enviado',
+        failed: 'Falló',
+      },
     },
     quickReplies: {
       title: 'Respuestas rápidas',

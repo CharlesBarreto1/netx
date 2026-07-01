@@ -97,7 +97,7 @@ export class WhatsappQuickRepliesService {
       });
     }
 
-    const data: Prisma.WhatsappQuickReplyUpdateInput = { ownerUserId: ownerUserId ?? null };
+    const data: Prisma.WhatsappQuickReplyUncheckedUpdateInput = { ownerUserId: ownerUserId ?? null };
     if (input.category !== undefined) data.category = input.category.trim() || 'geral';
     if (input.title !== undefined) data.title = input.title.trim();
     if (input.body !== undefined) data.body = input.body.trim();

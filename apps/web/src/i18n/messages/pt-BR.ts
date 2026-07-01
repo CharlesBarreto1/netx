@@ -1219,6 +1219,13 @@ const messages = {
       templateHint: 'Templates aprovados na Meta. O primeiro parâmetro recebe o nome do cliente.',
       ruleLabel: 'Rótulo (opcional)',
       ruleLabelPlaceholder: 'Ex.: Lembrete pré-vencimento',
+      history: {
+        title: 'Histórico de disparos',
+        loading: 'Carregando histórico…',
+        empty: 'Nenhum disparo registrado ainda.',
+        sent: 'Enviado',
+        failed: 'Falhou',
+      },
     },
     quickReplies: {
       title: 'Respostas rápidas',

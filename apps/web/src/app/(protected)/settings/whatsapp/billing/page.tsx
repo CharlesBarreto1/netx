@@ -265,6 +265,64 @@ function TestRecipientField({
   );
 }
 
+/** Histórico de disparos da régua (mais recentes primeiro). */
+function BillingHistory({ logs, loading }: { logs: WaBillingLog[]; loading: boolean }) {
+  const t = useTranslations('chat.billingAdmin');
+  return (
+    <section>
+      <div className="mb-2 flex items-center gap-2">
+        <Send className="h-4 w-4 text-text-muted" />
+        <h2 className="text-sm font-semibold">{t('history.title')}</h2>
+      </div>
+      {loading ? (
+        <div className="rounded-xl border border-slate-200 p-4 text-sm text-text-muted dark:border-slate-700">
+          {t('history.loading')}
+        </div>
+      ) : logs.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-300 p-8 text-center text-sm text-text-muted dark:border-slate-700">
+          {t('history.empty')}
+        </div>
+      ) : (
+        <ul className="space-y-1.5">
+          {logs.map((l) => (
+            <li
+              key={l.id}
+              className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 text-sm dark:border-slate-700 dark:bg-slate-800"
+            >
+              <div className="min-w-0">
+                <p className="truncate font-medium">
+                  {l.customerName ?? l.sentTo ?? '—'}
+                  {l.invoiceRef ? <span className="text-text-muted"> · {l.invoiceRef}</span> : null}
+                </p>
+                <p className="truncate text-xs text-text-muted">
+                  {[l.ruleLabel, l.templateName, CHANNEL_LABELS[l.channel as BillingChannel] ?? l.channel]
+                    .filter(Boolean)
+                    .join(' · ')}
+                  {l.status === 'FAILED' && l.error ? ` · ${l.error}` : ''}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-3">
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                    l.status === 'SENT'
+                      ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                      : 'bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300'
+                  }`}
+                >
+                  {l.status === 'SENT' ? t('history.sent') : t('history.failed')}
+                </span>
+                <time className="whitespace-nowrap text-xs text-text-muted">
+                  {new Date(l.sentAt).toLocaleString()}
+                </time>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function RuleRow({
   rule,
   templates,

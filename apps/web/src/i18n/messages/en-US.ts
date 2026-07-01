@@ -1195,6 +1195,13 @@ const messages = {
       templateHint: 'Meta-approved templates. The first parameter receives the customer name.',
       ruleLabel: 'Label (optional)',
       ruleLabelPlaceholder: 'E.g. Pre-due reminder',
+      history: {
+        title: 'Dispatch history',
+        loading: 'Loading history…',
+        empty: 'No dispatches recorded yet.',
+        sent: 'Sent',
+        failed: 'Failed',
+      },
     },
     quickReplies: {
       title: 'Quick replies',

@@ -29,7 +29,7 @@ const DispatchBodySchema = z.object({
   body: z.string().max(4000).optional(),
   href: z.string().max(500).optional(),
   icon: z.string().max(40).optional(),
-  data: z.record(z.unknown()).optional(),
+  data: z.record(z.string(), z.unknown()).optional(),
 });
 type DispatchBody = z.infer<typeof DispatchBodySchema>;
 
