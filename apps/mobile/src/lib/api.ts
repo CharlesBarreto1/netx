@@ -11,8 +11,8 @@
  * Espelha o comportamento do apps/web/src/lib/api.ts pra que mobile e web
  * tenham a mesma semântica.
  */
-import { config } from './config';
 import { authStorage } from './auth-storage';
+import { getApiBaseUrl } from './server';
 
 export class ApiError extends Error {
   constructor(
@@ -51,7 +51,8 @@ async function tryRefresh(): Promise<string | null> {
     if (!refreshToken) return null;
 
     try {
-      const res = await fetch(`${config.apiBaseUrl}/auth/refresh`, {
+      const base = await getApiBaseUrl();
+      const res = await fetch(`${base}/auth/refresh`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ refreshToken }),
@@ -83,7 +84,8 @@ async function rawFetch(path: string, init: Init): Promise<Response> {
     if (token) headers.set('Authorization', `Bearer ${token}`);
   }
 
-  return fetch(`${config.apiBaseUrl}${path}`, {
+  const base = await getApiBaseUrl();
+  return fetch(`${base}${path}`, {
     ...init,
     headers,
     body: init.body !== undefined ? JSON.stringify(init.body) : undefined,

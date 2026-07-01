@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ApiError } from '@/lib/api';
 import { MfaRequiredError } from '@/lib/auth';
 import { useAuth } from '@/lib/auth-context';
+import { getServerHost, setServerHost } from '@/lib/server';
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -24,11 +25,19 @@ export default function LoginScreen() {
   const [mfaRequired, setMfaRequired] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [server, setServer] = useState('');
+
+  // Prefill com o último servidor usado (o mesmo APK atende várias bases NetX).
+  useEffect(() => {
+    void getServerHost().then(setServer);
+  }, []);
 
   async function onSubmit() {
     setLoading(true);
     setError(null);
     try {
+      // Define o servidor ANTES de autenticar — o api() passa a usar essa base.
+      await setServerHost(server);
       await login({
         email: email.trim(),
         password,
@@ -59,6 +68,21 @@ export default function LoginScreen() {
         <View style={styles.container}>
           <Text style={styles.title}>NetX Mobile</Text>
           <Text style={styles.subtitle}>Acesso do técnico em campo</Text>
+
+          <View style={styles.field}>
+            <Text style={styles.label}>Servidor</Text>
+            <TextInput
+              style={styles.input}
+              value={server}
+              onChangeText={setServer}
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              editable={!loading}
+              placeholder="ex.: minhaisp.com ou 179.49.176.13"
+              placeholderTextColor="#64748b"
+            />
+          </View>
 
           <View style={styles.field}>
             <Text style={styles.label}>E-mail</Text>
