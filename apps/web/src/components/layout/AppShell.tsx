@@ -95,6 +95,7 @@ import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 
 import { CommandPalette } from '@/components/layout/CommandPalette';
+import { NotificationBell } from '@/components/layout/NotificationBell';
 import { CopilotRail } from '@/components/layout/CopilotRail';
 import { LicenseBanner } from '@/components/layout/LicenseBanner';
 import { LocaleSwitcher } from '@/components/layout/LocaleSwitcher';
@@ -411,33 +412,38 @@ export function AppShell({
             {session.tenant.name}
           </span>
 
-          {/* Search trigger (Cmd+K) */}
-          <button
-            type="button"
-            onClick={openPalette}
-            className={cn(
-              'group ml-auto hidden h-9 items-center gap-2 rounded-md border border-border bg-surface/60',
-              'px-2.5 text-sm text-text-subtle transition-colors hover:bg-surface-hover hover:text-text',
-              'md:inline-flex md:w-[280px]',
-            )}
-            aria-label="Buscar (⌘K)"
-          >
-            <Search className="h-4 w-4" />
-            <span className="flex-1 text-left">Buscar...</span>
-            <span className="flex gap-1">
-              <kbd className="kbd">⌘</kbd>
-              <kbd className="kbd">K</kbd>
-            </span>
-          </button>
+          {/* Sino de notificações — à esquerda da busca. Aparece só com não-lidas. */}
+          <div className="ml-auto flex items-center gap-2">
+            <NotificationBell />
 
-          <button
-            type="button"
-            onClick={openPalette}
-            className="ml-auto inline-flex h-9 w-9 items-center justify-center rounded-md text-text-muted hover:bg-surface-hover md:hidden"
-            aria-label="Buscar"
-          >
-            <Search className="h-4 w-4" />
-          </button>
+            {/* Search trigger (Cmd+K) */}
+            <button
+              type="button"
+              onClick={openPalette}
+              className={cn(
+                'group hidden h-9 items-center gap-2 rounded-md border border-border bg-surface/60',
+                'px-2.5 text-sm text-text-subtle transition-colors hover:bg-surface-hover hover:text-text',
+                'md:inline-flex md:w-[280px]',
+              )}
+              aria-label="Buscar (⌘K)"
+            >
+              <Search className="h-4 w-4" />
+              <span className="flex-1 text-left">Buscar...</span>
+              <span className="flex gap-1">
+                <kbd className="kbd">⌘</kbd>
+                <kbd className="kbd">K</kbd>
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={openPalette}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-md text-text-muted hover:bg-surface-hover md:hidden"
+              aria-label="Buscar"
+            >
+              <Search className="h-4 w-4" />
+            </button>
+          </div>
 
           <div className="flex items-center gap-1.5">
             <ThemeToggle />

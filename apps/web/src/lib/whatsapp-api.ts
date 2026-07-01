@@ -80,6 +80,13 @@ export interface WaContact {
   } | null;
 }
 
+/** Operador que entrou num grupo (atendimento compartilhado do NOC). */
+export interface WaMember {
+  userId: string;
+  joinedAt: string;
+  user: { id: string; firstName: string; lastName: string };
+}
+
 export interface WaConversationListItem {
   id: string;
   status: WaConversationStatus;
@@ -91,6 +98,7 @@ export interface WaConversationListItem {
   contact: WaContact;
   instance: { id: string; name: string; phoneE164: string | null; status: WaInstanceStatus; channel: WaChannel };
   assignedUser: { id: string; firstName: string; lastName: string; email: string } | null;
+  members?: WaMember[];
   messages: Array<{
     id: string;
     body: string | null;
@@ -134,6 +142,7 @@ export type InboxFilter =
   | 'all'
   | 'resolved'
   | 'groups'
+  | 'groupsMine'
   | 'andamento'
   | 'espera'
   | 'automacao';
@@ -160,6 +169,69 @@ export async function getAgentSettings() {
 
 export async function updateAgentSettings(input: Partial<WaAgentSettings>) {
   return api.put<WaAgentSettings>(`/v1/whatsapp/agent-settings`, input);
+}
+
+// ---- respostas rápidas (mensagens predefinidas) ----
+
+/** Categorias sugeridas. Livre — o backend aceita qualquer string. */
+export const QUICK_REPLY_CATEGORIES = [
+  'saudacao',
+  'encerramento',
+  'viabilidade',
+  'planos',
+  'prazos',
+  'geral',
+] as const;
+export type QuickReplyCategory = (typeof QUICK_REPLY_CATEGORIES)[number];
+
+export interface WaQuickReply {
+  id: string;
+  ownerUserId: string | null; // null = compartilhada (equipe); set = pessoal
+  category: string;
+  title: string;
+  body: string;
+  shortcut: string | null;
+  sortOrder: number;
+  createdById: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface QuickReplyInput {
+  scope: 'shared' | 'personal';
+  category: string;
+  title: string;
+  body: string;
+  shortcut?: string | null;
+  sortOrder?: number;
+}
+
+export async function listQuickReplies() {
+  return api.get<WaQuickReply[]>(`/v1/whatsapp/quick-replies`);
+}
+
+export async function createQuickReply(input: QuickReplyInput) {
+  return api.post<WaQuickReply>(`/v1/whatsapp/quick-replies`, input);
+}
+
+export async function updateQuickReply(id: string, input: Partial<QuickReplyInput>) {
+  return api.put<WaQuickReply>(`/v1/whatsapp/quick-replies/${id}`, input);
+}
+
+export async function deleteQuickReply(id: string) {
+  return api.delete(`/v1/whatsapp/quick-replies/${id}`);
+}
+
+/** Interpola {cliente} e {operador} no corpo de uma resposta rápida. */
+export function fillQuickReply(
+  body: string,
+  vars: { cliente?: string | null; operador?: string | null },
+): string {
+  return body
+    .replace(/\{cliente\}/gi, vars.cliente?.trim() || '')
+    .replace(/\{operador\}/gi, vars.operador?.trim() || '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim();
 }
 
 // ---- conversations ----
@@ -258,8 +330,33 @@ export async function resolveConversation(id: string) {
   return api.post(`/v1/whatsapp/conversations/${id}/resolve`, {});
 }
 
-export async function sendMessage(conversationId: string, text: string) {
-  return api.post<WaMessage>(`/v1/whatsapp/conversations/${conversationId}/messages`, { text });
+/** Entra num grupo (NOC) — passa a responder e ser notificado. Vários ao mesmo tempo. */
+export async function joinGroup(id: string) {
+  return api.post<WaMember[]>(`/v1/whatsapp/conversations/${id}/join`, {});
+}
+
+/** Sai de um grupo — deixa de responder/ser notificado. */
+export async function leaveGroup(id: string) {
+  return api.post<WaMember[]>(`/v1/whatsapp/conversations/${id}/leave`, {});
+}
+
+export async function sendMessage(conversationId: string, text: string, mentions?: string[]) {
+  return api.post<WaMessage>(`/v1/whatsapp/conversations/${conversationId}/messages`, {
+    text,
+    ...(mentions?.length ? { mentions } : {}),
+  });
+}
+
+// ---- presença (quem está online / vendo qual grupo) ----
+
+export interface WaPresence {
+  userId: string;
+  viewingConversationId: string | null;
+}
+
+/** Heartbeat: marca este operador online (com a conversa aberta) e devolve os online. */
+export async function heartbeatPresence(conversationId: string | null) {
+  return api.post<{ online: WaPresence[] }>(`/v1/whatsapp/presence`, { conversationId });
 }
 
 /** Envia uma nota de voz gravada no navegador (multipart). */
@@ -267,6 +364,14 @@ export async function sendAudioMessage(conversationId: string, blob: Blob) {
   const fd = new FormData();
   fd.append('file', blob, 'voice.webm');
   return apiUpload<WaMessage>(`/v1/whatsapp/conversations/${conversationId}/messages/audio`, fd);
+}
+
+/** Envia uma imagem ou arquivo anexado (multipart). `caption` é a legenda. */
+export async function sendMediaMessage(conversationId: string, file: File, caption?: string) {
+  const fd = new FormData();
+  fd.append('file', file, file.name);
+  if (caption?.trim()) fd.append('caption', caption.trim());
+  return apiUpload<WaMessage>(`/v1/whatsapp/conversations/${conversationId}/messages/media`, fd);
 }
 
 /** Transcreve uma mensagem de áudio (sob demanda). */
@@ -314,6 +419,97 @@ export async function listTemplates() {
 
 export async function syncTemplates(instanceId: string) {
   return api.post<{ synced: number }>(`/v1/whatsapp/instances/${instanceId}/templates/sync`, {});
+}
+
+// ---- régua de cobrança (config + regras) ----
+
+export type BillingChannel = 'WHATSAPP_META' | 'WHATSAPP_WAHA' | 'SMS' | 'EMAIL';
+
+export interface WaBillingRule {
+  id: string;
+  enabled: boolean;
+  label: string | null;
+  /** <0 = dias ANTES do vencimento | 0 = no dia | >0 = dias DEPOIS. */
+  offsetDays: number;
+  channel: string;
+  templateName: string;
+  language: string;
+  instanceId: string | null;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WaBillingConfig {
+  config: { enabled: boolean; testRecipient: string | null };
+  rules: WaBillingRule[];
+  channels: BillingChannel[];
+  supportedChannels: BillingChannel[];
+}
+
+export interface WaBillingRuleInput {
+  enabled?: boolean;
+  label?: string | null;
+  offsetDays: number;
+  channel: string;
+  templateName: string;
+  language?: string;
+  instanceId?: string | null;
+  sortOrder?: number;
+}
+
+export async function getBillingConfig() {
+  return api.get<WaBillingConfig>(`/v1/whatsapp/billing/config`);
+}
+
+export async function setBillingConfig(input: { enabled?: boolean; testRecipient?: string | null }) {
+  return api.put<WaBillingConfig>(`/v1/whatsapp/billing/config`, input);
+}
+
+export async function createBillingRule(input: WaBillingRuleInput) {
+  return api.post<WaBillingConfig>(`/v1/whatsapp/billing/rules`, input);
+}
+
+export async function updateBillingRule(id: string, input: Partial<WaBillingRuleInput>) {
+  return api.put<WaBillingConfig>(`/v1/whatsapp/billing/rules/${id}`, input);
+}
+
+export async function deleteBillingRule(id: string) {
+  return api.delete<WaBillingConfig>(`/v1/whatsapp/billing/rules/${id}`);
+}
+
+export interface BillingRunResult {
+  tenants: number;
+  rules: number;
+  due: number;
+  sent: number;
+  skipped: number;
+  failed: number;
+  testRedirect: string | null;
+  dryRun: boolean;
+}
+
+export async function runBilling(dryRun: boolean) {
+  return api.post<BillingRunResult>(`/v1/whatsapp/billing/run`, { dryRun });
+}
+
+export interface WaBillingLog {
+  id: string;
+  customerName: string | null;
+  sentTo: string | null;
+  invoiceRef: string | null;
+  channel: string;
+  status: 'SENT' | 'FAILED';
+  error: string | null;
+  sentAt: string;
+  ruleLabel: string | null;
+  templateName: string | null;
+  offsetDays: number | null;
+}
+
+/** Histórico de disparos (mais recentes primeiro). */
+export async function listBillingLogs() {
+  return api.get<WaBillingLog[]>(`/v1/whatsapp/billing/logs`);
 }
 
 // ---- IA conselheira (read-only: sugere/resume, nunca envia) ----

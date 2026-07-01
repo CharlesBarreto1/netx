@@ -1,27 +1,41 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
+import { InvoiceStatus } from '@prisma/client';
 
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { WhatsappConversationsService } from './whatsapp-conversations.service';
 
+/** Canais de disparo. Só WHATSAPP_META dispara hoje; os demais ficam prontos
+ *  pra migração (sistema multicanal em breve). */
+export const BILLING_CHANNELS = ['WHATSAPP_META', 'WHATSAPP_WAHA', 'SMS', 'EMAIL'] as const;
+export type BillingChannel = (typeof BILLING_CHANNELS)[number];
+const SUPPORTED_CHANNELS: BillingChannel[] = ['WHATSAPP_META'];
+
+export interface BillingRuleInput {
+  enabled?: boolean;
+  label?: string | null;
+  /** <0 = dias ANTES do vencimento | 0 = no dia | >0 = dias DEPOIS. */
+  offsetDays: number;
+  channel: string;
+  templateName: string;
+  language?: string;
+  instanceId?: string | null;
+  sortOrder?: number;
+}
+
 /**
- * Lembrete de cobrança via WhatsApp (canal oficial Meta).
+ * Régua de cobrança configurável por tenant (múltiplos disparos + canal).
  *
- * Roda 1x/dia e dispara um template HSM aprovado para os clientes com fatura
- * (`ContractInvoice`) OPEN vencendo na data-alvo (hoje + offset). Como template
- * ignora a janela de 24h, funciona mesmo sem conversa prévia.
+ * Um cron diário (09:00) percorre os tenants com config ligada e, pra cada
+ * REGRA habilitada, dispara o template no dia certo relativo ao vencimento.
+ * Cada regra dispara UMA vez por fatura (dedup em BillingReminderLog).
  *
- * Config por env (todas opcionais):
- *   WHATSAPP_BILLING_ENABLED         "true" liga o cron diário (default: off)
- *   WHATSAPP_BILLING_TEST_RECIPIENT  E164 — REDIRECIONA todo envio p/ este número
- *                                    (modo teste: nada vai para clientes reais)
- *   WHATSAPP_BILLING_TEMPLATE        nome do template (default cobros_chat_5949)
- *   WHATSAPP_BILLING_LANG            idioma do template (default pt_BR)
- *   WHATSAPP_BILLING_DUE_OFFSET_DAYS dias a partir de hoje (default 0 = no vencimento)
- *
- * Segurança: enquanto WHATSAPP_BILLING_TEST_RECIPIENT estiver setado, NENHUMA
- * mensagem chega a cliente real — tudo é redirecionado para o número de teste.
+ * Config/regras moram no banco (telas em Configurações → Cobrança). Duas env
+ * globais permanecem como rede de segurança:
+ *   WHATSAPP_BILLING_ENABLED=false      kill-switch global (desliga tudo)
+ *   WHATSAPP_BILLING_TEST_RECIPIENT     redireciona TODO envio (override global)
  */
 @Injectable()
 export class WhatsappBillingRemindersService {
@@ -30,36 +44,124 @@ export class WhatsappBillingRemindersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly conversations: WhatsappConversationsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
-  private cfg() {
+  // ----- configuração (telas) -----
+
+  /** Config-mestre + régua de regras do tenant. */
+  async getConfig(tenantId: string) {
+    const [config, rules] = await Promise.all([
+      this.prisma.billingReminderConfig.findUnique({ where: { tenantId } }),
+      this.prisma.billingReminderRule.findMany({
+        where: { tenantId },
+        orderBy: [{ sortOrder: 'asc' }, { offsetDays: 'asc' }],
+      }),
+    ]);
     return {
-      enabled: process.env.WHATSAPP_BILLING_ENABLED === 'true',
-      testRecipient: (process.env.WHATSAPP_BILLING_TEST_RECIPIENT ?? '').trim() || null,
-      template: (process.env.WHATSAPP_BILLING_TEMPLATE ?? '').trim() || 'cobros_chat_5949',
-      language: (process.env.WHATSAPP_BILLING_LANG ?? '').trim() || 'pt_BR',
-      offsetDays: Number.parseInt(process.env.WHATSAPP_BILLING_DUE_OFFSET_DAYS ?? '0', 10) || 0,
+      config: {
+        enabled: config?.enabled ?? false,
+        testRecipient: config?.testRecipient ?? null,
+      },
+      rules,
+      channels: BILLING_CHANNELS,
+      supportedChannels: SUPPORTED_CHANNELS,
     };
   }
 
-  /** Cron diário às 09:00. Só age se WHATSAPP_BILLING_ENABLED=true. */
+  async setConfig(tenantId: string, input: { enabled?: boolean; testRecipient?: string | null }) {
+    const data = {
+      enabled: input.enabled,
+      testRecipient: input.testRecipient !== undefined ? input.testRecipient?.trim() || null : undefined,
+    };
+    await this.prisma.billingReminderConfig.upsert({
+      where: { tenantId },
+      create: { tenantId, enabled: data.enabled ?? false, testRecipient: data.testRecipient ?? null },
+      update: data,
+    });
+    return this.getConfig(tenantId);
+  }
+
+  async createRule(tenantId: string, input: BillingRuleInput) {
+    this.validateRule(input);
+    await this.prisma.billingReminderRule.create({
+      data: {
+        tenantId,
+        enabled: input.enabled ?? true,
+        label: input.label?.trim() || null,
+        offsetDays: input.offsetDays,
+        channel: input.channel,
+        templateName: input.templateName.trim(),
+        language: input.language?.trim() || 'pt_BR',
+        instanceId: input.instanceId ?? null,
+        sortOrder: input.sortOrder ?? 0,
+      },
+    });
+    return this.getConfig(tenantId);
+  }
+
+  async updateRule(tenantId: string, id: string, input: Partial<BillingRuleInput>) {
+    const existing = await this.prisma.billingReminderRule.findFirst({ where: { id, tenantId } });
+    if (!existing) throw new NotFoundException('Regra não encontrada');
+    if (input.channel !== undefined || input.offsetDays !== undefined || input.templateName !== undefined) {
+      this.validateRule({
+        offsetDays: input.offsetDays ?? existing.offsetDays,
+        channel: input.channel ?? existing.channel,
+        templateName: input.templateName ?? existing.templateName,
+      });
+    }
+    await this.prisma.billingReminderRule.update({
+      where: { id },
+      data: {
+        enabled: input.enabled,
+        label: input.label !== undefined ? input.label?.trim() || null : undefined,
+        offsetDays: input.offsetDays,
+        channel: input.channel,
+        templateName: input.templateName?.trim(),
+        language: input.language?.trim(),
+        instanceId: input.instanceId !== undefined ? input.instanceId : undefined,
+        sortOrder: input.sortOrder,
+      },
+    });
+    return this.getConfig(tenantId);
+  }
+
+  async deleteRule(tenantId: string, id: string) {
+    const existing = await this.prisma.billingReminderRule.findFirst({ where: { id, tenantId } });
+    if (!existing) throw new NotFoundException('Regra não encontrada');
+    await this.prisma.billingReminderRule.delete({ where: { id } });
+    return this.getConfig(tenantId);
+  }
+
+  private validateRule(input: { offsetDays: number; channel: string; templateName: string }) {
+    if (!Number.isInteger(input.offsetDays) || input.offsetDays < -60 || input.offsetDays > 60) {
+      throw new BadRequestException('offsetDays deve ser um inteiro entre -60 e 60.');
+    }
+    if (!(BILLING_CHANNELS as readonly string[]).includes(input.channel)) {
+      throw new BadRequestException(`Canal inválido. Use um de: ${BILLING_CHANNELS.join(', ')}.`);
+    }
+    if (!input.templateName?.trim()) {
+      throw new BadRequestException('Template obrigatório.');
+    }
+  }
+
+  // ----- disparo (cron + manual) -----
+
+  /** Cron diário às 09:00. Percorre as configs ligadas (por tenant). */
   @Cron('0 9 * * *')
   async handleDaily(): Promise<void> {
-    if (!this.cfg().enabled) {
-      this.logger.log('Lembrete de cobrança desativado (WHATSAPP_BILLING_ENABLED != true).');
-      return;
-    }
     await this.runOnce();
   }
 
   /**
-   * Executa o disparo uma vez. `dryRun` apenas loga (não envia). `date` permite
-   * simular outra data-base (testes). Retorna um resumo agregado.
+   * Executa a régua uma vez. `dryRun` só loga; `date` simula outra data-base;
+   * `tenantId` restringe a um tenant (usado no disparo manual da tela). Ao
+   * concluir cada tenant, notifica os admins com o resumo (sino).
+   * Retorna um resumo agregado.
    */
-  async runOnce(
-    opts: { dryRun?: boolean; date?: Date } = {},
-  ): Promise<{
+  async runOnce(opts: { dryRun?: boolean; date?: Date; tenantId?: string } = {}): Promise<{
     tenants: number;
+    rules: number;
     due: number;
     sent: number;
     skipped: number;
@@ -67,88 +169,193 @@ export class WhatsappBillingRemindersService {
     testRedirect: string | null;
     dryRun: boolean;
   }> {
-    const cfg = this.cfg();
     const dryRun = opts.dryRun ?? false;
+    const envTestRecipient = (process.env.WHATSAPP_BILLING_TEST_RECIPIENT ?? '').trim() || null;
+    const res = { tenants: 0, rules: 0, due: 0, sent: 0, skipped: 0, failed: 0, testRedirect: envTestRecipient, dryRun };
 
-    // Janela do dia-alvo [00:00, +1d) sobre a data de vencimento (coluna Date).
-    const target = opts.date ? new Date(opts.date) : new Date();
-    target.setDate(target.getDate() + cfg.offsetDays);
-    const start = new Date(target);
-    start.setHours(0, 0, 0, 0);
-    const end = new Date(start);
-    end.setDate(end.getDate() + 1);
+    // Kill-switch global (rede de segurança de deploy).
+    if (process.env.WHATSAPP_BILLING_ENABLED === 'false') {
+      this.logger.log('Disparo de cobrança desligado pelo kill-switch (WHATSAPP_BILLING_ENABLED=false).');
+      return res;
+    }
 
-    const res = {
-      tenants: 0,
-      due: 0,
-      sent: 0,
-      skipped: 0,
-      failed: 0,
-      testRedirect: cfg.testRecipient,
-      dryRun,
-    };
-
-    // Tenants com instância Meta ativa e conectada (uma por tenant).
-    const instances = await this.prisma.whatsappInstance.findMany({
-      where: { channel: 'META_CLOUD', active: true, status: 'CONNECTED' },
-      select: { id: true, tenantId: true },
-      orderBy: { createdAt: 'asc' },
+    const configs = await this.prisma.billingReminderConfig.findMany({
+      where: { enabled: true, ...(opts.tenantId ? { tenantId: opts.tenantId } : {}) },
     });
-    const instanceByTenant = new Map<string, string>();
-    for (const i of instances) if (!instanceByTenant.has(i.tenantId)) instanceByTenant.set(i.tenantId, i.id);
-    res.tenants = instanceByTenant.size;
-
-    for (const [tenantId, instanceId] of instanceByTenant) {
-      const invoices = await this.prisma.contractInvoice.findMany({
-        where: { tenantId, status: 'OPEN', dueDate: { gte: start, lt: end } },
-        include: {
-          contract: { include: { customer: { select: { displayName: true, primaryPhone: true } } } },
-        },
+    for (const cfg of configs) {
+      const rules = await this.prisma.billingReminderRule.findMany({
+        where: { tenantId: cfg.tenantId, enabled: true },
+        orderBy: { sortOrder: 'asc' },
       });
-      res.due += invoices.length;
+      if (!rules.length) continue;
+      res.tenants++;
+      // Modo teste: env (override global) tem prioridade sobre o do tenant.
+      const testRecipient = envTestRecipient ?? cfg.testRecipient ?? null;
+      // Tallies do tenant pra notificar os admins ao concluir.
+      const tally = { sent: 0, failed: 0, due: 0 };
 
-      for (const inv of invoices) {
-        const customer = inv.contract?.customer;
-        const realPhone = customer?.primaryPhone ?? null;
-        const name = customer?.displayName ?? 'cliente';
-        // Modo teste: redireciona p/ o número de teste; senão usa o do cliente.
-        const phone = cfg.testRecipient ?? realPhone;
-
-        if (!phone) {
-          res.skipped++;
-          this.logger.warn(`Fatura ${inv.id}: cliente sem telefone — pulando.`);
+      for (const rule of rules) {
+        res.rules++;
+        if (!SUPPORTED_CHANNELS.includes(rule.channel as BillingChannel)) {
+          this.logger.log(`Regra ${rule.id}: canal ${rule.channel} ainda não suportado — pulando.`);
           continue;
         }
-        if (dryRun) {
-          this.logger.log(`[dry-run] cobrança ${inv.reference ?? inv.id} → ${phone} (${name})`);
-          res.sent++;
-          continue;
-        }
-        try {
-          await this.conversations.sendTemplateToPhone(tenantId, {
-            phoneE164: phone,
-            templateName: cfg.template,
-            language: cfg.language,
-            variables: [name],
-            name,
-            instanceId,
-            actor: 'system:billing',
-            previewBody: `[cobrança] fatura ${inv.reference ?? inv.id} vence ${start
-              .toISOString()
-              .slice(0, 10)}`,
+
+        // Data-alvo de vencimento = hoje deslocado por -offsetDays. Ex.: regra
+        // "3 dias antes" (offset -3) casa faturas que vencem em hoje+3.
+        const base = opts.date ? new Date(opts.date) : new Date();
+        const start = new Date(base);
+        start.setDate(start.getDate() - rule.offsetDays);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(start);
+        end.setDate(end.getDate() + 1);
+
+        const invoices = await this.prisma.contractInvoice.findMany({
+          where: {
+            tenantId: cfg.tenantId,
+            status: { in: [InvoiceStatus.OPEN, InvoiceStatus.OVERDUE] },
+            dueDate: { gte: start, lt: end },
+          },
+          include: {
+            contract: { include: { customer: { select: { displayName: true, primaryPhone: true } } } },
+          },
+        });
+        res.due += invoices.length;
+        tally.due += invoices.length;
+
+        for (const inv of invoices) {
+          // Dedup: essa regra já disparou (com sucesso) pra essa fatura?
+          const prior = await this.prisma.billingReminderLog.findUnique({
+            where: { ruleId_invoiceId: { ruleId: rule.id, invoiceId: inv.id } },
           });
-          res.sent++;
-          if (cfg.testRecipient) {
-            this.logger.log(`Cobrança ${inv.id} (cliente real ${realPhone ?? '∅'}) redirecionada p/ teste ${phone}.`);
+          if (prior?.status === 'SENT') {
+            res.skipped++;
+            continue;
           }
-        } catch (e) {
-          res.failed++;
-          this.logger.warn(`Falha ao enviar cobrança ${inv.id}: ${(e as Error).message}`);
+
+          const customer = inv.contract?.customer;
+          const realPhone = customer?.primaryPhone ?? null;
+          const name = customer?.displayName ?? 'cliente';
+          const phone = testRecipient ?? realPhone;
+          const invoiceRef = inv.reference ?? inv.id;
+
+          if (!phone) {
+            res.skipped++;
+            this.logger.warn(`Fatura ${inv.id}: cliente sem telefone — pulando.`);
+            continue;
+          }
+          if (dryRun) {
+            this.logger.log(`[dry-run] regra ${rule.label ?? rule.offsetDays} → ${phone} (${name})`);
+            res.sent++;
+            continue;
+          }
+
+          try {
+            await this.conversations.sendTemplateToPhone(cfg.tenantId, {
+              phoneE164: phone,
+              templateName: rule.templateName,
+              language: rule.language,
+              variables: [name],
+              name,
+              instanceId: rule.instanceId ?? undefined,
+              actor: 'system:billing',
+              previewBody: `[cobrança] fatura ${invoiceRef} vence ${start.toISOString().slice(0, 10)}`,
+            });
+            res.sent++;
+            tally.sent++;
+            await this.markLog(cfg.tenantId, rule.id, inv.id, rule.channel, 'SENT', null, name, phone, invoiceRef);
+          } catch (e) {
+            res.failed++;
+            tally.failed++;
+            await this.markLog(cfg.tenantId, rule.id, inv.id, rule.channel, 'FAILED', (e as Error).message, name, phone, invoiceRef);
+            this.logger.warn(`Falha ao enviar cobrança ${inv.id} (regra ${rule.id}): ${(e as Error).message}`);
+          }
         }
+      }
+
+      // Avisa os admins do tenant (sino) — só quando houve disparo real.
+      if (!dryRun && (tally.sent > 0 || tally.failed > 0)) {
+        await this.notifyAdmins(cfg.tenantId, tally).catch((e) =>
+          this.logger.warn(`Falha ao notificar cobrança concluída (${cfg.tenantId}): ${(e as Error).message}`),
+        );
       }
     }
 
-    this.logger.log(`Lembrete de cobrança concluído: ${JSON.stringify(res)}`);
+    this.logger.log(`Régua de cobrança concluída: ${JSON.stringify(res)}`);
     return res;
+  }
+
+  /** Notifica os admins do tenant que o disparo concluiu (sino global). */
+  private async notifyAdmins(tenantId: string, tally: { sent: number; failed: number; due: number }) {
+    const admins = await this.prisma.user.findMany({
+      where: {
+        tenantId,
+        status: 'ACTIVE',
+        deletedAt: null,
+        userRoles: {
+          some: { role: { rolePermissions: { some: { permission: { code: 'chat.admin' } } } } },
+        },
+      },
+      select: { id: true },
+      take: 50,
+    });
+    if (!admins.length) return;
+    await this.notifications.notifyMany(
+      admins.map((a) => a.id),
+      {
+        tenantId,
+        type: 'billing.run',
+        title: `Cobrança concluída — ${tally.sent} enviada(s)`,
+        body:
+          tally.failed > 0
+            ? `${tally.failed} falha(s) · ${tally.due} fatura(s) elegíveis`
+            : `${tally.due} fatura(s) elegíveis`,
+        href: '/settings/whatsapp/billing',
+        icon: 'billing',
+        data: tally,
+      },
+    );
+  }
+
+  /** Histórico de disparos (mais recentes primeiro): cliente + horário + status. */
+  async listLogs(tenantId: string, limit = 200) {
+    const rows = await this.prisma.billingReminderLog.findMany({
+      where: { tenantId },
+      orderBy: { sentAt: 'desc' },
+      take: Math.min(limit, 500),
+      include: { rule: { select: { label: true, templateName: true, offsetDays: true } } },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      customerName: r.customerName,
+      sentTo: r.sentTo,
+      invoiceRef: r.invoiceRef,
+      channel: r.channel,
+      status: r.status,
+      error: r.error,
+      sentAt: r.sentAt,
+      ruleLabel: r.rule?.label ?? null,
+      templateName: r.rule?.templateName ?? null,
+      offsetDays: r.rule?.offsetDays ?? null,
+    }));
+  }
+
+  /** Upsert do log de disparo (dedup por regra+fatura). */
+  private async markLog(
+    tenantId: string,
+    ruleId: string,
+    invoiceId: string,
+    channel: string,
+    status: 'SENT' | 'FAILED',
+    error: string | null,
+    customerName: string | null,
+    sentTo: string | null,
+    invoiceRef: string | null,
+  ) {
+    await this.prisma.billingReminderLog.upsert({
+      where: { ruleId_invoiceId: { ruleId, invoiceId } },
+      create: { tenantId, ruleId, invoiceId, channel, status, error, customerName, sentTo, invoiceRef },
+      update: { status, error, customerName, sentTo, invoiceRef, sentAt: new Date() },
+    });
   }
 }

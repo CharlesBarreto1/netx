@@ -296,6 +296,10 @@ const chatPermissions = [
   // chat.admin = gerenciar instâncias Evolution + conexão WhatsApp
   { code: 'chat.admin',  module: 'chat', resource: 'chat', action: 'admin'  },
 
+  // Notificações — ler/limpar as suas é livre (qualquer autenticado). Só o
+  // DISPARO pra outros usuários (cross-app: alarmes NMS, tarefas) exige isto.
+  { code: 'notifications.dispatch', module: 'core', resource: 'notifications', action: 'dispatch' },
+
   // SIFEN — Fatura eletrônica Paraguay (DNIT / e-Kuatiá)
   { code: 'sifen.read',   module: 'sifen', resource: 'sifen', action: 'read'   },
   // sifen.emit = disparar emissão manual de DE (factura, NC, ND)
@@ -483,6 +487,8 @@ const systemRoles = [
       'chat.assign',
       'chat.audit',
       'chat.admin',
+      // Notificações — admin pode disparar pra outros (sistema/integrações)
+      'notifications.dispatch',
       // SIFEN — admin gerencia certificado e pode cancelar/emitir
       'sifen.read',
       'sifen.emit',

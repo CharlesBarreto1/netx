@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import type { Prisma, WaConversationStatus, WaMsgType } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 import type { TemplateSend } from './providers/channel-provider';
@@ -26,6 +27,7 @@ export type InboxFilter =
   | 'all'
   | 'resolved'
   | 'groups'
+  | 'groupsMine'
   | 'andamento'
   | 'espera'
   | 'automacao';
@@ -60,6 +62,7 @@ export class WhatsappConversationsService {
     private readonly creds: WhatsappCredentials,
     private readonly messages: WhatsappMessagesService,
     private readonly transcription: WhatsappTranscriptionService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -97,10 +100,12 @@ export class WhatsappConversationsService {
   async list(tenantId: string, userId: string, filter: InboxFilter = 'mine') {
     const where: Prisma.WhatsappConversationWhereInput = { tenantId };
 
-    if (filter === 'groups') {
-      // Aba dedicada de grupos: só conversas de grupo (qualquer status aberto).
+    if (filter === 'groups' || filter === 'groupsMine') {
+      // Aba de grupos: só conversas de grupo (qualquer status aberto).
+      // 'groupsMine' = só os grupos em que ESTE operador entrou (é membro).
       where.contact = { isGroup: true };
       where.status = { in: ['OPEN', 'RESOLVED'] };
+      if (filter === 'groupsMine') where.members = { some: { userId } };
     } else {
       // Demais filas são atendimento 1:1 — grupos ficam de fora pra não poluir.
       where.contact = { isGroup: false };
@@ -145,6 +150,10 @@ export class WhatsappConversationsService {
         },
         instance: { select: { id: true, name: true, phoneE164: true, status: true, channel: true } },
         assignedUser: { select: { id: true, firstName: true, lastName: true, email: true } },
+        members: {
+          include: { user: { select: { id: true, firstName: true, lastName: true } } },
+          orderBy: { joinedAt: 'asc' },
+        },
         messages: {
           orderBy: { createdAt: 'desc' },
           take: 1,
@@ -202,47 +211,62 @@ export class WhatsappConversationsService {
         },
         instance: { select: { id: true, name: true, phoneE164: true, status: true, channel: true } },
         assignedUser: { select: { id: true, firstName: true, lastName: true, email: true } },
+        members: {
+          include: { user: { select: { id: true, firstName: true, lastName: true } } },
+          orderBy: { joinedAt: 'asc' },
+        },
       },
     });
     if (!conv) throw new NotFoundException('Conversa não encontrada');
 
-    // Auditoria: se está atribuída a OUTRO usuário, requer chat.audit
-    if (
-      conv.assignedUserId &&
-      conv.assignedUserId !== userId &&
-      !canAudit
-    ) {
-      throw new ForbiddenException(
-        'Conversa atribuída a outro operador. Permissão chat.audit necessária.',
-      );
-    }
+    if (conv.contact.isGroup) {
+      // Grupos são atendimento COMPARTILHADO (NOC): qualquer operador com
+      // chat.read pode abrir e ver, sem trava de auditoria/espião. Zera o
+      // não-lidas quando QUEM ABRE é membro (já está atendendo o grupo).
+      const isMember = conv.members.some((m) => m.userId === userId);
+      if (isMember && conv.unreadCount > 0) {
+        await this.prisma.whatsappConversation.update({
+          where: { id },
+          data: { unreadCount: 0 },
+        });
+        this.events.emit({ type: 'conversation.updated', tenantId, payload: { id, unreadCount: 0 } });
+      }
+    } else {
+      // 1:1 — atendimento exclusivo (dono único).
+      // Auditoria: se está atribuída a OUTRO usuário, requer chat.audit
+      if (conv.assignedUserId && conv.assignedUserId !== userId && !canAudit) {
+        throw new ForbiddenException(
+          'Conversa atribuída a outro operador. Permissão chat.audit necessária.',
+        );
+      }
 
-    // Registra view se está espionando
-    if (conv.assignedUserId && conv.assignedUserId !== userId) {
-      await this.prisma.whatsappConversationView.create({
-        data: { conversationId: conv.id, viewerUserId: userId },
-      });
-      await this.audit.log({
-        tenantId,
-        userId,
-        action: 'whatsapp.conversation.viewed',
-        resource: 'whatsapp_conversation',
-        resourceId: conv.id,
-        metadata: { assignedUserId: conv.assignedUserId },
-      });
-    }
+      // Registra view se está espionando
+      if (conv.assignedUserId && conv.assignedUserId !== userId) {
+        await this.prisma.whatsappConversationView.create({
+          data: { conversationId: conv.id, viewerUserId: userId },
+        });
+        await this.audit.log({
+          tenantId,
+          userId,
+          action: 'whatsapp.conversation.viewed',
+          resource: 'whatsapp_conversation',
+          resourceId: conv.id,
+          metadata: { assignedUserId: conv.assignedUserId },
+        });
+      }
 
-    // Zera contador de não lidas se quem está vendo é o assigned
-    if (conv.assignedUserId === userId && conv.unreadCount > 0) {
-      await this.prisma.whatsappConversation.update({
-        where: { id },
-        data: { unreadCount: 0 },
-      });
-      this.events.emit({
-        type: 'conversation.updated',
-        tenantId,
-        payload: { id, unreadCount: 0 },
-      });
+      // Zera contador de não lidas se quem está vendo é o assigned
+      if (conv.assignedUserId === userId && conv.unreadCount > 0) {
+        await this.prisma.whatsappConversation.update({
+          where: { id },
+          data: { unreadCount: 0 },
+        });
+        this.events.emit({
+          type: 'conversation.updated',
+          tenantId,
+          payload: { id, unreadCount: 0 },
+        });
+      }
     }
 
     const messages = await this.prisma.whatsappMessage.findMany({
@@ -337,10 +361,12 @@ export class WhatsappConversationsService {
   ) {
     const conv = await this.prisma.whatsappConversation.findFirst({
       where: { id, tenantId },
-      select: { assignedUserId: true },
+      select: { assignedUserId: true, contact: { select: { isGroup: true } } },
     });
     if (!conv) throw new NotFoundException('Conversa não encontrada');
-    if (conv.assignedUserId && conv.assignedUserId !== userId && !canAudit) {
+    // Grupos são compartilhados — qualquer chat.read lê o histórico. 1:1 mantém
+    // a trava de dono (precisa chat.audit pra ver de outro operador).
+    if (!conv.contact.isGroup && conv.assignedUserId && conv.assignedUserId !== userId && !canAudit) {
       throw new ForbiddenException('Conversa atribuída a outro operador.');
     }
     const rows = await this.prisma.whatsappMessage.findMany({
@@ -527,11 +553,83 @@ export class WhatsappConversationsService {
   }
 
   /**
+   * Entrar num grupo (NOC): adiciona o operador como MEMBRO. Vários operadores
+   * podem entrar simultaneamente — todos respondem e são notificados. Idempotente
+   * (entrar de novo não duplica). Só faz sentido em conversas de grupo.
+   */
+  async joinGroup(tenantId: string, userId: string, id: string) {
+    const conv = await this.prisma.whatsappConversation.findFirst({
+      where: { id, tenantId },
+      include: { contact: { select: { isGroup: true } } },
+    });
+    if (!conv) throw new NotFoundException('Conversa não encontrada');
+    if (!conv.contact.isGroup) {
+      throw new BadRequestException('Entrar/sair só vale para grupos. No 1:1 use Assumir.');
+    }
+
+    await this.prisma.whatsappConversationMember.upsert({
+      where: { conversationId_userId: { conversationId: id, userId } },
+      create: { conversationId: id, userId },
+      update: {},
+    });
+    await this.audit.log({
+      tenantId,
+      userId,
+      action: 'whatsapp.group.joined',
+      resource: 'whatsapp_conversation',
+      resourceId: id,
+    });
+    this.events.emit({ type: 'conversation.updated', tenantId, payload: { id, memberJoined: userId } });
+    return this.membersOf(id);
+  }
+
+  /** Sair de um grupo: remove o operador da lista de membros. */
+  async leaveGroup(tenantId: string, userId: string, id: string) {
+    const conv = await this.prisma.whatsappConversation.findFirst({
+      where: { id, tenantId },
+      select: { id: true },
+    });
+    if (!conv) throw new NotFoundException('Conversa não encontrada');
+
+    await this.prisma.whatsappConversationMember
+      .delete({ where: { conversationId_userId: { conversationId: id, userId } } })
+      .catch(() => undefined); // já não era membro — no-op
+    await this.audit.log({
+      tenantId,
+      userId,
+      action: 'whatsapp.group.left',
+      resource: 'whatsapp_conversation',
+      resourceId: id,
+    });
+    this.events.emit({ type: 'conversation.updated', tenantId, payload: { id, memberLeft: userId } });
+    return this.membersOf(id);
+  }
+
+  /** Membros atuais de uma conversa (operadores que entraram no grupo). */
+  private async membersOf(conversationId: string) {
+    return this.prisma.whatsappConversationMember.findMany({
+      where: { conversationId },
+      select: {
+        userId: true,
+        joinedAt: true,
+        user: { select: { id: true, firstName: true, lastName: true } },
+      },
+      orderBy: { joinedAt: 'asc' },
+    });
+  }
+
+  /**
    * Envia texto. Canal-agnóstico via provider. Para o canal META_CLOUD respeita
    * a janela de 24h: fora dela, lança TemplateRequiredException (o front então
    * oferece um template HSM via sendTemplate).
    */
-  async sendText(tenantId: string, actorUserId: string, id: string, text: string) {
+  async sendText(
+    tenantId: string,
+    actorUserId: string,
+    id: string,
+    text: string,
+    mentions?: string[],
+  ) {
     const conv = await this.loadSendableConversation(tenantId, actorUserId, id);
 
     // Janela 24h só se aplica ao canal oficial Meta.
@@ -550,18 +648,41 @@ export class WhatsappConversationsService {
     const opName = [sender?.firstName, sender?.lastName].filter(Boolean).join(' ').trim();
     const outgoing = showName && opName ? `*${opName}*\n${text}` : text;
 
-    return this.dispatchOutbound(tenantId, conv, {
+    const sent = await this.dispatchOutbound(tenantId, conv, {
       type: 'TEXT',
       body: text,
       actor: actorUserId,
       fromUserId: actorUserId,
       autoAssign: true,
+      // Menções internas (@operador) — acionam colegas específicos no grupo.
+      mentions: mentions?.length ? mentions : undefined,
       // Responde no JID exato do inbound (pode ser @lid / @g.us de grupo);
       // o telefone é só fallback e em grupos não existe (phoneE164 null).
       send: (provider, dInst) =>
         provider.sendText(dInst, conv.contact.phoneE164 ?? '', outgoing, conv.contact.waChatId),
       auditMeta: { conversationId: id, length: text.length },
     });
+
+    // Menções: grava notificação PERSISTENTE pros acionados (sino global). O SSE
+    // do WhatsApp já dá o toast em tempo real; isto sobrevive a reload e some só
+    // quando o operador limpa. Não-fatal.
+    const mentioned = (mentions ?? []).filter((uid) => uid && uid !== actorUserId);
+    if (mentioned.length) {
+      const groupName = conv.contact.pushName?.trim() || 'grupo';
+      const preview = text.length > 140 ? `${text.slice(0, 140)}…` : text;
+      await this.notifications
+        .notifyMany(mentioned, {
+          tenantId,
+          type: 'chat.mention',
+          title: opName ? `${opName} mencionou você em ${groupName}` : `Você foi mencionado em ${groupName}`,
+          body: preview,
+          href: `/chat?c=${id}`,
+          icon: 'message',
+          data: { conversationId: id },
+        })
+        .catch((e) => this.logger.warn(`Falha ao notificar menções (${id}): ${(e as Error).message}`));
+    }
+    return sent;
   }
 
   /**
@@ -604,6 +725,84 @@ export class WhatsappConversationsService {
         ),
       auditMeta: { conversationId: id, audio: true, bytes: ogg.length },
     });
+  }
+
+  /**
+   * Envia uma IMAGEM ou ARQUIVO anexado pelo atendente. Detecta o tipo pelo
+   * mimetype (image/video/document), salva pra exibir no inbox e dispara via
+   * provider.sendMedia. Aceita `caption` (legenda, vai junto na mídia).
+   * Respeita a janela de 24h (mídia é fora de template, igual ao áudio).
+   */
+  async sendMediaFile(
+    tenantId: string,
+    actorUserId: string,
+    id: string,
+    file: { buffer: Buffer; mimetype?: string; originalName?: string },
+    caption?: string,
+  ) {
+    const conv = await this.loadSendableConversation(tenantId, actorUserId, id);
+    if (conv.instance.channel === 'META_CLOUD' && !this.withinMetaWindow(conv.lastInboundAt)) {
+      throw new TemplateRequiredException();
+    }
+
+    const mime = (file.mimetype || 'application/octet-stream').toLowerCase();
+    const { mediatype, msgType } = this.classifyMedia(mime);
+    const ext = this.extForMedia(mime, file.originalName);
+    const filename = `out-${randomUUID()}${ext}`;
+    await fsp.mkdir(MEDIA_ROOT, { recursive: true }).catch(() => {});
+    await fsp.writeFile(join(MEDIA_ROOT, filename), file.buffer);
+    const base64 = file.buffer.toString('base64');
+    const cap = caption?.trim() || undefined;
+    const docName =
+      mediatype === 'document' ? (file.originalName?.trim() || `arquivo${ext}`) : undefined;
+
+    return this.dispatchOutbound(tenantId, conv, {
+      type: msgType,
+      // Documento sem legenda mostra o nome do arquivo na bolha; demais usam a legenda.
+      body: cap ?? (mediatype === 'document' ? docName ?? null : null),
+      mediaUrl: `/v1/whatsapp/media/${filename}`,
+      mediaMimeType: mime,
+      mediaSize: file.buffer.length,
+      actor: actorUserId,
+      fromUserId: actorUserId,
+      autoAssign: true,
+      send: (provider, dInst) =>
+        provider.sendMedia(
+          dInst,
+          conv.contact.phoneE164 ?? '',
+          { mediatype, mimetype: mime, media: base64, caption: cap, fileName: docName },
+          conv.contact.waChatId,
+        ),
+      auditMeta: { conversationId: id, media: mediatype, bytes: file.buffer.length },
+    });
+  }
+
+  /** Mapeia mimetype → tipo de mídia do provider + tipo de mensagem persistida. */
+  private classifyMedia(mime: string): {
+    mediatype: 'image' | 'video' | 'document' | 'audio';
+    msgType: WaMsgType;
+  } {
+    if (mime.startsWith('image/')) return { mediatype: 'image', msgType: 'IMAGE' };
+    if (mime.startsWith('video/')) return { mediatype: 'video', msgType: 'VIDEO' };
+    if (mime.startsWith('audio/')) return { mediatype: 'audio', msgType: 'AUDIO' };
+    return { mediatype: 'document', msgType: 'DOCUMENT' };
+  }
+
+  /** Extensão do arquivo salvo: preserva a do nome original; senão deriva do mime. */
+  private extForMedia(mime: string, originalName?: string): string {
+    const fromName = originalName?.includes('.')
+      ? `.${originalName.split('.').pop()!.toLowerCase()}`
+      : '';
+    if (fromName && fromName.length <= 6) return fromName;
+    const map: Record<string, string> = {
+      'image/jpeg': '.jpg',
+      'image/png': '.png',
+      'image/webp': '.webp',
+      'image/gif': '.gif',
+      'video/mp4': '.mp4',
+      'application/pdf': '.pdf',
+    };
+    return map[mime] ?? '.bin';
   }
 
   /**
@@ -727,8 +926,19 @@ export class WhatsappConversationsService {
     });
     if (!conv) throw new NotFoundException();
 
-    // Apenas o assigned user pode enviar (ou ninguém atribuído).
-    if (conv.assignedUserId && conv.assignedUserId !== actorUserId) {
+    if (conv.contact.isGroup) {
+      // Grupo (NOC): atendimento compartilhado. Só MEMBROS (quem entrou) podem
+      // responder — vários simultâneos. Sem dono único.
+      const member = await this.prisma.whatsappConversationMember.findUnique({
+        where: { conversationId_userId: { conversationId: id, userId: actorUserId } },
+      });
+      if (!member) {
+        throw new ForbiddenException(
+          'Entre no grupo (botão "Atender") para responder. Vários operadores podem atender juntos.',
+        );
+      }
+    } else if (conv.assignedUserId && conv.assignedUserId !== actorUserId) {
+      // 1:1 — apenas o assigned user pode enviar (ou ninguém atribuído).
       throw new ForbiddenException(
         'Conversa atribuída a outro operador. Assuma ou peça transferência.',
       );
@@ -766,6 +976,8 @@ export class WhatsappConversationsService {
       fromUserId: string | null;
       autoAssign: boolean;
       isBot?: boolean;
+      // Menções internas (@operador) — acionam colegas na mensagem (só notif).
+      mentions?: string[];
       // Mídia de saída (ex.: áudio gravado) — persistida pra tocar no inbox.
       mediaUrl?: string | null;
       mediaMimeType?: string | null;
@@ -796,8 +1008,9 @@ export class WhatsappConversationsService {
     });
 
     // Auto-atribui ao operador se ninguém estava atribuído (bot nunca atribui —
-    // mantém a conversa "livre" pra um humano assumir quando quiser).
-    if (opts.autoAssign && opts.fromUserId && !conv.assignedUserId) {
+    // mantém a conversa "livre" pra um humano assumir quando quiser). GRUPOS
+    // NÃO têm dono único (atendimento compartilhado do NOC) — pula o auto-assign.
+    if (opts.autoAssign && opts.fromUserId && !conv.assignedUserId && !conv.contact.isGroup) {
       await this.prisma.whatsappConversation.update({
         where: { id },
         data: { assignedUserId: opts.fromUserId, assignedAt: new Date() },
@@ -835,6 +1048,9 @@ export class WhatsappConversationsService {
           createdAt: updated.createdAt,
           fromUserId: opts.fromUserId,
           isBot: updated.isBot,
+          isGroup: conv.contact.isGroup,
+          // Menções: o cliente notifica os operadores acionados (mesmo em OUT).
+          mentionUserIds: opts.mentions,
         },
       });
       // Auditoria é não-fatal: a mensagem JÁ foi enviada (provider retornou). Um

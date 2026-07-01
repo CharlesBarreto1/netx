@@ -342,6 +342,8 @@ export const MENU_GROUPS: MenuGroup[] = [
           { key: 'chatbot', href: '/settings/whatsapp/bot', labelKey: 'chatbot', permission: 'chat.admin', requiredModules: ['netx-call'] },
           // Respostas rápidas (mensagens predefinidas). chat.send pra ver/usar; gestão da equipe via chat.admin.
           { key: 'quickReplies', href: '/settings/whatsapp/quick-replies', labelKey: 'quickReplies', permission: 'chat.send', requiredModules: ['netx-call'] },
+          // Régua de cobrança (múltiplos disparos por regra + canal). Módulo netx-call.
+          { key: 'billingRules', href: '/settings/whatsapp/billing', labelKey: 'billingRules', permission: 'chat.admin', requiredModules: ['netx-call'] },
         ],
       },
       {
