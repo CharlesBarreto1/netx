@@ -22,6 +22,7 @@ import { BackupsModule } from './modules/backups/backups.module';
 import { HealthModule } from './modules/health/health.module';
 import { LicensingModule } from './modules/licensing/licensing.module';
 import { NetworkModule } from './modules/network/network.module';
+import { IpamModule } from './modules/ipam/ipam.module';
 import { OpticalModule } from './modules/optical/optical.module';
 import { PortalModule } from './modules/portal/portal.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
@@ -107,6 +108,7 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
     ReportsModule,
     BackupsModule,
     NetworkModule,
+    IpamModule,
     OpticalModule,
     PortalModule,
     RadiusModule,

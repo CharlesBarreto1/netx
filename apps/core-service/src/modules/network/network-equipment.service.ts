@@ -15,6 +15,7 @@ import { execFile } from 'node:child_process';
 
 import { AuditService } from '../audit/audit.service';
 import { CryptoService } from '../crypto/crypto.service';
+import { IpamSyncService } from '../ipam/ipam-sync.service';
 import { DisconnectService } from '../disconnect/disconnect.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RadiusNasSyncService } from './radius-nas-sync.service';
@@ -88,7 +89,24 @@ export class NetworkEquipmentService {
     private readonly nasSync: RadiusNasSyncService,
     private readonly crypto: CryptoService,
     private readonly disconnect: DisconnectService,
+    private readonly ipamSync: IpamSyncService,
   ) {}
+
+  /** Espelho best-effort do IP de gerência no IPAM — nunca quebra a operação. */
+  private async syncIpamEquipment(
+    tenantId: string,
+    actorUserId: string,
+    equipmentId: string,
+    ipAddress: string | null,
+  ): Promise<void> {
+    try {
+      await this.ipamSync.setEquipmentIp(tenantId, actorUserId, equipmentId, ipAddress);
+    } catch (e) {
+      this.logger.warn(
+        `[network] IPAM sync falhou p/ equipamento ${equipmentId}: ${(e as Error).message}`,
+      );
+    }
+  }
 
   /**
    * Dispara scripts de sync infra (UFW + NTP allowlist) via sudo. Non-blocking:
@@ -242,6 +260,8 @@ export class NetworkEquipmentService {
           ipAddress: eq.ipAddress,
         },
       });
+      // IPAM: documenta o IP de gerência do equipamento.
+      await this.syncIpamEquipment(tenantId, actorUserId, eq.id, eq.ipAddress);
       // Background — atualiza UFW e NTP allowlist, não bloqueia o request
       void this.syncInfra();
       return this.maskCredentials(eq);
@@ -353,6 +373,8 @@ export class NetworkEquipmentService {
         resource: 'network_equipment',
         resourceId: eq.id,
       });
+      // IPAM: reconcilia o IP de gerência (troca de IP libera o antigo).
+      await this.syncIpamEquipment(tenantId, actorUserId, eq.id, eq.ipAddress);
       // Background — atualiza UFW e NTP allowlist, não bloqueia o request
       void this.syncInfra();
       return this.maskCredentials(eq);
@@ -396,6 +418,10 @@ export class NetworkEquipmentService {
       resourceId: before.id,
       beforeState: { name: before.name, ipAddress: before.ipAddress, type: before.type },
     });
+    // IPAM: libera o IP de gerência documentado deste equipamento.
+    await this.ipamSync
+      .releaseEquipment(tenantId, actorUserId, before.id)
+      .catch((e) => this.logger.warn(`[network] IPAM release falhou: ${(e as Error).message}`));
     // Background — atualiza UFW e NTP allowlist, não bloqueia o request
     void this.syncInfra();
   }

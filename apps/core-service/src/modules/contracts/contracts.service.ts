@@ -42,6 +42,7 @@ import {
 
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { IpamSyncService } from '../ipam/ipam-sync.service';
 import { CryptoService } from '../crypto/crypto.service';
 import { DisconnectService } from '../disconnect/disconnect.service';
 import { HUAWEI_EG8145_PATHS, ssid5gFor } from '../provisioning/tr069-paths.huawei';
@@ -118,6 +119,7 @@ export class ContractsService {
     private readonly radacct: RadacctService,
     private readonly bus: EventBusPublisher,
     private readonly brBilling: BrBillingService,
+    private readonly ipamSync: IpamSyncService,
   ) {}
 
   /** Dispara baja/cancelación Ufinet no cancelamento do contrato (best-effort). */
@@ -429,6 +431,10 @@ export class ContractsService {
       authMethod: created.authMethod,
     });
 
+    // IPAM: espelha o IP fixo (Framed-IP) no IPAM. Best-effort pós-commit —
+    // documentação; não deve derrubar a criação do contrato.
+    await this.syncIpamContract(tenantId, actorUserId, created.id, created.framedIpAddress);
+
     // Faz a fatura inicial "nascer" no gateway do contrato (MANUAL = no-op).
     // Pós-commit (fora da tx) e best-effort — falha vira log e o cron reprocessa.
     if (initialInvoiceId) {
@@ -669,6 +675,11 @@ export class ContractsService {
       }
     }
 
+    // IPAM: reconcilia o IP fixo documentado quando o Framed-IP mudou.
+    if (input.framedIpAddress !== undefined) {
+      await this.syncIpamContract(tenantId, actorUserId, updated.id, updated.framedIpAddress);
+    }
+
     await this.audit.log({
       tenantId,
       userId: actorUserId,
@@ -677,6 +688,22 @@ export class ContractsService {
       resourceId: updated.id,
     });
     return toContractResponse(updated, { includePassword: true });
+  }
+
+  /** Espelho best-effort do Framed-IP no IPAM — nunca quebra a operação. */
+  private async syncIpamContract(
+    tenantId: string,
+    actorUserId: string,
+    contractId: string,
+    framedIp: string | null,
+  ): Promise<void> {
+    try {
+      await this.ipamSync.setContractIp(tenantId, actorUserId, contractId, framedIp);
+    } catch (e) {
+      this.logger.warn(
+        `[contracts] IPAM sync falhou p/ contrato ${contractId}: ${(e as Error).message}`,
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------
