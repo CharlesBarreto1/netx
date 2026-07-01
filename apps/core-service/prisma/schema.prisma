@@ -2972,6 +2972,10 @@ model BillingReminderLog {
   channel    String  @db.VarChar(30)
   status     String  @db.VarChar(12)                          // SENT | FAILED
   error      String? @db.Text
+  // Snapshot pra histórico legível (nome/telefone podem mudar depois).
+  customerName String? @map("customer_name") @db.VarChar(200)
+  sentTo       String? @map("sent_to") @db.VarChar(20)        // número que recebeu (pode ser o de teste)
+  invoiceRef   String? @map("invoice_ref") @db.VarChar(120)
   sentAt     DateTime @default(now()) @map("sent_at")
 
   rule       BillingReminderRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)

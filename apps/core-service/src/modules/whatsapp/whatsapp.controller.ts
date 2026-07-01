@@ -172,14 +172,14 @@ export class WhatsappController {
     });
   }
 
-  /** Roda a régua de cobrança agora (teste). Respeita o modo número-de-teste. */
+  /** Roda a régua de cobrança agora (só o tenant do usuário). Respeita o modo teste. */
   @Post('billing/run')
   @RequirePermissions('chat.admin')
   runBilling(
-    @CurrentUser() _user: AuthenticatedPrincipal,
+    @CurrentUser() user: AuthenticatedPrincipal,
     @ZodBody(BillingRunBodySchema) body: BillingRunBody,
   ) {
-    return this.billing.runOnce({ dryRun: body.dryRun ?? false });
+    return this.billing.runOnce({ dryRun: body.dryRun ?? false, tenantId: user.tenantId });
   }
 
   // ----- régua de cobrança (config + regras) -----
@@ -225,6 +225,13 @@ export class WhatsappController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     return this.billing.deleteRule(user.tenantId, id);
+  }
+
+  /** Histórico de disparos: cliente, número, canal, status e horário. */
+  @Get('billing/logs')
+  @RequirePermissions('chat.admin')
+  billingLogs(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.billing.listLogs(user.tenantId);
   }
 
   // ----- preferências do operador (saudação + mostrar nome) -----

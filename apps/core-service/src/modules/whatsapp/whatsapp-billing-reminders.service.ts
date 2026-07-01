@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { Cron } from '@nestjs/schedule';
 import { InvoiceStatus } from '@prisma/client';
 
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { WhatsappConversationsService } from './whatsapp-conversations.service';
@@ -43,6 +44,7 @@ export class WhatsappBillingRemindersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly conversations: WhatsappConversationsService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ----- configuração (telas) -----
@@ -152,10 +154,12 @@ export class WhatsappBillingRemindersService {
   }
 
   /**
-   * Executa a régua uma vez. `dryRun` só loga; `date` simula outra data-base.
+   * Executa a régua uma vez. `dryRun` só loga; `date` simula outra data-base;
+   * `tenantId` restringe a um tenant (usado no disparo manual da tela). Ao
+   * concluir cada tenant, notifica os admins com o resumo (sino).
    * Retorna um resumo agregado.
    */
-  async runOnce(opts: { dryRun?: boolean; date?: Date } = {}): Promise<{
+  async runOnce(opts: { dryRun?: boolean; date?: Date; tenantId?: string } = {}): Promise<{
     tenants: number;
     rules: number;
     due: number;
@@ -175,7 +179,9 @@ export class WhatsappBillingRemindersService {
       return res;
     }
 
-    const configs = await this.prisma.billingReminderConfig.findMany({ where: { enabled: true } });
+    const configs = await this.prisma.billingReminderConfig.findMany({
+      where: { enabled: true, ...(opts.tenantId ? { tenantId: opts.tenantId } : {}) },
+    });
     for (const cfg of configs) {
       const rules = await this.prisma.billingReminderRule.findMany({
         where: { tenantId: cfg.tenantId, enabled: true },
@@ -185,6 +191,8 @@ export class WhatsappBillingRemindersService {
       res.tenants++;
       // Modo teste: env (override global) tem prioridade sobre o do tenant.
       const testRecipient = envTestRecipient ?? cfg.testRecipient ?? null;
+      // Tallies do tenant pra notificar os admins ao concluir.
+      const tally = { sent: 0, failed: 0, due: 0 };
 
       for (const rule of rules) {
         res.rules++;
@@ -213,6 +221,7 @@ export class WhatsappBillingRemindersService {
           },
         });
         res.due += invoices.length;
+        tally.due += invoices.length;
 
         for (const inv of invoices) {
           // Dedup: essa regra já disparou (com sucesso) pra essa fatura?
@@ -228,6 +237,7 @@ export class WhatsappBillingRemindersService {
           const realPhone = customer?.primaryPhone ?? null;
           const name = customer?.displayName ?? 'cliente';
           const phone = testRecipient ?? realPhone;
+          const invoiceRef = inv.reference ?? inv.id;
 
           if (!phone) {
             res.skipped++;
@@ -249,21 +259,85 @@ export class WhatsappBillingRemindersService {
               name,
               instanceId: rule.instanceId ?? undefined,
               actor: 'system:billing',
-              previewBody: `[cobrança] fatura ${inv.reference ?? inv.id} vence ${start.toISOString().slice(0, 10)}`,
+              previewBody: `[cobrança] fatura ${invoiceRef} vence ${start.toISOString().slice(0, 10)}`,
             });
             res.sent++;
-            await this.markLog(cfg.tenantId, rule.id, inv.id, rule.channel, 'SENT', null);
+            tally.sent++;
+            await this.markLog(cfg.tenantId, rule.id, inv.id, rule.channel, 'SENT', null, name, phone, invoiceRef);
           } catch (e) {
             res.failed++;
-            await this.markLog(cfg.tenantId, rule.id, inv.id, rule.channel, 'FAILED', (e as Error).message);
+            tally.failed++;
+            await this.markLog(cfg.tenantId, rule.id, inv.id, rule.channel, 'FAILED', (e as Error).message, name, phone, invoiceRef);
             this.logger.warn(`Falha ao enviar cobrança ${inv.id} (regra ${rule.id}): ${(e as Error).message}`);
           }
         }
+      }
+
+      // Avisa os admins do tenant (sino) — só quando houve disparo real.
+      if (!dryRun && (tally.sent > 0 || tally.failed > 0)) {
+        await this.notifyAdmins(cfg.tenantId, tally).catch((e) =>
+          this.logger.warn(`Falha ao notificar cobrança concluída (${cfg.tenantId}): ${(e as Error).message}`),
+        );
       }
     }
 
     this.logger.log(`Régua de cobrança concluída: ${JSON.stringify(res)}`);
     return res;
+  }
+
+  /** Notifica os admins do tenant que o disparo concluiu (sino global). */
+  private async notifyAdmins(tenantId: string, tally: { sent: number; failed: number; due: number }) {
+    const admins = await this.prisma.user.findMany({
+      where: {
+        tenantId,
+        status: 'ACTIVE',
+        deletedAt: null,
+        userRoles: {
+          some: { role: { rolePermissions: { some: { permission: { code: 'chat.admin' } } } } },
+        },
+      },
+      select: { id: true },
+      take: 50,
+    });
+    if (!admins.length) return;
+    await this.notifications.notifyMany(
+      admins.map((a) => a.id),
+      {
+        tenantId,
+        type: 'billing.run',
+        title: `Cobrança concluída — ${tally.sent} enviada(s)`,
+        body:
+          tally.failed > 0
+            ? `${tally.failed} falha(s) · ${tally.due} fatura(s) elegíveis`
+            : `${tally.due} fatura(s) elegíveis`,
+        href: '/settings/whatsapp/billing',
+        icon: 'billing',
+        data: tally,
+      },
+    );
+  }
+
+  /** Histórico de disparos (mais recentes primeiro): cliente + horário + status. */
+  async listLogs(tenantId: string, limit = 200) {
+    const rows = await this.prisma.billingReminderLog.findMany({
+      where: { tenantId },
+      orderBy: { sentAt: 'desc' },
+      take: Math.min(limit, 500),
+      include: { rule: { select: { label: true, templateName: true, offsetDays: true } } },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      customerName: r.customerName,
+      sentTo: r.sentTo,
+      invoiceRef: r.invoiceRef,
+      channel: r.channel,
+      status: r.status,
+      error: r.error,
+      sentAt: r.sentAt,
+      ruleLabel: r.rule?.label ?? null,
+      templateName: r.rule?.templateName ?? null,
+      offsetDays: r.rule?.offsetDays ?? null,
+    }));
   }
 
   /** Upsert do log de disparo (dedup por regra+fatura). */
@@ -274,11 +348,14 @@ export class WhatsappBillingRemindersService {
     channel: string,
     status: 'SENT' | 'FAILED',
     error: string | null,
+    customerName: string | null,
+    sentTo: string | null,
+    invoiceRef: string | null,
   ) {
     await this.prisma.billingReminderLog.upsert({
       where: { ruleId_invoiceId: { ruleId, invoiceId } },
-      create: { tenantId, ruleId, invoiceId, channel, status, error },
-      update: { status, error, sentAt: new Date() },
+      create: { tenantId, ruleId, invoiceId, channel, status, error, customerName, sentTo, invoiceRef },
+      update: { status, error, customerName, sentTo, invoiceRef, sentAt: new Date() },
     });
   }
 }

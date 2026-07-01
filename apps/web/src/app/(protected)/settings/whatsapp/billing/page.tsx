@@ -19,9 +19,11 @@ import {
   updateBillingRule,
   deleteBillingRule,
   runBilling,
+  listBillingLogs,
   listTemplates,
   type BillingChannel,
   type WaBillingConfig,
+  type WaBillingLog,
   type WaBillingRule,
   type WaBillingRuleInput,
   type WaTemplate,
@@ -58,6 +60,7 @@ export default function BillingRulesPage() {
 
   const query = useSWR<WaBillingConfig>('/whatsapp/billing/config', () => getBillingConfig());
   const templatesQuery = useSWR<WaTemplate[]>('/whatsapp/templates', () => listTemplates());
+  const logsQuery = useSWR<WaBillingLog[]>('/whatsapp/billing/logs', () => listBillingLogs());
 
   const [editing, setEditing] = useState<WaBillingRule | null>(null);
   const [creating, setCreating] = useState(false);
@@ -101,6 +104,7 @@ export default function BillingRulesPage() {
         t('runResult', { sent: r.sent, due: r.due, skipped: r.skipped, failed: r.failed }) +
           (r.testRedirect ? ` · ${t('testRedirect', { phone: r.testRedirect })}` : ''),
       );
+      if (!dryRun) void logsQuery.mutate();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
     } finally {
@@ -195,6 +199,9 @@ export default function BillingRulesPage() {
           </ul>
         )}
       </section>
+
+      {/* Histórico de disparos */}
+      <BillingHistory logs={logsQuery.data ?? []} loading={logsQuery.isLoading} />
 
       {(creating || editing) && (
         <RuleModal

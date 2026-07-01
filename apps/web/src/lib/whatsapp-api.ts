@@ -493,6 +493,25 @@ export async function runBilling(dryRun: boolean) {
   return api.post<BillingRunResult>(`/v1/whatsapp/billing/run`, { dryRun });
 }
 
+export interface WaBillingLog {
+  id: string;
+  customerName: string | null;
+  sentTo: string | null;
+  invoiceRef: string | null;
+  channel: string;
+  status: 'SENT' | 'FAILED';
+  error: string | null;
+  sentAt: string;
+  ruleLabel: string | null;
+  templateName: string | null;
+  offsetDays: number | null;
+}
+
+/** Histórico de disparos (mais recentes primeiro). */
+export async function listBillingLogs() {
+  return api.get<WaBillingLog[]>(`/v1/whatsapp/billing/logs`);
+}
+
 // ---- IA conselheira (read-only: sugere/resume, nunca envia) ----
 export async function suggestWaReply(conversationId: string) {
   return api.post<WaAiSuggestResponse>(

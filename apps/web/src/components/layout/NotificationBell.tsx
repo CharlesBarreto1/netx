@@ -1,6 +1,6 @@
 'use client';
 
-import { AlarmClock, Bell, CheckCheck, CheckSquare, MessageSquare, Trash2, X } from 'lucide-react';
+import { AlarmClock, Bell, CheckCheck, CheckSquare, MessageSquare, Receipt, Trash2, X } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
@@ -15,6 +15,7 @@ function iconFor(n: AppNotification) {
   if (key === 'message' || key === 'chat') return MessageSquare;
   if (key === 'alarm' || key === 'nms') return AlarmClock;
   if (key === 'task') return CheckSquare;
+  if (key === 'billing') return Receipt;
   return Bell;
 }
 
