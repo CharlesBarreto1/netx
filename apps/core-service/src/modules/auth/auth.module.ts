@@ -8,6 +8,7 @@ import { JwtStrategy } from './jwt.strategy';
 import { MfaService } from './mfa.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
+import { StepUpGuard } from '../../common/guards/step-up.guard';
 import { AuditModule } from '../audit/audit.module';
 
 @Module({
@@ -20,9 +21,11 @@ import { AuditModule } from '../audit/audit.module';
     AuthService,
     MfaService,
     JwtStrategy,
-    // Global auth pipeline: JWT → Permissions. Routes opt-out with @Public().
+    // Global auth pipeline: JWT → Permissions → Step-up. Routes opt-out com
+    // @Public(); StepUpGuard só atua em rotas @RequireStepUp() (passthrough senão).
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: PermissionsGuard },
+    { provide: APP_GUARD, useClass: StepUpGuard },
   ],
   // forwardRef não é necessário aqui — MfaService e AuthService são
   // resolvidos pelo Nest mesmo com a referência circular declarada

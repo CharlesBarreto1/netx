@@ -37,6 +37,16 @@ defineModule('netx-cpe', { apiPrefixes: ['/olts', '/provisioning', '/tr069', '/o
 // Mapas de rede — gateado por netx-maps.
 defineModule('netx-maps', { apiPrefixes: ['/mapping'] });
 
+// Callcenter/Atendimento WhatsApp — gateado por netx-call. Dois canais (WAHA +
+// Meta Cloud) sob abstração de provider. Os webhooks são @Public (não gateados),
+// mas /webhooks é a fronteira HTTP deste módulo (invariante 2d).
+defineModule('netx-call', { apiPrefixes: ['/whatsapp', '/webhooks'] });
+
+// Motor de IA + copiloto agêntico (Nexus) — gateado por netx-ai. /ai = config/
+// status do motor (AiController); /copilot = copiloto tool-using + insights
+// (CopilotController).
+defineModule('netx-ai', { apiPrefixes: ['/ai', '/copilot'] });
+
 // NMS — módulo vivo (apps/nms), sub-build pnpm isolado atrás do gateway em /nms.
 // Canais ligados: SSO (valida JWT do Core), entitlement (este gating),
 // eventos (consome do bus) e HTTP (/nms via api-gateway). Dono exclusivo do

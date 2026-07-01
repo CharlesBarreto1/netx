@@ -18,6 +18,9 @@ import {
   Settings,
   Mic,
   Trash2,
+  Paperclip,
+  Zap,
+  LogOut,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
@@ -33,6 +36,9 @@ import { useWhatsappNotify } from '@/lib/use-whatsapp-notify';
 import { useWhatsappStream } from '@/lib/use-whatsapp-stream';
 import {
   assignConversation,
+  joinGroup,
+  leaveGroup,
+  heartbeatPresence,
   getAgentSettings,
   getConversation,
   getConversationCounts,
@@ -45,11 +51,14 @@ import {
   resolveMediaUrl,
   sendMessage,
   sendAudioMessage,
+  sendMediaMessage,
   sendOutboundTemplate,
   sendTemplateMessage,
   suggestWaReply,
   timeAgo,
   transcribeMessage,
+  listQuickReplies,
+  fillQuickReply,
   type InboxFilter,
   type WaAiInsightsResponse,
   type WaAgent,
@@ -58,6 +67,8 @@ import {
   type WaConversationDetail,
   type WaConversationListItem,
   type WaMessage,
+  type WaPresence,
+  type WaQuickReply,
   type WaTemplate,
 } from '@/lib/whatsapp-api';
 
@@ -82,6 +93,13 @@ export default function ChatPage() {
 
   const [filter, setFilter] = useState<InboxFilter>('andamento');
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // Deep-link ?c=<conversationId> (ex.: clique numa notificação de menção) abre
+  // a conversa direto. Lido do window pra evitar Suspense do useSearchParams.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const c = new URLSearchParams(window.location.search).get('c');
+    if (c) setSelectedId(c);
+  }, []);
   // Painel do cliente como drawer fora do desktop (lg). Fecha ao trocar de conversa.
   const [panelOpen, setPanelOpen] = useState(false);
   useEffect(() => setPanelOpen(false), [selectedId]);
@@ -106,6 +124,24 @@ export default function ChatPage() {
 
   const { notify, soundEnabled, setSoundEnabled } = useWhatsappNotify();
 
+  // Presença: heartbeat a cada 25s informando a conversa aberta; guarda os
+  // operadores online (com a conversa que cada um está vendo) pra UI dos grupos.
+  const [online, setOnline] = useState<WaPresence[]>([]);
+  useEffect(() => {
+    let alive = true;
+    const beat = () => {
+      heartbeatPresence(selectedId)
+        .then((r) => alive && setOnline(r.online))
+        .catch(() => {});
+    };
+    beat();
+    const iv = setInterval(beat, 25_000);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
+  }, [selectedId]);
+
   // SSE — atualiza inbox e thread em tempo real, e dispara notif quando msg
   // nova chega em conversa que não é a aberta no momento.
   useWhatsappStream(true, (e) => {
@@ -115,6 +151,10 @@ export default function ChatPage() {
         direction: string;
         body: string | null;
         isGroup?: boolean;
+        authorName?: string | null;
+        memberUserIds?: string[];
+        mentionUserIds?: string[];
+        fromUserId?: string | null;
       };
       // Sempre atualiza inbox + contadores das abas
       void inboxQuery.mutate();
@@ -123,16 +163,33 @@ export default function ChatPage() {
       if (p.conversationId === selectedId) {
         void detailQuery.mutate();
       }
-      // Toca som em TODA mensagem recebida (aberta ou não); a notificação do
-      // browser só aparece quando a aba não está em foco (tratado no hook).
-      // Grupos não tocam (são barulhentos; aparecem na aba Grupos).
-      if (p.direction === 'IN' && !p.isGroup) {
+      const me = session?.user.id;
+      // Menção (@operador): acionamento direcionado — notifica mesmo em OUT e
+      // mesmo que o operador ainda não seja membro do grupo (foi "chamado").
+      const mentionedMe =
+        !!me && Array.isArray(p.mentionUserIds) && p.mentionUserIds.includes(me) && p.fromUserId !== me;
+      if (mentionedMe) {
         notify({
-          title: t('notification.newMessage'),
+          title: t('notification.mentioned'),
           body: p.body ?? t('notification.media'),
-          tag: p.conversationId,
+          tag: `mention:${p.conversationId}`,
           onClick: p.conversationId === selectedId ? undefined : () => setSelectedId(p.conversationId),
         });
+        return;
+      }
+      // Notifica em mensagem recebida. No 1:1, todos os operadores ouvem.
+      // Em GRUPO (NOC), só quem ENTROU (é membro) é notificado — o servidor
+      // manda a lista de membros e filtramos pelo usuário atual.
+      if (p.direction === 'IN') {
+        const notifyGroup = !!me && Array.isArray(p.memberUserIds) && p.memberUserIds.includes(me);
+        if (p.isGroup ? notifyGroup : true) {
+          notify({
+            title: p.isGroup && p.authorName ? p.authorName : t('notification.newMessage'),
+            body: p.body ?? t('notification.media'),
+            tag: p.conversationId,
+            onClick: p.conversationId === selectedId ? undefined : () => setSelectedId(p.conversationId),
+          });
+        }
       }
     } else if (
       e.type === 'conversation.updated' ||
@@ -168,6 +225,7 @@ export default function ChatPage() {
           soundEnabled={soundEnabled}
           setSoundEnabled={setSoundEnabled}
           canSend={canSend}
+          online={online}
           onCreated={(id) => {
             void inboxQuery.mutate();
             setSelectedId(id);
@@ -184,6 +242,7 @@ export default function ChatPage() {
           canAssign={canAssign}
           canAudit={canAudit}
           currentUserId={session?.user.id ?? null}
+          online={online}
           onBack={() => setSelectedId(null)}
           onOpenPanel={() => setPanelOpen(true)}
           onSent={refetchAll}
@@ -232,6 +291,7 @@ function ChatInbox({
   soundEnabled,
   setSoundEnabled,
   canSend,
+  online,
   onCreated,
 }: {
   filter: InboxFilter;
@@ -244,18 +304,21 @@ function ChatInbox({
   soundEnabled: boolean;
   setSoundEnabled: (v: boolean) => void;
   canSend: boolean;
+  online: WaPresence[];
   onCreated: (conversationId: string) => void;
 }) {
   const t = useTranslations('chat');
   const tx = useTranslations('chatExtra');
   const [showNew, setShowNew] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const tabs: Array<{ key: InboxFilter; label: string; count?: number }> = [
+  const onlineIds = useMemo(() => new Set(online.map((o) => o.userId)), [online]);
+  const isGroupsTab = filter === 'groups' || filter === 'groupsMine';
+  const tabs: Array<{ key: InboxFilter; label: string; count?: number; active?: boolean }> = [
     { key: 'andamento', label: t('inbox.filter.andamento'), count: counts?.andamento },
     { key: 'espera', label: t('inbox.filter.espera'), count: counts?.espera },
     { key: 'automacao', label: t('inbox.filter.automacao'), count: counts?.automacao },
     { key: 'resolved', label: t('inbox.filter.resolved'), count: counts?.resolved },
-    { key: 'groups', label: t('inbox.filter.groups') },
+    { key: 'groups', label: t('inbox.filter.groups'), active: isGroupsTab },
   ];
 
   return (
@@ -263,7 +326,7 @@ function ChatInbox({
       {/* tabs */}
       <div className="flex items-center gap-4 overflow-x-auto border-b border-slate-200 px-4 pt-3 dark:border-slate-700">
         {tabs.map((tab) => {
-          const on = filter === tab.key;
+          const on = tab.active ?? filter === tab.key;
           return (
             <button
               key={tab.key}
@@ -288,6 +351,29 @@ function ChatInbox({
           );
         })}
       </div>
+
+      {/* Sub-filtro da aba Grupos: Todos × Meus (grupos em que entrei). */}
+      {isGroupsTab && (
+        <div className="flex gap-1 border-b border-slate-200 px-4 py-2 dark:border-slate-700">
+          {([
+            { key: 'groups' as InboxFilter, label: t('inbox.groups.all') },
+            { key: 'groupsMine' as InboxFilter, label: t('inbox.groups.mine') },
+          ]).map((s) => (
+            <button
+              key={s.key}
+              type="button"
+              onClick={() => setFilter(s.key)}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                filter === s.key
+                  ? 'bg-brand-600 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-slate-700 dark:text-slate-200 dark:hover:bg-slate-600'
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* status + ações */}
       <div className="flex items-center gap-2 px-4 py-2 text-xs text-text-muted">
@@ -397,6 +483,29 @@ function ChatInbox({
                         <Bot className="h-3 w-3" /> {t('inbox.filter.automacao')}
                       </span>
                     )}
+                    {isGroup &&
+                      (() => {
+                        const mem = c.members ?? [];
+                        if (mem.length === 0) {
+                          return (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-0.5 text-[11px] text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                              {t('group.nobody')}
+                            </span>
+                          );
+                        }
+                        const onlineCount = mem.filter((m) => onlineIds.has(m.userId)).length;
+                        return (
+                          <span className="inline-flex items-center gap-1 rounded-md bg-sky-100 px-2 py-0.5 text-[11px] text-sky-700 dark:bg-sky-900/40 dark:text-sky-300">
+                            <UserCheck className="h-3 w-3" /> {mem.length} {t('group.attendingCount')}
+                            {onlineCount > 0 && (
+                              <span className="ml-0.5 inline-flex items-center gap-0.5">
+                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                {onlineCount}
+                              </span>
+                            )}
+                          </span>
+                        );
+                      })()}
                     {c.contact.customer && (
                       <span className="rounded-md bg-emerald-100 px-2 py-0.5 text-[10px] uppercase tracking-wider text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
                         {tx('customerBadge')}
@@ -699,6 +808,7 @@ function ChatThread({
   canAssign,
   canAudit,
   currentUserId,
+  online,
   onBack,
   onOpenPanel,
   onSent,
@@ -711,6 +821,7 @@ function ChatThread({
   canAssign: boolean;
   canAudit: boolean;
   currentUserId: string | null;
+  online: WaPresence[];
   onBack: () => void;
   onOpenPanel: () => void;
   onSent: () => void;
@@ -731,6 +842,14 @@ function ChatThread({
   const [agents, setAgents] = useState<WaAgent[] | null>(null);
   const [showTransfer, setShowTransfer] = useState(false);
   const [transferBusy, setTransferBusy] = useState(false);
+  // Respostas rápidas (mensagens predefinidas): carregadas sob demanda.
+  const [quickReplies, setQuickReplies] = useState<WaQuickReply[] | null>(null);
+  const [showQuickReplies, setShowQuickReplies] = useState(false);
+  // Menções internas (@operador) — só em grupos. mentionQuery = texto após '@'
+  // (null = picker fechado); mentions = operadores acionados nesta mensagem.
+  const [mentions, setMentions] = useState<Array<{ userId: string; token: string }>>([]);
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Scroll pro fim quando trocar de conversa ou chegar msg nova
@@ -745,6 +864,7 @@ function ChatThread({
     setInsights(null);
     setShowTemplates(false);
     setShowTransfer(false);
+    setShowQuickReplies(false);
   }, [conversation?.id]);
 
   // IA conselheira: sugere resposta (preenche o composer) e resume a conversa.
@@ -782,10 +902,23 @@ function ChatThread({
     );
   }
 
+  const isGroup = conversation.contact.isGroup === true;
+  const members = conversation.members ?? [];
+  const isMember = members.some((m) => m.userId === currentUserId);
+  // Presença: quem está online e quem está VENDO este grupo agora.
+  const onlineIds = new Set(online.map((o) => o.userId));
+  const viewingIds = new Set(
+    online.filter((o) => o.viewingConversationId === conversation.id).map((o) => o.userId),
+  );
+  const viewingNow = members.filter((m) => viewingIds.has(m.userId) && m.userId !== currentUserId).length;
   const isMine = conversation.assignedUserId === currentUserId;
   const isUnassigned = !conversation.assignedUserId;
-  const isObserving = !isMine && !isUnassigned;
-  const canType = canSend && (isMine || isUnassigned) && conversation.instance.status === 'CONNECTED';
+  // Em 1:1 "observando" = atribuída a outro. Em grupo não existe observação:
+  // é compartilhado; quem não entrou apenas não digita (vê o banner "Atender").
+  const isObserving = !isGroup && !isMine && !isUnassigned;
+  const connected = conversation.instance.status === 'CONNECTED';
+  // Grupo (NOC): só MEMBROS digitam, vários ao mesmo tempo. 1:1: dono ou livre.
+  const canType = canSend && connected && (isGroup ? isMember : isMine || isUnassigned);
   const name =
     conversation.contact.customer?.displayName ??
     conversation.contact.pushName ??
@@ -795,8 +928,12 @@ function ChatThread({
     if (!text.trim() || busy) return;
     setBusy(true);
     try {
-      await sendMessage(conversation!.id, text.trim());
+      // Só envia como menção os operadores cujo @token ainda está no texto.
+      const active = mentions.filter((m) => text.includes(`@${m.token}`)).map((m) => m.userId);
+      await sendMessage(conversation!.id, text.trim(), active.length ? active : undefined);
       setText('');
+      setMentions([]);
+      setMentionQuery(null);
       onSent();
     } catch (err) {
       // Meta fora da janela de 24h → backend pede template. Abre o picker.
@@ -809,6 +946,99 @@ function ChatThread({
       toast.error(msg);
     } finally {
       setBusy(false);
+    }
+  }
+
+  // Anexo de imagem/arquivo: envia direto (legenda = texto atual do compositor).
+  async function doSendFile(file: File) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await sendMediaMessage(conversation!.id, file, text.trim() || undefined);
+      setText('');
+      onSent();
+    } catch (err) {
+      if (err instanceof ApiError && (err.problem as { requiresTemplate?: boolean })?.requiresTemplate) {
+        toast.message(t('templates.windowClosed'));
+        await openTemplatePicker();
+        return;
+      }
+      toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Respostas rápidas: abre o painel (carrega na 1ª vez).
+  async function openQuickReplies() {
+    if (showQuickReplies) {
+      setShowQuickReplies(false);
+      return;
+    }
+    setShowQuickReplies(true);
+    if (!quickReplies) {
+      try {
+        setQuickReplies(await listQuickReplies());
+      } catch (err) {
+        toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
+      }
+    }
+  }
+
+  // Menção @operador (só grupos): detecta '@texto' no fim do que foi digitado.
+  async function ensureAgents() {
+    if (agents) return;
+    try {
+      setAgents(await listAgents());
+    } catch {
+      /* silencioso — picker aparece vazio */
+    }
+  }
+
+  function handleTextChange(value: string) {
+    setText(value);
+    if (!isGroup) return;
+    const m = value.match(/(?:^|\s)@([^\s@]*)$/);
+    if (m) {
+      setMentionQuery(m[1] ?? '');
+      void ensureAgents();
+    } else if (mentionQuery !== null) {
+      setMentionQuery(null);
+    }
+  }
+
+  function pickMention(a: WaAgent) {
+    // Troca o '@query' final por '@Nome ' e registra o operador acionado.
+    setText((prev) => prev.replace(/(^|\s)@[^\s@]*$/, (_all, pre) => `${pre}@${a.firstName} `));
+    setMentions((prev) =>
+      prev.some((x) => x.userId === a.id) ? prev : [...prev, { userId: a.id, token: a.firstName }],
+    );
+    setMentionQuery(null);
+  }
+
+  // Insere a resposta no compositor (editável), interpolando {cliente}/{operador}.
+  function pickQuickReply(qr: WaQuickReply) {
+    const su = getSession()?.user;
+    const operador = su ? [su.firstName, su.lastName].filter(Boolean).join(' ').trim() : '';
+    const cliente =
+      conversation!.contact.customer?.displayName ??
+      conversation!.contact.pushName ??
+      '';
+    const filled = fillQuickReply(qr.body, { cliente, operador });
+    setText((prev) => (prev.trim() ? `${prev.trim()}\n${filled}` : filled));
+    setShowQuickReplies(false);
+  }
+
+  // Rótulo traduzido da categoria (chaves literais p/ type-safety; cru se desconhecida).
+  function catLabel(cat: string): string {
+    switch (cat) {
+      case 'saudacao': return t('quickReplies.cat.saudacao');
+      case 'encerramento': return t('quickReplies.cat.encerramento');
+      case 'viabilidade': return t('quickReplies.cat.viabilidade');
+      case 'planos': return t('quickReplies.cat.planos');
+      case 'prazos': return t('quickReplies.cat.prazos');
+      case 'geral': return t('quickReplies.cat.geral');
+      default: return cat;
     }
   }
 
@@ -881,6 +1111,27 @@ function ChatThread({
     }
   }
 
+  // Grupo (NOC): entrar/sair do atendimento compartilhado (vários operadores).
+  async function doJoinGroup() {
+    try {
+      await joinGroup(conversation!.id);
+      toast.success(t('group.joined'));
+      onAssigned();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
+    }
+  }
+
+  async function doLeaveGroup() {
+    try {
+      await leaveGroup(conversation!.id);
+      toast.success(t('group.left'));
+      onAssigned();
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : (err as Error).message);
+    }
+  }
+
   async function openTransfer() {
     if (showTransfer) {
       setShowTransfer(false);
@@ -930,9 +1181,14 @@ function ChatThread({
             {(name ?? conversation.contact.phoneE164 ?? '?').charAt(0).toUpperCase()}
           </div>
           <div className="min-w-0">
-            <h2 className="truncate text-[15px] font-semibold leading-tight">{name}</h2>
+            <h2 className="truncate text-[15px] font-semibold leading-tight">
+              {isGroup && <Users className="mr-1 inline h-3.5 w-3.5 align-[-2px] text-text-muted" />}
+              {name}
+            </h2>
             <p className="truncate text-xs text-text-muted">
-              {conversation.instance.name} · {conversation.contact.phoneE164}
+              {isGroup
+                ? `${conversation.instance.name} · ${members.length} ${t('group.attendingCount')}`
+                : `${conversation.instance.name} · ${conversation.contact.phoneE164 ?? ''}`}
             </p>
           </div>
         </div>
@@ -943,6 +1199,48 @@ function ChatThread({
           <Button size="sm" variant="subtle" onClick={doInsights} disabled={aiBusy}>
             <Sparkles className="mr-1 h-3.5 w-3.5" /> {aiBusy ? 'IA…' : 'Insights IA'}
           </Button>
+          {isGroup ? (
+            <>
+              {members.length > 0 && (
+                <div className="flex items-center -space-x-1.5" title={members.map((m) => `${m.user.firstName} ${m.user.lastName}${onlineIds.has(m.userId) ? ' •' : ''}`).join(', ')}>
+                  {members.slice(0, 4).map((m) => (
+                    <span
+                      key={m.userId}
+                      className="relative flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-semibold text-white ring-2 ring-white dark:ring-slate-800"
+                      style={{ background: avatarColor(`${m.user.firstName} ${m.user.lastName}`) }}
+                    >
+                      {m.user.firstName.charAt(0).toUpperCase()}
+                      {onlineIds.has(m.userId) && (
+                        <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-white dark:ring-slate-800" />
+                      )}
+                    </span>
+                  ))}
+                  {members.length > 4 && (
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-300 text-[10px] font-semibold text-slate-700 ring-2 ring-white dark:bg-slate-600 dark:text-slate-200 dark:ring-slate-800">
+                      +{members.length - 4}
+                    </span>
+                  )}
+                </div>
+              )}
+              {viewingNow > 0 && (
+                <span className="inline-flex items-center gap-1 rounded-md bg-emerald-100 px-2 py-0.5 text-[11px] text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                  <Eye className="h-3 w-3" /> {t('group.viewingNow', { n: viewingNow })}
+                </span>
+              )}
+              {canSend && (
+                isMember ? (
+                  <Button size="sm" variant="subtle" onClick={doLeaveGroup}>
+                    <LogOut className="mr-1 h-3.5 w-3.5" /> {t('group.leave')}
+                  </Button>
+                ) : (
+                  <Button size="sm" variant="primary" onClick={doJoinGroup}>
+                    <UserCheck className="mr-1 h-3.5 w-3.5" /> {t('group.join')}
+                  </Button>
+                )
+              )}
+            </>
+          ) : (
+          <>
           {isObserving && (
             <span className="inline-flex items-center gap-1 rounded-md bg-amber-100 px-2 py-1 text-xs text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
               <Eye className="h-3.5 w-3.5" /> {t('thread.observing')}
@@ -1005,6 +1303,8 @@ function ChatThread({
               <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> {t('actions.resolve')}
             </Button>
           )}
+          </>
+          )}
         </div>
       </header>
 
@@ -1052,14 +1352,28 @@ function ChatThread({
       </div>
 
       <footer className="border-t border-slate-200 p-2 dark:border-slate-700">
-        {!canType && (
-          <div className="mb-2 rounded bg-slate-100 p-2 text-xs text-text-muted dark:bg-slate-700">
-            {conversation.instance.status !== 'CONNECTED'
-              ? t('thread.disconnected')
-              : isObserving
-              ? t('thread.readonly')
-              : t('thread.unassigned')}
+        {isGroup && !isMember && connected ? (
+          // Grupo do NOC: quem não entrou vê o convite pra atender (compartilhado).
+          <div className="mb-2 flex items-center justify-between gap-2 rounded bg-brand-50 p-2 text-xs text-brand-800 dark:bg-brand-900/20 dark:text-brand-200">
+            <span className="inline-flex items-center gap-1.5">
+              <Users className="h-3.5 w-3.5" /> {t('group.joinHint')}
+            </span>
+            {canSend && (
+              <Button size="sm" variant="primary" onClick={doJoinGroup}>
+                <UserCheck className="mr-1 h-3.5 w-3.5" /> {t('group.join')}
+              </Button>
+            )}
           </div>
+        ) : (
+          !canType && (
+            <div className="mb-2 rounded bg-slate-100 p-2 text-xs text-text-muted dark:bg-slate-700">
+              {conversation.instance.status !== 'CONNECTED'
+                ? t('thread.disconnected')
+                : isObserving
+                ? t('thread.readonly')
+                : t('thread.unassigned')}
+            </div>
+          )
         )}
         {showTemplates && (
           <div className="mb-2 max-h-56 overflow-y-auto rounded-md border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-900/40">
@@ -1140,10 +1454,103 @@ function ChatThread({
             )}
           </div>
         )}
+        {isGroup && mentionQuery !== null && (
+          // Picker de menção (@operador): filtra agentes pelo texto após '@'.
+          <div className="mb-2 max-h-56 overflow-y-auto rounded-md border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+            <div className="px-2 py-1 text-[11px] font-semibold text-text-muted">{t('mention.title')}</div>
+            {(() => {
+              const q = (mentionQuery ?? '').toLowerCase();
+              const list = (agents ?? [])
+                .filter((a) => a.id !== currentUserId)
+                .filter((a) => `${a.firstName} ${a.lastName}`.toLowerCase().includes(q))
+                .slice(0, 6);
+              if (!agents) return <p className="px-2 py-1.5 text-xs text-text-muted">{t('loading')}</p>;
+              if (list.length === 0)
+                return <p className="px-2 py-1.5 text-xs text-text-muted">{t('mention.empty')}</p>;
+              return list.map((a) => {
+                const isOn = onlineIds.has(a.id);
+                return (
+                  <button
+                    key={a.id}
+                    type="button"
+                    onClick={() => pickMention(a)}
+                    className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-slate-100 dark:hover:bg-slate-700"
+                  >
+                    <span className="relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white" style={{ background: avatarColor(`${a.firstName} ${a.lastName}`) }}>
+                      {a.firstName.charAt(0).toUpperCase()}
+                      <span
+                        className={`absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full ring-2 ring-white dark:ring-slate-800 ${isOn ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-500'}`}
+                      />
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {a.firstName} {a.lastName}
+                    </span>
+                    <span className="shrink-0 text-[10px] text-text-muted">
+                      {isOn ? t('mention.online') : t('mention.offline')}
+                    </span>
+                  </button>
+                );
+              });
+            })()}
+          </div>
+        )}
+        {showQuickReplies && (
+          <div className="mb-2 max-h-60 overflow-y-auto rounded-md border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-900/40">
+            <div className="mb-1 flex items-center justify-between px-1">
+              <span className="text-xs font-semibold">{t('quickReplies.title')}</span>
+              <button
+                type="button"
+                className="text-xs text-text-muted hover:underline"
+                onClick={() => setShowQuickReplies(false)}
+              >
+                {tCommon('cancel')}
+              </button>
+            </div>
+            {quickReplies === null ? (
+              <p className="px-1 py-2 text-xs text-text-muted">{tCommon('loading')}</p>
+            ) : quickReplies.length === 0 ? (
+              <p className="px-1 py-2 text-xs text-text-muted">{t('quickReplies.empty')}</p>
+            ) : (
+              <ul className="space-y-1">
+                {quickReplies.map((qr) => (
+                  <li key={qr.id}>
+                    <button
+                      type="button"
+                      onClick={() => pickQuickReply(qr)}
+                      className="w-full rounded p-2 text-left text-xs hover:bg-white dark:hover:bg-slate-800"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <span className="font-medium">{qr.title}</span>
+                        <span className="rounded bg-slate-200 px-1 py-0.5 text-[9px] uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                          {catLabel(qr.category)}
+                        </span>
+                        {qr.ownerUserId === null && (
+                          <Users className="h-3 w-3 text-text-muted" aria-label={t('quickReplies.shared')} />
+                        )}
+                      </span>
+                      <span className="mt-0.5 block truncate text-text-muted">{qr.body}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,video/mp4,.pdf,.doc,.docx,.xls,.xlsx,.txt,.zip"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) void doSendFile(f);
+            e.target.value = ''; // permite reenviar o mesmo arquivo
+          }}
+        />
         <div className="flex items-end gap-2">
           <textarea
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => handleTextChange(e.target.value)}
             disabled={!canType || busy}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
@@ -1155,6 +1562,28 @@ function ChatThread({
             rows={2}
             className="flex-1 resize-none rounded-md border border-slate-300 p-2 text-sm focus:border-brand-500 focus:outline-hidden disabled:bg-slate-50 dark:border-slate-600 dark:bg-slate-700 dark:text-slate-100"
           />
+          {canType && (
+            <Button
+              onClick={() => void openQuickReplies()}
+              disabled={busy}
+              size="sm"
+              variant="subtle"
+              title={t('quickReplies.title')}
+            >
+              <Zap className="h-4 w-4" />
+            </Button>
+          )}
+          {canType && (
+            <Button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={busy}
+              size="sm"
+              variant="subtle"
+              title={t('attach.title')}
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
+          )}
           {conversation.instance.channel === 'META_CLOUD' && (
             <Button
               onClick={() => void openTemplatePicker()}

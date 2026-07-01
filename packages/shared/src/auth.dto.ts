@@ -85,3 +85,24 @@ export interface MfaBackupCodesResponse {
   /** Códigos de uso único, plain. Mostrar UMA VEZ na UI. */
   codes: string[];
 }
+
+// =============================================================================
+// Step-up (reautenticação pra ações privilegiadas — NetX Field)
+// =============================================================================
+/** Reautentica com senha OU código MFA pra elevar a sessão por uma janela curta. */
+export const StepUpRequestSchema = z
+  .object({
+    password: z.string().min(8).max(128).optional(),
+    mfaToken: z.string().length(6).regex(/^\d+$/u).optional(),
+  })
+  .refine((d) => Boolean(d.password) || Boolean(d.mfaToken), {
+    message: 'Informe a senha ou o código MFA para reautenticar.',
+  });
+export type StepUpRequest = z.infer<typeof StepUpRequestSchema>;
+
+export interface StepUpResponse {
+  /** ISO 8601 — até quando a sessão fica elevada. */
+  elevatedUntil: string;
+  /** Segundos de validade da elevação. */
+  ttlSeconds: number;
+}

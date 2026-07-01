@@ -8,7 +8,10 @@ import { AlarmsModule } from '../alarms/alarms.module';
 import { AmqpEventPublisher } from './amqp-event-publisher';
 import { EventBusPublisher } from './event-bus.publisher';
 import { EventConsumer } from './event-consumer';
+import { EventsController } from './events.controller';
 import { EVENT_HANDLERS } from './event-handler';
+import { FeedHandler } from './feed.handler';
+import { FeedStream } from './feed-stream.service';
 import { NmsEventsHandler } from './nms-events.handler';
 
 /**
@@ -52,14 +55,30 @@ export class EventBusModule {
       multi: true,
     } as Provider;
 
+    // Ponte bus → SSE do feed (NEXUS/Field). Assina tudo e re-emite no FeedStream.
+    const feedHandler = {
+      provide: EVENT_HANDLERS,
+      useClass: FeedHandler,
+      multi: true,
+    } as Provider;
+
     return {
       module: EventBusModule,
       global: true,
       // AlarmsModule: o NmsEventsHandler injeta o AlarmStream pra surfar faults
       // do NMS no NOC real-time.
       imports: [AlarmsModule],
-      providers: [publisher, EventBusPublisher, EventConsumer, nmsHandler],
-      exports: [publisher, EventBusPublisher],
+      // EventsController expõe GET /v1/events/stream (SSE do feed, tenant-scoped).
+      controllers: [EventsController],
+      providers: [
+        publisher,
+        EventBusPublisher,
+        EventConsumer,
+        nmsHandler,
+        FeedStream,
+        feedHandler,
+      ],
+      exports: [publisher, EventBusPublisher, FeedStream],
     };
   }
 }

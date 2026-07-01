@@ -22,7 +22,13 @@ import {
   type JwtSigner,
 } from '@netx/auth';
 import { loadConfig } from '@netx/config';
-import type { LoginRequest, LoginResponse } from '@netx/shared';
+import type {
+  AuthenticatedPrincipal,
+  LoginRequest,
+  LoginResponse,
+  StepUpRequest,
+  StepUpResponse,
+} from '@netx/shared';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
@@ -325,6 +331,69 @@ export class AuthService {
       where: { id: sessionId, revokedAt: null },
       data: { revokedAt: new Date() },
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // STEP-UP (reautenticação pra ações privilegiadas — NetX Field)
+  // ---------------------------------------------------------------------------
+  /**
+   * Reautentica o operador (senha OU MFA) e ELEVA a sessão por uma janela curta
+   * (5min). A elevação mora em Session.elevatedUntil — sobrevive a refresh e é
+   * revogada de graça quando a sessão é derrubada (logout/kick). O celular é o
+   * device menos seguro do stack; ações perigosas (desbloqueio) exigem isto.
+   */
+  async stepUp(
+    principal: AuthenticatedPrincipal,
+    input: StepUpRequest,
+    ip?: string,
+    userAgent?: string,
+  ): Promise<StepUpResponse> {
+    const user = await this.prisma.user.findFirst({
+      where: { id: principal.sub, tenantId: principal.tenantId },
+      select: { passwordHash: true },
+    });
+
+    let verified = false;
+    if (input.mfaToken) {
+      verified = await this.mfa.verifyTokenOrBackup(principal.sub, input.mfaToken);
+    } else if (input.password && user?.passwordHash) {
+      verified = await verifyPassword(user.passwordHash, input.password);
+    }
+
+    if (!verified) {
+      await this.audit.log({
+        tenantId: principal.tenantId,
+        userId: principal.sub,
+        action: 'auth.stepup.failed',
+        resource: 'session',
+        resourceId: principal.sessionId,
+        level: 'WARNING',
+        ip,
+        userAgent,
+      });
+      throw new UnauthorizedException({
+        type: 'urn:netx:error:step-up-failed',
+        title: 'Reautenticação falhou',
+      });
+    }
+
+    const ttlSeconds = 300;
+    const now = new Date();
+    const elevatedUntil = new Date(now.getTime() + ttlSeconds * 1000);
+    await this.prisma.session.update({
+      where: { id: principal.sessionId },
+      data: { elevatedAt: now, elevatedUntil },
+    });
+    await this.audit.log({
+      tenantId: principal.tenantId,
+      userId: principal.sub,
+      action: 'auth.stepup.success',
+      resource: 'session',
+      resourceId: principal.sessionId,
+      ip,
+      userAgent,
+    });
+    return { elevatedUntil: elevatedUntil.toISOString(), ttlSeconds };
   }
 
   // ---------------------------------------------------------------------------

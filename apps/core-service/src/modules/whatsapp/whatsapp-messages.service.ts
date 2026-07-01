@@ -264,6 +264,17 @@ export class WhatsappMessagesService {
       },
     });
 
+    // Em grupos (NOC) só os MEMBROS (quem entrou) são notificados. O stream é
+    // por-tenant, então mandamos a lista de membros e o cliente filtra.
+    const memberUserIds = isGroup
+      ? (
+          await this.prisma.whatsappConversationMember.findMany({
+            where: { conversationId: conversation.id },
+            select: { userId: true },
+          })
+        ).map((m) => m.userId)
+      : undefined;
+
     this.events.emit({
       type: 'message.created',
       tenantId,
@@ -277,6 +288,7 @@ export class WhatsappMessagesService {
         createdAt: created.createdAt,
         isGroup,
         authorName: created.authorName,
+        memberUserIds,
       },
     });
     this.events.emit({

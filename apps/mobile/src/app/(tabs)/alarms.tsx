@@ -53,7 +53,7 @@ export default function AlarmsScreen() {
 
   const load = useCallback(async () => {
     try {
-      const res = await api<Paginated<Incident>>('/v1/alarms/incidents?status=OPEN&pageSize=100');
+      const res = await api<Paginated<Incident>>('/alarms/incidents?status=OPEN&pageSize=100');
       setItems(res.data);
       setError(null);
     } catch (err) {

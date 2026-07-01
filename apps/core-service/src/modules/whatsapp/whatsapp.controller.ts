@@ -1,6 +1,8 @@
 import {
   BadRequestException,
+  Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseUUIDPipe,
@@ -29,6 +31,8 @@ import { RequiresModule } from '../licensing/license.decorators';
 import { WhatsappBillingRemindersService } from './whatsapp-billing-reminders.service';
 import { WhatsappConversationsService, type InboxFilter } from './whatsapp-conversations.service';
 import { WhatsappEventsBus } from './whatsapp-events.bus';
+import { WhatsappPresenceService } from './whatsapp-presence.service';
+import { WhatsappQuickRepliesService } from './whatsapp-quick-replies.service';
 
 const MEDIA_ROOT = process.env.WHATSAPP_MEDIA_ROOT ?? '/var/lib/netx/whatsapp/media';
 
@@ -42,8 +46,16 @@ type AssignBody = z.infer<typeof AssignBodySchema>;
 const SendBodySchema = z.object({
   // WhatsApp text limit: 4096 chars (oficial). Min 1 (não-vazio após trim).
   text: z.string().trim().min(1).max(4096),
+  // Menções internas (@operador) — userIds acionados na mensagem (só grupos).
+  mentions: z.array(z.string().uuid()).max(20).optional(),
 });
 type SendBody = z.infer<typeof SendBodySchema>;
+
+// Heartbeat de presença: informa a conversa aberta agora (ou null).
+const PresenceBodySchema = z.object({
+  conversationId: z.string().uuid().nullable().optional(),
+});
+type PresenceBody = z.infer<typeof PresenceBodySchema>;
 
 const SendTemplateBodySchema = z.object({
   templateName: z.string().min(1).max(120),
@@ -71,12 +83,49 @@ const BillingRunBodySchema = z.object({
 });
 type BillingRunBody = z.infer<typeof BillingRunBodySchema>;
 
+// Config-mestre da régua de cobrança (liga/desliga + modo teste).
+const BillingConfigBodySchema = z.object({
+  enabled: z.boolean().optional(),
+  testRecipient: z.string().trim().max(20).nullable().optional(),
+});
+type BillingConfigBody = z.infer<typeof BillingConfigBodySchema>;
+
+// Regra da régua: quando/qual template/canal disparar.
+const BillingRuleCreateSchema = z.object({
+  enabled: z.boolean().optional(),
+  label: z.string().trim().max(120).nullable().optional(),
+  offsetDays: z.number().int().min(-60).max(60),
+  channel: z.string().min(1).max(30),
+  templateName: z.string().trim().min(1).max(120),
+  language: z.string().trim().min(2).max(10).optional(),
+  instanceId: z.string().uuid().nullable().optional(),
+  sortOrder: z.number().int().min(0).max(9999).optional(),
+});
+type BillingRuleCreate = z.infer<typeof BillingRuleCreateSchema>;
+
+const BillingRuleUpdateSchema = BillingRuleCreateSchema.partial();
+type BillingRuleUpdate = z.infer<typeof BillingRuleUpdateSchema>;
+
 // Preferências do operador no chat (self-service).
 const AgentSettingsBodySchema = z.object({
   greeting: z.string().max(1000).optional(),
   showName: z.boolean().optional(),
 });
 type AgentSettingsBody = z.infer<typeof AgentSettingsBodySchema>;
+
+// Respostas rápidas (mensagens predefinidas): saudações, encerramentos, etc.
+const QuickReplyCreateSchema = z.object({
+  scope: z.enum(['shared', 'personal']),
+  category: z.string().trim().min(1).max(40),
+  title: z.string().trim().min(1).max(120),
+  body: z.string().trim().min(1).max(4096),
+  shortcut: z.string().trim().max(40).optional().nullable(),
+  sortOrder: z.number().int().min(0).max(9999).optional(),
+});
+type QuickReplyCreate = z.infer<typeof QuickReplyCreateSchema>;
+
+const QuickReplyUpdateSchema = QuickReplyCreateSchema.partial();
+type QuickReplyUpdate = z.infer<typeof QuickReplyUpdateSchema>;
 
 /**
  * Endpoints HTTP do módulo WhatsApp/Atendimento.
@@ -99,6 +148,8 @@ export class WhatsappController {
     private readonly conversations: WhatsappConversationsService,
     private readonly events: WhatsappEventsBus,
     private readonly billing: WhatsappBillingRemindersService,
+    private readonly quickReplies: WhatsappQuickRepliesService,
+    private readonly presence: WhatsappPresenceService,
   ) {}
 
   // ----- outbound por telefone (sem conversa prévia) -----
@@ -121,7 +172,7 @@ export class WhatsappController {
     });
   }
 
-  /** Roda o lembrete de cobrança agora (teste). Respeita o modo número-de-teste. */
+  /** Roda a régua de cobrança agora (teste). Respeita o modo número-de-teste. */
   @Post('billing/run')
   @RequirePermissions('chat.admin')
   runBilling(
@@ -129,6 +180,51 @@ export class WhatsappController {
     @ZodBody(BillingRunBodySchema) body: BillingRunBody,
   ) {
     return this.billing.runOnce({ dryRun: body.dryRun ?? false });
+  }
+
+  // ----- régua de cobrança (config + regras) -----
+
+  @Get('billing/config')
+  @RequirePermissions('chat.admin')
+  getBillingConfig(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.billing.getConfig(user.tenantId);
+  }
+
+  @Put('billing/config')
+  @RequirePermissions('chat.admin')
+  setBillingConfig(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @ZodBody(BillingConfigBodySchema) body: BillingConfigBody,
+  ) {
+    return this.billing.setConfig(user.tenantId, body);
+  }
+
+  @Post('billing/rules')
+  @RequirePermissions('chat.admin')
+  createBillingRule(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @ZodBody(BillingRuleCreateSchema) body: BillingRuleCreate,
+  ) {
+    return this.billing.createRule(user.tenantId, body);
+  }
+
+  @Put('billing/rules/:id')
+  @RequirePermissions('chat.admin')
+  updateBillingRule(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(BillingRuleUpdateSchema) body: BillingRuleUpdate,
+  ) {
+    return this.billing.updateRule(user.tenantId, id, body);
+  }
+
+  @Delete('billing/rules/:id')
+  @RequirePermissions('chat.admin')
+  deleteBillingRule(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.billing.deleteRule(user.tenantId, id);
   }
 
   // ----- preferências do operador (saudação + mostrar nome) -----
@@ -148,6 +244,59 @@ export class WhatsappController {
     return this.conversations.setAgentSettings(user.tenantId, user.sub, body);
   }
 
+  // ----- respostas rápidas (mensagens predefinidas) -----
+
+  /** Lista as respostas visíveis ao operador: compartilhadas + as dele. */
+  @Get('quick-replies')
+  @RequirePermissions('chat.send')
+  listQuickReplies(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.quickReplies.list(user.tenantId, user.sub);
+  }
+
+  @Post('quick-replies')
+  @RequirePermissions('chat.send')
+  createQuickReply(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @ZodBody(QuickReplyCreateSchema) body: QuickReplyCreate,
+  ) {
+    return this.quickReplies.create(
+      user.tenantId,
+      user.sub,
+      user.permissions.includes('chat.admin'),
+      body,
+    );
+  }
+
+  @Put('quick-replies/:id')
+  @RequirePermissions('chat.send')
+  updateQuickReply(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(QuickReplyUpdateSchema) body: QuickReplyUpdate,
+  ) {
+    return this.quickReplies.update(
+      user.tenantId,
+      user.sub,
+      user.permissions.includes('chat.admin'),
+      id,
+      body,
+    );
+  }
+
+  @Delete('quick-replies/:id')
+  @RequirePermissions('chat.send')
+  deleteQuickReply(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.quickReplies.remove(
+      user.tenantId,
+      user.sub,
+      user.permissions.includes('chat.admin'),
+      id,
+    );
+  }
+
   // ----- conversations -----
 
   @Get('conversations')
@@ -157,7 +306,7 @@ export class WhatsappController {
     @Query('filter') filterParam?: string,
   ) {
     const valid: InboxFilter[] = [
-      'mine', 'unassigned', 'all', 'resolved', 'groups', 'andamento', 'espera', 'automacao',
+      'mine', 'unassigned', 'all', 'resolved', 'groups', 'groupsMine', 'andamento', 'espera', 'automacao',
     ];
     const f: InboxFilter =
       filterParam && (valid as string[]).includes(filterParam) ? (filterParam as InboxFilter) : 'mine';
@@ -230,6 +379,26 @@ export class WhatsappController {
     return this.conversations.resolve(user.tenantId, user.sub, id);
   }
 
+  /** Entra num grupo (atendimento compartilhado do NOC). chat.send basta. */
+  @Post('conversations/:id/join')
+  @RequirePermissions('chat.send')
+  joinGroup(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.conversations.joinGroup(user.tenantId, user.sub, id);
+  }
+
+  /** Sai de um grupo (deixa de responder/ser notificado). */
+  @Post('conversations/:id/leave')
+  @RequirePermissions('chat.send')
+  leaveGroup(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.conversations.leaveGroup(user.tenantId, user.sub, id);
+  }
+
   @Post('conversations/:id/messages')
   @RequirePermissions('chat.send')
   send(
@@ -238,7 +407,18 @@ export class WhatsappController {
     @ZodBody(SendBodySchema) body: SendBody,
   ) {
     // Zod já validou min(1) após trim — não precisa re-checar.
-    return this.conversations.sendText(user.tenantId, user.sub, id, body.text);
+    return this.conversations.sendText(user.tenantId, user.sub, id, body.text, body.mentions);
+  }
+
+  /** Heartbeat de presença: marca online + informa a conversa aberta. Devolve os online. */
+  @Post('presence')
+  @RequirePermissions('chat.read')
+  presenceBeat(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @ZodBody(PresenceBodySchema) body: PresenceBody,
+  ) {
+    this.presence.touch(user.tenantId, user.sub, body.conversationId ?? null);
+    return { online: this.presence.online(user.tenantId) };
   }
 
   @Post('conversations/:id/messages/template')
@@ -271,6 +451,29 @@ export class WhatsappController {
       buffer: file.buffer,
       mimetype: file.mimetype,
     });
+  }
+
+  /**
+   * Envia uma IMAGEM ou ARQUIVO anexado (upload multipart 'file' + 'caption'
+   * opcional). Detecta imagem/vídeo/documento pelo mimetype. Limite 32MB.
+   */
+  @Post('conversations/:id/messages/media')
+  @RequirePermissions('chat.send')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 32 * 1024 * 1024 } }))
+  sendMedia(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body('caption') caption?: string,
+  ) {
+    if (!file?.buffer?.length) throw new BadRequestException('Arquivo ausente.');
+    return this.conversations.sendMediaFile(
+      user.tenantId,
+      user.sub,
+      id,
+      { buffer: file.buffer, mimetype: file.mimetype, originalName: file.originalname },
+      typeof caption === 'string' ? caption : undefined,
+    );
   }
 
   /** Transcreve uma mensagem de áudio (sob demanda, whisper.cpp local). */
@@ -351,10 +554,17 @@ export class WhatsappController {
       jpeg: 'image/jpeg',
       png: 'image/png',
       webp: 'image/webp',
+      gif: 'image/gif',
       mp4: 'video/mp4',
       ogg: 'audio/ogg',
       mp3: 'audio/mpeg',
       pdf: 'application/pdf',
+      doc: 'application/msword',
+      docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      xls: 'application/vnd.ms-excel',
+      xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      zip: 'application/zip',
+      txt: 'text/plain',
     };
     res.setHeader('Content-Type', mime[ext] ?? 'application/octet-stream');
     res.setHeader('Cache-Control', 'private, max-age=3600');

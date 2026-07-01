@@ -25,6 +25,8 @@ import { WhatsappEventsBus } from './whatsapp-events.bus';
 import { WhatsappInstancesController } from './whatsapp-instances.controller';
 import { WhatsappInstancesService } from './whatsapp-instances.service';
 import { WhatsappMessagesService } from './whatsapp-messages.service';
+import { WhatsappPresenceService } from './whatsapp-presence.service';
+import { WhatsappQuickRepliesService } from './whatsapp-quick-replies.service';
 import { WhatsappTemplatesController } from './whatsapp-templates.controller';
 import { WhatsappTemplatesService } from './whatsapp-templates.service';
 import { WhatsappTranscriptionService } from './whatsapp-transcription.service';
@@ -77,6 +79,8 @@ import { WhatsappWebhookMetaController } from './whatsapp-webhook-meta.controlle
     WhatsappContactsService,
     WhatsappConversationsService,
     WhatsappMessagesService,
+    WhatsappPresenceService,
+    WhatsappQuickRepliesService,
     WhatsappTemplatesService,
     WhatsappAiService,
     WhatsappBotService,

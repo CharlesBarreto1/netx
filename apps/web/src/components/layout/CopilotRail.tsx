@@ -7,7 +7,7 @@
  * explica, mas NUNCA age sozinha — só responde, ancorada nos dados do tenant
  * (read-only). O violeta (token --ai) é exclusivo da IA: "proposta, não ação".
  *
- * Chat real sobre POST /v1/ai/ask (motor netx-ai: Ollama self-hosted + fallback
+ * Chat real sobre POST /v1/copilot/ask (motor netx-ai: Ollama self-hosted + fallback
  * de nuvem). Cada pergunta é independente (sem memória de conversa no backend);
  * a transcrição local serve só de histórico visual.
  */

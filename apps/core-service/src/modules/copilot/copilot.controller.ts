@@ -1,6 +1,7 @@
 /**
- * Copiloto agêntico — POST /v1/ai/ask. Read-only (perm ai.ask). Mesma rota do
- * F3 anterior; agora servida pelo copiloto tool-using.
+ * Copiloto agêntico — POST /v1/copilot/ask. Read-only (perm ai.ask). Prefixo
+ * próprio `/copilot` (separado do `/ai` do motor/config — AiController) pra evitar
+ * a colisão de `@Controller('ai')` e permitir apiPrefixes distintos no manifesto.
  */
 import { Controller, Get, Headers, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -20,9 +21,9 @@ function bearer(authHeader?: string): string | null {
   return m ? m[1] : null;
 }
 
-@ApiTags('ai')
+@ApiTags('copilot')
 @ApiBearerAuth()
-@Controller('ai')
+@Controller('copilot')
 export class CopilotController {
   constructor(
     private readonly copilot: CopilotService,

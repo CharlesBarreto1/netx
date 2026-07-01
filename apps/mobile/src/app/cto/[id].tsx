@@ -44,7 +44,7 @@ export default function CtoLiveScreen() {
   const load = useCallback(async () => {
     if (!id) return;
     try {
-      const res = await api<CtoRssi>(`/v1/alarms/rssi/cto/${id}`);
+      const res = await api<CtoRssi>(`/alarms/rssi/cto/${id}`);
       setData(res);
       setError(null);
     } catch (err) {

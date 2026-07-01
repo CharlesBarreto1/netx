@@ -112,6 +112,9 @@ model Tenant {
   whatsappTemplates    WhatsappTemplate[]
   whatsappBotConfig    WhatsappBotConfig?
   whatsappQuickReplies WhatsappQuickReply[]
+  notifications        Notification[]
+  billingReminderConfig BillingReminderConfig?
+  billingReminderRules BillingReminderRule[]
 
   // SIFEN — fatura eletrônica Paraguay (módulo opcional, ligado via env)
   sifenDocuments       SifenDocument[]
@@ -351,6 +354,7 @@ model User {
   whatsappConversationViews     WhatsappConversationView[]
   whatsappConversationMembers   WhatsappConversationMember[] @relation("WaConversationMember")
   whatsappQuickReplies          WhatsappQuickReply[]   @relation("WaQuickReplyOwner")
+  notifications                 Notification[]
 
   // Estoque (Fase 1)
   stockLocationAccess  StockLocationUser[]
@@ -466,6 +470,13 @@ model Session {
   createdAt        DateTime  @default(now()) @map("created_at")
   lastUsedAt       DateTime  @default(now()) @map("last_used_at")
 
+  // Step-up (reautenticação) pra ações privilegiadas do NetX Field (ex.:
+  // desbloqueio de cliente). elevatedUntil = janela curta (5min) em que a
+  // sessão está "elevada". Sobrevive a refresh (a flag mora na sessão, não no
+  // token — o claim mfa decai no refresh). Ver StepUpGuard.
+  elevatedAt       DateTime? @map("elevated_at")
+  elevatedUntil    DateTime? @map("elevated_until")
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -529,6 +540,32 @@ model AuditLog {
   @@index([resource, resourceId])
   @@index([userId])
   @@map("audit_logs")
+}
+
+// -----------------------------------------------------------------------------
+// Idempotência de requisições (replay-safe) — NetX Field / offline-first.
+// A outbox do app reenvia mutações com o header `Idempotency-Key`. O servidor
+// dedupa por (tenant, key): se a op já completou, devolve a resposta guardada
+// em vez de reaplicar (ex.: NUNCA reconsome material da van num retry). Ver
+// IdempotencyInterceptor (common/interceptors). Sem FK Prisma pro tenant pra
+// não exigir back-relation em Tenant — a FK/RLS moram na migration.
+// -----------------------------------------------------------------------------
+model IdempotencyKey {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  userId       String?  @map("user_id") @db.Uuid
+  key          String   @db.VarChar(200)
+  method       String   @db.VarChar(8)
+  path         String   @db.VarChar(500)
+  status       String   @db.VarChar(16) // 'pending' | 'completed'
+  statusCode   Int?     @map("status_code")
+  responseBody Json?    @map("response_body")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, key])
+  @@index([tenantId, createdAt])
+  @@map("idempotency_keys")
 }
 
 // =============================================================================
@@ -2850,6 +2887,98 @@ model WhatsappQuickReply {
 
   @@index([tenantId, ownerUserId])
   @@map("whatsapp_quick_replies")
+}
+
+/// Notificação genérica pra um usuário — centro de notificações do NetX (sino).
+/// Qualquer módulo dispara via NotificationsService.notify() (in-process) ou
+/// POST /v1/notifications/dispatch (cross-app, ex.: alarmes do NMS). `type` é
+/// livre (ex.: 'chat.mention', 'task.assigned', 'nms.alarm'); `href` é o
+/// deep-link do clique; `data` é contexto livre do módulo emissor.
+model Notification {
+  id        String  @id @default(uuid()) @db.Uuid
+  tenantId  String  @map("tenant_id") @db.Uuid
+  userId    String  @map("user_id") @db.Uuid
+
+  type      String  @db.VarChar(60)
+  title     String  @db.VarChar(200)
+  body      String? @db.Text
+  href      String? @db.VarChar(500)             // deep-link do clique
+  icon      String? @db.VarChar(40)              // hint de ícone (bell|message|alarm|task|...)
+  data      Json?                                // contexto livre do emissor
+
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, readAt])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+/// Configuração-mestre do disparo de cobrança do tenant (liga/desliga + modo teste).
+/// As REGRAS (quando/qual template/canal) ficam em BillingReminderRule.
+model BillingReminderConfig {
+  id            String  @id @default(uuid()) @db.Uuid
+  tenantId      String  @unique @map("tenant_id") @db.Uuid
+
+  enabled       Boolean @default(false)                       // liga o disparo diário
+  // Redireciona TODO envio pra este número (modo teste). Null = envia aos clientes.
+  testRecipient String? @map("test_recipient") @db.VarChar(20)
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  tenant        Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("billing_reminder_configs")
+}
+
+/// Régua de cobrança: uma regra = "envie o template X pelo canal C, N dias
+/// antes/no/depois do vencimento". Vários disparos por tenant. `offsetDays`:
+/// negativo = antes do vencimento, 0 = no dia, positivo = depois.
+model BillingReminderRule {
+  id           String  @id @default(uuid()) @db.Uuid
+  tenantId     String  @map("tenant_id") @db.Uuid
+
+  enabled      Boolean @default(true)
+  label        String? @db.VarChar(120)                       // rótulo amigável opcional
+  offsetDays   Int     @map("offset_days")                    // <0 antes | 0 no dia | >0 depois
+  channel      String  @default("WHATSAPP_META") @db.VarChar(30) // canal de disparo (extensível)
+  templateName String  @map("template_name") @db.VarChar(120)
+  language     String  @default("pt_BR") @db.VarChar(10)
+  instanceId   String? @map("instance_id") @db.Uuid           // null = resolve a instância ativa do canal
+  sortOrder    Int     @default(0) @map("sort_order")
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tenant       Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  logs         BillingReminderLog[]
+
+  @@index([tenantId, enabled])
+  @@map("billing_reminder_rules")
+}
+
+/// Log de disparo por (regra, fatura) — garante que cada regra dispara UMA vez
+/// por fatura (dedup: unique) e serve de histórico/relatório.
+model BillingReminderLog {
+  id         String  @id @default(uuid()) @db.Uuid
+  tenantId   String  @map("tenant_id") @db.Uuid
+  ruleId     String  @map("rule_id") @db.Uuid
+  invoiceId  String  @map("invoice_id") @db.Uuid
+
+  channel    String  @db.VarChar(30)
+  status     String  @db.VarChar(12)                          // SENT | FAILED
+  error      String? @db.Text
+  sentAt     DateTime @default(now()) @map("sent_at")
+
+  rule       BillingReminderRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@unique([ruleId, invoiceId])
+  @@index([tenantId, sentAt])
+  @@map("billing_reminder_logs")
 }
 
 // =============================================================================
