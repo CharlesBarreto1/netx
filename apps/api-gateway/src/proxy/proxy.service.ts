@@ -35,7 +35,16 @@ export class ProxyService {
    */
   async forwardToNms(req: Request, targetPath: string): Promise<ProxyResult> {
     const base = `http://${this.config.nmsService.host}:${this.config.nmsService.port}`;
-    return this.forward(req, base, targetPath);
+    // Endpoints do NMS que ESPERAM o device-gateway falar com o equipamento (SSH/NETCONF/
+    // SNMP) podem levar dezenas de segundos — mais que os 15s padrão. Num device
+    // inalcançável, só os timeouts de SSH+NETCONF+SNMP já passam de 20s; o apply espera
+    // até 90s no NMS. Sem folga aqui, o proxy corta antes e devolve 502 (confundindo
+    // "device não respondeu" com "NMS fora do ar"). Timeout ampliado só pra essas rotas.
+    const isSlowDeviceOp =
+      /\/devices\/[^/]+\/(connectivity-test|backup|discover-interfaces|snmp-config\/sync|config\/(plan|apply|confirm)|playbooks\/[^/]+\/run)$/.test(
+        targetPath,
+      );
+    return this.forward(req, base, targetPath, isSlowDeviceOp ? 100_000 : undefined);
   }
 
   /**
@@ -145,7 +154,12 @@ export class ProxyService {
     }
   }
 
-  private async forward(req: Request, base: string, targetPath: string): Promise<ProxyResult> {
+  private async forward(
+    req: Request,
+    base: string,
+    targetPath: string,
+    timeoutMs?: number,
+  ): Promise<ProxyResult> {
     const url = `${base}${targetPath}`;
     const forwardedHeaders = this.buildForwardedHeaders(req);
 
@@ -194,7 +208,9 @@ export class ProxyService {
           maxBodyLength: Infinity,
           maxContentLength: Infinity,
           validateStatus: () => true, // never throw on 4xx/5xx
-          timeout: isMultipart ? 60_000 : isTranscribe ? 240_000 : isSlowExternal ? 90_000 : 15_000,
+          timeout:
+            timeoutMs ??
+            (isMultipart ? 60_000 : isTranscribe ? 240_000 : isSlowExternal ? 90_000 : 15_000),
         }),
       );
       return { status: res.status, headers: res.headers as any, body: Buffer.from(res.data as ArrayBuffer) };
