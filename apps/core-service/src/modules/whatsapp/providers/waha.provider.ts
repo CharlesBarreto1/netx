@@ -301,7 +301,10 @@ export class WahaProvider implements ChannelProvider {
       body = `${p.location.latitude},${p.location.longitude}`;
     }
 
-    const pushName: string | null = p?.notifyName ?? p?._data?.notifyName ?? null;
+    // Nome do contato: WEBJS usa `notifyName`; NOWEB (Baileys) usa `pushName`
+    // no _data (ou no topo). Sem isso, o QR não mostrava o nome do cliente.
+    const pushName: string | null =
+      p?.notifyName ?? p?._data?.notifyName ?? p?._data?.pushName ?? p?.pushName ?? null;
 
     if (isGroup) {
       // Em grupo, `from` é o JID do grupo e o remetente real vem em
@@ -327,10 +330,27 @@ export class WahaProvider implements ChannelProvider {
       };
     }
 
+    // Número real do contato. Com o novo esquema do WhatsApp, `from` pode vir
+    // como `<lid>@lid` (ID interno, NÃO é telefone). Nesse caso o telefone real
+    // (PN) vem num campo alternativo do Baileys — preferimos ele pra exibir e
+    // casar o cliente. O `chatId` continua sendo o `from` (responder no @lid).
+    const realPnJid = from.endsWith('@lid') ? realPnFrom(p) : null;
+    const contactPhone = (realPnJid ?? from).split('@')[0];
+
+    // Diagnóstico: LID sem telefone real resolvido. Loga só NOMES de campos
+    // (sem valores/PII) pra mapear onde a versão do WAHA guarda o PN.
+    if (from.endsWith('@lid') && !realPnJid) {
+      this.logger.warn(
+        `WAHA @lid sem PN — keys: payload=[${Object.keys(p ?? {}).join(',')}] ` +
+          `_data=[${Object.keys((p?._data as object) ?? {}).join(',')}] ` +
+          `_data.key=[${Object.keys((p?._data?.key as object) ?? {}).join(',')}]`,
+      );
+    }
+
     return {
       providerMsgId: id,
       direction: fromMe ? 'OUT' : 'IN',
-      contactPhone: from.split('@')[0],
+      contactPhone,
       chatId: from, // JID exato (pode ser @lid) — respondemos NELE
       type,
       body,
@@ -438,6 +458,31 @@ function extractIncomingId(id: unknown): string | null {
   if (id && typeof id === 'object') {
     const o = id as { id?: string; _serialized?: string };
     return o._serialized ?? o.id ?? null;
+  }
+  return null;
+}
+
+/**
+ * Extrai o telefone REAL (PN) quando o remetente chegou como `@lid` (novo
+ * esquema do WhatsApp). O Baileys carrega o número real num campo alternativo
+ * da key — o nome varia por versão, então cobrimos os conhecidos. Devolve um
+ * JID `<digits>@c.us` ou null se nenhum estiver presente (aí mantemos o @lid).
+ */
+function realPnFrom(p: any): string | null {
+  const candidates = [
+    p?._data?.key?.remoteJidAlt,
+    p?._data?.key?.senderPn,
+    p?._data?.senderPn,
+    p?._data?.key?.remoteJidPn,
+    p?.senderPn,
+  ];
+  for (const c of candidates) {
+    const s = extractIncomingId(c);
+    if (!s) continue;
+    if (s.endsWith('@c.us')) return s;
+    if (s.endsWith('@lid')) continue; // ainda é LID, não serve
+    const digits = s.replace(/\D/g, '');
+    if (digits.length >= 8) return `${digits}@c.us`;
   }
   return null;
 }
