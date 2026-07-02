@@ -122,7 +122,7 @@ export default function AiSettingsPage() {
         <CardContent className="space-y-2 text-sm">
           <div className="flex items-center gap-2">
             <span>{t('status.engine')}</span>
-            <Badge variant={status?.available ? 'success' : 'warning'}>
+            <Badge tone={status?.available ? 'success' : 'warning'}>
               {status?.available ? t('status.available') : t('status.unavailable')}
             </Badge>
           </div>
@@ -201,7 +201,7 @@ export default function AiSettingsPage() {
 
           <div>
             <Label>
-              {t('primary.apiKey')} {config.hasApiKey && <Badge variant="success">{t('saved')}</Badge>}
+              {t('primary.apiKey')} {config.hasApiKey && <Badge tone="success">{t('saved')}</Badge>}
             </Label>
             <Input
               type="password"
@@ -271,7 +271,7 @@ export default function AiSettingsPage() {
           <div>
             <Label>
               {t('fallback.apiKey')}{' '}
-              {config.hasFallbackApiKey && <Badge variant="success">{t('saved')}</Badge>}
+              {config.hasFallbackApiKey && <Badge tone="success">{t('saved')}</Badge>}
             </Label>
             <Input
               type="password"

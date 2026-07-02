@@ -84,7 +84,7 @@ export default function NfcomDetailPage() {
         {data.cancelReason && <Row label="Cancelamento" value={data.cancelReason} />}
       </section>
 
-      {(data.xmlSigned || data.chaveAcesso) && (
+      {(data.signedAt || data.chaveAcesso) && (
         <a href={xmlHref} target="_blank" rel="noreferrer" className="inline-block text-sm text-accent hover:underline">
           Baixar XML
         </a>
