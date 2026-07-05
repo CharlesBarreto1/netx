@@ -261,6 +261,9 @@ export const MENU_GROUPS: MenuGroup[] = [
       { key: 'mappingCustomers', href: '/mapping/customers', labelKey: 'mappingCustomers', permission: 'mapping.read' },
       { key: 'mappingNetwork', href: '/mapping/network', labelKey: 'mappingNetwork', permission: 'mapping.read' },
       { key: 'mapStudio', href: '/mapa', labelKey: 'mapStudio', permission: 'network.read' },
+      // FiberMap (OSP v2) — documentação de planta externa. Módulo próprio.
+      { key: 'fibermap', href: '/fibermap', labelKey: 'fibermap', permission: 'fibermap.read', requiredModules: ['netx-fibermap'] },
+      { key: 'fibermapSettings', href: '/fibermap/settings', labelKey: 'fibermapSettings', permission: 'fibermap.admin', requiredModules: ['netx-fibermap'] },
       { key: 'mappingBackbone', href: '/mapping/backbone', labelKey: 'mappingBackbone', permission: 'mapping.read' },
       { key: 'mappingTechnicians', href: '/mapping/technicians', labelKey: 'mappingTechnicians', permission: 'mapping.read' },
     ],

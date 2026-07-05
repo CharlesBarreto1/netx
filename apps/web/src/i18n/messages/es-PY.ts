@@ -205,6 +205,8 @@ const messages = {
     mappingCustomers: 'Clientes',
     mappingNetwork: 'Red',
     mapStudio: 'Estudio de Mapeo',
+    fibermap: 'FiberMap',
+    fibermapSettings: 'Config. de FiberMap',
     mappingBackbone: 'Backbone',
     mappingTechnicians: 'Técnicos',
     fleetVehicles: 'Vehículos',

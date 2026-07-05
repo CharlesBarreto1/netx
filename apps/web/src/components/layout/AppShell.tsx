@@ -47,6 +47,7 @@ import {
   FileText,
   FolderOpen,
   Gauge,
+  Cable,
   GitBranch,
   GitMerge,
   Handshake,
@@ -219,6 +220,8 @@ const ICON_BY_KEY: Record<string, ComponentType<{ className?: string }>> = {
   mappingCustomers: MapPin,
   mappingNetwork: Network,
   mapStudio: Map,
+  fibermap: Cable,
+  fibermapSettings: SlidersHorizontal,
   mappingBackbone: GitBranch,
   mappingTechnicians: HardHat,
   // Frota
