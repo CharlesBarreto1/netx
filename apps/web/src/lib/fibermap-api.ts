@@ -455,6 +455,72 @@ export interface FibermapAccessPoint {
   defaultConnectorLossDb: number;
 }
 
+// ─── Trace de capilar (FM-4) ────────────────────────────────────────────────
+/** sessionStorage: "Ver no mapa" do access-point → highlight no estúdio. */
+export const FIBERMAP_TRACE_STORAGE_KEY = 'netx.fibermap.trace';
+
+export type FibermapTraceWavelength = 1310 | 1490 | 1550;
+
+export type FibermapTraceEventKind =
+  | 'PORT'
+  | 'CONNECTOR'
+  | 'FUSION'
+  | 'FIBER'
+  | 'SPLITTER'
+  | 'END';
+
+export interface FibermapTraceBranch {
+  outPortNumber: number;
+  outPortLabel: string | null;
+  events: FibermapTraceEvent[];
+}
+
+export interface FibermapTraceEvent {
+  kind: FibermapTraceEventKind;
+  elementId?: string;
+  elementName?: string;
+  latitude?: number;
+  longitude?: number;
+  deviceId?: string;
+  deviceName?: string;
+  deviceType?: string;
+  portId?: string;
+  portLabel?: string;
+  portRole?: 'IN' | 'OUT' | 'BIDI';
+  cableId?: string;
+  cableName?: string;
+  fiberId?: string;
+  fiberNumber?: number;
+  tubeNumber?: number;
+  fiberColor?: string;
+  lengthM?: number;
+  connectionId?: string;
+  lossDb?: number;
+  cumDistanceM: number;
+  cumLossDb: number;
+  ratio?: string;
+  branchCount?: number;
+  branchTaken?: number;
+  branches?: FibermapTraceBranch[];
+  endReason?: 'FREE_END' | 'LOOP';
+}
+
+export interface FibermapTraceResponse {
+  wavelengthNm: number;
+  origin: {
+    kind: 'FIBER_END' | 'CUT_END' | 'PORT';
+    fiberId?: string;
+    side?: FibermapEndSide;
+    cutId?: string;
+    portId?: string;
+  };
+  path: FibermapTraceEvent[];
+  maxDistanceM: number;
+  maxLossDb: number;
+  /** GeoJSON [[lng,lat],…] por segmento percorrido — highlight no estúdio. */
+  mapGeometry: { type: 'MultiLineString'; coordinates: number[][][] };
+}
+
 // ─── Atenuação ──────────────────────────────────────────────────────────────
 export type FibermapAttenuationKey =
   | 'FIBER_1310' | 'FIBER_1490' | 'FIBER_1550'
@@ -637,6 +703,22 @@ export const fibermapApi = {
   updateDevice: (id: string, dto: { name?: string }) =>
     api.patch<void>(`/v1/fibermap/devices/${id}`, dto),
   deleteDevice: (id: string) => api.delete<void>(`/v1/fibermap/devices/${id}`),
+
+  // Trace (FM-4)
+  traceFiber: (
+    fiberId: string,
+    params: {
+      from?: 'A' | 'B';
+      cutId?: string;
+      cutSide?: 'U' | 'D';
+      wavelength?: FibermapTraceWavelength;
+    } = {},
+  ) =>
+    api.get<FibermapTraceResponse>(
+      `/v1/fibermap/fibers/${fiberId}/trace${qs(params)}`,
+    ),
+  tracePort: (portId: string, params: { wavelength?: FibermapTraceWavelength } = {}) =>
+    api.get<FibermapTraceResponse>(`/v1/fibermap/ports/${portId}/trace${qs(params)}`),
 
   // Catálogo
   listProducts: (params: ListFibermapProductsParams = {}) =>

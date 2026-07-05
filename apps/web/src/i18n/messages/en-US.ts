@@ -161,6 +161,10 @@ const messages = {
         folderDeleted: 'Folder deleted',
         repositioned: 'Element repositioned',
       },
+      trace: {
+        active: 'Trace: {label}',
+        clear: 'Clear',
+      },
     },
     // Access point — splice editor (Screen 2 · FM-3)
     ap: {
@@ -209,6 +213,22 @@ const messages = {
       bulkStart: 'Start fiber',
       bulkCount: 'Count',
       bulkHelp: '1:1 pairs — already occupied fibers are skipped and reported',
+      trace: {
+        open: 'Fiber trace (F)',
+        title: 'Fiber trace',
+        loading: 'Tracing the path…',
+        empty: 'No path from this end',
+        viewOnMap: 'View on map',
+        wavelength: 'λ (nm)',
+        total: 'Total: {distance} · {loss}',
+        fusion: 'Fusion splice',
+        connector: 'Connector',
+        fiberLine: '{cable} — fiber {n} (tube {tube})',
+        splitterVia: 'via OUT {n} of {total}',
+        branch: 'OUT {n}',
+        end: 'Free end',
+        loop: 'Loop detected in the documentation',
+      },
     },
     settings: {
       title: 'FiberMap settings',

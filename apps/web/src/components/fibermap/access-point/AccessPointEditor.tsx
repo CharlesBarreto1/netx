@@ -20,6 +20,8 @@
  * Toda mutação → mutate() do SWR (payload é a fonte única — spec §6).
  */
 import { Printer, ImageDown, Layers2, PlusSquare, RefreshCw } from 'lucide-react';
+import type { Route } from 'next';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import useSWR from 'swr';
@@ -30,17 +32,22 @@ import { toast } from '@/components/ui/sonner';
 import { ApiError } from '@/lib/api';
 import {
   FIBERMAP_COLOR_HEX,
+  FIBERMAP_TRACE_STORAGE_KEY,
   fibermapApi,
   type FibermapAccessPoint,
   type FibermapApConnection,
   type FibermapApConnectionSide,
   type FibermapColorCode,
   type FibermapEndpointRef,
+  type FibermapTraceEvent,
+  type FibermapTraceResponse,
+  type FibermapTraceWavelength,
 } from '@/lib/fibermap-api';
 
 import { StudioConfirm, StudioModal } from '../studio/StudioModal';
 import { BulkFuseModal } from './BulkFuseModal';
 import { DeviceCreateModal } from './DeviceCreateModal';
+import { TracePanel } from './TracePanel';
 import {
   buildLayout,
   connectionPath,
@@ -67,6 +74,7 @@ function sideAnchorId(s: FibermapApConnectionSide): string {
 export function AccessPointEditor({ elementId }: { elementId: string }) {
   const t = useTranslations('fibermap');
   const tc = useTranslations('common');
+  const router = useRouter();
   const {
     data: ap,
     error,
@@ -97,6 +105,104 @@ export function AccessPointEditor({ elementId }: { elementId: string }) {
   );
 
   const refresh = useCallback(() => void mutate(), [mutate]);
+
+  // ── Trace (FM-4, spec §8.4) ─────────────────────────────────────────────
+  const [tracePanelOpen, setTracePanelOpen] = useState(false);
+  const [traceLoading, setTraceLoading] = useState(false);
+  const [traceData, setTraceData] = useState<FibermapTraceResponse | null>(null);
+  const [traceWavelength, setTraceWavelength] =
+    useState<FibermapTraceWavelength>(1490);
+  const traceOriginRef = useRef<
+    | { kind: 'fiber'; fiberId: string; from?: 'A' | 'B'; cutId?: string; cutSide?: 'U' | 'D' }
+    | { kind: 'port'; portId: string }
+    | null
+  >(null);
+
+  const runTrace = useCallback(
+    async (wavelength: FibermapTraceWavelength) => {
+      const origin = traceOriginRef.current;
+      if (!origin) return;
+      setTracePanelOpen(true);
+      setTraceLoading(true);
+      try {
+        const data =
+          origin.kind === 'port'
+            ? await fibermapApi.tracePort(origin.portId, { wavelength })
+            : await fibermapApi.traceFiber(origin.fiberId, {
+                from: origin.from,
+                cutId: origin.cutId,
+                cutSide: origin.cutSide,
+                wavelength,
+              });
+        setTraceData(data);
+      } catch (err) {
+        toast.error(friendly(err));
+        setTraceData(null);
+      } finally {
+        setTraceLoading(false);
+      }
+    },
+    [friendly],
+  );
+
+  /** Ícone F numa fibra: extremidade/corte usa a ponta; expressa parte de A. */
+  function openFiberTrace(
+    fiberId: string,
+    end: { side: 'A' | 'B' | 'U' | 'D'; cutId: string | null } | null,
+  ) {
+    traceOriginRef.current =
+      end && end.cutId
+        ? { kind: 'fiber', fiberId, cutId: end.cutId, cutSide: end.side as 'U' | 'D' }
+        : { kind: 'fiber', fiberId, from: (end?.side as 'A' | 'B' | undefined) ?? 'A' };
+    void runTrace(traceWavelength);
+  }
+
+  function openPortTrace(portId: string) {
+    traceOriginRef.current = { kind: 'port', portId };
+    void runTrace(traceWavelength);
+  }
+
+  function changeTraceWavelength(w: FibermapTraceWavelength) {
+    setTraceWavelength(w);
+    void runTrace(w);
+  }
+
+  function closeTrace() {
+    setTracePanelOpen(false);
+    setTraceData(null);
+    traceOriginRef.current = null;
+  }
+
+  /** "Ver no mapa": entrega geometria+marcadores ao estúdio via storage. */
+  function viewTraceOnMap() {
+    if (!traceData) return;
+    const markers: Array<{ latitude: number; longitude: number; name?: string }> = [];
+    const seen = new Set<string>();
+    const collect = (events: FibermapTraceEvent[]) => {
+      for (const ev of events) {
+        if (
+          ev.latitude !== undefined &&
+          ev.longitude !== undefined &&
+          ev.elementId &&
+          !seen.has(ev.elementId)
+        ) {
+          seen.add(ev.elementId);
+          markers.push({ latitude: ev.latitude, longitude: ev.longitude, name: ev.elementName });
+        }
+        if (ev.branches) for (const b of ev.branches) collect(b.events);
+      }
+    };
+    collect(traceData.path);
+    const fiberEv = traceData.path.find((e) => e.kind === 'FIBER');
+    const label = fiberEv
+      ? `${fiberEv.cableName} · ${t('ap.fiberN', { n: fiberEv.fiberNumber ?? 0 })}`
+      : (ap?.element.name ?? '');
+    window.sessionStorage.setItem(
+      FIBERMAP_TRACE_STORAGE_KEY,
+      JSON.stringify({ label, geometry: traceData.mapGeometry, markers }),
+    );
+    router.push('/fibermap' as Route);
+  }
 
   // Clique numa ponta livre: seleciona / conecta (spec §8.1).
   async function clickEndpoint(ref: FibermapEndpointRef) {
@@ -509,6 +615,32 @@ export function AccessPointEditor({ elementId }: { elementId: string }) {
                             {occupied ? t('ap.portOccupied') : t('ap.portFree')}
                           </title>
                         </g>
+                        {/* Trace da porta (ícone F — spec §8.4) */}
+                        <g
+                          data-hit
+                          className="cursor-pointer"
+                          onClick={() => openPortTrace(port.id)}
+                        >
+                          <circle
+                            cx={d.col === 'L' ? anchor.x + 19 : anchor.x - 19}
+                            cy={y - 9}
+                            r={6.5}
+                            fill="#eef2ff"
+                            stroke="#6366f1"
+                            strokeWidth={1}
+                          />
+                          <text
+                            x={d.col === 'L' ? anchor.x + 19 : anchor.x - 19}
+                            y={y - 6.4}
+                            fontSize={7.5}
+                            fontWeight={700}
+                            fill="#4338ca"
+                            textAnchor="middle"
+                          >
+                            F
+                          </text>
+                          <title>{t('ap.trace.open')}</title>
+                        </g>
                       </g>
                     );
                   })}
@@ -571,9 +703,11 @@ export function AccessPointEditor({ elementId }: { elementId: string }) {
                     const px = inner;
                     const fiberHex = hexOf(row.fiber.color);
                     if (!row.end) {
-                      // EXPRESSA — esmaecida com tesoura (spec §8: cortar)
+                      // EXPRESSA — linha esmaecida; tesoura (cortar) e F
+                      // (trace parte da ponta A) em opacidade cheia.
+                      const fbx = cb.col === 'L' ? px - 42 : px + 42;
                       return (
-                        <g key={`${row.fiber.id}-x`} opacity={0.45}>
+                        <g key={`${row.fiber.id}-x`}>
                           <line
                             x1={fx}
                             y1={row.y}
@@ -582,11 +716,11 @@ export function AccessPointEditor({ elementId }: { elementId: string }) {
                             stroke={fiberHex}
                             strokeWidth={2.5}
                             strokeDasharray="6 4"
+                            opacity={0.45}
                           />
                           <g
                             data-hit
                             className="cursor-pointer"
-                            opacity={1}
                             onClick={() => void cutFiber(row.fiber.id)}
                           >
                             <circle
@@ -608,6 +742,31 @@ export function AccessPointEditor({ elementId }: { elementId: string }) {
                             <title>
                               {t('ap.cutTooltip', { n: row.fiber.fiberNumber })}
                             </title>
+                          </g>
+                          <g
+                            data-hit
+                            className="cursor-pointer"
+                            onClick={() => openFiberTrace(row.fiber.id, null)}
+                          >
+                            <circle
+                              cx={fbx}
+                              cy={row.y}
+                              r={7}
+                              fill="#eef2ff"
+                              stroke="#6366f1"
+                              strokeWidth={1}
+                            />
+                            <text
+                              x={fbx}
+                              y={row.y + 2.8}
+                              fontSize={8}
+                              fontWeight={700}
+                              fill="#4338ca"
+                              textAnchor="middle"
+                            >
+                              F
+                            </text>
+                            <title>{t('ap.trace.open')}</title>
                           </g>
                         </g>
                       );
@@ -680,6 +839,37 @@ export function AccessPointEditor({ elementId }: { elementId: string }) {
                               state: connected ? t('ap.stateConnected') : t('ap.stateFree'),
                             })}
                           </title>
+                        </g>
+                        {/* Trace da ponta (ícone F — spec §8.4) */}
+                        <g
+                          data-hit
+                          className="cursor-pointer"
+                          onClick={() =>
+                            openFiberTrace(row.fiber.id, {
+                              side: end.side,
+                              cutId: end.cutId,
+                            })
+                          }
+                        >
+                          <circle
+                            cx={cb.col === 'L' ? px - 42 : px + 42}
+                            cy={row.y}
+                            r={7}
+                            fill="#eef2ff"
+                            stroke="#6366f1"
+                            strokeWidth={1}
+                          />
+                          <text
+                            x={cb.col === 'L' ? px - 42 : px + 42}
+                            y={row.y + 2.8}
+                            fontSize={8}
+                            fontWeight={700}
+                            fill="#4338ca"
+                            textAnchor="middle"
+                          >
+                            F
+                          </text>
+                          <title>{t('ap.trace.open')}</title>
                         </g>
                         {/* Desfazer corte quando as DUAS pontas estão livres */}
                         {end.side === 'U' && end.cutId && end.state === 'FREE' && (
@@ -803,6 +993,18 @@ export function AccessPointEditor({ elementId }: { elementId: string }) {
             setBulkModal(false);
             refresh();
           }}
+        />
+      )}
+
+      {/* ── Painel de trace (FM-4) ──────────────────────────────────────── */}
+      {tracePanelOpen && (
+        <TracePanel
+          trace={traceData}
+          loading={traceLoading}
+          wavelength={traceWavelength}
+          onChangeWavelength={changeTraceWavelength}
+          onViewOnMap={viewTraceOnMap}
+          onClose={closeTrace}
         />
       )}
     </div>

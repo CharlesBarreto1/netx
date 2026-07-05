@@ -27,6 +27,7 @@ import { InlineLoader } from '@/components/ui/Spinner';
 import { toast } from '@/components/ui/sonner';
 import { ApiError } from '@/lib/api';
 import {
+  FIBERMAP_TRACE_STORAGE_KEY,
   fibermapApi,
   type FibermapElementSearchHit,
   type FibermapElementType,
@@ -48,6 +49,7 @@ import type {
   FibermapDrawResult,
   FibermapMapHandle,
   FibermapMapLabels,
+  FibermapTraceHighlight,
 } from './FibermapMap';
 import { FolderEditModal } from './FolderEditModal';
 import { StudioConfirm } from './StudioModal';
@@ -109,6 +111,22 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
   const [folderDeleteBusy, setFolderDeleteBusy] = useState(false);
 
   const mapHandleRef = useRef<FibermapMapHandle | null>(null);
+
+  // ── Trace vindo do access-point ("Ver no mapa", FM-4) ──────────────────────
+  const [trace, setTrace] = useState<FibermapTraceHighlight | null>(null);
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem(FIBERMAP_TRACE_STORAGE_KEY);
+      if (raw) setTrace(JSON.parse(raw) as FibermapTraceHighlight);
+    } catch {
+      // payload corrompido — ignora e limpa
+      window.sessionStorage.removeItem(FIBERMAP_TRACE_STORAGE_KEY);
+    }
+  }, []);
+  const clearTrace = useCallback(() => {
+    setTrace(null);
+    window.sessionStorage.removeItem(FIBERMAP_TRACE_STORAGE_KEY);
+  }, []);
 
   // ── Pastas (SWR — fetcher global do layout) ────────────────────────────────
   const { data: foldersData, mutate: mutateFolders } = useSWR<FibermapFolder[]>(
@@ -369,6 +387,7 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
             types={typeArray}
             folderId={selectedFolderId ?? undefined}
             canDelete={canDelete}
+            trace={trace}
             labels={mapLabels}
             onViewChange={handleViewChange}
             onData={handleData}
@@ -379,6 +398,23 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
             onOpenCable={handleOpenCable}
             onOpenAccessPoint={handleOpenAccessPoint}
           />
+
+          {/* Chip do trace ativo (FM-4) — highlight laranja no mapa */}
+          {trace && (
+            <div className="absolute left-1/2 top-3 z-[500] flex -translate-x-1/2 items-center gap-2 rounded-full bg-slate-900/95 px-3 py-1.5 text-xs font-medium text-white shadow-lg">
+              <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-orange-400" />
+              <span className="max-w-[280px] truncate">
+                {t('studio.trace.active', { label: trace.label })}
+              </span>
+              <button
+                type="button"
+                className="rounded-full bg-white/10 px-2 py-0.5 hover:bg-white/20"
+                onClick={clearTrace}
+              >
+                {t('studio.trace.clear')}
+              </button>
+            </div>
+          )}
 
           {/* HUD — instrução do modo ativo */}
           {mode.kind !== 'select' && (

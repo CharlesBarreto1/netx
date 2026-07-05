@@ -72,6 +72,15 @@ export interface FibermapDrawResult {
   path: Array<{ latitude: number; longitude: number }>;
 }
 
+/** Highlight de trace vindo do access-point (FM-4, spec §8.4). */
+export interface FibermapTraceHighlight {
+  label: string;
+  /** GeoJSON [[lng,lat],…] por segmento percorrido. */
+  geometry: { type: 'MultiLineString'; coordinates: number[][][] };
+  /** Eventos do caminho (fusões/splitters/pontas) como marcadores. */
+  markers: Array<{ latitude: number; longitude: number; name?: string }>;
+}
+
 export interface FibermapMapProps {
   /** Preenchido no load do mapa; next/dynamic não repassa ref de verdade. */
   handleRef: { current: FibermapMapHandle | null };
@@ -82,6 +91,8 @@ export interface FibermapMapProps {
   types: FibermapElementType[];
   folderId?: string;
   canDelete: boolean;
+  /** Caminho de trace destacado (laranja) — null limpa (FM-4). */
+  trace: FibermapTraceHighlight | null;
   labels: FibermapMapLabels;
   onViewChange: (view: StudioView) => void;
   onData: (info: { count: number; truncated: boolean }) => void;
@@ -101,6 +112,7 @@ const SOURCE_ID = 'fibermap-elements';
 const HIGHLIGHT_SOURCE_ID = 'fibermap-highlight';
 const CABLES_SOURCE_ID = 'fibermap-cables';
 const DRAW_SOURCE_ID = 'fibermap-draw';
+const TRACE_SOURCE_ID = 'fibermap-trace';
 /** Raio de snap do desenho em pixels (≈15 m nos zooms de trabalho, spec §7). */
 const SNAP_PX = 12;
 
@@ -127,6 +139,7 @@ export function FibermapMap({
   types,
   folderId,
   canDelete,
+  trace,
   labels,
   onViewChange,
   onData,
@@ -190,6 +203,9 @@ export function FibermapMap({
   // Preenchidos no load do mapa (precisam do source/listeners vivos).
   const resetDrawRef = useRef<(() => void) | null>(null);
   const drawKeyCleanupRef = useRef<(() => void) | null>(null);
+  // Trace: o prop pode chegar antes ou depois do load — ref + aplicador.
+  const traceRef = useRef<FibermapTraceHighlight | null>(trace);
+  const applyTraceRef = useRef<((fit: boolean) => void) | null>(null);
 
   // ── Ciclo de vida do mapa (uma vez) ────────────────────────────────────────
   useEffect(() => {
@@ -366,6 +382,10 @@ export function FibermapMap({
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
       });
+      map.addSource(TRACE_SOURCE_ID, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
 
       // Cabos por baixo dos elementos (linhas coloridas por display_color).
       map.addLayer({
@@ -385,6 +405,28 @@ export function FibermapMap({
         type: 'line',
         source: CABLES_SOURCE_ID,
         paint: { 'line-color': '#000000', 'line-opacity': 0, 'line-width': 14 },
+      });
+
+      // Highlight do trace (FM-4): acima dos cabos, abaixo dos elementos.
+      map.addLayer({
+        id: 'fibermap-trace-line',
+        type: 'line',
+        source: TRACE_SOURCE_ID,
+        filter: ['==', ['geometry-type'], 'LineString'],
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': '#f97316', 'line-width': 5, 'line-opacity': 0.85 },
+      });
+      map.addLayer({
+        id: 'fibermap-trace-points',
+        type: 'circle',
+        source: TRACE_SOURCE_ID,
+        filter: ['==', ['geometry-type'], 'Point'],
+        paint: {
+          'circle-radius': 5,
+          'circle-color': '#f97316',
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 1.5,
+        },
       });
 
       // Anel de destaque por baixo dos pontos.
@@ -708,6 +750,41 @@ export function FibermapMap({
         });
       }
 
+      // ── Highlight de trace (FM-4) ─────────────────────────────────────────
+      function applyTrace(fit: boolean) {
+        const src = map.getSource(TRACE_SOURCE_ID) as GeoJSONSource | undefined;
+        if (!src) return;
+        const tr = traceRef.current;
+        if (!tr || tr.geometry.coordinates.length === 0) {
+          src.setData({ type: 'FeatureCollection', features: [] });
+          return;
+        }
+        const features: GeoJSON.Feature[] = [
+          {
+            type: 'Feature',
+            geometry: tr.geometry as GeoJSON.MultiLineString,
+            properties: {},
+          },
+          ...tr.markers.map(
+            (m): GeoJSON.Feature => ({
+              type: 'Feature',
+              geometry: { type: 'Point', coordinates: [m.longitude, m.latitude] },
+              properties: { name: m.name ?? '' },
+            }),
+          ),
+        ];
+        src.setData({ type: 'FeatureCollection', features });
+        if (fit) {
+          const bounds = new maplibregl.LngLatBounds();
+          for (const line of tr.geometry.coordinates) {
+            for (const c of line) bounds.extend(c as [number, number]);
+          }
+          map.fitBounds(bounds, { padding: 80, maxZoom: 17 });
+        }
+      }
+      applyTraceRef.current = applyTrace;
+      if (traceRef.current) applyTrace(true);
+
       // API imperativa pro estúdio.
       handleRef.current = {
         flyTo: (longitude, latitude, zoom) => {
@@ -760,6 +837,7 @@ export function FibermapMap({
       drawKeyCleanupRef.current?.();
       drawKeyCleanupRef.current = null;
       resetDrawRef.current = null;
+      applyTraceRef.current = null;
       scheduleFetchRef.current = null;
       handleRef.current = null;
       popupRef.current?.remove();
@@ -785,6 +863,12 @@ export function FibermapMap({
     paramsRef.current = { types, folderId };
     scheduleFetchRef.current?.();
   }, [types, folderId]);
+
+  // ── Trace (FM-4) — aplica quando o prop muda; o load cobre o caso inverso ──
+  useEffect(() => {
+    traceRef.current = trace;
+    applyTraceRef.current?.(Boolean(trace));
+  }, [trace]);
 
   return <div ref={containerRef} className="h-full w-full" />;
 }

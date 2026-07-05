@@ -161,6 +161,10 @@ const messages = {
         folderDeleted: 'Carpeta eliminada',
         repositioned: 'Elemento reposicionado',
       },
+      trace: {
+        active: 'Trace: {label}',
+        clear: 'Limpiar',
+      },
     },
     // Punto de acceso — editor de empalmes (Pantalla 2 · FM-3)
     ap: {
@@ -209,6 +213,22 @@ const messages = {
       bulkStart: 'Fibra inicial',
       bulkCount: 'Cantidad',
       bulkHelp: 'Pares 1:1 — fibras ya ocupadas se omiten y se reportan',
+      trace: {
+        open: 'Trace del capilar (F)',
+        title: 'Trace del capilar',
+        loading: 'Trazando el camino…',
+        empty: 'No hay camino desde esta punta',
+        viewOnMap: 'Ver en el mapa',
+        wavelength: 'λ (nm)',
+        total: 'Total: {distance} · {loss}',
+        fusion: 'Fusión',
+        connector: 'Conector',
+        fiberLine: '{cable} — fibra {n} (tubo {tube})',
+        splitterVia: 'vía OUT {n} de {total}',
+        branch: 'OUT {n}',
+        end: 'Punta libre',
+        loop: 'Bucle detectado en la documentación',
+      },
     },
     settings: {
       title: 'Configuración de FiberMap',

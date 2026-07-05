@@ -171,6 +171,10 @@ const messages = {
         folderDeleted: 'Pasta excluída',
         repositioned: 'Elemento reposicionado',
       },
+      trace: {
+        active: 'Trace: {label}',
+        clear: 'Limpar',
+      },
     },
     // Ponto de acesso — editor de emendas (Tela 2 · FM-3)
     ap: {
@@ -219,6 +223,22 @@ const messages = {
       bulkStart: 'Fibra inicial',
       bulkCount: 'Quantidade',
       bulkHelp: 'Pares 1:1 — fibras já ocupadas são puladas e reportadas',
+      trace: {
+        open: 'Trace do capilar (F)',
+        title: 'Trace do capilar',
+        loading: 'Traçando o caminho…',
+        empty: 'Nenhum caminho a partir desta ponta',
+        viewOnMap: 'Ver no mapa',
+        wavelength: 'λ (nm)',
+        total: 'Total: {distance} · {loss}',
+        fusion: 'Fusão',
+        connector: 'Conector',
+        fiberLine: '{cable} — fibra {n} (tubo {tube})',
+        splitterVia: 'via OUT {n} de {total}',
+        branch: 'OUT {n}',
+        end: 'Ponta livre',
+        loop: 'Laço detectado na documentação',
+      },
     },
     settings: {
       title: 'Configurações do FiberMap',
