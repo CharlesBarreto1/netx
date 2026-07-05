@@ -85,6 +85,8 @@ packages_apt_install() {
   log_info "Instalando pacotes APT (postgres, redis, rabbitmq, freeradius, nginx, node, etc)"
   # postgresql-16-postgis-3: a migration `fibermap_foundation` faz
   # `CREATE EXTENSION postgis` — sem o pacote no host, migrate deploy quebra.
+  # ffmpeg: conversão de mídia do WhatsApp no chat (voice notes) — o core lê
+  # FFMPEG_BIN com default `ffmpeg` no PATH.
   apt-get install -y -qq \
     postgresql-16 \
     postgresql-client-16 \
@@ -109,6 +111,7 @@ packages_apt_install() {
     cron \
     logrotate \
     fail2ban \
+    ffmpeg \
     ufw
 
   log_ok "Pacotes instalados"

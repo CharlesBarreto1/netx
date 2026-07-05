@@ -52,6 +52,11 @@ firewall_setup() {
   # Camada NAS — varre radius.nas e libera 1812/1813/3799 por IP
   firewall_sync_radius_nas
 
+  # Camada OLT — 123 (NTP) + 514 (syslog de alarmes) pras OLTs DIRECT. Mesma
+  # sync que o sync-firewall.sh roda nos hooks da UI e no boot (infra-sync);
+  # chamar aqui cobre re-runs do installer pós-restore sem esperar reboot.
+  firewall_sync_olts
+
   # Sudoers — permite ao user netx rodar os scripts de sync sem senha.
   # Necessário pro backend disparar resync após cadastrar NetworkEquipment.
   firewall_install_sudoers

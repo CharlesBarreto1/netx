@@ -196,6 +196,8 @@ source "${INSTALLER_DIR}/lib/firewall.sh"
 source "${INSTALLER_DIR}/lib/waha.sh"
 # shellcheck source=lib/traccar.sh
 source "${INSTALLER_DIR}/lib/traccar.sh"
+# shellcheck source=lib/nms.sh
+source "${INSTALLER_DIR}/lib/nms.sh"
 # shellcheck source=lib/netx_app.sh
 source "${INSTALLER_DIR}/lib/netx_app.sh"
 # shellcheck source=lib/systemd.sh
@@ -261,6 +263,10 @@ main() {
     log_dim "→ traccar: pulado (NETX_ENABLE_TRACCAR=0 — frota sem GPS)"
     : > "${NETX_STATE_DIR}/traccar.done"
   fi
+  # NMS (módulo Docker, apps/nms) — sobe a stack do ecossistema com a API em
+  # :3300, onde o api-gateway aponta (/v1/nms). Best-effort (precisa do Docker
+  # que o step waha instala); pule com NETX_NMS_SKIP=1.
+  step "nms"                 nms_setup
   step "systemd"             systemd_setup
   step "nginx"               nginx_setup
   # Firewall AFTER nginx (porque nginx adiciona regras 80/443 e o smoke testa

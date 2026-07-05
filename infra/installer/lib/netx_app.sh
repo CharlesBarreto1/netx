@@ -192,6 +192,12 @@ netx_app_render_env() {
   export NETX_MINIO_ENDPOINT NETX_MINIO_PUBLIC_URL NETX_MINIO_BUCKET \
          NETX_MINIO_ACCESS_KEY NETX_MINIO_SECRET_KEY
 
+  # IP de gerência — OLTs/NASes apontam syslog/NTP pra este IP (o OltsService
+  # usa como fallback quando NETX_OLT_SYSLOG_HOST/NTP_SERVER não são setados).
+  # Detectado uma vez; operador pode sobrescrever via env ou editar o .env.
+  export NETX_MANAGEMENT_IP
+  NETX_MANAGEMENT_IP="${NETX_MANAGEMENT_IP:-$(detect_public_ip)}"
+
   # Licenciamento (Hub NetX) — OPCIONAL. Vazio por padrão: enrollment é feito
   # depois (Fase 2). Defaults vazios garantem que envsubst escreve linhas
   # limpas (NETX_HUB_URL=) em vez de deixar o literal ${NETX_HUB_URL} no .env
@@ -218,6 +224,7 @@ netx_app_render_env() {
     NETX_MINIO_ACCESS_KEY NETX_MINIO_SECRET_KEY \
     NETX_TRACCAR_URL NETX_TRACCAR_TOKEN \
     NETX_HUB_URL NETX_LICENSE_KEY NETX_INSTANCE_ID \
+    NETX_MANAGEMENT_IP \
     WHATSAPP_API_KEY
 
   chown root:"${NETX_USER}" "${env}"

@@ -88,6 +88,13 @@ if [[ ! -f "${NETX_ETC}/.env" ]]; then
   exit 1
 fi
 
+# Nome do DB — extraído do DATABASE_URL do .env (postgresql://u:p@h:p/DB?...).
+# NÃO usar default fixo: installs novos usam "netx" (installer), legados podem
+# ser "netx_app". Usado pelo guard de PostGIS e pelo smoke check RADIUS.
+NETX_DB_NAME=$(grep -E '^DATABASE_URL=' "${NETX_ETC}/.env" | tail -1 \
+  | sed -E 's|.*/([^/?]+)(\?.*)?$|\1|' || true)
+NETX_DB_NAME="${NETX_DB_NAME:-netx}"
+
 # Run cmds como user netx (segurança: build/install não devem ser root)
 as_netx() {
   sudo -u "${NETX_USER}" -H bash -lc "$*"
@@ -110,15 +117,16 @@ NEW_SHA=$(git -C "${NETX_HOME}" rev-parse HEAD)
 chown -R "${NETX_USER}:${NETX_USER}" "${NETX_HOME}"
 
 # Defesa: garante +x nos scripts EXECUTADOS direto (backend roda via `sudo -n`,
-# e há symlinks em /usr/local/bin). O git já versiona estes como 755, mas se
-# `core.fileMode=false` ou o deploy não preservar o modo, o pull os entregaria
-# como 644 → "command not found" e os hooks de sync (NTP/firewall) e o CLI
-# netx-radius-check quebram silenciosamente. As libs (lib/*.sh) são `source`adas
-# e ficam 644 de propósito.
+# há symlinks em /usr/local/bin, e o netx-backup.sh é ExecStart de systemd unit
+# — 644 vira status=203/EXEC silencioso no timer). O git já versiona estes como
+# 755, mas se `core.fileMode=false` ou o deploy não preservar o modo, o pull os
+# entregaria como 644. As libs (lib/*.sh) são `source`adas e ficam 644 de
+# propósito.
 chmod +x "${NETX_HOME}"/infra/installer/scripts/sync-ntp.sh \
          "${NETX_HOME}"/infra/installer/scripts/sync-firewall.sh \
          "${NETX_HOME}"/infra/installer/scripts/netx-radius-check.sh \
-         "${NETX_HOME}"/infra/installer/scripts/netx-update.sh 2>/dev/null || true
+         "${NETX_HOME}"/infra/installer/scripts/netx-update.sh \
+         "${NETX_HOME}"/infra/installer/scripts/backup/netx-backup.sh 2>/dev/null || true
 
 if [[ "${CURRENT_SHA}" == "${NEW_SHA}" ]]; then
   dim "Já estamos na versão mais recente (${NEW_SHA:0:8}). Build pode pular se artefatos OK."
@@ -214,11 +222,7 @@ chown -R "${NETX_USER}:${NETX_USER}" \
 # é dependência nova de migration, não reinstalação. Criando a extensão como
 # postgres agora, o CREATE EXTENSION da migration vira no-op sob o role netx.
 ensure_postgis() {
-  # Nome do DB vem do DATABASE_URL do .env (postgresql://user:pass@host:port/db?...)
-  local db_name
-  db_name=$(grep -E '^DATABASE_URL=' "${NETX_ETC}/.env" | tail -1 \
-    | sed -E 's|.*/([^/?]+)(\?.*)?$|\1|' || true)
-  db_name="${db_name:-netx_app}"
+  local db_name="${NETX_DB_NAME}"
 
   local has_ext
   has_ext=$(sudo -u postgres psql -d "${db_name}" -tAc \
@@ -338,7 +342,7 @@ SELECT
   ) AS radcheck_total;
 "
 
-DRIFT_OUT=$(sudo -u postgres psql -d "${NETX_DB_NAME:-netx_app}" -tA -F'|' -c "${RADIUS_DRIFT_SQL}" 2>/dev/null || echo "ERR|ERR")
+DRIFT_OUT=$(sudo -u postgres psql -d "${NETX_DB_NAME}" -tA -F'|' -c "${RADIUS_DRIFT_SQL}" 2>/dev/null || echo "ERR|ERR")
 ACTIVE_TOTAL=$(echo "${DRIFT_OUT}" | cut -d'|' -f1 | tr -d ' ')
 RADCHECK_TOTAL=$(echo "${DRIFT_OUT}" | cut -d'|' -f2 | tr -d ' ')
 
