@@ -47,7 +47,6 @@ import {
   FileText,
   FolderOpen,
   Gauge,
-  Cable,
   GitBranch,
   GitMerge,
   Handshake,
