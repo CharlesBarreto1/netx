@@ -950,6 +950,9 @@ const messages = {
       discountTooHigh: 'Desconto não pode ser maior que o valor.',
       discountHelp:
         'Em valor (não percentual). Exige permissão "aplicar desconto".',
+      zeroPaidWarning:
+        'O desconto cobre 100% do valor — nada vai entrar no caixa.',
+      zeroPaidConfirm: 'Confirmo a baixa sem recebimento (cortesia/isenção).',
     },
     paymentMethod: {
       CASH: 'Dinheiro',

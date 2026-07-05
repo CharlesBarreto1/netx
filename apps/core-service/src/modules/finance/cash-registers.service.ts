@@ -62,6 +62,12 @@ export class CashRegistersService {
       currency = tenant?.currency ?? 'BRL';
     }
 
+    // Caixa nunca nasce órfão: sem operadores indicados, o criador vira
+    // operador. Um caixa sem membership só é visível/operável por admins e
+    // some da tela de recebimento dos demais usuários.
+    const operatorUserIds =
+      input.operatorUserIds.length > 0 ? input.operatorUserIds : [actorUserId];
+
     try {
       const created = await this.prisma.cashRegister.create({
         data: {
@@ -74,7 +80,7 @@ export class CashRegistersService {
           isActive: input.isActive,
           openingBalance: new Prisma.Decimal(input.openingBalance ?? 0),
           memberships: {
-            create: input.operatorUserIds.map((uid) => ({
+            create: operatorUserIds.map((uid) => ({
               userId: uid,
               role: 'OPERATOR' as const,
             })),

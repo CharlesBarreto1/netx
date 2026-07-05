@@ -941,6 +941,9 @@ const messages = {
       discountTooHigh: 'El descuento no puede ser mayor al valor.',
       discountHelp:
         'En valor (no porcentaje). Requiere permiso "aplicar descuento".',
+      zeroPaidWarning:
+        'El descuento cubre el 100% del valor — nada va a entrar en la caja.',
+      zeroPaidConfirm: 'Confirmo la baja sin cobro (cortesía/exención).',
     },
     paymentMethod: {
       CASH: 'Efectivo',

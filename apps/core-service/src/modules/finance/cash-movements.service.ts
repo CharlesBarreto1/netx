@@ -53,6 +53,9 @@ export class CashMovementsService {
 
   // ---------------------------------------------------------------------------
   // RECORD INCOME (interno — chamado por pay() de fatura/cobrança)
+  // Aceita um tx opcional pra rodar dentro da transação de quem chamou —
+  // baixa e lançamento devem ser atômicos (fatura paga sem movimento = valor
+  // some do controle).
   // ---------------------------------------------------------------------------
   async recordIncome(opts: {
     tenantId: string;
@@ -63,9 +66,11 @@ export class CashMovementsService {
     description?: string;
     actorUserId: string;
     occurredAt?: Date;
+    tx?: Prisma.TransactionClient;
   }): Promise<void> {
     if (opts.amount <= 0) return;
-    await this.prisma.cashMovement.create({
+    const client = opts.tx ?? this.prisma;
+    await client.cashMovement.create({
       data: {
         tenantId: opts.tenantId,
         cashRegisterId: opts.cashRegisterId,

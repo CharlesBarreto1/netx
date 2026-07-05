@@ -931,6 +931,9 @@ const messages = {
       discountTooHigh: 'Discount cannot exceed the amount.',
       discountHelp:
         'In currency value (not percentage). Requires "apply discount" permission.',
+      zeroPaidWarning:
+        'The discount covers 100% of the amount — nothing will enter the cash register.',
+      zeroPaidConfirm: 'I confirm settling without payment (courtesy/waiver).',
     },
     paymentMethod: {
       CASH: 'Cash',

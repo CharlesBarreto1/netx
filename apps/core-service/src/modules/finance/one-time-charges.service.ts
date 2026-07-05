@@ -257,21 +257,53 @@ export class OneTimeChargesService {
       );
     }
     const paidAmount = input.paidAmount ?? amount - discount;
+    const paidAt = input.paidAt ? new Date(input.paidAt) : new Date();
 
-    const updated = await this.prisma.oneTimeCharge.update({
-      where: { id },
-      data: {
-        status: PrismaStatus.PAID,
-        paidAt: input.paidAt ? new Date(input.paidAt) : new Date(),
-        paidAmount: new Prisma.Decimal(paidAmount),
-        discountAmount: discount > 0 ? new Prisma.Decimal(discount) : null,
-        paidVia: input.paidVia,
-        cashRegisterId: input.cashRegisterId ?? null,
-        paymentNote: input.note ?? null,
-        updatedById: actorUserId,
-      },
-      include: defaultInclude(),
+    // Baixa com 0 recebido (desconto = 100%) só com confirmação explícita:
+    // nada entra no caixa e a cobrança fica "paga" — se foi desconto digitado
+    // errado, o valor real recebido some do controle.
+    if (amount > 0 && paidAmount <= 0 && !input.confirmZeroPaid) {
+      throw new BadRequestException(
+        'O desconto cobre 100% da cobrança — nada vai entrar no caixa. ' +
+          'Confirme a baixa sem recebimento (cortesia) para prosseguir.',
+      );
+    }
+
+    // Baixa + lançamento no caixa são atômicos: a cobrança nunca fica paga
+    // sem o movimento correspondente no extrato.
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const charge = await tx.oneTimeCharge.update({
+        where: { id },
+        data: {
+          status: PrismaStatus.PAID,
+          paidAt,
+          paidAmount: new Prisma.Decimal(paidAmount),
+          discountAmount: discount > 0 ? new Prisma.Decimal(discount) : null,
+          paidVia: input.paidVia,
+          cashRegisterId: input.cashRegisterId ?? null,
+          paymentNote: input.note ?? null,
+          updatedById: actorUserId,
+        },
+        include: defaultInclude(),
+      });
+
+      // Registra movimento no caixa quando paga em algum caixa.
+      if (input.cashRegisterId) {
+        await this.movements.recordIncome({
+          tenantId,
+          cashRegisterId: input.cashRegisterId,
+          amount: paidAmount,
+          source: 'CHARGE',
+          sourceId: charge.id,
+          description: charge.description,
+          actorUserId,
+          occurredAt: paidAt,
+          tx,
+        });
+      }
+      return charge;
     });
+
     await this.audit.log({
       tenantId,
       userId: actorUserId,
@@ -285,20 +317,6 @@ export class OneTimeChargesService {
         cashRegisterId: input.cashRegisterId ?? null,
       },
     });
-
-    // Registra movimento no caixa quando paga em algum caixa.
-    if (input.cashRegisterId) {
-      await this.movements.recordIncome({
-        tenantId,
-        cashRegisterId: input.cashRegisterId,
-        amount: paidAmount,
-        source: 'CHARGE',
-        sourceId: updated.id,
-        description: updated.description,
-        actorUserId,
-        occurredAt: input.paidAt ? new Date(input.paidAt) : new Date(),
-      });
-    }
     return toResponse(updated);
   }
 

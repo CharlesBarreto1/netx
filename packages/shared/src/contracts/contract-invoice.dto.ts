@@ -35,6 +35,12 @@ export const PayContractInvoiceRequestSchema = z.object({
   paidVia: PaymentMethodSchema.optional(),
   /** Desconto aplicado (positivo). Exige perm `finance.discount.apply`. */
   discountAmount: z.coerce.number().min(0).max(1_000_000).optional(),
+  /**
+   * Baixa sem recebimento (desconto cobre 100% da fatura). Sem esse flag o
+   * backend rejeita paidAmount = 0 — evita fatura "paga" sem nada entrar no
+   * caixa por desconto digitado errado.
+   */
+  confirmZeroPaid: z.boolean().optional(),
 });
 export type PayContractInvoiceRequest = z.infer<typeof PayContractInvoiceRequestSchema>;
 

@@ -306,6 +306,8 @@ export interface PayPaymentInput {
   paidAmount?: number;
   paidAt?: string;
   note?: string;
+  /** Confirma baixa sem recebimento (desconto = 100%). Backend exige. */
+  confirmZeroPaid?: boolean;
 }
 
 export const chargesApi = {

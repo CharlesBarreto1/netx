@@ -95,6 +95,7 @@ export function PaymentDialog({
   const [discountAmount, setDiscountAmount] = useState<string>('');
   const [paidAt, setPaidAt] = useState<string>(''); // YYYY-MM-DDTHH:MM
   const [note, setNote] = useState('');
+  const [zeroPaidConfirmed, setZeroPaidConfirmed] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -111,6 +112,7 @@ export function PaymentDialog({
       );
       setPaidAt('');
       setNote('');
+      setZeroPaidConfirmed(false);
       setError(null);
     }
   }, [open, initialDiscount]);
@@ -126,6 +128,9 @@ export function PaymentDialog({
     return Number.isFinite(n) && n > 0 ? n : 0;
   }, [discountAmount]);
   const paidAmount = Math.max(0, amount - discountNum);
+  // Desconto cobre 100% do valor: nada entra no caixa. Exige confirmação
+  // explícita (checkbox) — o backend rejeita sem `confirmZeroPaid`.
+  const isZeroPaid = amount > 0 && discountNum >= amount;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -139,12 +144,17 @@ export function PaymentDialog({
       setError(tFinance('cashRegisterRequired'));
       return;
     }
+    if (isZeroPaid && !zeroPaidConfirmed) {
+      setError(tFinance('zeroPaidWarning'));
+      return;
+    }
     setSubmitting(true);
     try {
       const body: PayPaymentInput = {
         cashRegisterId,
         paidVia,
         ...(discountNum > 0 ? { discountAmount: discountNum } : {}),
+        ...(isZeroPaid ? { confirmZeroPaid: true } : {}),
         ...(paidAt
           ? { paidAt: new Date(`${paidAt}:00`).toISOString() }
           : {}),
@@ -242,6 +252,21 @@ export function PaymentDialog({
               </div>
             )}
 
+            {isZeroPaid && (
+              <div className="rounded-md border border-border bg-warning-muted p-3 text-sm text-warning">
+                <p className="font-medium">{tFinance('zeroPaidWarning')}</p>
+                <label className="mt-2 flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={zeroPaidConfirmed}
+                    onChange={(e) => setZeroPaidConfirmed(e.target.checked)}
+                  />
+                  <span>{tFinance('zeroPaidConfirm')}</span>
+                </label>
+              </div>
+            )}
+
             <div>
               <Label htmlFor="pay-date">{tFinance('paidAt')}</Label>
               <Input
@@ -277,7 +302,7 @@ export function PaymentDialog({
             <Button
               type="submit"
               loading={submitting}
-              disabled={!cashRegisterId}
+              disabled={!cashRegisterId || (isZeroPaid && !zeroPaidConfirmed)}
             >
               {confirmLabel ?? tFinance('confirm')}
             </Button>

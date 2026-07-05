@@ -37,5 +37,11 @@ export const PaymentDetailsSchema = z.object({
   paidAt: z.string().datetime({ offset: true }).optional(),
   /** Nota livre. */
   note: z.string().max(500).optional(),
+  /**
+   * Baixa sem recebimento (desconto cobre 100% do valor). Sem esse flag o
+   * backend rejeita paidAmount = 0 — evita fatura "paga" sem nada entrar no
+   * caixa por desconto digitado errado.
+   */
+  confirmZeroPaid: z.boolean().optional(),
 });
 export type PaymentDetails = z.infer<typeof PaymentDetailsSchema>;

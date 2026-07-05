@@ -406,6 +406,8 @@ export interface PayInvoiceInput {
   paidVia?: 'CASH' | 'PIX' | 'CARD' | 'BANK_TRANSFER' | 'BOLETO' | 'OTHER';
   /** Desconto aplicado (positivo). Exige perm `finance.discount.apply`. */
   discountAmount?: number;
+  /** Confirma baixa sem recebimento (desconto = 100%). Backend exige. */
+  confirmZeroPaid?: boolean;
 }
 
 export const contractInvoicesApi = {

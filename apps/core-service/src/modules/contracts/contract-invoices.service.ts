@@ -224,22 +224,53 @@ export class ContractInvoicesService {
     const paidAt = input.paidAt ? new Date(input.paidAt) : new Date();
     const paidAmount = input.paidAmount ?? amount - discount;
 
-    const updated = await this.prisma.contractInvoice.update({
-      where: { id },
-      data: {
-        status: PrismaInvoiceStatus.PAID,
-        paidAt,
-        paidAmount: new Prisma.Decimal(paidAmount),
-        discountAmount: discount > 0 ? new Prisma.Decimal(discount) : null,
-        paidVia: input.paidVia,
-        cashRegisterId: input.cashRegisterId ?? null,
-        paymentNote: input.note ?? null,
-      },
-      include: {
-        contract: {
-          select: { id: true, code: true, pppoeUsername: true, customerId: true, status: true },
+    // Baixa com 0 recebido (desconto = 100%) só com confirmação explícita:
+    // nada entra no caixa e a fatura fica "paga" — se foi desconto digitado
+    // errado, o valor real recebido some do controle. Faturas CREDIT (amount
+    // negativo) ficam fora — são ajuste financeiro, não recebimento.
+    if (amount > 0 && paidAmount <= 0 && !input.confirmZeroPaid) {
+      throw new BadRequestException(
+        'O desconto cobre 100% da fatura — nada vai entrar no caixa. ' +
+          'Confirme a baixa sem recebimento (cortesia) para prosseguir.',
+      );
+    }
+
+    // Baixa + lançamento no caixa são atômicos: a fatura nunca fica paga sem
+    // o movimento correspondente no extrato.
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const inv = await tx.contractInvoice.update({
+        where: { id },
+        data: {
+          status: PrismaInvoiceStatus.PAID,
+          paidAt,
+          paidAmount: new Prisma.Decimal(paidAmount),
+          discountAmount: discount > 0 ? new Prisma.Decimal(discount) : null,
+          paidVia: input.paidVia,
+          cashRegisterId: input.cashRegisterId ?? null,
+          paymentNote: input.note ?? null,
         },
-      },
+        include: {
+          contract: {
+            select: { id: true, code: true, pppoeUsername: true, customerId: true, status: true },
+          },
+        },
+      });
+
+      // Registra movimento no caixa quando a fatura foi paga em algum caixa.
+      if (input.cashRegisterId) {
+        await this.movements.recordIncome({
+          tenantId,
+          cashRegisterId: input.cashRegisterId,
+          amount: paidAmount,
+          source: 'INVOICE',
+          sourceId: inv.id,
+          description: existing.reference ?? `Fatura ${inv.id.slice(0, 8)}`,
+          actorUserId,
+          occurredAt: paidAt,
+          tx,
+        });
+      }
+      return inv;
     });
 
     await this.audit.log({
@@ -252,22 +283,10 @@ export class ContractInvoicesService {
         contractId: existing.contractId,
         paidAmount,
         paidAt: paidAt.toISOString(),
+        discountAmount: discount,
+        cashRegisterId: input.cashRegisterId ?? null,
       },
     });
-
-    // Registra movimento no caixa quando a fatura foi paga em algum caixa.
-    if (input.cashRegisterId) {
-      await this.movements.recordIncome({
-        tenantId,
-        cashRegisterId: input.cashRegisterId,
-        amount: paidAmount,
-        source: 'INVOICE',
-        sourceId: updated.id,
-        description: existing.reference ?? `Fatura ${updated.id.slice(0, 8)}`,
-        actorUserId,
-        occurredAt: paidAt,
-      });
-    }
 
     // PREPAID: avança o ciclo após pagamento confirmado de fatura cobrável.
     // CREDIT/PRORATION não avançam o ciclo — são ajustes financeiros, não
