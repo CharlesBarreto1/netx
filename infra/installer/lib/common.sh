@@ -286,7 +286,7 @@ ${C_GREEN}NetX está rodando.${C_RESET}
   ${C_CYAN}App:${C_RESET}            ${NETX_HOME}
 
 Serviços systemd:
-  systemctl status netx-core-service netx-api-gateway netx-web freeradius
+  systemctl status netx-core-service netx-api-gateway netx-web netx-cwmp-server freeradius
 EOF
 
   # Senha admin: nunca escrever no log. Imprime no terminal real OU persiste

@@ -47,13 +47,18 @@ sudo NETX_SKIP_WIZARD=1 \
 
 | Componente | Versão | Como |
 |---|---|---|
-| PostgreSQL | 16 | repo PGDG |
+| PostgreSQL | 16 | repo PGDG + extensões (pgcrypto, citext, **PostGIS** — requerida pelo FiberMap) |
 | Redis | sistema | apt |
 | RabbitMQ | sistema | apt + management plugin |
-| FreeRADIUS | 3.x | apt + módulo postgresql + clients via SQL |
+| FreeRADIUS | 3.x | apt + módulo postgresql + clients via SQL + site coa (:3799) |
 | Node.js | 24 LTS | NodeSource |
-| Nginx | sistema | reverse proxy 80 → web/:3200 + /api → api-gateway/:3000 |
+| Nginx | sistema | reverse proxy 80 → web/:3200 + /api → api-gateway/:3000 + /minio → :9000 |
+| MinIO | latest (binário) | object storage (fotos mobile/anexos) em `127.0.0.1:9000`, dados em `/var/lib/netx/minio` |
 | WAHA | latest (Docker) | Canal QR do WhatsApp (engine NOWEB) em `localhost:3010`, sessões em `/var/lib/netx/waha` |
+| Traccar | 6.x | rastreamento GPS da Frota em `127.0.0.1:8082` (opt-out: `NETX_ENABLE_TRACCAR=0`) |
+| NMS | Docker (ecossistema) | API em `127.0.0.1:3300` via `apps/nms/infra/up-netx.sh` (pule com `NETX_NMS_SKIP=1`) |
+| chrony | sistema | NTP local pros equipamentos (allowlist via `network_equipment`) |
+| ffmpeg | sistema | conversão de mídia do chat WhatsApp |
 | NetX | branch `main` | clone + build em `/opt/netx` |
 
 ## Layout no sistema
@@ -73,6 +78,11 @@ sudo NETX_SKIP_WIZARD=1 \
 systemctl status netx-core-service
 systemctl status netx-api-gateway
 systemctl status netx-web
+systemctl status netx-cwmp-server     # TR-069 ACS (:7547)
+systemctl status minio                # object storage (:9000)
+systemctl status traccar              # GPS da Frota (:8082, se habilitado)
+systemctl status netx-backup.timer    # pg_dump diário (03:17)
+systemctl status netx-infra-sync      # reconcilia UFW + chrony no boot
 
 journalctl -u netx-core-service -f
 ```
@@ -96,13 +106,24 @@ sudo bash install.sh
 
 ## Atualizar para uma nova versão
 
+O caminho normal é o updater dedicado (symlink criado pelo installer):
+
+```bash
+sudo netx-update
+```
+
+Faz `git fetch + reset --hard`, `npm install`, build, migrations (com snapshot
+pré-migration e guard de PostGIS), seeds idempotentes, restart dos serviços,
+smoke test e atualização do NMS (Docker). Não toca em `.env`, nginx, systemd
+nem segredos.
+
+Pra re-provisionar a infra toda (pacotes, units, nginx, etc):
+
 ```bash
 sudo NETX_FORCE=1 \
      NETX_REPO_BRANCH=main \
   bash /opt/netx/infra/installer/install.sh
 ```
-
-Isso faz `git fetch + reset --hard`, re-builda, aplica novas migrações Prisma e reinicia os serviços. Os segredos são preservados.
 
 ## Variáveis de ambiente
 
@@ -117,6 +138,11 @@ Isso faz `git fetch + reset --hard`, re-builda, aplica novas migrações Prisma 
 | `NETX_TENANT_COUNTRY` | `PY` | PY/BR/AR |
 | `NETX_SKIP_WIZARD` | `0` | `1` = pula prompts |
 | `NETX_FORCE` | `0` | `1` = re-roda tudo |
+| `NETX_SKIP_WHATSAPP` | `0` | `1` = não instala WAHA/Docker (canal QR off) |
+| `NETX_ENABLE_TRACCAR` | `1` | `0` = sem Traccar (frota sem GPS "Ao vivo") |
+| `NETX_NMS_SKIP` | `0` | `1` = não sobe o módulo NMS (Docker) |
+| `NETX_HUB_URL` / `NETX_LICENSE_KEY` | _(vazio = off)_ | licenciamento via Hub (fail-open) |
+| `NETX_BACKUP_REMOTE` | _(vazio)_ | remote rclone pra backup off-host |
 
 Portas (raramente precisa mexer):
 
@@ -124,7 +150,8 @@ Portas (raramente precisa mexer):
 |---|---|
 | `NETX_PORT_API_GATEWAY` | 3000 |
 | `NETX_PORT_CORE_SERVICE` | 3101 |
-| `NETX_PORT_WEB` | 3200 |
+| `NETX_PORT_WEB` | 3200 (também fixa na unit `netx-web.service` — mudar exige editar a unit) |
+| `NETX_PORT_CWMP` | 7547 (TR-069 standard) |
 
 ## Desinstalar
 
@@ -172,19 +199,27 @@ sudo -u netx bash -c "cd /opt/netx/apps/core-service && \
 ```
 infra/installer/
 ├── install.sh                  # entry point + orquestração
-├── uninstall.sh
+├── uninstall.sh                # remove app (--purge remove tudo)
 ├── lib/
 │   ├── common.sh               # logging, helpers, state, secrets
 │   ├── preflight.sh            # checks de root/OS/disco/rede
-│   ├── packages.sh             # apt + repos PGDG/NodeSource
-│   ├── postgres.sh             # role + DB + search_path + radius schema
+│   ├── packages.sh             # apt + repos PGDG/NodeSource (inclui postgis, ffmpeg)
+│   ├── postgres.sh             # role + DB + extensões (pgcrypto/citext/postgis)
 │   ├── redis.sh
 │   ├── rabbitmq.sh             # vhost + user + management plugin
-│   ├── freeradius.sh           # mods sql + sites default
-│   ├── netx_app.sh             # clone + npm ci + build + prisma + seed
-│   ├── systemd.sh              # 3 unidades + enable + wait
-│   ├── nginx.sh                # site + reload
-│   ├── wizard.sh               # whiptail prompts
+│   ├── minio.sh                # object storage + bucket netx-photos
+│   ├── freeradius.sh           # mods sql + sites default/coa
+│   ├── chrony.sh               # NTP local + allowlist por equipamento
+│   ├── firewall.sh             # UFW base + NAS/OLT dinâmico + sudoers + boot sync
+│   ├── waha.sh                 # WhatsApp QR (Docker, :3010)
+│   ├── traccar.sh              # GPS da Frota (:8082 + token de serviço)
+│   ├── nms.sh                  # módulo NMS (Docker, API :3300)
+│   ├── licensing.sh            # instanceId + credenciais do Hub
+│   ├── netx_app.sh             # clone + npm install + build + prisma + seeds
+│   ├── systemd.sh              # 4 unidades (core/gateway/web/cwmp) + wait
+│   ├── nginx.sh                # site + certbot opcional
+│   ├── wizard.sh               # prompts de texto via /dev/tty
+│   ├── backups.sh              # timer diário de pg_dump + logrotate
 │   └── smoke.sh                # checks finais
 ├── templates/
 │   ├── env.tmpl
@@ -193,9 +228,16 @@ infra/installer/
 │   └── systemd/
 │       ├── netx-core-service.service
 │       ├── netx-api-gateway.service
-│       └── netx-web.service
+│       ├── netx-web.service
+│       ├── netx-cwmp-server.service
+│       └── timers/netx-backup.{service,timer}
 └── scripts/
-    └── seed-admin.ts            # bootstrapa tenant + admin
+    ├── seed-admin.ts            # bootstrapa tenant + admin
+    ├── netx-update.sh           # updater (symlink /usr/local/bin/netx-update)
+    ├── netx-radius-check.sh     # auditoria contracts × radcheck
+    ├── sync-firewall.sh         # UFW + restart FreeRADIUS (hook da UI + boot)
+    ├── sync-ntp.sh              # allowlist chrony (hook da UI + boot)
+    └── backup/netx-backup.sh    # pg_dump diário (ExecStart do timer)
 ```
 
 Cada lib expõe **uma função pública** com o nome do componente (`postgres_setup`, `redis_setup`, etc), chamada pelo `install.sh` via `step <id> <fn>`. O wrapper `step()` em `common.sh` cuida de marker de idempotência e timing.

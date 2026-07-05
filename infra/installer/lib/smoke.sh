@@ -30,6 +30,25 @@ smoke_services_active() {
       exit 1
     fi
   done
+
+  # Serviços não-fatais: cwmp (TR-069 é opcional pra operação básica), minio
+  # (uploads) e traccar (frota GPS, opt-out). Inativo = warn, não derruba.
+  for svc in netx-cwmp-server minio traccar; do
+    if ! systemctl cat "${svc}" >/dev/null 2>&1; then
+      log_dim "service ${svc} não instalado (opcional) — skip"
+    elif service_is_active "${svc}"; then
+      log_ok "service ${svc} ativo"
+    else
+      log_warn "service ${svc} INATIVO (não-fatal) — journalctl -u ${svc}"
+    fi
+  done
+
+  # Timer de backup — sem ele o pg_dump diário não roda.
+  if systemctl is-active --quiet netx-backup.timer 2>/dev/null; then
+    log_ok "netx-backup.timer armado"
+  else
+    log_warn "netx-backup.timer inativo — backup automático diário NÃO vai rodar"
+  fi
 }
 
 smoke_http_endpoints() {

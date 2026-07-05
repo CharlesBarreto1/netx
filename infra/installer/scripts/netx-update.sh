@@ -29,6 +29,8 @@
 #
 # O que NÃO faz (diferente do installer):
 #   - Não reinstala pacotes APT (postgres, redis, freeradius, etc)
+#     (exceção pontual: postgresql-16-postgis-3, pré-requisito de migration —
+#     vide passo 6)
 #   - Não renderiza /etc/netx/.env (preserva customizações manuais)
 #   - Não reconfigura nginx / systemd units (preserva customizações)
 #   - Não toca em /etc/netx/.secrets (preserva JWT/KMS/etc)
@@ -86,6 +88,13 @@ if [[ ! -f "${NETX_ETC}/.env" ]]; then
   exit 1
 fi
 
+# Nome do DB — extraído do DATABASE_URL do .env (postgresql://u:p@h:p/DB?...).
+# NÃO usar default fixo: installs novos usam "netx" (installer), legados podem
+# ser "netx_app". Usado pelo guard de PostGIS e pelo smoke check RADIUS.
+NETX_DB_NAME=$(grep -E '^DATABASE_URL=' "${NETX_ETC}/.env" | tail -1 \
+  | sed -E 's|.*/([^/?]+)(\?.*)?$|\1|' || true)
+NETX_DB_NAME="${NETX_DB_NAME:-netx}"
+
 # Run cmds como user netx (segurança: build/install não devem ser root)
 as_netx() {
   sudo -u "${NETX_USER}" -H bash -lc "$*"
@@ -108,15 +117,16 @@ NEW_SHA=$(git -C "${NETX_HOME}" rev-parse HEAD)
 chown -R "${NETX_USER}:${NETX_USER}" "${NETX_HOME}"
 
 # Defesa: garante +x nos scripts EXECUTADOS direto (backend roda via `sudo -n`,
-# e há symlinks em /usr/local/bin). O git já versiona estes como 755, mas se
-# `core.fileMode=false` ou o deploy não preservar o modo, o pull os entregaria
-# como 644 → "command not found" e os hooks de sync (NTP/firewall) e o CLI
-# netx-radius-check quebram silenciosamente. As libs (lib/*.sh) são `source`adas
-# e ficam 644 de propósito.
+# há symlinks em /usr/local/bin, e o netx-backup.sh é ExecStart de systemd unit
+# — 644 vira status=203/EXEC silencioso no timer). O git já versiona estes como
+# 755, mas se `core.fileMode=false` ou o deploy não preservar o modo, o pull os
+# entregaria como 644. As libs (lib/*.sh) são `source`adas e ficam 644 de
+# propósito.
 chmod +x "${NETX_HOME}"/infra/installer/scripts/sync-ntp.sh \
          "${NETX_HOME}"/infra/installer/scripts/sync-firewall.sh \
          "${NETX_HOME}"/infra/installer/scripts/netx-radius-check.sh \
-         "${NETX_HOME}"/infra/installer/scripts/netx-update.sh 2>/dev/null || true
+         "${NETX_HOME}"/infra/installer/scripts/netx-update.sh \
+         "${NETX_HOME}"/infra/installer/scripts/backup/netx-backup.sh 2>/dev/null || true
 
 if [[ "${CURRENT_SHA}" == "${NEW_SHA}" ]]; then
   dim "Já estamos na versão mais recente (${NEW_SHA:0:8}). Build pode pular se artefatos OK."
@@ -204,6 +214,46 @@ chown -R "${NETX_USER}:${NETX_USER}" \
 # -----------------------------------------------------------------------------
 # 6. Migrations (com snapshot pré-migration)
 # -----------------------------------------------------------------------------
+# Pré-requisito: PostGIS. A migration `20260705130000_fibermap_foundation` faz
+# `CREATE EXTENSION IF NOT EXISTS postgis`, que exige superuser E o pacote
+# postgresql-16-postgis-3 no host. Instalações provisionadas antes do FiberMap
+# não têm nenhum dos dois → migrate deploy morre com 42501 (foi assim em prod).
+# Instalar o pacote aqui é exceção consciente à regra "não reinstala APT":
+# é dependência nova de migration, não reinstalação. Criando a extensão como
+# postgres agora, o CREATE EXTENSION da migration vira no-op sob o role netx.
+ensure_postgis() {
+  local db_name="${NETX_DB_NAME}"
+
+  local has_ext
+  has_ext=$(sudo -u postgres psql -d "${db_name}" -tAc \
+    "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null || true)
+  if [[ "${has_ext}" == "1" ]]; then
+    dim "  PostGIS já habilitado em ${db_name}"
+    return 0
+  fi
+
+  if ! dpkg -s postgresql-16-postgis-3 >/dev/null 2>&1; then
+    log "instalando postgresql-16-postgis-3 (pré-requisito da migration fibermap)"
+    apt-get update -qq || true
+    if ! apt-get install -y -qq postgresql-16-postgis-3; then
+      err "Falha ao instalar postgresql-16-postgis-3 — o migrate deploy vai falhar com 42501."
+      err "Instale manualmente e rode netx-update de novo. Vide docs/RUNBOOK.md (PostGIS)."
+      exit 1
+    fi
+  fi
+
+  if sudo -u postgres psql -d "${db_name}" -v ON_ERROR_STOP=1 \
+       -c "CREATE EXTENSION IF NOT EXISTS postgis" >/dev/null; then
+    ok "PostGIS habilitado em ${db_name}"
+  else
+    err "CREATE EXTENSION postgis falhou em ${db_name} — vide docs/RUNBOOK.md (PostGIS)."
+    exit 1
+  fi
+}
+
+log "pré-requisito PostGIS (migration fibermap)"
+ensure_postgis
+
 # Garante dir de snapshot existe + escrevível pelo netx
 install -d -o root -g "${NETX_USER}" -m 0770 /var/backups/netx /var/backups/netx/pre-migration 2>/dev/null || true
 
@@ -292,7 +342,7 @@ SELECT
   ) AS radcheck_total;
 "
 
-DRIFT_OUT=$(sudo -u postgres psql -d "${NETX_DB_NAME:-netx_app}" -tA -F'|' -c "${RADIUS_DRIFT_SQL}" 2>/dev/null || echo "ERR|ERR")
+DRIFT_OUT=$(sudo -u postgres psql -d "${NETX_DB_NAME}" -tA -F'|' -c "${RADIUS_DRIFT_SQL}" 2>/dev/null || echo "ERR|ERR")
 ACTIVE_TOTAL=$(echo "${DRIFT_OUT}" | cut -d'|' -f1 | tr -d ' ')
 RADCHECK_TOTAL=$(echo "${DRIFT_OUT}" | cut -d'|' -f2 | tr -d ' ')
 

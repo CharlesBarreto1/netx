@@ -23,7 +23,9 @@ Onde os dois conflitam, decidimos assim:
    generated columns fora do modelo. `geometric_length_m` idem
    (ST_Length(geom::geography), arredondado a cm).
    ⚠️ Deploy: requer pacote `postgresql-16-postgis-3` no host ANTES de
-   `migrate deploy` (a migration faz `CREATE EXTENSION IF NOT EXISTS postgis`).
+   `migrate deploy` (a migration faz `CREATE EXTENSION IF NOT EXISTS postgis`,
+   que exige superuser). O installer e o `netx-update` já garantem os dois;
+   recovery pós-42501 documentado em `docs/RUNBOOK.md` § erros comuns.
 
 3. **`tenant_id` em todas as tabelas, com FK real pra `tenants`** (regra nº 1
    do repo; a spec omite). Relations `User` (createdBy/updatedBy) só nos

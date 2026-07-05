@@ -112,7 +112,10 @@ async function main() {
     // pros tenants existentes naquele momento. Como o tenant que acabamos
     // de criar é novo, precisamos replicar o passo de sincronização aqui —
     // mesma lógica que existe em prisma/seed.ts.
-    const SYSTEM_ROLE_NAMES = ['admin', 'operator', 'viewer'] as const;
+    // MANTER EM SINCRONIA com SYSTEM_ROLE_NAMES de prisma/seed.ts — role que
+    // faltar aqui não é copiada pra tenant criado do zero (só o 'default'
+    // renomeado herda todas).
+    const SYSTEM_ROLE_NAMES = ['admin', 'operator', 'viewer', 'tecnico', 'atendente'] as const;
     for (const roleName of SYSTEM_ROLE_NAMES) {
       const tpl = await prisma.role.findFirst({
         where: { name: roleName, tenantId: null },

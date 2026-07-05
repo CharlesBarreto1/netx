@@ -96,6 +96,23 @@ successfully" — nunca confie no log do webpack sozinho.
 Use quando há mudanças em `apps/core-service`, `apps/api-gateway`, schema Prisma
 ou pacotes compartilhados.
 
+> **Requisito PostGIS (FiberMap).** A migration
+> `20260705130000_fibermap_foundation` faz `CREATE EXTENSION IF NOT EXISTS
+> postgis` — isso exige o pacote `postgresql-16-postgis-3` instalado no host
+> **e** superuser pra criar a extensão (o role `netx` não é; sem isso o
+> `migrate deploy` falha com `42501 permission denied to create extension`).
+> Instalações novas via `infra/installer` e updates via `netx-update` já
+> garantem os dois. Em servidores geridos manualmente, rode UMA vez antes do
+> migrate:
+>
+> ```bash
+> sudo apt-get install -y postgresql-16-postgis-3
+> sudo -u postgres psql -d <db> -c 'CREATE EXTENSION IF NOT EXISTS postgis'
+> ```
+>
+> Se a migration já falhou com 42501, veja o procedimento de recuperação em
+> "Erros comuns no deploy" abaixo.
+
 ```bash
 ssh netx@<host>
 cd /home/netx/apps/netx
@@ -204,6 +221,39 @@ git push origin main
 volte ao fluxo correto depois):
 ```bash
 npm install                              # também sincroniza, mas pode mexer em deps transitivas
+```
+
+### `migrate deploy` falha com `42501: permission denied to create extension "postgis"`
+
+Sintoma: `prisma migrate deploy` (direto, via `db:migrate` ou via `netx-update`)
+aborta na migration `20260705130000_fibermap_foundation` com erro `P3018` /
+`42501 permission denied to create extension "postgis"` — ou, se o pacote nem
+está instalado, `could not open extension control file ... postgis.control`.
+
+Causa: `CREATE EXTENSION postgis` exige (a) o pacote `postgresql-16-postgis-3`
+instalado no host e (b) superuser no Postgres — o role `netx` da aplicação não
+é. Servidores provisionados antes do FiberMap não têm nenhum dos dois.
+(Instalações novas e o `netx-update` atual já resolvem isso sozinhos.)
+
+Recuperação (a migration falhou no primeiro statement e o Postgres aplica cada
+migration numa transação — nada foi aplicado no schema, só ficou o registro de
+falha em `_prisma_migrations`):
+
+```bash
+# 1) Instalar o PostGIS da mesma major do servidor (NetX usa PG 16 do PGDG)
+sudo apt-get update && sudo apt-get install -y postgresql-16-postgis-3
+
+# 2) Criar a extensão como superuser (troque <db> pelo nome do banco —
+#    está no DATABASE_URL de /etc/netx/.env)
+sudo -u postgres psql -d <db> -c 'CREATE EXTENSION IF NOT EXISTS postgis'
+
+# 3) Marcar a migration que falhou como rolled-back, senão o deploy recusa
+#    aplicar qualquer migration nova (P3009)
+cd /opt/netx/apps/core-service   # systemd; em PM2: /home/netx/apps/netx/apps/core-service
+npx dotenv -e /etc/netx/.env -- prisma migrate resolve --rolled-back 20260705130000_fibermap_foundation
+
+# 4) Re-aplicar
+npm run -w core-service db:migrate:deploy   # ou simplesmente: sudo netx-update
 ```
 
 ### `Module not found: Can't resolve '<pacote>'` no `next build`

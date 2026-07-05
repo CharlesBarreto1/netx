@@ -98,9 +98,13 @@ postgres_search_path() {
 }
 
 postgres_enable_extensions() {
-  log_info "Habilitando extensions (pgcrypto, citext)"
+  log_info "Habilitando extensions (pgcrypto, citext, postgis)"
   psql_super -d "${NETX_DB_NAME}" -c "CREATE EXTENSION IF NOT EXISTS pgcrypto"
   psql_super -d "${NETX_DB_NAME}" -c "CREATE EXTENSION IF NOT EXISTS citext"
+  # postgis exige superuser (42501 se o role netx tentar). Criando aqui, o
+  # `CREATE EXTENSION IF NOT EXISTS postgis` da migration fibermap_foundation
+  # vira no-op quando `prisma migrate deploy` rodar como netx.
+  psql_super -d "${NETX_DB_NAME}" -c "CREATE EXTENSION IF NOT EXISTS postgis"
 }
 
 # LEGACY: aplica radius-schema.sql diretamente via psql. Substituída pela
