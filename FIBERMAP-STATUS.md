@@ -5,7 +5,8 @@
 > decisões foram tomadas (e por quê divergem da spec), como validar, e como
 > atacar as fases restantes. Atualize este arquivo ao fechar cada fase.
 
-Última atualização: 2026-07-05 · último commit relevante: `5e4b0f0` (main)
+Última atualização: 2026-07-05 · último commit relevante: `5e0ae43` (main —
+inclui fix de precedência de clique elemento×cabo e ícones por tipo no mapa)
 
 ## Estado por fase
 
