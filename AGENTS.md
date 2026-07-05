@@ -12,7 +12,7 @@
 ## TL;DR
 
 NetX é um SaaS multi-tenant pra ISPs (BR + PY). Hoje (mai/2026) está em
-produção PY rodando em VPS Debian 13 — IP `179.49.176.13`. Stack monorepo
+produção PY rodando em VPS Debian 13 — IP `96.126.162.14`. Stack monorepo
 Nx 22 com 4 apps NestJS/Next.js + integração FreeRADIUS + TR-069 ACS
 próprio + Mikrotik BNG.
 
