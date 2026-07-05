@@ -12,6 +12,7 @@ import { Module } from '@nestjs/common';
 
 import { AuditModule } from '../audit/audit.module';
 import { FibermapAttenuationService } from './attenuation.service';
+import { FibermapCablesService } from './cables.service';
 import { FibermapCatalogService } from './catalog.service';
 import { FibermapController } from './fibermap.controller';
 import { FibermapElementPhotosService } from './element-photos.service';
@@ -27,12 +28,14 @@ import { FibermapFoldersService } from './folders.service';
     FibermapAttenuationService,
     FibermapElementsService,
     FibermapElementPhotosService,
+    FibermapCablesService,
   ],
   exports: [
     FibermapFoldersService,
     FibermapCatalogService,
     FibermapAttenuationService,
     FibermapElementsService,
+    FibermapCablesService,
   ],
 })
 export class FibermapModule {}

@@ -26,32 +26,44 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   CreateFibermapCableModelRequestSchema,
+  CreateFibermapCableRequestSchema,
   CreateFibermapElementRequestSchema,
   CreateFibermapFolderRequestSchema,
   CreateFibermapProductRequestSchema,
+  CreateFibermapSegmentRequestSchema,
+  CreateFibermapSlackRequestSchema,
+  ListFibermapCablesQuerySchema,
   ListFibermapElementsQuerySchema,
   ListFibermapProductsQuerySchema,
   PatchFibermapAttenuationRequestSchema,
   PresignFibermapPhotoRequestSchema,
   RegisterFibermapPhotoRequestSchema,
   SearchFibermapElementsQuerySchema,
+  UpdateFibermapCableRequestSchema,
   UpdateFibermapElementRequestSchema,
   UpdateFibermapFolderRequestSchema,
   UpdateFibermapProductRequestSchema,
+  UpdateFibermapSegmentRequestSchema,
   type AuthenticatedPrincipal,
   type CreateFibermapCableModelRequest,
+  type CreateFibermapCableRequest,
   type CreateFibermapElementRequest,
   type CreateFibermapFolderRequest,
   type CreateFibermapProductRequest,
+  type CreateFibermapSegmentRequest,
+  type CreateFibermapSlackRequest,
+  type ListFibermapCablesQuery,
   type ListFibermapElementsQuery,
   type ListFibermapProductsQuery,
   type PatchFibermapAttenuationRequest,
   type PresignFibermapPhotoRequest,
   type RegisterFibermapPhotoRequest,
   type SearchFibermapElementsQuery,
+  type UpdateFibermapCableRequest,
   type UpdateFibermapElementRequest,
   type UpdateFibermapFolderRequest,
   type UpdateFibermapProductRequest,
+  type UpdateFibermapSegmentRequest,
 } from '@netx/shared';
 
 import { CurrentUser, RequirePermissions } from '../../common/decorators';
@@ -59,6 +71,7 @@ import { ZodBody } from '../../common/zod.pipe';
 import { ZodQueryPipe } from '../crm/zod-query.pipe';
 import { RequiresModule } from '../licensing/license.decorators';
 import { FibermapAttenuationService } from './attenuation.service';
+import { FibermapCablesService } from './cables.service';
 import { FibermapCatalogService } from './catalog.service';
 import { FibermapElementPhotosService } from './element-photos.service';
 import { FibermapElementsService } from './elements.service';
@@ -75,6 +88,7 @@ export class FibermapController {
     private readonly attenuation: FibermapAttenuationService,
     private readonly elements: FibermapElementsService,
     private readonly photos: FibermapElementPhotosService,
+    private readonly cables: FibermapCablesService,
   ) {}
 
   // ───────────────────────────────────────────────────────────────────────
@@ -103,6 +117,16 @@ export class FibermapController {
     @ZodBody(UpdateFibermapFolderRequestSchema) body: UpdateFibermapFolderRequest,
   ) {
     return this.folders.update(u.tenantId, u.sub, id, body);
+  }
+
+  /** Conteúdo da pasta pra árvore do painel (elementos + cabos). */
+  @Get('folders/:id/contents')
+  @RequirePermissions('fibermap.read')
+  folderContents(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.folders.listContents(u.tenantId, id);
   }
 
   /** DELETE só com pasta vazia (spec §6). */
@@ -224,6 +248,122 @@ export class FibermapController {
     @Param('photoId', new ParseUUIDPipe()) photoId: string,
   ) {
     await this.photos.remove(u.tenantId, u.sub, id, photoId);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Cabos, segmentos e reservas (FM-2, spec §3.4/§6 "Cables")
+  // ───────────────────────────────────────────────────────────────────────
+  /** FeatureCollection<LineString> por segmento — mesmo contrato bbox. */
+  @Get('cables')
+  @RequirePermissions('fibermap.read')
+  listCables(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Query(new ZodQueryPipe(ListFibermapCablesQuerySchema))
+    q: ListFibermapCablesQuery,
+  ) {
+    return this.cables.listGeoJson(u.tenantId, q);
+  }
+
+  /** Cabos que podem CONTINUAR a partir de um elemento (ponta solta/final). */
+  @Get('cables/ending-at/:elementId')
+  @RequirePermissions('fibermap.read')
+  cablesEndingAt(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('elementId', new ParseUUIDPipe()) elementId: string,
+  ) {
+    return this.cables.stubsEndingAt(u.tenantId, elementId);
+  }
+
+  @Get('cables/:id')
+  @RequirePermissions('fibermap.read')
+  findCable(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.cables.findById(u.tenantId, id);
+  }
+
+  /** Instancia do modelo do catálogo (tubos+fibras automáticos, spec §6). */
+  @Post('cables')
+  @RequirePermissions('fibermap.write')
+  createCable(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @ZodBody(CreateFibermapCableRequestSchema) body: CreateFibermapCableRequest,
+  ) {
+    return this.cables.create(u.tenantId, u.sub, body);
+  }
+
+  @Patch('cables/:id')
+  @RequirePermissions('fibermap.write')
+  updateCable(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(UpdateFibermapCableRequestSchema) body: UpdateFibermapCableRequest,
+  ) {
+    return this.cables.update(u.tenantId, u.sub, id, body);
+  }
+
+  /** 409 com fusões/cortes ativos (spec §14.2). */
+  @Delete('cables/:id')
+  @RequirePermissions('fibermap.delete')
+  @HttpCode(204)
+  async removeCable(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    await this.cables.remove(u.tenantId, u.sub, id);
+  }
+
+  /** Novo trecho na ponta da cadeia (contiguidade validada, spec §14.4). */
+  @Post('cables/:id/segments')
+  @RequirePermissions('fibermap.write')
+  addSegment(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(CreateFibermapSegmentRequestSchema)
+    body: CreateFibermapSegmentRequest,
+  ) {
+    return this.cables.addSegment(u.tenantId, u.sub, id, body);
+  }
+
+  @Patch('segments/:id')
+  @RequirePermissions('fibermap.write')
+  updateSegment(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(UpdateFibermapSegmentRequestSchema)
+    body: UpdateFibermapSegmentRequest,
+  ) {
+    return this.cables.updateSegment(u.tenantId, u.sub, id, body);
+  }
+
+  @Delete('segments/:id')
+  @RequirePermissions('fibermap.write')
+  removeSegment(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.cables.removeSegment(u.tenantId, u.sub, id);
+  }
+
+  /** Reserva técnica na ponta de um segmento (soma na distância óptica). */
+  @Post('cables/:id/slacks')
+  @RequirePermissions('fibermap.write')
+  addSlack(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(CreateFibermapSlackRequestSchema) body: CreateFibermapSlackRequest,
+  ) {
+    return this.cables.addSlack(u.tenantId, u.sub, id, body);
+  }
+
+  @Delete('slacks/:id')
+  @RequirePermissions('fibermap.write')
+  removeSlack(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.cables.removeSlack(u.tenantId, u.sub, id);
   }
 
   // ───────────────────────────────────────────────────────────────────────

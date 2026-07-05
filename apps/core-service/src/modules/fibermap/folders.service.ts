@@ -154,6 +154,48 @@ export class FibermapFoldersService {
     return toResponse(updated);
   }
 
+  /**
+   * Conteúdo de uma pasta pra árvore do painel (spec §7: pasta → elementos).
+   * Enxuto de propósito: id/nome/tipo/coords pra listar e voar até o item.
+   */
+  async listContents(tenantId: string, folderId: string) {
+    const folder = await this.prisma.fibermapFolder.findFirst({
+      where: { id: folderId, tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!folder) throw new NotFoundException('Pasta não encontrada');
+    const [elements, cables] = await this.prisma.$transaction([
+      this.prisma.fibermapElement.findMany({
+        where: { tenantId, folderId, deletedAt: null },
+        select: {
+          id: true,
+          type: true,
+          name: true,
+          latitude: true,
+          longitude: true,
+        },
+        orderBy: { name: 'asc' },
+        take: 1000,
+      }),
+      this.prisma.fibermapCable.findMany({
+        where: { tenantId, folderId, deletedAt: null },
+        select: { id: true, name: true, fiberCount: true, displayColor: true },
+        orderBy: { name: 'asc' },
+        take: 1000,
+      }),
+    ]);
+    return {
+      elements: elements.map((e) => ({
+        id: e.id,
+        type: e.type,
+        name: e.name,
+        latitude: Number(e.latitude),
+        longitude: Number(e.longitude),
+      })),
+      cables,
+    };
+  }
+
   /** DELETE só com pasta vazia (spec §6) — sem cascata implícita. */
   async remove(
     tenantId: string,
