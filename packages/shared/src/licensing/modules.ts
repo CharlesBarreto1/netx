@@ -23,6 +23,7 @@ export const MODULE_CODES = [
   'netx-rh',
   'netx-maps',
   'netx-call',
+  'netx-fibermap',
 ] as const;
 
 export type ModuleCode = (typeof MODULE_CODES)[number];
@@ -69,6 +70,14 @@ export const MODULE_CATALOG: Record<ModuleCode, ModuleDescriptor> = {
     name: 'Callcenter',
     hardDeps: [],
     softDeps: ['netx-erp', 'netx-ai'],
+  },
+  // FiberMap — documentação de planta externa (OSP v2, FIBERMAP-SPEC.md).
+  // Sucessor do OSP embutido em netx-maps; integra mais fundo com CPE (OLTs).
+  'netx-fibermap': {
+    code: 'netx-fibermap',
+    name: 'FiberMap — planta externa',
+    hardDeps: [],
+    softDeps: ['netx-erp', 'netx-cpe', 'netx-maps'],
   },
 };
 

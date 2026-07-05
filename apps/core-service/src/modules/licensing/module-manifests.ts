@@ -37,6 +37,14 @@ defineModule('netx-cpe', { apiPrefixes: ['/olts', '/provisioning', '/tr069', '/o
 // Mapas de rede — gateado por netx-maps.
 defineModule('netx-maps', { apiPrefixes: ['/mapping'] });
 
+// FiberMap — documentação de planta externa OSP v2 (FIBERMAP-SPEC.md).
+// Dono das tabelas public.fibermap_* (prefixo de tabela em vez de schema
+// dedicado — ver README do módulo).
+defineModule('netx-fibermap', {
+  apiPrefixes: ['/fibermap'],
+  ownedTables: ['public.fibermap_*'],
+});
+
 // Callcenter/Atendimento WhatsApp — gateado por netx-call. Dois canais (WAHA +
 // Meta Cloud) sob abstração de provider. Os webhooks são @Public (não gateados),
 // mas /webhooks é a fronteira HTTP deste módulo (invariante 2d).

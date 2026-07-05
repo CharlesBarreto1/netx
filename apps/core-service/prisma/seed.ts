@@ -15,6 +15,8 @@
 import { PrismaClient, TenantStatus, UserStatus } from '@prisma/client';
 import * as argon2 from 'argon2';
 
+import { seedFibermapCatalog } from './seed-fibermap';
+
 const prisma = new PrismaClient();
 
 // -----------------------------------------------------------------------------
@@ -137,6 +139,20 @@ const networkPermissions = [
   { code: 'network.read', module: 'network', resource: 'network', action: 'read' },
   { code: 'network.write', module: 'network', resource: 'network', action: 'write' },
   { code: 'network.delete', module: 'network', resource: 'network', action: 'delete' },
+];
+
+// -----------------------------------------------------------------------------
+// Permission catalog — FiberMap (planta externa OSP v2, FIBERMAP-SPEC.md)
+// -----------------------------------------------------------------------------
+const fibermapPermissions = [
+  // fibermap.read: mapa, ponto de acesso, catálogo, trace, relatórios
+  { code: 'fibermap.read', module: 'fibermap', resource: 'fibermap', action: 'read' },
+  // fibermap.write: desenhar planta (pastas, elementos, cabos, fusões, OTDR)
+  { code: 'fibermap.write', module: 'fibermap', resource: 'fibermap', action: 'write' },
+  // fibermap.delete: exclusões (pasta vazia, elementos, cabos sem fusão)
+  { code: 'fibermap.delete', module: 'fibermap', resource: 'fibermap', action: 'delete' },
+  // fibermap.admin: catálogo de produtos + parâmetros (atenuação, limiares)
+  { code: 'fibermap.admin', module: 'fibermap', resource: 'fibermap', action: 'admin' },
 ];
 
 // -----------------------------------------------------------------------------
@@ -444,6 +460,11 @@ const systemRoles = [
       'network.read',
       'network.write',
       'network.delete',
+      // FiberMap (admin tem tudo, inclusive catálogo/parâmetros)
+      'fibermap.read',
+      'fibermap.write',
+      'fibermap.delete',
+      'fibermap.admin',
       // IPAM (admin tem tudo)
       'ipam.read',
       'ipam.write',
@@ -563,6 +584,9 @@ const systemRoles = [
       'reports.read',
       // Rede — só leitura pra operador
       'network.read',
+      // FiberMap — operador documenta a planta (sem catálogo/exclusões)
+      'fibermap.read',
+      'fibermap.write',
       // IPAM — operador consulta/documenta (read + write, sem delete)
       'ipam.read',
       'ipam.write',
@@ -635,6 +659,7 @@ const systemRoles = [
       'finance.payables.read',
       'reports.read',
       'network.read',
+      'fibermap.read',
       'ipam.read',
       'stock.read',
       'fleet.read',
@@ -675,8 +700,10 @@ const systemRoles = [
       // Estoque — baixa material da van na O.S
       'stock.read',
       'stock.adjust',
-      // Rede/mapa — mapa operacional (leitura)
+      // Rede/mapa — mapa operacional (leitura) + planta de fibra em campo
       'network.read',
+      'fibermap.read',
+      'fibermap.write',
       'mapping.read',
       // NetX Field
       'field.subscriber360.read',
@@ -759,6 +786,7 @@ async function main() {
     ...reportsPermissions,
     ...backupsPermissions,
     ...networkPermissions,
+    ...fibermapPermissions,
     ...ipamPermissions,
     ...stockPermissions,
     ...fleetPermissions,
@@ -920,6 +948,17 @@ async function main() {
     update: {},
     create: { userId: admin.id, roleId: tenantAdmin.id },
   });
+
+  // 4b. FiberMap — catálogo de produtos + defaults de atenuação (FM-0).
+  // Idempotente; roda pra TODOS os tenants (módulo é gateado por licença,
+  // mas o catálogo local não faz mal e evita onboarding manual).
+  console.log('  → FiberMap: catálogo de produtos + atenuação');
+  for (const t of allTenants) {
+    const summary = await seedFibermapCatalog(prisma, t.id);
+    console.log(
+      `     · ${t.slug}: +${summary.productsCreated} produtos, +${summary.attenuationCreated} chaves de atenuação`,
+    );
+  }
 
   // 5. Default sales pipeline (idempotente)
   console.log('  → Default sales pipeline');

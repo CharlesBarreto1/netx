@@ -16,7 +16,7 @@ generator client {
 datasource db {
   provider   = "postgresql"
   url        = env("DATABASE_URL")
-  extensions = [uuidOssp(map: "uuid-ossp"), pgcrypto, citext, pg_trgm]
+  extensions = [uuidOssp(map: "uuid-ossp"), pgcrypto, citext, pg_trgm, postgis]
 }
 
 // -----------------------------------------------------------------------------
@@ -104,6 +104,25 @@ model Tenant {
   fiberEvents          FiberEvent[]
   networkFolders       NetworkFolder[]
   ponPorts             PonPort[]
+
+  // FiberMap (OSP v2 — FIBERMAP-SPEC.md)
+  fibermapFolders             FibermapFolder[]
+  fibermapProducts            FibermapProduct[]
+  fibermapCableModels         FibermapCableModel[]
+  fibermapElements            FibermapElement[]
+  fibermapElementPhotos       FibermapElementPhoto[]
+  fibermapCables              FibermapCable[]
+  fibermapCableSegments       FibermapCableSegment[]
+  fibermapFibers              FibermapFiber[]
+  fibermapCableSlacks         FibermapCableSlack[]
+  fibermapDevices             FibermapDevice[]
+  fibermapOpticalPorts        FibermapOpticalPort[]
+  fibermapFiberCuts           FibermapFiberCut[]
+  fibermapOpticalConnections  FibermapOpticalConnection[]
+  fibermapConnectionEndpoints FibermapConnectionEndpoint[]
+  fibermapOtdrReadings        FibermapOtdrReading[]
+  fibermapPowerMeasurements   FibermapPowerMeasurement[]
+  fibermapAttenuationDefaults FibermapAttenuationDefault[]
 
   // WhatsApp / Atendimento
   whatsappInstances    WhatsappInstance[]
@@ -347,6 +366,19 @@ model User {
   networkFoldersCreated NetworkFolder[] @relation("NetworkFolderCreatedBy")
   fiberEventsReported   FiberEvent[]    @relation("FiberEventReportedBy")
   fiberEventsResolved   FiberEvent[]    @relation("FiberEventResolvedBy")
+
+  // FiberMap (OSP v2)
+  fibermapFoldersCreated  FibermapFolder[]  @relation("FibermapFolderCreatedBy")
+  fibermapProductsCreated FibermapProduct[] @relation("FibermapProductCreatedBy")
+  fibermapProductsUpdated FibermapProduct[] @relation("FibermapProductUpdatedBy")
+  fibermapElementsCreated FibermapElement[] @relation("FibermapElementCreatedBy")
+  fibermapElementsUpdated FibermapElement[] @relation("FibermapElementUpdatedBy")
+  fibermapCablesCreated   FibermapCable[]   @relation("FibermapCableCreatedBy")
+  fibermapCablesUpdated   FibermapCable[]   @relation("FibermapCableUpdatedBy")
+  fibermapDevicesCreated  FibermapDevice[]  @relation("FibermapDeviceCreatedBy")
+  fibermapDevicesUpdated  FibermapDevice[]  @relation("FibermapDeviceUpdatedBy")
+  fibermapConnsCreated    FibermapOpticalConnection[] @relation("FibermapConnCreatedBy")
+  fibermapConnsUpdated    FibermapOpticalConnection[] @relation("FibermapConnUpdatedBy")
 
   // WhatsApp / Atendimento
   whatsappConversationsAssigned WhatsappConversation[] @relation("WaConversationAssignee")
@@ -6286,4 +6318,634 @@ model AiInsight {
   @@unique([tenantId, dedupeKey])
   @@index([tenantId, status, createdAt])
   @@map("ai_insights")
+}
+
+// =============================================================================
+// FiberMap — documentação de planta externa OSP v2 (FIBERMAP-SPEC.md)
+// =============================================================================
+// Grafo de conectividade óptica georreferenciado: catálogo de produtos,
+// elementos (POP/CEO/CTO/poste), cabos → tubos → fibras, fusões/conectores,
+// splitters, cortes, OTDR e medições de potência. Substitui gradualmente o
+// OSP embutido no módulo optical (Optical*/Fiber* acima) — os dois convivem
+// até a migração de dados.
+//
+// Decisões de arquitetura (desvios da spec documentados no README do módulo):
+//  - Namespace por PREFIXO de tabela `fibermap_` no schema public, não schema
+//    Postgres dedicado (multiSchema do Prisma exigiria @@schema em ~150 models
+//    existentes; precedente `radius` é SQL-only e perderia o client).
+//  - Geometrias PostGIS: colunas `geom` são `Unsupported(...)` mantidas por
+//    TRIGGER a partir de latitude/longitude (elementos) e `path` Json
+//    (segmentos) — CRUD via Prisma permanece simples; consultas espaciais
+//    (bbox, interpolação OTDR) usam $queryRaw com ST_*.
+//  - `geometric_length_m` também é mantido pela trigger (ST_Length::geography).
+//  - Auditoria de mutação via AuditService (audit_logs global), não tabela
+//    fibermap_audit_log dedicada.
+//  - tenant_id em TODAS as tabelas (regra do repo); FK+relation Prisma só nos
+//    agregados-raiz pra conter a explosão de relations em Tenant/User — filhos
+//    (tubos, fibras, segmentos, portas…) carregam tenant_id escalar indexado.
+
+enum FibermapProductType {
+  CABLE
+  SPLICE_CLOSURE // CEO — caixa de emenda
+  TERMINATION_BOX // CTO — caixa de atendimento
+  DIO
+  CABINET // armário de rua
+  INDOOR_RACK
+  SPLITTER
+}
+
+enum FibermapColorStandard {
+  ABNT // NBR 14700: Verde, Amarela, Branca, Azul, …
+  EIA598 // TIA-598: Azul, Laranja, Verde, Marrom, …
+}
+
+enum FibermapTubeScheme {
+  STANDARD_CYCLE // ciclo de 12 cores do padrão
+  PILOT_DIRECTIONAL // tubo 1 verde (piloto), 2 amarela (direcional), demais brancos
+  CUSTOM // lista explícita em fibermap_cable_model_tubes
+}
+
+enum FibermapElementType {
+  POP
+  CABINET
+  CEO
+  CTO
+  POLE // poste — snapping de rota e reservas; fora do grafo lógico
+  SLACK_COIL // reserva técnica standalone marcada no mapa
+  CUSTOMER_PREMISE // opcional no MVP (fase 7)
+}
+
+enum FibermapFiberStatus {
+  DARK
+  ACTIVE
+  RESERVED
+  BROKEN
+}
+
+enum FibermapDeviceType {
+  SPLITTER
+  DIO
+  OLT
+  ONU_SHELF
+  RACK // container físico — não tem portas ópticas
+}
+
+enum FibermapPortRole {
+  IN
+  OUT
+  BIDI
+}
+
+enum FibermapConnectionKind {
+  FUSION
+  CONNECTOR
+  SPLITTER_PATH // reservado — NÃO usar no MVP (spec §3.5)
+}
+
+enum FibermapEndpointType {
+  FIBER_END
+  PORT
+}
+
+// Lado de uma ponta de fibra: A/B = extremidades do cabo; U/D = lado
+// upstream/downstream de um CORTE (fibermap_fiber_cuts) — spec §4.
+enum FibermapFiberSide {
+  A
+  B
+  U
+  D
+}
+
+enum FibermapOtdrReferenceKind {
+  ELEMENT
+  PORT
+}
+
+enum FibermapOtdrEventType {
+  BREAK
+  HIGH_LOSS
+  REFLECTIVE
+  END
+}
+
+// -----------------------------------------------------------------------------
+// FiberMap — organização (pastas)
+// -----------------------------------------------------------------------------
+model FibermapFolder {
+  id          String           @id @default(uuid()) @db.Uuid
+  tenantId    String           @map("tenant_id") @db.Uuid
+  parentId    String?          @map("parent_id") @db.Uuid
+  name        String           @db.VarChar(120)
+  sortOrder   Int              @default(0) @map("sort_order")
+  notes       String?          @db.Text
+
+  createdById String?          @map("created_by_id") @db.Uuid
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  deletedAt   DateTime?        @map("deleted_at")
+
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent      FibermapFolder?  @relation("FibermapFolderChildren", fields: [parentId], references: [id], onDelete: SetNull)
+  children    FibermapFolder[] @relation("FibermapFolderChildren")
+  createdBy   User?            @relation("FibermapFolderCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  elements    FibermapElement[]
+  cables      FibermapCable[]
+
+  @@index([tenantId, parentId])
+  @@map("fibermap_folders")
+}
+
+// -----------------------------------------------------------------------------
+// FiberMap — catálogo de produtos (spec §3.2)
+// -----------------------------------------------------------------------------
+// Fonte de verdade das características físicas. Instâncias no mapa copiam
+// SNAPSHOT na criação — editar produto NÃO propaga (spec §14.8). Produto com
+// instâncias nunca é excluído, só desativado (service impõe).
+model FibermapProduct {
+  id           String              @id @default(uuid()) @db.Uuid
+  tenantId     String              @map("tenant_id") @db.Uuid
+  type         FibermapProductType
+  manufacturer String              @default("Padrão") @db.VarChar(120)
+  name         String              @db.VarChar(160)
+  description  String?             @db.Text
+  // Chaves documentadas por tipo (spec §3.2) — validação leve no DTO.
+  specs        Json                @default("{}")
+  isActive     Boolean             @default(true) @map("is_active")
+
+  createdById  String?             @map("created_by_id") @db.Uuid
+  updatedById  String?             @map("updated_by_id") @db.Uuid
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
+  deletedAt    DateTime?           @map("deleted_at")
+
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy    User?               @relation("FibermapProductCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy    User?               @relation("FibermapProductUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  cableModel   FibermapCableModel?
+  elements     FibermapElement[]
+  cables       FibermapCable[]
+  devices      FibermapDevice[]
+
+  @@unique([tenantId, type, manufacturer, name])
+  @@index([tenantId, type, isActive])
+  @@map("fibermap_products")
+}
+
+// Extensão estruturada APENAS para cabos — a estrutura tubos/fibras dirige
+// os algoritmos de instanciação e o preview da Tela 3.
+model FibermapCableModel {
+  productId     String                   @id @map("product_id") @db.Uuid
+  tenantId      String                   @map("tenant_id") @db.Uuid
+  fiberCount    Int                      @map("fiber_count")
+  tubeCount     Int                      @map("tube_count")
+  // Invariante fiber_count = tube_count × fibers_per_tube (DTO + CHECK no SQL).
+  fibersPerTube Int                      @map("fibers_per_tube")
+  colorStandard FibermapColorStandard    @default(ABNT) @map("color_standard")
+  tubeScheme    FibermapTubeScheme       @default(STANDARD_CYCLE) @map("tube_scheme")
+  // Fator de excesso (catenária + hélice): óptico ≈ geométrico × fator.
+  excessFactor  Decimal                  @default(1.0200) @map("excess_factor") @db.Decimal(5, 4)
+  // Informativo: 'ASU80', 'ASU120', 'DROP', 'SUBTERRANEO'…
+  cableClass    String?                  @map("cable_class") @db.VarChar(40)
+
+  tenant        Tenant                   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product       FibermapProduct          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  tubes         FibermapCableModelTube[]
+
+  @@index([tenantId])
+  @@map("fibermap_cable_models")
+}
+
+// Cores de tubo do modelo — populada pelo service conforme tubeScheme.
+model FibermapCableModelTube {
+  cableModelId String             @map("cable_model_id") @db.Uuid
+  tubeNumber   Int                @map("tube_number")
+  color        String             @db.VarChar(20)
+
+  cableModel   FibermapCableModel @relation(fields: [cableModelId], references: [productId], onDelete: Cascade)
+
+  @@id([cableModelId, tubeNumber])
+  @@map("fibermap_cable_model_tubes")
+}
+
+// -----------------------------------------------------------------------------
+// FiberMap — elementos físicos (nós geográficos, spec §3.3)
+// -----------------------------------------------------------------------------
+model FibermapElement {
+  id          String                    @id @default(uuid()) @db.Uuid
+  tenantId    String                    @map("tenant_id") @db.Uuid
+  folderId    String                    @map("folder_id") @db.Uuid
+  type        FibermapElementType
+  // Modelo do catálogo — obrigatório na UI pra CEO/CTO/CABINET; null permitido
+  // pra POLE, import KML e legado (spec §3.3).
+  productId   String?                   @map("product_id") @db.Uuid
+  name        String                    @db.VarChar(120)
+  latitude    Decimal                   @db.Decimal(9, 6)
+  longitude   Decimal                   @db.Decimal(9, 6)
+  // Mantida por trigger a partir de latitude/longitude; GiST no SQL. Consultas
+  // bbox/vizinhança usam $queryRaw — nunca selecionada pelo client.
+  geom        Unsupported("geometry(Point, 4326)")?
+  address     String?                   @db.VarChar(255)
+  description String?                   @db.Text
+  // Ex.: posição no diagrama de emendas, capacidades snapshotadas do produto.
+  metadata    Json                      @default("{}")
+
+  createdById String?                   @map("created_by_id") @db.Uuid
+  updatedById String?                   @map("updated_by_id") @db.Uuid
+  createdAt   DateTime                  @default(now()) @map("created_at")
+  updatedAt   DateTime                  @updatedAt @map("updated_at")
+  deletedAt   DateTime?                 @map("deleted_at")
+
+  tenant      Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  folder      FibermapFolder            @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  product     FibermapProduct?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  createdBy   User?                     @relation("FibermapElementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy   User?                     @relation("FibermapElementUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  photos      FibermapElementPhoto[]
+  devices     FibermapDevice[]
+  segmentsFrom FibermapCableSegment[]   @relation("FibermapSegmentFrom")
+  segmentsTo   FibermapCableSegment[]   @relation("FibermapSegmentTo")
+  slacks      FibermapCableSlack[]
+  fiberCuts   FibermapFiberCut[]
+  connections FibermapOpticalConnection[]
+
+  @@unique([folderId, name])
+  @@index([tenantId, type])
+  @@index([tenantId, folderId])
+  @@index([tenantId, productId])
+  @@map("fibermap_elements")
+}
+
+// Fotos via MinIO presigned (StorageService) — mesma mecânica de O.S/RH.
+model FibermapElementPhoto {
+  id          String          @id @default(uuid()) @db.Uuid
+  tenantId    String          @map("tenant_id") @db.Uuid
+  elementId   String          @map("element_id") @db.Uuid
+  storageKey  String          @map("storage_key") @db.VarChar(512)
+  fileName    String?         @map("file_name") @db.VarChar(255)
+  caption     String?         @db.VarChar(255)
+  takenAt     DateTime?       @map("taken_at")
+  createdById String?         @map("created_by_id") @db.Uuid
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  element     FibermapElement @relation(fields: [elementId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, elementId])
+  @@map("fibermap_element_photos")
+}
+
+// -----------------------------------------------------------------------------
+// FiberMap — cabos, tubos, fibras (spec §3.4)
+// -----------------------------------------------------------------------------
+// Criação parte SEMPRE de um cable_model; colunas estruturais são SNAPSHOT
+// (preservam algoritmos/histórico se o produto mudar). productId null só em
+// import KML/legado (badge "sem modelo" na UI, spec §14.9).
+model FibermapCable {
+  id            String                 @id @default(uuid()) @db.Uuid
+  tenantId      String                 @map("tenant_id") @db.Uuid
+  folderId      String                 @map("folder_id") @db.Uuid
+  name          String                 @db.VarChar(160)
+  productId     String?                @map("product_id") @db.Uuid
+  fiberCount    Int                    @map("fiber_count")
+  tubeCount     Int                    @map("tube_count")
+  fibersPerTube Int                    @map("fibers_per_tube")
+  colorStandard FibermapColorStandard  @map("color_standard")
+  // Editável por instância — calibração OTDR ajusta AQUI, nunca no produto
+  // (spec §14.10).
+  excessFactor  Decimal                @map("excess_factor") @db.Decimal(5, 4)
+  // Cor da polyline no mapa (hex #rrggbb); default derivado do nome no service.
+  displayColor  String?                @map("display_color") @db.VarChar(7)
+  notes         String?                @db.Text
+
+  createdById   String?                @map("created_by_id") @db.Uuid
+  updatedById   String?                @map("updated_by_id") @db.Uuid
+  createdAt     DateTime               @default(now()) @map("created_at")
+  updatedAt     DateTime               @updatedAt @map("updated_at")
+  deletedAt     DateTime?              @map("deleted_at")
+
+  tenant        Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  folder        FibermapFolder         @relation(fields: [folderId], references: [id], onDelete: Restrict)
+  product       FibermapProduct?       @relation(fields: [productId], references: [id], onDelete: SetNull)
+  createdBy     User?                  @relation("FibermapCableCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy     User?                  @relation("FibermapCableUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  tubes         FibermapCableTube[]
+  fibers        FibermapFiber[]
+  segments      FibermapCableSegment[]
+  slacks        FibermapCableSlack[]
+
+  @@index([tenantId, folderId])
+  @@index([tenantId, productId])
+  @@map("fibermap_cables")
+}
+
+// Snapshot das cores de tubo do modelo no momento da criação.
+model FibermapCableTube {
+  cableId    String        @map("cable_id") @db.Uuid
+  tubeNumber Int           @map("tube_number")
+  color      String        @db.VarChar(20)
+
+  cable      FibermapCable @relation(fields: [cableId], references: [id], onDelete: Cascade)
+
+  @@id([cableId, tubeNumber])
+  @@map("fibermap_cable_tubes")
+}
+
+// Um cabo é uma sequência ordenada de segmentos entre elementos; a cadeia
+// deve ser contígua (to do seq N = from do seq N+1 — service, spec §14.4).
+model FibermapCableSegment {
+  id                String          @id @default(uuid()) @db.Uuid
+  tenantId          String          @map("tenant_id") @db.Uuid
+  cableId           String          @map("cable_id") @db.Uuid
+  seq               Int
+  fromElementId     String          @map("from_element_id") @db.Uuid
+  toElementId       String          @map("to_element_id") @db.Uuid
+  // Rota real (postes/ruas) como coordenadas GeoJSON [[lng,lat], ...] — mesma
+  // convenção do FiberCable.path legado. API trafega {latitude, longitude}.
+  path              Json
+  // Mantidas por trigger: geom ← path; geometric_length_m ← ST_Length(geog).
+  geom              Unsupported("geometry(LineString, 4326)")?
+  geometricLengthM  Decimal         @default(0) @map("geometric_length_m") @db.Decimal(10, 2)
+  // Override do técnico: metragem de bobina/OTDR (spec §3.4).
+  measuredLengthM   Decimal?        @map("measured_length_m") @db.Decimal(10, 2)
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+
+  tenant            Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cable             FibermapCable   @relation(fields: [cableId], references: [id], onDelete: Cascade)
+  fromElement       FibermapElement @relation("FibermapSegmentFrom", fields: [fromElementId], references: [id], onDelete: Restrict)
+  toElement         FibermapElement @relation("FibermapSegmentTo", fields: [toElementId], references: [id], onDelete: Restrict)
+
+  @@unique([cableId, seq])
+  @@index([tenantId, cableId])
+  @@index([fromElementId])
+  @@index([toElementId])
+  @@map("fibermap_cable_segments")
+}
+
+// Fibra individual — criada automaticamente ao instanciar o cabo do modelo.
+// fiber_number é GLOBAL no cabo (1..N) e IMUTÁVEL (spec §14.3).
+model FibermapFiber {
+  id            String              @id @default(uuid()) @db.Uuid
+  tenantId      String              @map("tenant_id") @db.Uuid
+  cableId       String              @map("cable_id") @db.Uuid
+  tubeNumber    Int                 @map("tube_number")
+  fiberNumber   Int                 @map("fiber_number")
+  color         String              @db.VarChar(20)
+  status        FibermapFiberStatus @default(DARK)
+  createdAt     DateTime            @default(now()) @map("created_at")
+  updatedAt     DateTime            @updatedAt @map("updated_at")
+
+  tenant        Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cable         FibermapCable       @relation(fields: [cableId], references: [id], onDelete: Cascade)
+  cuts          FibermapFiberCut[]
+  connectionsA  FibermapOpticalConnection[] @relation("FibermapConnFiberA")
+  connectionsB  FibermapOpticalConnection[] @relation("FibermapConnFiberB")
+
+  @@unique([cableId, fiberNumber])
+  @@index([cableId, tubeNumber])
+  @@index([tenantId])
+  @@map("fibermap_fibers")
+}
+
+// Reserva técnica (sobra enrolada) — conta na distância ÓPTICA, não na
+// geográfica (spec §2). MVP: sempre na caixa/poste (AT_ELEMENT).
+model FibermapCableSlack {
+  id          String               @id @default(uuid()) @db.Uuid
+  tenantId    String               @map("tenant_id") @db.Uuid
+  cableId     String               @map("cable_id") @db.Uuid
+  elementId   String               @map("element_id") @db.Uuid
+  segmentId   String               @map("segment_id") @db.Uuid
+  position    String               @default("AT_ELEMENT") @db.VarChar(20)
+  lengthM     Decimal              @map("length_m") @db.Decimal(10, 2)
+  createdById String?              @map("created_by_id") @db.Uuid
+  createdAt   DateTime             @default(now()) @map("created_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
+
+  tenant      Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  cable       FibermapCable        @relation(fields: [cableId], references: [id], onDelete: Cascade)
+  element     FibermapElement      @relation(fields: [elementId], references: [id], onDelete: Restrict)
+  segment     FibermapCableSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, cableId])
+  @@index([elementId])
+  @@map("fibermap_cable_slacks")
+}
+
+// -----------------------------------------------------------------------------
+// FiberMap — grafo lógico: devices, portas, cortes, conexões (spec §3.5, §4)
+// -----------------------------------------------------------------------------
+model FibermapDevice {
+  id             String              @id @default(uuid()) @db.Uuid
+  tenantId       String              @map("tenant_id") @db.Uuid
+  elementId      String              @map("element_id") @db.Uuid
+  // Hierarquia física: DIO/OLT montados num RACK (metadata.rack_position).
+  parentDeviceId String?             @map("parent_device_id") @db.Uuid
+  productId      String?             @map("product_id") @db.Uuid
+  type           FibermapDeviceType
+  name           String              @db.VarChar(120)
+  // SPLITTER: { ratio, topology, tap_percent } · RACK: { rack_units }
+  // OLT: { netx_olt_id, pon_ports } — referência cruzada ao inventário.
+  metadata       Json                @default("{}")
+
+  createdById    String?             @map("created_by_id") @db.Uuid
+  updatedById    String?             @map("updated_by_id") @db.Uuid
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  deletedAt      DateTime?           @map("deleted_at")
+
+  tenant         Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  element        FibermapElement     @relation(fields: [elementId], references: [id], onDelete: Restrict)
+  parentDevice   FibermapDevice?     @relation("FibermapDeviceChildren", fields: [parentDeviceId], references: [id], onDelete: SetNull)
+  childDevices   FibermapDevice[]    @relation("FibermapDeviceChildren")
+  product        FibermapProduct?    @relation(fields: [productId], references: [id], onDelete: SetNull)
+  createdBy      User?               @relation("FibermapDeviceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy      User?               @relation("FibermapDeviceUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  ports          FibermapOpticalPort[]
+
+  @@index([tenantId, elementId])
+  @@index([elementId, type])
+  @@map("fibermap_devices")
+}
+
+// Tudo que pode receber luz é uma porta (modelo porta-cêntrico). RACK não tem.
+model FibermapOpticalPort {
+  id         String           @id @default(uuid()) @db.Uuid
+  tenantId   String           @map("tenant_id") @db.Uuid
+  deviceId   String           @map("device_id") @db.Uuid
+  role       FibermapPortRole
+  portNumber Int              @map("port_number")
+  label      String?          @db.VarChar(80)
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  device     FibermapDevice   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  connectionsA FibermapOpticalConnection[] @relation("FibermapConnPortA")
+  connectionsB FibermapOpticalConnection[] @relation("FibermapConnPortB")
+
+  @@unique([deviceId, role, portNumber])
+  @@index([tenantId])
+  @@map("fibermap_optical_ports")
+}
+
+// Corte ("tesoura") — fibra expressa cortada num elemento intermediário vira
+// duas pontas conectáveis (lados U/D). Spec §4 (ponto crítico da sangria).
+model FibermapFiberCut {
+  id          String          @id @default(uuid()) @db.Uuid
+  tenantId    String          @map("tenant_id") @db.Uuid
+  fiberId     String          @map("fiber_id") @db.Uuid
+  elementId   String          @map("element_id") @db.Uuid
+  createdById String?         @map("created_by_id") @db.Uuid
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  fiber       FibermapFiber   @relation(fields: [fiberId], references: [id], onDelete: Cascade)
+  element     FibermapElement @relation(fields: [elementId], references: [id], onDelete: Restrict)
+  connectionsA FibermapOpticalConnection[] @relation("FibermapConnCutA")
+  connectionsB FibermapOpticalConnection[] @relation("FibermapConnCutB")
+
+  @@unique([fiberId, elementId])
+  @@index([tenantId, elementId])
+  @@map("fibermap_fiber_cuts")
+}
+
+// Conexão física entre dois endpoints (fusão/conector) DENTRO de um elemento.
+// Endpoints polimórficos controlados por CHECKs no SQL:
+//   FIBER_END → fiberId + fiberSide (A/B, ou U/D quando cutId preenchido)
+//   PORT      → portId
+// Caminho interno IN→OUT de splitter NÃO é conexão — é implícito no device
+// (o traçador ramifica, spec §3.5). Unicidade de ponta sob concorrência é
+// garantida por fibermap_connection_endpoints (endpoint_key UNIQUE).
+model FibermapOpticalConnection {
+  id            String                       @id @default(uuid()) @db.Uuid
+  tenantId      String                       @map("tenant_id") @db.Uuid
+  elementId     String                       @map("element_id") @db.Uuid
+  kind          FibermapConnectionKind
+  aType         FibermapEndpointType         @map("a_type")
+  aFiberId      String?                      @map("a_fiber_id") @db.Uuid
+  aFiberSide    FibermapFiberSide?           @map("a_fiber_side")
+  aCutId        String?                      @map("a_cut_id") @db.Uuid
+  aPortId       String?                      @map("a_port_id") @db.Uuid
+  bType         FibermapEndpointType         @map("b_type")
+  bFiberId      String?                      @map("b_fiber_id") @db.Uuid
+  bFiberSide    FibermapFiberSide?           @map("b_fiber_side")
+  bCutId        String?                      @map("b_cut_id") @db.Uuid
+  bPortId       String?                      @map("b_port_id") @db.Uuid
+  // Perda medida; null = usa default do tipo (fibermap_attenuation_defaults).
+  lossDb        Decimal?                     @map("loss_db") @db.Decimal(5, 2)
+  notes         String?                      @db.Text
+
+  createdById   String?                      @map("created_by_id") @db.Uuid
+  updatedById   String?                      @map("updated_by_id") @db.Uuid
+  createdAt     DateTime                     @default(now()) @map("created_at")
+  updatedAt     DateTime                     @updatedAt @map("updated_at")
+  deletedAt     DateTime?                    @map("deleted_at")
+
+  tenant        Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  element       FibermapElement              @relation(fields: [elementId], references: [id], onDelete: Restrict)
+  aFiber        FibermapFiber?               @relation("FibermapConnFiberA", fields: [aFiberId], references: [id], onDelete: Restrict)
+  bFiber        FibermapFiber?               @relation("FibermapConnFiberB", fields: [bFiberId], references: [id], onDelete: Restrict)
+  aCut          FibermapFiberCut?            @relation("FibermapConnCutA", fields: [aCutId], references: [id], onDelete: Restrict)
+  bCut          FibermapFiberCut?            @relation("FibermapConnCutB", fields: [bCutId], references: [id], onDelete: Restrict)
+  aPort         FibermapOpticalPort?         @relation("FibermapConnPortA", fields: [aPortId], references: [id], onDelete: Restrict)
+  bPort         FibermapOpticalPort?         @relation("FibermapConnPortB", fields: [bPortId], references: [id], onDelete: Restrict)
+  createdBy     User?                        @relation("FibermapConnCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  updatedBy     User?                        @relation("FibermapConnUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  endpoints     FibermapConnectionEndpoint[]
+
+  @@index([tenantId, elementId])
+  @@index([aFiberId])
+  @@index([bFiberId])
+  @@index([aPortId])
+  @@index([bPortId])
+  @@map("fibermap_optical_connections")
+}
+
+// Chave de ocupação de endpoint — 2 linhas por conexão ativa, escritas na
+// mesma transação. endpoint_key UNIQUE garante, mesmo sob concorrência, que
+// uma ponta só participa de UMA conexão (aceite FM-0/FM-3):
+//   'FIBER:{fiberId}:{A|B}' · 'CUT:{cutId}:{U|D}' · 'PORT:{portId}:{C|F}'
+// Porta tem 2 faces independentes (C=adaptador frontal p/ CONNECTOR,
+// F=pigtail traseiro p/ FUSION) — necessário pra DIO de passagem; a face
+// deriva do kind da conexão (helpers em @netx/shared fibermap/endpoint-key).
+// Ao desfazer a fusão, as linhas são HARD-deletadas (a conexão fica soft) —
+// libera a ponta preservando histórico.
+model FibermapConnectionEndpoint {
+  id           String                    @id @default(uuid()) @db.Uuid
+  tenantId     String                    @map("tenant_id") @db.Uuid
+  connectionId String                    @map("connection_id") @db.Uuid
+  endpointKey  String                    @unique @map("endpoint_key") @db.VarChar(120)
+
+  tenant       Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  connection   FibermapOpticalConnection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([connectionId])
+  @@map("fibermap_connection_endpoints")
+}
+
+// -----------------------------------------------------------------------------
+// FiberMap — medições (spec §3.6)
+// -----------------------------------------------------------------------------
+model FibermapOtdrReading {
+  id                 String                    @id @default(uuid()) @db.Uuid
+  tenantId           String                    @map("tenant_id") @db.Uuid
+  referenceKind      FibermapOtdrReferenceKind @map("reference_kind")
+  // Escalares de propósito (sem FK): leitura é log histórico — sobrevive à
+  // remoção do elemento/porta; service valida existência na criação.
+  referenceElementId String?                   @map("reference_element_id") @db.Uuid
+  referencePortId    String?                   @map("reference_port_id") @db.Uuid
+  cableId            String                    @map("cable_id") @db.Uuid
+  fiberNumber        Int                       @map("fiber_number")
+  directionElementId String                    @map("direction_element_id") @db.Uuid
+  distanceM          Decimal                   @map("distance_m") @db.Decimal(10, 2)
+  wavelengthNm       Int                       @default(1550) @map("wavelength_nm")
+  eventType          FibermapOtdrEventType     @default(BREAK) @map("event_type")
+  // Snapshot do resultado calculado (coordenada, incerteza, segmento, flags).
+  result             Json?
+  createdById        String?                   @map("created_by_id") @db.Uuid
+  createdAt          DateTime                  @default(now()) @map("created_at")
+
+  tenant             Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, cableId])
+  @@index([tenantId, createdAt])
+  @@map("fibermap_otdr_readings")
+}
+
+model FibermapPowerMeasurement {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  portId       String?  @map("port_id") @db.Uuid
+  fiberId      String?  @map("fiber_id") @db.Uuid
+  elementId    String?  @map("element_id") @db.Uuid
+  wavelengthNm Int      @default(1490) @map("wavelength_nm")
+  dbm          Decimal  @db.Decimal(6, 2)
+  measuredAt   DateTime @default(now()) @map("measured_at")
+  // 'MANUAL' hoje; 'SNMP' quando o Pilar 2 alimentar (spec §11).
+  source       String   @default("MANUAL") @db.VarChar(20)
+  createdById  String?  @map("created_by_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, portId])
+  @@index([tenantId, elementId])
+  @@map("fibermap_power_measurements")
+}
+
+// Defaults de atenuação por tenant (spec §5.3) — só linhas EDITADAS existem;
+// valor vigente = override ?? default de fábrica (FIBERMAP_ATTENUATION_DEFAULTS
+// no @netx/shared). itemKey: FIBER_1310, FUSION, SPLITTER_1_8, UNBALANCED_10_TAP…
+model FibermapAttenuationDefault {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  itemKey     String   @map("item_key") @db.VarChar(40)
+  valueDb     Decimal  @map("value_db") @db.Decimal(6, 3)
+  updatedById String?  @map("updated_by_id") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, itemKey])
+  @@map("fibermap_attenuation_defaults")
 }
