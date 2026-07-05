@@ -83,10 +83,13 @@ packages_nodesource_repo() {
 
 packages_apt_install() {
   log_info "Instalando pacotes APT (postgres, redis, rabbitmq, freeradius, nginx, node, etc)"
+  # postgresql-16-postgis-3: a migration `fibermap_foundation` faz
+  # `CREATE EXTENSION postgis` — sem o pacote no host, migrate deploy quebra.
   apt-get install -y -qq \
     postgresql-16 \
     postgresql-client-16 \
     postgresql-contrib-16 \
+    postgresql-16-postgis-3 \
     redis-server \
     rabbitmq-server \
     freeradius \

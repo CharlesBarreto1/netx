@@ -29,6 +29,8 @@
 #
 # O que NÃO faz (diferente do installer):
 #   - Não reinstala pacotes APT (postgres, redis, freeradius, etc)
+#     (exceção pontual: postgresql-16-postgis-3, pré-requisito de migration —
+#     vide passo 6)
 #   - Não renderiza /etc/netx/.env (preserva customizações manuais)
 #   - Não reconfigura nginx / systemd units (preserva customizações)
 #   - Não toca em /etc/netx/.secrets (preserva JWT/KMS/etc)
@@ -204,6 +206,50 @@ chown -R "${NETX_USER}:${NETX_USER}" \
 # -----------------------------------------------------------------------------
 # 6. Migrations (com snapshot pré-migration)
 # -----------------------------------------------------------------------------
+# Pré-requisito: PostGIS. A migration `20260705130000_fibermap_foundation` faz
+# `CREATE EXTENSION IF NOT EXISTS postgis`, que exige superuser E o pacote
+# postgresql-16-postgis-3 no host. Instalações provisionadas antes do FiberMap
+# não têm nenhum dos dois → migrate deploy morre com 42501 (foi assim em prod).
+# Instalar o pacote aqui é exceção consciente à regra "não reinstala APT":
+# é dependência nova de migration, não reinstalação. Criando a extensão como
+# postgres agora, o CREATE EXTENSION da migration vira no-op sob o role netx.
+ensure_postgis() {
+  # Nome do DB vem do DATABASE_URL do .env (postgresql://user:pass@host:port/db?...)
+  local db_name
+  db_name=$(grep -E '^DATABASE_URL=' "${NETX_ETC}/.env" | tail -1 \
+    | sed -E 's|.*/([^/?]+)(\?.*)?$|\1|' || true)
+  db_name="${db_name:-netx_app}"
+
+  local has_ext
+  has_ext=$(sudo -u postgres psql -d "${db_name}" -tAc \
+    "SELECT 1 FROM pg_extension WHERE extname='postgis'" 2>/dev/null || true)
+  if [[ "${has_ext}" == "1" ]]; then
+    dim "  PostGIS já habilitado em ${db_name}"
+    return 0
+  fi
+
+  if ! dpkg -s postgresql-16-postgis-3 >/dev/null 2>&1; then
+    log "instalando postgresql-16-postgis-3 (pré-requisito da migration fibermap)"
+    apt-get update -qq || true
+    if ! apt-get install -y -qq postgresql-16-postgis-3; then
+      err "Falha ao instalar postgresql-16-postgis-3 — o migrate deploy vai falhar com 42501."
+      err "Instale manualmente e rode netx-update de novo. Vide docs/RUNBOOK.md (PostGIS)."
+      exit 1
+    fi
+  fi
+
+  if sudo -u postgres psql -d "${db_name}" -v ON_ERROR_STOP=1 \
+       -c "CREATE EXTENSION IF NOT EXISTS postgis" >/dev/null; then
+    ok "PostGIS habilitado em ${db_name}"
+  else
+    err "CREATE EXTENSION postgis falhou em ${db_name} — vide docs/RUNBOOK.md (PostGIS)."
+    exit 1
+  fi
+}
+
+log "pré-requisito PostGIS (migration fibermap)"
+ensure_postgis
+
 # Garante dir de snapshot existe + escrevível pelo netx
 install -d -o root -g "${NETX_USER}" -m 0770 /var/backups/netx /var/backups/netx/pre-migration 2>/dev/null || true
 
