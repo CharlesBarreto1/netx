@@ -36,6 +36,8 @@ import {
   CreateFibermapProductRequestSchema,
   CreateFibermapSegmentRequestSchema,
   CreateFibermapSlackRequestSchema,
+  FibermapFiberTraceQuerySchema,
+  FibermapPortTraceQuerySchema,
   ListFibermapCablesQuerySchema,
   ListFibermapElementsQuerySchema,
   ListFibermapProductsQuerySchema,
@@ -62,6 +64,8 @@ import {
   type CreateFibermapProductRequest,
   type CreateFibermapSegmentRequest,
   type CreateFibermapSlackRequest,
+  type FibermapFiberTraceQuery,
+  type FibermapPortTraceQuery,
   type ListFibermapCablesQuery,
   type ListFibermapElementsQuery,
   type ListFibermapProductsQuery,
@@ -85,6 +89,7 @@ import { RequiresModule } from '../licensing/license.decorators';
 import { FibermapAccessPointService } from './access-point.service';
 import { FibermapAttenuationService } from './attenuation.service';
 import { FibermapCablesService } from './cables.service';
+import { FibermapConnectivityGraphService } from './connectivity-graph.service';
 import { FibermapConnectionsService } from './connections.service';
 import { FibermapCatalogService } from './catalog.service';
 import { FibermapElementPhotosService } from './element-photos.service';
@@ -105,6 +110,7 @@ export class FibermapController {
     private readonly cables: FibermapCablesService,
     private readonly accessPoint: FibermapAccessPointService,
     private readonly conns: FibermapConnectionsService,
+    private readonly graph: FibermapConnectivityGraphService,
   ) {}
 
   // ───────────────────────────────────────────────────────────────────────
@@ -375,6 +381,33 @@ export class FibermapController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     await this.conns.removeDevice(u.tenantId, u.sub, id);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Trace de capilar (FM-4, spec §5.1/§5.2)
+  // ───────────────────────────────────────────────────────────────────────
+  /** Caminhada a partir de uma ponta da fibra (A/B) ou de um corte (U/D). */
+  @Get('fibers/:id/trace')
+  @RequirePermissions('fibermap.read')
+  traceFiber(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Query(new ZodQueryPipe(FibermapFiberTraceQuerySchema))
+    q: FibermapFiberTraceQuery,
+  ) {
+    return this.graph.traceFiber(u.tenantId, id, q);
+  }
+
+  /** Caminhada a partir de uma porta (OLT/DIO/splitter). */
+  @Get('ports/:id/trace')
+  @RequirePermissions('fibermap.read')
+  tracePort(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Query(new ZodQueryPipe(FibermapPortTraceQuerySchema))
+    q: FibermapPortTraceQuery,
+  ) {
+    return this.graph.tracePort(u.tenantId, id, q);
   }
 
   // ───────────────────────────────────────────────────────────────────────

@@ -14,6 +14,7 @@ import { AuditModule } from '../audit/audit.module';
 import { FibermapAccessPointService } from './access-point.service';
 import { FibermapAttenuationService } from './attenuation.service';
 import { FibermapCablesService } from './cables.service';
+import { FibermapConnectivityGraphService } from './connectivity-graph.service';
 import { FibermapConnectionsService } from './connections.service';
 import { FibermapCatalogService } from './catalog.service';
 import { FibermapController } from './fibermap.controller';
@@ -33,6 +34,7 @@ import { FibermapFoldersService } from './folders.service';
     FibermapCablesService,
     FibermapAccessPointService,
     FibermapConnectionsService,
+    FibermapConnectivityGraphService,
   ],
   exports: [
     FibermapFoldersService,
@@ -40,6 +42,8 @@ import { FibermapFoldersService } from './folders.service';
     FibermapAttenuationService,
     FibermapElementsService,
     FibermapCablesService,
+    // OTDR (FM-5) e power budget (FM-6) reusam o grafo/trace.
+    FibermapConnectivityGraphService,
   ],
 })
 export class FibermapModule {}
