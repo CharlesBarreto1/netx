@@ -22,6 +22,7 @@
     "db:adopt": "dotenv -e ../../.env -- bash scripts/db/adopt-existing-db.sh",
     "db:seed": "dotenv -e ../../.env -- ts-node prisma/seed.ts",
     "db:seed:fibermap": "dotenv -e ../../.env -- ts-node prisma/seed-fibermap-fixture.ts",
+    "db:seed:fibermap:synthetic": "dotenv -e ../../.env -- ts-node prisma/seed-fibermap-synthetic.ts",
     "db:seed:fake": "dotenv -e ../../.env -- ts-node prisma/seed-fake.ts",
     "db:seed:ibge": "dotenv -e ../../.env -- ts-node prisma/seed-ibge.ts",
     "db:seed:ibge:sql": "bash scripts/db/seed-ibge.sh",

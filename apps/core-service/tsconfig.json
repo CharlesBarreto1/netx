@@ -10,6 +10,11 @@
     "declaration": false,
     "removeComments": true
   },
-  "include": ["src/**/*", "prisma/seed.ts", "prisma/seed-fibermap-fixture.ts"],
+  "include": [
+    "src/**/*",
+    "prisma/seed.ts",
+    "prisma/seed-fibermap-fixture.ts",
+    "prisma/seed-fibermap-synthetic.ts"
+  ],
   "exclude": ["node_modules", "dist", "test"]
 }
