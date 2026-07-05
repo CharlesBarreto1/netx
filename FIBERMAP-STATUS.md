@@ -5,8 +5,8 @@
 > decisões foram tomadas (e por quê divergem da spec), como validar, e como
 > atacar as fases restantes. Atualize este arquivo ao fechar cada fase.
 
-Última atualização: 2026-07-05 · último commit relevante: `5e0ae43` (main —
-inclui fix de precedência de clique elemento×cabo e ícones por tipo no mapa)
+Última atualização: 2026-07-05 · último commit relevante: `1afa761` (main —
+FM-4 completa: backend `663f18b` + frontend `1afa761`)
 
 ## Estado por fase
 
@@ -16,8 +16,8 @@ inclui fix de precedência de clique elemento×cabo e ícones por tipo no mapa)
 | FM-1 Mapa + Tela 3 | ✅ validada + **em prod** | Estúdio `/fibermap` (MapLibre, bbox+cluster, CRUD elementos, fotos MinIO presigned), `/fibermap/settings` (catálogo com preview SVG de cabo + parâmetros de atenuação) |
 | FM-2 Cabos | ✅ validada (aguarda `netx-update`) | desenho com snapping/vértices/Backspace, modal novo/continuar cabo, camada de cabos, drawer (ocupação, comprimentos geo/medido/ÓPTICO com reservas, metragem editável), reservas técnicas, árvore de pastas com conteúdo |
 | FM-3 Ponto de acesso | ✅ validada (aguarda `netx-update`) | `/fibermap/access-point/[elementId]`: SVG com tubos numerados/fibras coloridas, splitter/DIO/OLT, fundir A→B, cortar/desfazer, Béziers com gradiente + tesoura + perda editável, fusão em sequência, export PNG, botão no popup do estúdio |
-| FM-4 Trace | ⬜ próxima | ver "Como atacar FM-4" abaixo |
-| FM-5 OTDR | ⬜ | — |
+| FM-4 Trace | ✅ validada (aguarda `netx-update`) | `trace-graph.ts` puro (grafo + caminhada + `opticalDistance` com marcos) + `FibermapConnectivityGraphService` (componente conexo em ondas), `GET fibers/:id/trace?from=A\|B\|cutId=&cutSide=` e `GET ports/:id/trace` (λ 1310/1490/1550), jest 13 casos com cálculo manual (±0,01 m/dB), painel de trace no access-point (ícone F por fibra/porta, seletor de λ) + "Ver no mapa" → highlight laranja no estúdio |
+| FM-5 OTDR | ⬜ próxima | ver "Como atacar FM-5" abaixo |
 | FM-6 Power budget | ⬜ | — |
 | FM-7 KML + polish | ⬜ | — |
 
@@ -36,8 +36,11 @@ apps/core-service/src/modules/fibermap/
   README.md                            # decisões/desvios detalhados — LEIA
   fibermap.controller.ts               # todas as rotas /v1/fibermap/*
   folders|catalog|attenuation|elements|element-photos|cables|access-point|connections.service.ts
+  connectivity-graph.service.ts        # FM-4: carrega componente conexo (ondas) + endpoints de trace
+  trace-graph.ts                       # FM-4: grafo/caminhada PUROS + opticalDistance (OTDR reusa!)
   instantiate-cable.ts                 # snapshot modelo→cabo (service + fixture usam)
   colors.spec.ts                       # jest (aceite FM-0)
+  trace-graph.spec.ts                  # jest (aceite FM-4 — cálculo manual documentado)
 apps/core-service/prisma/
   migrations/20260705130000_fibermap_foundation/   # DDL manual (CHECKs, GiST, TRIGGERS)
   seed-fibermap.ts                     # catálogo por tenant (chamado pelo seed.ts)
@@ -47,7 +50,7 @@ apps/web/src/lib/fibermap-api.ts       # client único (tipos replicados do shar
 apps/web/src/components/fibermap/
   studio/                              # Tela 1 (FibermapStudio, FibermapMap, drawers, modais)
   settings/                            # Tela 3 (catálogo, CablePreview, atenuação)
-  access-point/                        # Tela 2 (AccessPointEditor SVG, layout.ts puro, modais)
+  access-point/                        # Tela 2 (AccessPointEditor SVG, layout.ts puro, modais, TracePanel)
 apps/web/src/app/(fullscreen)/fibermap/            # estúdio + access-point/[elementId]
 apps/web/src/app/(protected)/fibermap/settings/    # Tela 3
 ```
@@ -78,6 +81,15 @@ Menu: `apps/web/src/lib/menus.ts` (grupo mapping). Permissões:
 7. **Sem BullMQ** (não existe no repo): KML (FM-7) deve seguir o padrão
    preview/commit síncrono de `apps/core-service/src/modules/optical/kml.service.ts`.
 8. `tenant_id` + FK em TODAS as tabelas; relations de User só nos agregados-raiz.
+9. **Trace (FM-4)** — convenções do grafo (`trace-graph.ts`, módulo puro):
+   porta é UM nó (as 2 faces C/F desembocam nele ⇒ passagem de DIO de graça);
+   corte U=lado A, D=lado B; peso da aresta de fibra é DIRECIONAL (§5.2: sobra
+   conta ao sair, chegada excluída — calculado na travessia, não na aresta);
+   **normalização de raiz**: braço que alcança terminal de PORTA (preferência
+   OLT) vira o início do caminho apresentado, splitters subidos viram
+   `branchTaken` (linear) e abaixo do clique o downstream ramifica (`branches`
+   por OUT); desbalanceado: **OUT 1 = ramo TAP**, demais passante, tap_percent
+   aproximado pra 10/20/30/50; splitter aplica a MESMA perda nos 2 sentidos.
 
 ## Como validar (box 96.126.162.14, worktree `/root/netx-fm0`)
 
@@ -126,35 +138,29 @@ PATCH (remova defaults com `.extend`, ver `UpdateFibermapProductRequestSchema`).
 
 ## Como atacar as próximas fases
 
-### FM-4 — Trace (spec §4, §5.1, §5.2)
-- Criar `connectivity-graph.service.ts`: carrega o componente conexo a partir
-  de um endpoint (NUNCA a planta toda). Nós = pontas de fibra/cortes/portas
-  (reuse `endpoint-key.ts` como id de nó!) + nó virtual por splitter. Arestas:
-  fibra inteira A↔B (ou sub-arestas entre cortes ordenados pela posição do
-  elemento na cadeia de segmentos), conexões (dist 0, loss = lossDb ??
-  default por kind), splitter IN↔OUTs (loss pela razão — metadata.ratio).
-- `opticalDistance` (§5.2): soma `coalesce(measured, geo×excess)` dos
-  segmentos entre elementos + `cable_slacks` do trecho (convenção: sobra conta
-  ao SAIR da caixa, exclui chegada) e retorna os marcos `{element, cum}` —
-  OTDR (FM-5) reusa isto.
-- Endpoints: `GET /fibermap/fibers/:id/trace?from=A|B|cutId=`,
-  `GET /fibermap/ports/:id/trace`. Resposta no shape do §5.1 (path de eventos
-  com cum_distance/cum_loss + branches em splitter + MultiLineString).
-- UI: painel no access-point (ícone F por fibra) + highlight no estúdio
-  (adicione uma source `fibermap-trace` no FibermapMap — o padrão de
-  sources/layers está pronto em `FibermapMap.tsx`).
-- Aceite: teste unitário com a fixture e cálculo manual documentado
-  (±0,01 m / ±0,01 dB). A fixture já tem OLT→DIO→cabo→cabo→splitter.
-
 ### FM-5 — OTDR (spec §5.5)
-- `POST /fibermap/otdr/locate`: caminhar o trace (FM-4) consumindo sobras e
-  segmentos; ponto no path via `$queryRaw` `ST_LineInterpolatePoint`
-  (com `ST_Reverse` quando percorrer to→from). Persistir em
-  `fibermap_otdr_readings` (tabela pronta). Flags IN_SLACK,
-  AMBIGUOUS_AFTER_SPLITTER, BEYOND_END; incerteza §5.5.6; expected_events.
-- Casos de teste obrigatórios estão no aceite da fase na spec §13.
-- UI: modal no estúdio + círculo de incerteza (source nova) + botão OTDR no
-  header do access-point.
+- **Tudo que a FM-5 precisa do grafo já existe em `trace-graph.ts`:**
+  `walkTrace` devolve `traversedSegments` (com `OpticalHop.reversed` e
+  `slackBeforeM` por trecho via `opticalDistanceByIndex`) e os eventos com
+  `cumDistanceM` — os `expected_events` saem direto do path do trace; os
+  marcos `{elementId, cumM}` saem de `OpticalDistanceResult.milestones`.
+- `POST /fibermap/otdr/locate`: resolver o endpoint inicial no elemento de
+  referência (ponta/corte; senão posição do elemento na cadeia como marco
+  zero), escolher o braço pelo `direction_element_id`, caminhar consumindo
+  `slackBeforeM` ANTES do comprimento de cada hop (§5.5.3); quando a
+  distância cai num hop: fração geográfica → `$queryRaw`
+  `ST_LineInterpolatePoint` (com `ST_Reverse` se `hop.reversed`). Persistir
+  em `fibermap_otdr_readings` (tabela pronta). Flags IN_SLACK,
+  AMBIGUOUS_AFTER_SPLITTER (um candidato por ramo), BEYOND_END; incerteza
+  §5.5.6 (±10 m mínimo). `FibermapConnectivityGraphService` é exportado pelo
+  module — injete e reuse `loadComponent`/`walkTrace` (métodos privados hoje:
+  expor o que precisar em vez de duplicar).
+- Casos de teste obrigatórios estão no aceite da fase na spec §13 (meio de
+  segmento, dentro de sobra, após fusão entre cabos, após splitter, além do
+  fim, measured divergente do geométrico).
+- UI: modal no estúdio + círculo de incerteza (nova source, padrão da
+  `fibermap-trace` em `FibermapMap.tsx`) + botão OTDR no header do
+  access-point (pré-preenchido com o elemento).
 
 ### FM-6 — Power budget (spec §5.4)
 - Traversal downstream a partir de porta de OLT usando o grafo do FM-4;
