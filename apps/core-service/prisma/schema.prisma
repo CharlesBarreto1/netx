@@ -6674,6 +6674,7 @@ model FibermapCableSegment {
   cable             FibermapCable   @relation(fields: [cableId], references: [id], onDelete: Cascade)
   fromElement       FibermapElement @relation("FibermapSegmentFrom", fields: [fromElementId], references: [id], onDelete: Restrict)
   toElement         FibermapElement @relation("FibermapSegmentTo", fields: [toElementId], references: [id], onDelete: Restrict)
+  slacks            FibermapCableSlack[]
 
   @@unique([cableId, seq])
   @@index([tenantId, cableId])
