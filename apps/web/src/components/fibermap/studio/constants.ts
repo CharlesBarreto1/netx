@@ -28,7 +28,10 @@ import type {
 export type StudioMode =
   | { kind: 'select' }
   | { kind: 'add'; type: FibermapElementType }
-  | { kind: 'reposition'; elementId: string };
+  | { kind: 'reposition'; elementId: string }
+  // FM-2: desenhar cabo — 1º clique snap num elemento, cliques intermediários
+  // viram vértices, clique noutro elemento fecha o trecho (atalho C).
+  | { kind: 'draw' };
 
 /** Viewport do mapa — persiste em ?lat&lng&z pra deep-link. */
 export interface StudioView {

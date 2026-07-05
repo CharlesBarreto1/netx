@@ -264,6 +264,111 @@ export interface CreateFibermapCableModelDto {
   cableClass?: string | null;
 }
 
+// ─── Cabos / segmentos / reservas (FM-2) ────────────────────────────────────
+export interface FibermapPathPoint {
+  latitude: number;
+  longitude: number;
+}
+
+export interface FibermapSegmentFeatureProperties {
+  segmentId: string;
+  cableId: string;
+  cableName: string;
+  seq: number;
+  displayColor: string;
+  fiberCount: number;
+  geometricLengthM: number;
+  measuredLengthM: number | null;
+  opticalLengthM: number;
+}
+
+export interface FibermapCablesFeatureCollection {
+  type: 'FeatureCollection';
+  features: Array<{
+    type: 'Feature';
+    geometry: { type: 'LineString'; coordinates: [number, number][] };
+    properties: FibermapSegmentFeatureProperties;
+  }>;
+  truncated: boolean;
+}
+
+export interface FibermapSlack {
+  id: string;
+  elementId: string;
+  elementName: string;
+  segmentId: string;
+  lengthM: number;
+  createdAt: string;
+}
+
+export interface FibermapSegment {
+  id: string;
+  seq: number;
+  fromElementId: string;
+  fromElementName: string;
+  toElementId: string;
+  toElementName: string;
+  path: FibermapPathPoint[];
+  geometricLengthM: number;
+  measuredLengthM: number | null;
+  opticalLengthM: number;
+  slacks: FibermapSlack[];
+}
+
+export interface FibermapCable {
+  id: string;
+  folderId: string;
+  name: string;
+  productId: string | null;
+  productName: string | null;
+  fiberCount: number;
+  tubeCount: number;
+  fibersPerTube: number;
+  colorStandard: FibermapColorStandard;
+  excessFactor: number;
+  displayColor: string | null;
+  notes: string | null;
+  tubes: Array<{ tubeNumber: number; color: string }>;
+  segments: FibermapSegment[];
+  occupancy: {
+    total: number;
+    dark: number;
+    active: number;
+    reserved: number;
+    broken: number;
+  };
+  totalGeometricM: number;
+  totalOpticalM: number;
+  totalSlackM: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FibermapCableStub {
+  id: string;
+  name: string;
+  fiberCount: number;
+  displayColor: string | null;
+  tailElementId: string | null;
+  segmentsCount: number;
+}
+
+export interface FibermapFolderContents {
+  elements: Array<{
+    id: string;
+    type: FibermapElementType;
+    name: string;
+    latitude: number;
+    longitude: number;
+  }>;
+  cables: Array<{
+    id: string;
+    name: string;
+    fiberCount: number;
+    displayColor: string | null;
+  }>;
+}
+
 // ─── Atenuação ──────────────────────────────────────────────────────────────
 export type FibermapAttenuationKey =
   | 'FIBER_1310' | 'FIBER_1490' | 'FIBER_1550'
@@ -300,6 +405,8 @@ export const fibermapApi = {
     dto: { name?: string; parentId?: string | null; sortOrder?: number },
   ) => api.patch<FibermapFolder>(`/v1/fibermap/folders/${id}`, dto),
   deleteFolder: (id: string) => api.delete<void>(`/v1/fibermap/folders/${id}`),
+  folderContents: (id: string) =>
+    api.get<FibermapFolderContents>(`/v1/fibermap/folders/${id}/contents`),
 
   // Elementos (mapa)
   listElements: (params: {
@@ -344,6 +451,62 @@ export const fibermapApi = {
     ),
   deletePhoto: (elementId: string, photoId: string) =>
     api.delete<void>(`/v1/fibermap/elements/${elementId}/photos/${photoId}`),
+
+  // Cabos / segmentos / reservas (FM-2)
+  listCables: (params: {
+    bbox: [number, number, number, number];
+    folderId?: string;
+    limit?: number;
+  }) =>
+    api.get<FibermapCablesFeatureCollection>(
+      `/v1/fibermap/cables${qs({
+        bbox: params.bbox.join(','),
+        folderId: params.folderId,
+        limit: params.limit,
+      })}`,
+    ),
+  getCable: (id: string) => api.get<FibermapCable>(`/v1/fibermap/cables/${id}`),
+  cablesEndingAt: (elementId: string) =>
+    api.get<FibermapCableStub[]>(`/v1/fibermap/cables/ending-at/${elementId}`),
+  createCable: (dto: {
+    folderId: string;
+    name: string;
+    productId: string;
+    displayColor?: string | null;
+    notes?: string | null;
+  }) => api.post<FibermapCable>('/v1/fibermap/cables', dto),
+  updateCable: (
+    id: string,
+    dto: {
+      folderId?: string;
+      name?: string;
+      displayColor?: string | null;
+      notes?: string | null;
+      excessFactor?: number;
+    },
+  ) => api.patch<FibermapCable>(`/v1/fibermap/cables/${id}`, dto),
+  deleteCable: (id: string) => api.delete<void>(`/v1/fibermap/cables/${id}`),
+  addSegment: (
+    cableId: string,
+    dto: {
+      fromElementId: string;
+      toElementId: string;
+      path: FibermapPathPoint[];
+      measuredLengthM?: number | null;
+    },
+  ) => api.post<FibermapCable>(`/v1/fibermap/cables/${cableId}/segments`, dto),
+  updateSegment: (
+    segmentId: string,
+    dto: { path?: FibermapPathPoint[]; measuredLengthM?: number | null },
+  ) => api.patch<FibermapCable>(`/v1/fibermap/segments/${segmentId}`, dto),
+  deleteSegment: (segmentId: string) =>
+    api.delete<FibermapCable>(`/v1/fibermap/segments/${segmentId}`),
+  addSlack: (
+    cableId: string,
+    dto: { elementId: string; segmentId: string; lengthM: number },
+  ) => api.post<FibermapCable>(`/v1/fibermap/cables/${cableId}/slacks`, dto),
+  deleteSlack: (slackId: string) =>
+    api.delete<FibermapCable>(`/v1/fibermap/slacks/${slackId}`),
 
   // Catálogo
   listProducts: (params: ListFibermapProductsParams = {}) =>

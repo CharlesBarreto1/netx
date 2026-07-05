@@ -38,9 +38,15 @@ import {
   type StudioMode,
   type StudioView,
 } from './constants';
+import { CableDetailDrawer } from './CableDetailDrawer';
+import { CableDrawModal } from './CableDrawModal';
 import { ElementCreateModal, type ElementDraft } from './ElementCreateModal';
 import { ElementDetailDrawer } from './ElementDetailDrawer';
-import type { FibermapMapHandle, FibermapMapLabels } from './FibermapMap';
+import type {
+  FibermapDrawResult,
+  FibermapMapHandle,
+  FibermapMapLabels,
+} from './FibermapMap';
 import { FolderEditModal } from './FolderEditModal';
 import { StudioConfirm } from './StudioModal';
 import { StudioSidebar } from './StudioSidebar';
@@ -84,6 +90,10 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
 
   const [draft, setDraft] = useState<ElementDraft | null>(null);
   const [detailId, setDetailId] = useState<string | null>(null);
+  // FM-2: trecho desenhado aguardando o modal (novo cabo / continuar) e o
+  // drawer de detalhe de cabo (mutuamente exclusivo com o de elemento).
+  const [drawResult, setDrawResult] = useState<FibermapDrawResult | null>(null);
+  const [cableDetailId, setCableDetailId] = useState<string | null>(null);
   const [deleteRequest, setDeleteRequest] = useState<{
     id: string;
     name: string;
@@ -113,6 +123,7 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
       detail: t('studio.popup.detail'),
       remove: t('studio.popup.delete'),
       loadError: t('studio.map.loadError'),
+      drawStartOnElement: t('studio.cable.drawStartOnElement'),
       typeLabels: Object.fromEntries(
         ELEMENT_TYPES.map((et) => [et, t(`studio.type.${et}`)]),
       ) as Record<FibermapElementType, string>,
@@ -176,11 +187,24 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
     [mode, t, tc],
   );
 
-  const handleOpenDetail = useCallback((id: string) => setDetailId(id), []);
+  const handleOpenDetail = useCallback((id: string) => {
+    setCableDetailId(null);
+    setDetailId(id);
+  }, []);
   const handleRequestDelete = useCallback(
     (el: { id: string; name: string }) => setDeleteRequest(el),
     [],
   );
+
+  // ── Desenho de cabo (FM-2) ─────────────────────────────────────────────────
+  const handleDrawComplete = useCallback((result: FibermapDrawResult) => {
+    setMode({ kind: 'select' });
+    setDrawResult(result);
+  }, []);
+  const handleOpenCable = useCallback((cableId: string) => {
+    setDetailId(null);
+    setCableDetailId(cableId);
+  }, []);
 
   function closeDetail() {
     setDetailId(null);
@@ -249,7 +273,7 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
       if (isTypingTarget(e.target)) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const modalOpen = Boolean(
-        draft || folderModal || folderDeleting || deleteRequest,
+        draft || drawResult || folderModal || folderDeleting || deleteRequest,
       );
       if (e.key === 'Escape') {
         if (modalOpen) return; // os modais fecham a si próprios
@@ -263,12 +287,16 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
         return;
       }
       if (!canWrite) return;
+      if (k === 'c') {
+        setMode({ kind: 'draw' });
+        return;
+      }
       const addType = ADD_SHORTCUTS[k];
       if (addType) setMode({ kind: 'add', type: addType });
     }
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [mode, draft, folderModal, folderDeleting, deleteRequest, canWrite]);
+  }, [mode, draft, drawResult, folderModal, folderDeleting, deleteRequest, canWrite]);
 
   return (
     <div className="flex h-screen w-screen flex-col bg-bg text-text">
@@ -277,6 +305,7 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
         mode={mode}
         onSelectMode={() => setMode({ kind: 'select' })}
         onAddMode={(type) => setMode({ kind: 'add', type })}
+        onDrawMode={() => setMode({ kind: 'draw' })}
         panelOpen={panelOpen}
         onTogglePanel={() => setPanelOpen((o) => !o)}
         count={viewportInfo.count}
@@ -310,6 +339,7 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
             onRenameFolder={(f) => setFolderModal(f)}
             onDeleteFolder={setFolderDeleting}
             onSelectSearchHit={handleSearchHit}
+            onOpenCable={handleOpenCable}
             canWrite={canWrite}
             canDelete={canDelete}
           />
@@ -319,7 +349,13 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
           <FibermapMap
             handleRef={mapHandleRef}
             initialView={initialView}
-            mode={mode.kind === 'select' ? 'select' : 'pick'}
+            mode={
+              mode.kind === 'select'
+                ? 'select'
+                : mode.kind === 'draw'
+                  ? 'draw'
+                  : 'pick'
+            }
             types={typeArray}
             folderId={selectedFolderId ?? undefined}
             canDelete={canDelete}
@@ -329,6 +365,8 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
             onPick={handlePick}
             onOpenDetail={handleOpenDetail}
             onRequestDelete={handleRequestDelete}
+            onDrawComplete={handleDrawComplete}
+            onOpenCable={handleOpenCable}
           />
 
           {/* HUD — instrução do modo ativo */}
@@ -336,11 +374,32 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
             <div className="pointer-events-none absolute bottom-3 left-1/2 z-[500] -translate-x-1/2 rounded-md bg-slate-900/95 px-4 py-2 text-xs font-medium text-white shadow-lg">
               {mode.kind === 'add'
                 ? t('studio.hint.add', { type: t(`studio.type.${mode.type}`) })
-                : t('studio.hint.reposition')}
+                : mode.kind === 'draw'
+                  ? t('studio.hint.draw')
+                  : t('studio.hint.reposition')}
             </div>
           )}
         </main>
       </div>
+
+      {/* ─── Drawer de detalhe de cabo (FM-2) ───────────────────────────── */}
+      {cableDetailId && (
+        <CableDetailDrawer
+          cableId={cableDetailId}
+          canWrite={canWrite}
+          canDelete={canDelete}
+          onChanged={() => {
+            mapHandleRef.current?.refresh();
+            void mutateFolders();
+          }}
+          onDeleted={() => {
+            setCableDetailId(null);
+            mapHandleRef.current?.refresh();
+            void mutateFolders();
+          }}
+          onClose={() => setCableDetailId(null)}
+        />
+      )}
 
       {/* ─── Drawer de detalhe ──────────────────────────────────────────── */}
       {detailId && (
@@ -373,6 +432,25 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
             setDraft(null);
             toast.success(t('studio.toast.elementCreated', { name: el.name }));
             mapHandleRef.current?.refresh();
+            // Árvore de pastas: contadores + conteúdo (feedback FM-1).
+            void mutateFolders();
+          }}
+        />
+      )}
+
+      {drawResult && (
+        <CableDrawModal
+          draw={drawResult}
+          folders={folders}
+          defaultFolderId={selectedFolderId}
+          onClose={() => setDrawResult(null)}
+          onCreated={(cable) => {
+            setDrawResult(null);
+            toast.success(t('studio.cable.segmentAdded', { name: cable.name }));
+            mapHandleRef.current?.refresh();
+            void mutateFolders();
+            // Continua desenhando da nova ponta — fluxo Tomodat de espinha.
+            setMode({ kind: 'draw' });
           }}
         />
       )}

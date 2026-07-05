@@ -49,14 +49,24 @@ export interface FibermapMapHandle {
   setHighlight: (point: { latitude: number; longitude: number } | null) => void;
 }
 
-export type FibermapMapMode = 'select' | 'pick';
+export type FibermapMapMode = 'select' | 'pick' | 'draw';
 
 /** Strings traduzidas — o popup é DOM imperativo, sem acesso a hooks. */
 export interface FibermapMapLabels {
   detail: string;
   remove: string;
   loadError: string;
+  /** Aviso do modo desenho: o 1º clique precisa cair num elemento. */
+  drawStartOnElement: string;
   typeLabels: Record<FibermapElementType, string>;
+}
+
+/** Resultado do desenho de um trecho de cabo (FM-2). */
+export interface FibermapDrawResult {
+  fromElement: { id: string; name: string };
+  toElement: { id: string; name: string };
+  /** Vértices completos [{lat,lng}], pontas já nas coords dos elementos. */
+  path: Array<{ latitude: number; longitude: number }>;
 }
 
 export interface FibermapMapProps {
@@ -75,11 +85,19 @@ export interface FibermapMapProps {
   onPick: (point: { latitude: number; longitude: number }) => void;
   onOpenDetail: (elementId: string) => void;
   onRequestDelete: (element: { id: string; name: string }) => void;
+  /** Trecho desenhado completo (modo draw) — o pai abre o modal do cabo. */
+  onDrawComplete: (result: FibermapDrawResult) => void;
+  /** Clique em [Detalhe] no popup de um segmento de cabo. */
+  onOpenCable: (cableId: string) => void;
 }
 
 // ─── Style / constantes ──────────────────────────────────────────────────────
 const SOURCE_ID = 'fibermap-elements';
 const HIGHLIGHT_SOURCE_ID = 'fibermap-highlight';
+const CABLES_SOURCE_ID = 'fibermap-cables';
+const DRAW_SOURCE_ID = 'fibermap-draw';
+/** Raio de snap do desenho em pixels (≈15 m nos zooms de trabalho, spec §7). */
+const SNAP_PX = 12;
 
 const OSM_RASTER_STYLE: StyleSpecification = {
   version: 8,
@@ -110,6 +128,8 @@ export function FibermapMap({
   onPick,
   onOpenDetail,
   onRequestDelete,
+  onDrawComplete,
+  onOpenCable,
 }: FibermapMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
@@ -133,14 +153,35 @@ export function FibermapMap({
     onPick,
     onOpenDetail,
     onRequestDelete,
+    onDrawComplete,
+    onOpenCable,
   });
   useEffect(() => {
-    cbRef.current = { onViewChange, onData, onPick, onOpenDetail, onRequestDelete };
+    cbRef.current = {
+      onViewChange,
+      onData,
+      onPick,
+      onOpenDetail,
+      onRequestDelete,
+      onDrawComplete,
+      onOpenCable,
+    };
     labelsRef.current = labels;
     canDeleteRef.current = canDelete;
   });
 
+  // Estado do desenho de cabo (modo draw) — vive fora do React de propósito:
+  // muda a cada clique e só o preview (source GeoJSON) precisa reagir.
+  const drawRef = useRef<{
+    start: { id: string; name: string } | null;
+    /** [lng, lat] — mesmo eixo do MapLibre. */
+    vertices: [number, number][];
+  }>({ start: null, vertices: [] });
+
   const scheduleFetchRef = useRef<(() => void) | null>(null);
+  // Preenchidos no load do mapa (precisam do source/listeners vivos).
+  const resetDrawRef = useRef<(() => void) | null>(null);
+  const drawKeyCleanupRef = useRef<(() => void) | null>(null);
 
   // ── Ciclo de vida do mapa (uma vez) ────────────────────────────────────────
   useEffect(() => {
@@ -166,24 +207,31 @@ export function FibermapMap({
 
     async function fetchViewport(): Promise<void> {
       const source = map.getSource(SOURCE_ID) as GeoJSONSource | undefined;
-      if (!source) return; // style ainda carregando — o load faz o 1º fetch
+      const cableSource = map.getSource(CABLES_SOURCE_ID) as
+        | GeoJSONSource
+        | undefined;
+      if (!source || !cableSource) return; // style carregando — o load refaz
       const bounds = map.getBounds();
+      const bbox: [number, number, number, number] = [
+        bounds.getWest(),
+        bounds.getSouth(),
+        bounds.getEast(),
+        bounds.getNorth(),
+      ];
       const seq = ++fetchSeq;
       try {
         const { types: t, folderId: fid } = paramsRef.current;
-        const fc = await fibermapApi.listElements({
-          bbox: [
-            bounds.getWest(),
-            bounds.getSouth(),
-            bounds.getEast(),
-            bounds.getNorth(),
-          ],
-          types: t.length ? t : undefined,
-          folderId: fid,
-        });
+        const [fc, cables] = await Promise.all([
+          fibermapApi.listElements({
+            bbox,
+            types: t.length ? t : undefined,
+            folderId: fid,
+          }),
+          fibermapApi.listCables({ bbox, folderId: fid }),
+        ]);
         if (disposed || seq !== fetchSeq) return; // resposta velha — descarta
         // Injeta a cor por tipo como property (paint usa ['get','color']).
-        const collection = {
+        source.setData({
           type: 'FeatureCollection' as const,
           features: fc.features.map((f) => ({
             type: 'Feature' as const,
@@ -193,12 +241,12 @@ export function FibermapMap({
               color: ELEMENT_TYPE_COLOR[f.properties.type],
             },
           })),
-        };
-        source.setData(collection);
+        });
+        cableSource.setData(cables as never);
         fetchErrored = false;
         cbRef.current.onData({
           count: fc.features.length,
-          truncated: fc.truncated,
+          truncated: fc.truncated || cables.truncated,
         });
       } catch (err) {
         if (disposed || seq !== fetchSeq) return;
@@ -289,6 +337,34 @@ export function FibermapMap({
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
       });
+      map.addSource(CABLES_SOURCE_ID, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+      map.addSource(DRAW_SOURCE_ID, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
+
+      // Cabos por baixo dos elementos (linhas coloridas por display_color).
+      map.addLayer({
+        id: 'fibermap-cable-lines',
+        type: 'line',
+        source: CABLES_SOURCE_ID,
+        layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: {
+          'line-color': ['get', 'displayColor'],
+          'line-width': 3,
+          'line-opacity': 0.9,
+        },
+      });
+      // Alvo de clique generoso (invisível) — linha de 3px é difícil de acertar.
+      map.addLayer({
+        id: 'fibermap-cable-hit',
+        type: 'line',
+        source: CABLES_SOURCE_ID,
+        paint: { 'line-color': '#000000', 'line-opacity': 0, 'line-width': 14 },
+      });
 
       // Anel de destaque por baixo dos pontos.
       map.addLayer({
@@ -301,6 +377,31 @@ export function FibermapMap({
           'circle-opacity': 0.2,
           'circle-stroke-color': '#f59e0b',
           'circle-stroke-width': 2,
+        },
+      });
+
+      // Preview do desenho de cabo (linha tracejada + vértices).
+      map.addLayer({
+        id: 'fibermap-draw-line',
+        type: 'line',
+        source: DRAW_SOURCE_ID,
+        filter: ['==', ['geometry-type'], 'LineString'],
+        paint: {
+          'line-color': '#f59e0b',
+          'line-width': 3,
+          'line-dasharray': [2, 1.5],
+        },
+      });
+      map.addLayer({
+        id: 'fibermap-draw-vertices',
+        type: 'circle',
+        source: DRAW_SOURCE_ID,
+        filter: ['==', ['geometry-type'], 'Point'],
+        paint: {
+          'circle-radius': 4,
+          'circle-color': '#f59e0b',
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 1.5,
         },
       });
       map.addLayer({
@@ -401,14 +502,163 @@ export function FibermapMap({
           .addTo(map);
       });
 
-      // Clique "cru" no mapa em modo pick → coordenada pro pai.
-      map.on('click', (e) => {
-        if (modeRef.current !== 'pick') return;
-        cbRef.current.onPick({
-          latitude: e.lngLat.lat,
-          longitude: e.lngLat.lng,
+      // Clique em segmento de cabo → popup (só no select; camada de hit larga).
+      map.on('click', 'fibermap-cable-hit', (e: MapLayerMouseEvent) => {
+        if (modeRef.current !== 'select') return;
+        const feature = e.features?.[0];
+        if (!feature) return;
+        const p = feature.properties as unknown as {
+          cableId: string;
+          cableName: string;
+          seq: number;
+          fiberCount: number;
+          displayColor: string;
+          geometricLengthM: number;
+          opticalLengthM: number;
+        };
+        const l = labelsRef.current;
+        const root = document.createElement('div');
+        root.className = 'flex min-w-[190px] flex-col gap-2 p-1 font-sans';
+        const header = document.createElement('div');
+        header.className = 'flex items-center gap-1.5';
+        const swatch = document.createElement('span');
+        swatch.className = 'inline-block h-2.5 w-5 shrink-0 rounded-sm';
+        swatch.style.backgroundColor = p.displayColor;
+        const name = document.createElement('span');
+        name.className = 'truncate text-sm font-semibold text-slate-900';
+        name.textContent = p.cableName;
+        header.append(swatch, name);
+        const meta = document.createElement('div');
+        meta.className = 'text-xs text-slate-500';
+        meta.textContent = `${p.fiberCount} FO · #${p.seq} · ${Math.round(p.geometricLengthM)} m (geo) · ${Math.round(p.opticalLengthM)} m (ópt)`;
+        const actions = document.createElement('div');
+        actions.className = 'flex gap-1.5 pt-0.5';
+        const detailBtn = document.createElement('button');
+        detailBtn.type = 'button';
+        detailBtn.className =
+          'rounded-md bg-blue-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-blue-700';
+        detailBtn.textContent = l.detail;
+        detailBtn.addEventListener('click', () => {
+          popupRef.current?.remove();
+          cbRef.current.onOpenCable(p.cableId);
         });
+        actions.append(detailBtn);
+        root.append(header, meta, actions);
+        popupRef.current?.remove();
+        popupRef.current = new maplibregl.Popup({
+          closeButton: true,
+          closeOnClick: true,
+          maxWidth: '320px',
+          offset: 8,
+        })
+          .setLngLat(e.lngLat)
+          .setDOMContent(root)
+          .addTo(map);
       });
+
+      // ── Desenho de cabo (FM-2) ────────────────────────────────────────────
+      function syncDrawPreview() {
+        const src = map.getSource(DRAW_SOURCE_ID) as GeoJSONSource | undefined;
+        if (!src) return;
+        const { vertices } = drawRef.current;
+        const features: GeoJSON.Feature[] = vertices.map((v) => ({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: v },
+          properties: {},
+        }));
+        if (vertices.length >= 2) {
+          features.push({
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: vertices },
+            properties: {},
+          });
+        }
+        src.setData({ type: 'FeatureCollection', features });
+      }
+      resetDrawRef.current = () => {
+        drawRef.current = { start: null, vertices: [] };
+        syncDrawPreview();
+      };
+
+      /** Elemento sob o clique (raio SNAP_PX) — snapping do desenho. */
+      function elementAt(point: { x: number; y: number }) {
+        const hits = map.queryRenderedFeatures(
+          [
+            [point.x - SNAP_PX, point.y - SNAP_PX],
+            [point.x + SNAP_PX, point.y + SNAP_PX],
+          ],
+          { layers: ['fibermap-points'] },
+        );
+        const f = hits[0];
+        if (!f || f.geometry.type !== 'Point') return null;
+        const props = f.properties as unknown as FibermapElementFeatureProperties;
+        return {
+          id: props.id,
+          name: props.name,
+          coord: f.geometry.coordinates as [number, number],
+        };
+      }
+
+      // Clique "cru" no mapa: pick (add/reposicionar) ou desenho de cabo.
+      map.on('click', (e) => {
+        if (modeRef.current === 'pick') {
+          cbRef.current.onPick({
+            latitude: e.lngLat.lat,
+            longitude: e.lngLat.lng,
+          });
+          return;
+        }
+        if (modeRef.current !== 'draw') return;
+
+        const hit = elementAt(e.point);
+        const d = drawRef.current;
+        if (!d.start) {
+          if (!hit) {
+            toast.info(labelsRef.current.drawStartOnElement);
+            return;
+          }
+          d.start = { id: hit.id, name: hit.name };
+          d.vertices = [hit.coord];
+          syncDrawPreview();
+          return;
+        }
+        if (hit && hit.id !== d.start.id) {
+          // Fecha o trecho no elemento de destino.
+          const path = [...d.vertices, hit.coord].map(([lng, lat]) => ({
+            latitude: lat,
+            longitude: lng,
+          }));
+          const result = {
+            fromElement: d.start,
+            toElement: { id: hit.id, name: hit.name },
+            path,
+          };
+          resetDrawRef.current?.();
+          cbRef.current.onDrawComplete(result);
+          return;
+        }
+        // Vértice intermediário (ou clique de novo no início — vira vértice).
+        d.vertices.push([e.lngLat.lng, e.lngLat.lat]);
+        syncDrawPreview();
+      });
+
+      // Backspace desfaz o último vértice do desenho (spec §7 — undo).
+      function handleDrawKey(e: KeyboardEvent) {
+        if (modeRef.current !== 'draw') return;
+        if (e.key !== 'Backspace') return;
+        const d = drawRef.current;
+        if (!d.start) return;
+        e.preventDefault();
+        if (d.vertices.length <= 1) {
+          resetDrawRef.current?.();
+          return;
+        }
+        d.vertices.pop();
+        syncDrawPreview();
+      }
+      window.addEventListener('keydown', handleDrawKey);
+      drawKeyCleanupRef.current = () =>
+        window.removeEventListener('keydown', handleDrawKey);
 
       // Cursor pointer sobre features clicáveis (só no modo select).
       for (const layerId of ['fibermap-clusters', 'fibermap-points']) {
@@ -473,6 +723,9 @@ export function FibermapMap({
     return () => {
       disposed = true;
       window.clearTimeout(debounceTimer);
+      drawKeyCleanupRef.current?.();
+      drawKeyCleanupRef.current = null;
+      resetDrawRef.current = null;
       scheduleFetchRef.current = null;
       handleRef.current = null;
       popupRef.current?.remove();
@@ -482,13 +735,15 @@ export function FibermapMap({
     };
   }, [handleRef]);
 
-  // ── Modo (cursor crosshair + fecha popup) ──────────────────────────────────
+  // ── Modo (cursor crosshair + fecha popup + limpa desenho) ──────────────────
   useEffect(() => {
     modeRef.current = mode;
     const map = mapRef.current;
     if (!map) return;
-    map.getCanvas().style.cursor = mode === 'pick' ? 'crosshair' : '';
-    if (mode === 'pick') popupRef.current?.remove();
+    map.getCanvas().style.cursor =
+      mode === 'pick' || mode === 'draw' ? 'crosshair' : '';
+    if (mode !== 'select') popupRef.current?.remove();
+    if (mode !== 'draw') resetDrawRef.current?.();
   }, [mode]);
 
   // ── Filtros (tipos/pasta) → refetch ────────────────────────────────────────

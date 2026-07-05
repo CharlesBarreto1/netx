@@ -17,6 +17,7 @@ import {
   PanelLeftOpen,
   Plus,
   Settings,
+  Spline,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
@@ -43,6 +44,8 @@ interface StudioTopbarProps {
   mode: StudioMode;
   onSelectMode: () => void;
   onAddMode: (type: FibermapElementType) => void;
+  /** FM-2: entra no modo de desenho de cabo (atalho C). */
+  onDrawMode: () => void;
   panelOpen: boolean;
   onTogglePanel: () => void;
   count: number;
@@ -55,6 +58,7 @@ export function StudioTopbar({
   mode,
   onSelectMode,
   onAddMode,
+  onDrawMode,
   panelOpen,
   onTogglePanel,
   count,
@@ -106,6 +110,14 @@ export function StudioTopbar({
       {canWrite && (
         <>
           <div className="mx-2 h-6 w-px bg-border" />
+          <ToolButton
+            active={mode.kind === 'draw'}
+            onClick={onDrawMode}
+            icon={<Spline className="h-4 w-4" />}
+            label={t('studio.toolbar.drawCable')}
+            shortcut="C"
+            title={t('studio.toolbar.drawCableTooltip')}
+          />
           {QUICK_ADD_TOOLS.map(({ type, shortcut }) => {
             const Icon = ELEMENT_TYPE_ICON[type];
             const label = t(`studio.type.${type}`);

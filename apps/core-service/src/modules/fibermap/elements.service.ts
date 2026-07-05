@@ -310,6 +310,27 @@ export class FibermapElementsService {
         },
         include: DETAIL_INCLUDE,
       });
+      // Elemento reposicionado ⇒ pontas dos segmentos acompanham (senão o
+      // cabo fica "solto" no mapa). jsonb_set nos extremos do path; o UPDATE
+      // dispara a trigger que recalcula geom + comprimento geográfico.
+      const moved =
+        (input.latitude !== undefined &&
+          Number(existing.latitude) !== input.latitude) ||
+        (input.longitude !== undefined &&
+          Number(existing.longitude) !== input.longitude);
+      if (moved) {
+        const lng = Number(updated.longitude);
+        const lat = Number(updated.latitude);
+        await this.prisma.$executeRaw`
+          UPDATE fibermap_cable_segments
+             SET path = jsonb_set(path, '{0}', to_jsonb(ARRAY[${lng}::float8, ${lat}::float8]))
+           WHERE from_element_id = ${id}::uuid AND tenant_id = ${tenantId}::uuid`;
+        await this.prisma.$executeRaw`
+          UPDATE fibermap_cable_segments
+             SET path = jsonb_set(path, '{-1}', to_jsonb(ARRAY[${lng}::float8, ${lat}::float8]))
+           WHERE to_element_id = ${id}::uuid AND tenant_id = ${tenantId}::uuid`;
+      }
+
       await this.audit.log({
         tenantId,
         userId: actorUserId,

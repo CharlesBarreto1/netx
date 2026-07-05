@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import useSWR from 'swr';
 
 import {
   DropdownMenu,
@@ -40,6 +41,7 @@ import {
   type FibermapElementSearchHit,
   type FibermapElementType,
   type FibermapFolder,
+  type FibermapFolderContents,
 } from '@/lib/fibermap-api';
 
 import {
@@ -63,6 +65,8 @@ interface StudioSidebarProps {
   onRenameFolder: (folder: FibermapFolder) => void;
   onDeleteFolder: (folder: FibermapFolder) => void;
   onSelectSearchHit: (hit: FibermapElementSearchHit) => void;
+  /** FM-2: clique num cabo do conteúdo da pasta abre o drawer do cabo. */
+  onOpenCable: (cableId: string) => void;
   canWrite: boolean;
   canDelete: boolean;
 }
@@ -80,6 +84,7 @@ export function StudioSidebar({
   onRenameFolder,
   onDeleteFolder,
   onSelectSearchHit,
+  onOpenCable,
   canWrite,
   canDelete,
 }: StudioSidebarProps) {
@@ -183,6 +188,8 @@ export function StudioSidebar({
                 onCreateFolder={onCreateFolder}
                 onRenameFolder={onRenameFolder}
                 onDeleteFolder={onDeleteFolder}
+                onSelectElement={onSelectSearchHit}
+                onOpenCable={onOpenCable}
                 canWrite={canWrite}
                 canDelete={canDelete}
               />
@@ -213,15 +220,21 @@ function FolderNode({
   onCreateFolder: (parentId: string | null) => void;
   onRenameFolder: (folder: FibermapFolder) => void;
   onDeleteFolder: (folder: FibermapFolder) => void;
+  onSelectElement: (hit: FibermapElementSearchHit) => void;
+  onOpenCable: (cableId: string) => void;
   canWrite: boolean;
   canDelete: boolean;
 }) {
   const t = useTranslations('fibermap');
   const tc = useTranslations('common');
-  const [open, setOpen] = useState(true);
+  // Fechado por default: expandir dispara o fetch do conteúdo (lazy) — spec §7
+  // (pasta → elementos) sem bombardear a API com N pastas no mount.
+  const [open, setOpen] = useState(false);
   const { folder, children } = node;
   const selected = selectedFolderId === folder.id;
   const hasActions = canWrite || canDelete;
+  const itemsCount = (folder.elementsCount ?? 0) + (folder.cablesCount ?? 0);
+  const expandable = children.length > 0 || itemsCount > 0;
 
   return (
     <div>
@@ -232,7 +245,7 @@ function FolderNode({
         )}
         style={{ paddingLeft: depth * 12 + 2 }}
       >
-        {children.length > 0 ? (
+        {expandable ? (
           <button
             type="button"
             onClick={() => setOpen((o) => !o)}
@@ -261,9 +274,9 @@ function FolderNode({
           <span className={cn('truncate', selected ? 'font-medium' : 'text-text')}>
             {folder.name}
           </span>
-          {typeof folder.elementsCount === 'number' && (
+          {itemsCount > 0 && (
             <span className="ml-auto shrink-0 text-2xs text-text-subtle">
-              {folder.elementsCount}
+              {itemsCount}
             </span>
           )}
         </button>
@@ -305,21 +318,112 @@ function FolderNode({
           </DropdownMenu>
         )}
       </div>
-      {open &&
-        children.map((child) => (
-          <FolderNode
-            key={child.folder.id}
-            node={child}
-            depth={depth + 1}
-            selectedFolderId={selectedFolderId}
-            onToggleFolder={onToggleFolder}
-            onCreateFolder={onCreateFolder}
-            onRenameFolder={onRenameFolder}
-            onDeleteFolder={onDeleteFolder}
-            canWrite={canWrite}
-            canDelete={canDelete}
+      {open && (
+        <>
+          {children.map((child) => (
+            <FolderNode
+              key={child.folder.id}
+              node={child}
+              depth={depth + 1}
+              selectedFolderId={selectedFolderId}
+              onToggleFolder={onToggleFolder}
+              onCreateFolder={onCreateFolder}
+              onRenameFolder={onRenameFolder}
+              onDeleteFolder={onDeleteFolder}
+              onSelectElement={onSelectElement}
+              onOpenCable={onOpenCable}
+              canWrite={canWrite}
+              canDelete={canDelete}
+            />
+          ))}
+          {itemsCount > 0 && (
+            <FolderContents
+              folderId={folder.id}
+              depth={depth + 1}
+              onSelectElement={onSelectElement}
+              onOpenCable={onOpenCable}
+            />
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Conteúdo da pasta (elementos + cabos, lazy — spec §7) ───────────────────
+function FolderContents({
+  folderId,
+  depth,
+  onSelectElement,
+  onOpenCable,
+}: {
+  folderId: string;
+  depth: number;
+  onSelectElement: (hit: FibermapElementSearchHit) => void;
+  onOpenCable: (cableId: string) => void;
+}) {
+  const { data, error } = useSWR<FibermapFolderContents>(
+    `/v1/fibermap/folders/${folderId}/contents`,
+  );
+  const pad = { paddingLeft: depth * 12 + 24 };
+
+  if (error) return null;
+  if (!data) {
+    return (
+      <div className="py-1" style={pad}>
+        <InlineLoader />
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-px pb-0.5">
+      {data.cables.map((c) => (
+        <button
+          key={c.id}
+          type="button"
+          onClick={() => onOpenCable(c.id)}
+          title={c.name}
+          className="flex w-full min-w-0 items-center gap-1.5 rounded-md py-0.5 pr-2 text-left text-xs text-text-muted hover:bg-surface-hover hover:text-text"
+          style={pad}
+        >
+          <span
+            className="h-1.5 w-4 shrink-0 rounded-sm"
+            style={{ backgroundColor: c.displayColor ?? '#64748b' }}
           />
-        ))}
+          <span className="truncate">{c.name}</span>
+          <span className="ml-auto shrink-0 text-2xs text-text-subtle">
+            {c.fiberCount}FO
+          </span>
+        </button>
+      ))}
+      {data.elements.map((el) => {
+        const Icon = ELEMENT_TYPE_ICON[el.type];
+        return (
+          <button
+            key={el.id}
+            type="button"
+            onClick={() =>
+              onSelectElement({
+                id: el.id,
+                type: el.type,
+                name: el.name,
+                latitude: el.latitude,
+                longitude: el.longitude,
+                folderId,
+              })
+            }
+            title={el.name}
+            className="flex w-full min-w-0 items-center gap-1.5 rounded-md py-0.5 pr-2 text-left text-xs text-text-muted hover:bg-surface-hover hover:text-text"
+            style={pad}
+          >
+            <Icon
+              className="h-3 w-3 shrink-0"
+              style={{ color: ELEMENT_TYPE_COLOR[el.type] }}
+            />
+            <span className="truncate">{el.name}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }
