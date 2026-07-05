@@ -14,20 +14,25 @@ import { AuditModule } from '../audit/audit.module';
 import { FibermapAttenuationService } from './attenuation.service';
 import { FibermapCatalogService } from './catalog.service';
 import { FibermapController } from './fibermap.controller';
+import { FibermapElementPhotosService } from './element-photos.service';
+import { FibermapElementsService } from './elements.service';
 import { FibermapFoldersService } from './folders.service';
 
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule], // StorageModule é @Global — não precisa importar
   controllers: [FibermapController],
   providers: [
     FibermapFoldersService,
     FibermapCatalogService,
     FibermapAttenuationService,
+    FibermapElementsService,
+    FibermapElementPhotosService,
   ],
   exports: [
     FibermapFoldersService,
     FibermapCatalogService,
     FibermapAttenuationService,
+    FibermapElementsService,
   ],
 })
 export class FibermapModule {}

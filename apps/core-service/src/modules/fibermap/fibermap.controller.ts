@@ -26,18 +26,30 @@ import {
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   CreateFibermapCableModelRequestSchema,
+  CreateFibermapElementRequestSchema,
   CreateFibermapFolderRequestSchema,
   CreateFibermapProductRequestSchema,
+  ListFibermapElementsQuerySchema,
   ListFibermapProductsQuerySchema,
   PatchFibermapAttenuationRequestSchema,
+  PresignFibermapPhotoRequestSchema,
+  RegisterFibermapPhotoRequestSchema,
+  SearchFibermapElementsQuerySchema,
+  UpdateFibermapElementRequestSchema,
   UpdateFibermapFolderRequestSchema,
   UpdateFibermapProductRequestSchema,
   type AuthenticatedPrincipal,
   type CreateFibermapCableModelRequest,
+  type CreateFibermapElementRequest,
   type CreateFibermapFolderRequest,
   type CreateFibermapProductRequest,
+  type ListFibermapElementsQuery,
   type ListFibermapProductsQuery,
   type PatchFibermapAttenuationRequest,
+  type PresignFibermapPhotoRequest,
+  type RegisterFibermapPhotoRequest,
+  type SearchFibermapElementsQuery,
+  type UpdateFibermapElementRequest,
   type UpdateFibermapFolderRequest,
   type UpdateFibermapProductRequest,
 } from '@netx/shared';
@@ -48,6 +60,8 @@ import { ZodQueryPipe } from '../crm/zod-query.pipe';
 import { RequiresModule } from '../licensing/license.decorators';
 import { FibermapAttenuationService } from './attenuation.service';
 import { FibermapCatalogService } from './catalog.service';
+import { FibermapElementPhotosService } from './element-photos.service';
+import { FibermapElementsService } from './elements.service';
 import { FibermapFoldersService } from './folders.service';
 
 @ApiTags('fibermap')
@@ -59,6 +73,8 @@ export class FibermapController {
     private readonly folders: FibermapFoldersService,
     private readonly catalog: FibermapCatalogService,
     private readonly attenuation: FibermapAttenuationService,
+    private readonly elements: FibermapElementsService,
+    private readonly photos: FibermapElementPhotosService,
   ) {}
 
   // ───────────────────────────────────────────────────────────────────────
@@ -98,6 +114,116 @@ export class FibermapController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     await this.folders.remove(u.tenantId, u.sub, id);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Elementos (mapa por bbox + CRUD + busca, spec §3.3/§6)
+  // ───────────────────────────────────────────────────────────────────────
+  /** GeoJSON FeatureCollection do viewport — SEMPRE com bbox (spec §6). */
+  @Get('elements')
+  @RequirePermissions('fibermap.read')
+  listElements(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Query(new ZodQueryPipe(ListFibermapElementsQuerySchema))
+    q: ListFibermapElementsQuery,
+  ) {
+    return this.elements.listGeoJson(u.tenantId, q);
+  }
+
+  /** Autocomplete por nome (painel esquerdo — voar até o elemento). */
+  @Get('elements/search')
+  @RequirePermissions('fibermap.read')
+  searchElements(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Query(new ZodQueryPipe(SearchFibermapElementsQuerySchema))
+    q: SearchFibermapElementsQuery,
+  ) {
+    return this.elements.search(u.tenantId, q);
+  }
+
+  @Get('elements/:id')
+  @RequirePermissions('fibermap.read')
+  findElement(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.elements.findById(u.tenantId, id);
+  }
+
+  @Post('elements')
+  @RequirePermissions('fibermap.write')
+  createElement(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @ZodBody(CreateFibermapElementRequestSchema)
+    body: CreateFibermapElementRequest,
+  ) {
+    return this.elements.create(u.tenantId, u.sub, body);
+  }
+
+  @Patch('elements/:id')
+  @RequirePermissions('fibermap.write')
+  updateElement(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(UpdateFibermapElementRequestSchema)
+    body: UpdateFibermapElementRequest,
+  ) {
+    return this.elements.update(u.tenantId, u.sub, id, body);
+  }
+
+  /** 409 se o elemento tem cabos/devices/conexões (spec §14.2). */
+  @Delete('elements/:id')
+  @RequirePermissions('fibermap.delete')
+  @HttpCode(204)
+  async removeElement(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    await this.elements.remove(u.tenantId, u.sub, id);
+  }
+
+  // Fotos (MinIO presigned, 2 passos)
+  @Post('elements/:id/photos/presign')
+  @RequirePermissions('fibermap.write')
+  presignPhoto(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(PresignFibermapPhotoRequestSchema)
+    body: PresignFibermapPhotoRequest,
+  ) {
+    return this.photos.presign(u.tenantId, id, body);
+  }
+
+  @Post('elements/:id/photos')
+  @RequirePermissions('fibermap.write')
+  registerPhoto(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(RegisterFibermapPhotoRequestSchema)
+    body: RegisterFibermapPhotoRequest,
+  ) {
+    return this.photos.register(u.tenantId, u.sub, id, body);
+  }
+
+  @Get('elements/:id/photos/:photoId/download')
+  @RequirePermissions('fibermap.read')
+  photoDownload(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('photoId', new ParseUUIDPipe()) photoId: string,
+  ) {
+    return this.photos.downloadUrl(u.tenantId, id, photoId);
+  }
+
+  @Delete('elements/:id/photos/:photoId')
+  @RequirePermissions('fibermap.write')
+  @HttpCode(204)
+  async removePhoto(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('photoId', new ParseUUIDPipe()) photoId: string,
+  ) {
+    await this.photos.remove(u.tenantId, u.sub, id, photoId);
   }
 
   // ───────────────────────────────────────────────────────────────────────
