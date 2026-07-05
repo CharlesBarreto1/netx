@@ -25,8 +25,12 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
+  BulkFuseRequestSchema,
   CreateFibermapCableModelRequestSchema,
   CreateFibermapCableRequestSchema,
+  CreateFibermapConnectionRequestSchema,
+  CreateFibermapCutRequestSchema,
+  CreateFibermapDeviceRequestSchema,
   CreateFibermapElementRequestSchema,
   CreateFibermapFolderRequestSchema,
   CreateFibermapProductRequestSchema,
@@ -40,13 +44,19 @@ import {
   RegisterFibermapPhotoRequestSchema,
   SearchFibermapElementsQuerySchema,
   UpdateFibermapCableRequestSchema,
+  UpdateFibermapConnectionRequestSchema,
+  UpdateFibermapDeviceRequestSchema,
   UpdateFibermapElementRequestSchema,
   UpdateFibermapFolderRequestSchema,
   UpdateFibermapProductRequestSchema,
   UpdateFibermapSegmentRequestSchema,
   type AuthenticatedPrincipal,
+  type BulkFuseRequest,
   type CreateFibermapCableModelRequest,
   type CreateFibermapCableRequest,
+  type CreateFibermapConnectionRequest,
+  type CreateFibermapCutRequest,
+  type CreateFibermapDeviceRequest,
   type CreateFibermapElementRequest,
   type CreateFibermapFolderRequest,
   type CreateFibermapProductRequest,
@@ -60,6 +70,8 @@ import {
   type RegisterFibermapPhotoRequest,
   type SearchFibermapElementsQuery,
   type UpdateFibermapCableRequest,
+  type UpdateFibermapConnectionRequest,
+  type UpdateFibermapDeviceRequest,
   type UpdateFibermapElementRequest,
   type UpdateFibermapFolderRequest,
   type UpdateFibermapProductRequest,
@@ -70,8 +82,10 @@ import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { ZodBody } from '../../common/zod.pipe';
 import { ZodQueryPipe } from '../crm/zod-query.pipe';
 import { RequiresModule } from '../licensing/license.decorators';
+import { FibermapAccessPointService } from './access-point.service';
 import { FibermapAttenuationService } from './attenuation.service';
 import { FibermapCablesService } from './cables.service';
+import { FibermapConnectionsService } from './connections.service';
 import { FibermapCatalogService } from './catalog.service';
 import { FibermapElementPhotosService } from './element-photos.service';
 import { FibermapElementsService } from './elements.service';
@@ -89,6 +103,8 @@ export class FibermapController {
     private readonly elements: FibermapElementsService,
     private readonly photos: FibermapElementPhotosService,
     private readonly cables: FibermapCablesService,
+    private readonly accessPoint: FibermapAccessPointService,
+    private readonly conns: FibermapConnectionsService,
   ) {}
 
   // ───────────────────────────────────────────────────────────────────────
@@ -248,6 +264,117 @@ export class FibermapController {
     @Param('photoId', new ParseUUIDPipe()) photoId: string,
   ) {
     await this.photos.remove(u.tenantId, u.sub, id, photoId);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Ponto de acesso + grafo lógico (FM-3, spec §8)
+  // ───────────────────────────────────────────────────────────────────────
+  /** Payload completo do editor de emendas — O endpoint do frontend (§6). */
+  @Get('elements/:id/access-point')
+  @RequirePermissions('fibermap.read')
+  accessPointOf(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.accessPoint.get(u.tenantId, id);
+  }
+
+  /** Fusão/conector entre pontas livres do MESMO elemento (§14.1). */
+  @Post('connections')
+  @RequirePermissions('fibermap.write')
+  createConnection(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @ZodBody(CreateFibermapConnectionRequestSchema)
+    body: CreateFibermapConnectionRequest,
+  ) {
+    return this.conns.create(u.tenantId, u.sub, body);
+  }
+
+  /** Fusão em sequência: fibras N..N+k do cabo A nas M..M+k do B (§8.1). */
+  @Post('connections/bulk-fuse')
+  @RequirePermissions('fibermap.write')
+  bulkFuse(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @ZodBody(BulkFuseRequestSchema) body: BulkFuseRequest,
+  ) {
+    return this.conns.bulkFuse(u.tenantId, u.sub, body);
+  }
+
+  /** Editar perda/nota (badge inline do editor). */
+  @Patch('connections/:id')
+  @RequirePermissions('fibermap.write')
+  updateConnection(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(UpdateFibermapConnectionRequestSchema)
+    body: UpdateFibermapConnectionRequest,
+  ) {
+    return this.conns.update(u.tenantId, u.sub, id, body);
+  }
+
+  /** Desfazer fusão — libera as pontas, preserva histórico. */
+  @Delete('connections/:id')
+  @RequirePermissions('fibermap.write')
+  @HttpCode(204)
+  async removeConnection(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    await this.conns.remove(u.tenantId, u.sub, id);
+  }
+
+  /** Tesoura: corta fibra expressa num ponto de passagem (§4). */
+  @Post('fibers/:id/cut')
+  @RequirePermissions('fibermap.write')
+  cutFiber(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(CreateFibermapCutRequestSchema) body: CreateFibermapCutRequest,
+  ) {
+    return this.conns.cut(u.tenantId, u.sub, id, body);
+  }
+
+  /** Desfaz o corte — só com as duas pontas livres (§6). */
+  @Delete('cuts/:id')
+  @RequirePermissions('fibermap.write')
+  @HttpCode(204)
+  async removeCut(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    await this.conns.removeCut(u.tenantId, u.sub, id);
+  }
+
+  /** Splitter/DIO/OLT dentro do elemento (portas geradas, §3.5). */
+  @Post('elements/:id/devices')
+  @RequirePermissions('fibermap.write')
+  createDevice(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(CreateFibermapDeviceRequestSchema) body: CreateFibermapDeviceRequest,
+  ) {
+    return this.conns.createDevice(u.tenantId, u.sub, id, body);
+  }
+
+  @Patch('devices/:id')
+  @RequirePermissions('fibermap.write')
+  updateDevice(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(UpdateFibermapDeviceRequestSchema) body: UpdateFibermapDeviceRequest,
+  ) {
+    return this.conns.updateDevice(u.tenantId, u.sub, id, body);
+  }
+
+  /** 409 com portas conectadas. */
+  @Delete('devices/:id')
+  @RequirePermissions('fibermap.delete')
+  @HttpCode(204)
+  async removeDevice(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    await this.conns.removeDevice(u.tenantId, u.sub, id);
   }
 
   // ───────────────────────────────────────────────────────────────────────
