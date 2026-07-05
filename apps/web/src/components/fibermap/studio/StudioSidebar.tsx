@@ -210,6 +210,8 @@ function FolderNode({
   onCreateFolder,
   onRenameFolder,
   onDeleteFolder,
+  onSelectElement,
+  onOpenCable,
   canWrite,
   canDelete,
 }: {
