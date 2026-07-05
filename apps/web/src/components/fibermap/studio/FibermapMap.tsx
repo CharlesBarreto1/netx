@@ -39,6 +39,7 @@ import {
 } from '@/lib/fibermap-api';
 
 import { ELEMENT_TYPE_COLOR, type StudioView } from './constants';
+import { addElementIcons } from './map-icons';
 
 // ─── Tipos públicos ──────────────────────────────────────────────────────────
 export interface FibermapMapHandle {
@@ -344,6 +345,8 @@ export function FibermapMap({
     }
 
     map.on('load', () => {
+      // Ícones por tipo (cubo CTO, domo CEO, torre POP…) — canvas → addImage.
+      addElementIcons(map);
       map.addSource(SOURCE_ID, {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
@@ -449,14 +452,15 @@ export function FibermapMap({
       });
       map.addLayer({
         id: 'fibermap-points',
-        type: 'circle',
+        type: 'symbol',
         source: SOURCE_ID,
         filter: ['!', ['has', 'point_count']],
-        paint: {
-          'circle-color': ['get', 'color'],
-          'circle-radius': 6,
-          'circle-stroke-color': '#ffffff',
-          'circle-stroke-width': 1.5,
+        layout: {
+          'icon-image': ['concat', 'fm-', ['get', 'type']],
+          // Poste é mobiliário de rota — menor pra não poluir.
+          'icon-size': ['match', ['get', 'type'], 'POLE', 0.6, 0.95],
+          'icon-allow-overlap': true,
+          'icon-ignore-placement': true,
         },
       });
       map.addLayer({
@@ -469,7 +473,7 @@ export function FibermapMap({
           'text-field': ['get', 'name'],
           'text-font': ['Open Sans Semibold'],
           'text-size': 11,
-          'text-offset': [0, 1.1],
+          'text-offset': [0, 1.5],
           'text-anchor': 'top',
           'text-optional': true,
         },
@@ -523,6 +527,18 @@ export function FibermapMap({
       // Clique em segmento de cabo → popup (só no select; camada de hit larga).
       map.on('click', 'fibermap-cable-hit', (e: MapLayerMouseEvent) => {
         if (modeRef.current !== 'select') return;
+        // BUG FIX: todo cabo termina num elemento, então o clique no elemento
+        // também cai na faixa de hit do cabo (14px) e o popup do cabo — este
+        // handler roda por último — engolia o do elemento. Elemento/cluster
+        // têm PRECEDÊNCIA: se houver um por perto, o popup do ponto fica.
+        const overElement = map.queryRenderedFeatures(
+          [
+            [e.point.x - 12, e.point.y - 12],
+            [e.point.x + 12, e.point.y + 12],
+          ],
+          { layers: ['fibermap-points', 'fibermap-clusters'] },
+        );
+        if (overElement.length > 0) return;
         const feature = e.features?.[0];
         if (!feature) return;
         const p = feature.properties as unknown as {
