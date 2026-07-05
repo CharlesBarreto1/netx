@@ -369,6 +369,92 @@ export interface FibermapFolderContents {
   }>;
 }
 
+// ─── Ponto de acesso / grafo lógico (FM-3) ──────────────────────────────────
+export type FibermapEndSide = 'A' | 'B' | 'U' | 'D';
+
+export interface FibermapEndpointRef {
+  type: 'FIBER_END' | 'PORT';
+  fiberId?: string;
+  side?: FibermapEndSide;
+  cutId?: string;
+  portId?: string;
+}
+
+export interface FibermapApFiberEnd {
+  side: FibermapEndSide;
+  cutId: string | null;
+  state: 'FREE' | 'CONNECTED';
+  connectionId: string | null;
+}
+
+export interface FibermapApFiber {
+  id: string;
+  fiberNumber: number;
+  tubeNumber: number;
+  color: string;
+  status: 'DARK' | 'ACTIVE' | 'RESERVED' | 'BROKEN';
+  state: 'FREE' | 'CONNECTED' | 'EXPRESS';
+  ends: FibermapApFiberEnd[];
+}
+
+export interface FibermapApCable {
+  id: string;
+  name: string;
+  displayColor: string | null;
+  fiberCount: number;
+  colorStandard: FibermapColorStandard;
+  relation: 'STARTS' | 'ENDS' | 'PASSES' | 'LOOP';
+  tubes: Array<{ tubeNumber: number; color: string }>;
+  fibers: FibermapApFiber[];
+}
+
+export interface FibermapApPort {
+  id: string;
+  role: 'IN' | 'OUT' | 'BIDI';
+  portNumber: number;
+  label: string | null;
+  faces: { C: string | null; F: string | null };
+}
+
+export interface FibermapApDevice {
+  id: string;
+  type: 'SPLITTER' | 'DIO' | 'OLT' | 'ONU_SHELF' | 'RACK';
+  name: string;
+  metadata: Record<string, unknown>;
+  ports: FibermapApPort[];
+}
+
+export interface FibermapApConnectionSide {
+  type: 'FIBER_END' | 'PORT';
+  fiberId?: string;
+  side?: FibermapEndSide;
+  cutId?: string;
+  portId?: string;
+  cableName?: string;
+  fiberNumber?: number;
+  fiberColor?: string;
+  deviceName?: string;
+  portLabel?: string;
+}
+
+export interface FibermapApConnection {
+  id: string;
+  kind: 'FUSION' | 'CONNECTOR' | 'SPLITTER_PATH';
+  lossDb: number | null;
+  notes: string | null;
+  a: FibermapApConnectionSide;
+  b: FibermapApConnectionSide;
+}
+
+export interface FibermapAccessPoint {
+  element: { id: string; name: string; type: string };
+  cables: FibermapApCable[];
+  devices: FibermapApDevice[];
+  connections: FibermapApConnection[];
+  defaultFusionLossDb: number;
+  defaultConnectorLossDb: number;
+}
+
 // ─── Atenuação ──────────────────────────────────────────────────────────────
 export type FibermapAttenuationKey =
   | 'FIBER_1310' | 'FIBER_1490' | 'FIBER_1550'
@@ -507,6 +593,50 @@ export const fibermapApi = {
   ) => api.post<FibermapCable>(`/v1/fibermap/cables/${cableId}/slacks`, dto),
   deleteSlack: (slackId: string) =>
     api.delete<FibermapCable>(`/v1/fibermap/slacks/${slackId}`),
+
+  // Ponto de acesso / grafo lógico (FM-3)
+  accessPoint: (elementId: string) =>
+    api.get<FibermapAccessPoint>(`/v1/fibermap/elements/${elementId}/access-point`),
+  createConnection: (dto: {
+    elementId: string;
+    kind: 'FUSION' | 'CONNECTOR';
+    a: FibermapEndpointRef;
+    b: FibermapEndpointRef;
+    lossDb?: number | null;
+    notes?: string | null;
+  }) => api.post<{ id: string }>('/v1/fibermap/connections', dto),
+  bulkFuse: (dto: {
+    elementId: string;
+    aCableId: string;
+    aStartFiber: number;
+    bCableId: string;
+    bStartFiber: number;
+    count: number;
+  }) =>
+    api.post<{ created: number; skipped: Array<{ aFiber: number; bFiber: number; reason: string }> }>(
+      '/v1/fibermap/connections/bulk-fuse',
+      dto,
+    ),
+  updateConnection: (id: string, dto: { lossDb?: number | null; notes?: string | null }) =>
+    api.patch<void>(`/v1/fibermap/connections/${id}`, dto),
+  deleteConnection: (id: string) => api.delete<void>(`/v1/fibermap/connections/${id}`),
+  cutFiber: (fiberId: string, elementId: string) =>
+    api.post<{ id: string }>(`/v1/fibermap/fibers/${fiberId}/cut`, { elementId }),
+  deleteCut: (cutId: string) => api.delete<void>(`/v1/fibermap/cuts/${cutId}`),
+  createDevice: (
+    elementId: string,
+    dto: {
+      type: 'SPLITTER' | 'DIO' | 'OLT';
+      name: string;
+      ratio?: '1x2' | '1x4' | '1x8' | '1x16' | '1x32' | '1x64';
+      topology?: 'BALANCED' | 'UNBALANCED';
+      tapPercent?: number;
+      portsCount?: number;
+    },
+  ) => api.post<{ id: string }>(`/v1/fibermap/elements/${elementId}/devices`, dto),
+  updateDevice: (id: string, dto: { name?: string }) =>
+    api.patch<void>(`/v1/fibermap/devices/${id}`, dto),
+  deleteDevice: (id: string) => api.delete<void>(`/v1/fibermap/devices/${id}`),
 
   // Catálogo
   listProducts: (params: ListFibermapProductsParams = {}) =>

@@ -56,6 +56,8 @@ export interface FibermapMapLabels {
   detail: string;
   remove: string;
   loadError: string;
+  /** Botão do popup: abre o editor de emendas (FM-3, spec §7). */
+  accessPoint: string;
   /** Aviso do modo desenho: o 1º clique precisa cair num elemento. */
   drawStartOnElement: string;
   typeLabels: Record<FibermapElementType, string>;
@@ -89,6 +91,8 @@ export interface FibermapMapProps {
   onDrawComplete: (result: FibermapDrawResult) => void;
   /** Clique em [Detalhe] no popup de um segmento de cabo. */
   onOpenCable: (cableId: string) => void;
+  /** Clique em [Ponto de acesso] no popup do elemento (FM-3). */
+  onOpenAccessPoint: (elementId: string) => void;
 }
 
 // ─── Style / constantes ──────────────────────────────────────────────────────
@@ -130,6 +134,7 @@ export function FibermapMap({
   onRequestDelete,
   onDrawComplete,
   onOpenCable,
+  onOpenAccessPoint,
 }: FibermapMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
@@ -155,6 +160,7 @@ export function FibermapMap({
     onRequestDelete,
     onDrawComplete,
     onOpenCable,
+    onOpenAccessPoint,
   });
   useEffect(() => {
     cbRef.current = {
@@ -165,6 +171,7 @@ export function FibermapMap({
       onRequestDelete,
       onDrawComplete,
       onOpenCable,
+      onOpenAccessPoint,
     };
     labelsRef.current = labels;
     canDeleteRef.current = canDelete;
@@ -297,7 +304,18 @@ export function FibermapMap({
         : l.typeLabels[props.type];
 
       const actions = document.createElement('div');
-      actions.className = 'flex gap-1.5 pt-0.5';
+      actions.className = 'flex flex-wrap gap-1.5 pt-0.5';
+      // [Abrir ponto de acesso] — vista lógica de emendas (spec §7/FM-3).
+      const apBtn = document.createElement('button');
+      apBtn.type = 'button';
+      apBtn.className =
+        'rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700';
+      apBtn.textContent = l.accessPoint;
+      apBtn.addEventListener('click', () => {
+        popupRef.current?.remove();
+        cbRef.current.onOpenAccessPoint(props.id);
+      });
+      actions.append(apBtn);
       const detailBtn = document.createElement('button');
       detailBtn.type = 'button';
       detailBtn.className =

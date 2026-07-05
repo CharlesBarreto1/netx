@@ -16,7 +16,9 @@
  * Permissões como UX (backend é a autoridade): botões de escrita somem sem
  * fibermap.write, exclusões sem fibermap.delete, Config sem fibermap.admin.
  */
+import type { Route } from 'next';
 import dynamic from 'next/dynamic';
+import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useSWR, { mutate as globalMutate } from 'swr';
@@ -72,6 +74,7 @@ type FolderModalState = FibermapFolder | { parentId: string | null };
 export function FibermapStudio({ initialView }: { initialView: StudioView }) {
   const t = useTranslations('fibermap');
   const tc = useTranslations('common');
+  const router = useRouter();
 
   // Gate client-side puro: o (fullscreen) layout só renderiza children após
   // checar a sessão no client, então ler localStorage aqui é seguro.
@@ -123,6 +126,7 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
       detail: t('studio.popup.detail'),
       remove: t('studio.popup.delete'),
       loadError: t('studio.map.loadError'),
+      accessPoint: t('studio.popup.accessPoint'),
       drawStartOnElement: t('studio.cable.drawStartOnElement'),
       typeLabels: Object.fromEntries(
         ELEMENT_TYPES.map((et) => [et, t(`studio.type.${et}`)]),
@@ -205,6 +209,12 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
     setDetailId(null);
     setCableDetailId(cableId);
   }, []);
+  const handleOpenAccessPoint = useCallback(
+    (id: string) => {
+      router.push(`/fibermap/access-point/${id}` as Route);
+    },
+    [router],
+  );
 
   function closeDetail() {
     setDetailId(null);
@@ -367,6 +377,7 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
             onRequestDelete={handleRequestDelete}
             onDrawComplete={handleDrawComplete}
             onOpenCable={handleOpenCable}
+            onOpenAccessPoint={handleOpenAccessPoint}
           />
 
           {/* HUD — instrução do modo ativo */}
