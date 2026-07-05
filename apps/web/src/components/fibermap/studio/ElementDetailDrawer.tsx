@@ -581,7 +581,7 @@ export function ElementDetailDrawer({
             className="flex max-h-full max-w-4xl flex-col items-center gap-2"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element -- URL presignada dinâmica do MinIO; next/image exigiria remotePatterns do storage */}
+            {/* <img> puro: URL presignada dinâmica do MinIO — next/image exigiria remotePatterns do storage */}
             <img
               src={lightbox.url}
               alt={lightbox.photo.fileName ?? ''}
