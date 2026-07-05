@@ -45,10 +45,10 @@ import {
   buildLayout,
   connectionPath,
   fiberAnchorId,
+  HEADER_H,
   pathMidpoint,
   portAnchorId,
   ROW_H,
-  type Anchor,
 } from './layout';
 
 const PILL_R = 9;
