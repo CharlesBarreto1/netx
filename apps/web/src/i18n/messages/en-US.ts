@@ -168,6 +168,11 @@ const messages = {
       otdr: {
         active: 'OTDR: {label}',
       },
+      kml: {
+        exportTitle: 'Export KML (selected folder or everything)',
+        importTitle: 'Import KML/KMZ (Tomodat, Google Earth)',
+        exported: 'KML exported: {elements} elements · {cables} cables',
+      },
     },
     // Access point — splice editor (Screen 2 · FM-3)
     ap: {
@@ -298,6 +303,24 @@ const messages = {
       colLoss: 'Loss',
       colRx: 'Expected Rx',
       measured: 'measured {dbm} (Δ {delta} dB)',
+    },
+    kml: {
+      title: 'Import KML/KMZ',
+      folder: 'Target folder',
+      file: 'File (.kml/.kmz)',
+      analyze: 'Analyze',
+      confirm: 'Import {count} items',
+      invalid: 'Pick the target folder and the file',
+      summary: '{file}: {elements} elements and {cables} cables to create · {skipped} skipped',
+      colElement: 'Element',
+      colType: 'Type',
+      colStatus: 'Status',
+      colCable: 'Cable',
+      colLength: 'Length',
+      colEndpoints: 'Endpoints',
+      create: 'create',
+      newPole: 'new pole',
+      result: 'Imported: {elements} elements · {poles} auto poles · {cables} cables',
     },
     settings: {
       title: 'FiberMap settings',

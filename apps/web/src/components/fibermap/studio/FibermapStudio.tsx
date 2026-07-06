@@ -46,6 +46,7 @@ import { CableDetailDrawer } from './CableDetailDrawer';
 import { CableDrawModal } from './CableDrawModal';
 import { ElementCreateModal, type ElementDraft } from './ElementCreateModal';
 import { ElementDetailDrawer } from './ElementDetailDrawer';
+import { KmlImportModal } from '../kml/KmlImportModal';
 import { OtdrModal } from '../otdr/OtdrModal';
 import type {
   FibermapDrawResult,
@@ -152,6 +153,27 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
     window.sessionStorage.setItem(FIBERMAP_OTDR_STORAGE_KEY, JSON.stringify(overlay));
     setOtdrElementId(null);
   }, []);
+
+  // ── KML (FM-7): export (Blob — auth vai no header) + modal de import ──────
+  const [kmlModalOpen, setKmlModalOpen] = useState(false);
+  const exportKml = useCallback(async () => {
+    try {
+      const r = await fibermapApi.exportKml(selectedFolderId ?? undefined);
+      const blob = new Blob([r.kml], {
+        type: 'application/vnd.google-earth.kml+xml',
+      });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = r.fileName;
+      a.click();
+      URL.revokeObjectURL(a.href);
+      toast.success(
+        t('studio.kml.exported', { elements: r.elements, cables: r.cables }),
+      );
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.friendlyMessage : tc('error'));
+    }
+  }, [selectedFolderId, t, tc]);
 
   // ── Pastas (SWR — fetcher global do layout) ────────────────────────────────
   const { data: foldersData, mutate: mutateFolders } = useSWR<FibermapFolder[]>(
@@ -327,7 +349,13 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
       if (isTypingTarget(e.target)) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const modalOpen = Boolean(
-        draft || drawResult || folderModal || folderDeleting || deleteRequest || otdrElementId,
+        draft ||
+          drawResult ||
+          folderModal ||
+          folderDeleting ||
+          deleteRequest ||
+          otdrElementId ||
+          kmlModalOpen,
       );
       if (e.key === 'Escape') {
         if (modalOpen) return; // os modais fecham a si próprios
@@ -350,7 +378,7 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
     }
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [mode, draft, drawResult, folderModal, folderDeleting, deleteRequest, otdrElementId, canWrite]);
+  }, [mode, draft, drawResult, folderModal, folderDeleting, deleteRequest, otdrElementId, kmlModalOpen, canWrite]);
 
   return (
     <div className="flex h-screen w-screen flex-col bg-bg text-text">
@@ -366,6 +394,8 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
         truncated={viewportInfo.truncated}
         canWrite={canWrite}
         canAdmin={canAdmin}
+        onExportKml={() => void exportKml()}
+        onImportKml={() => setKmlModalOpen(true)}
       />
 
       {/* ─── Body ───────────────────────────────────────────────────────── */}
@@ -566,6 +596,18 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
           elementId={otdrElementId}
           onClose={() => setOtdrElementId(null)}
           onShowOnMap={applyOtdrOverlay}
+        />
+      )}
+
+      {kmlModalOpen && (
+        <KmlImportModal
+          folders={folders}
+          defaultFolderId={selectedFolderId}
+          onClose={() => setKmlModalOpen(false)}
+          onImported={() => {
+            mapHandleRef.current?.refresh();
+            void mutateFolders();
+          }}
         />
       )}
 

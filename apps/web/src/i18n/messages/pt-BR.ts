@@ -178,6 +178,11 @@ const messages = {
       otdr: {
         active: 'OTDR: {label}',
       },
+      kml: {
+        exportTitle: 'Exportar KML (pasta selecionada ou tudo)',
+        importTitle: 'Importar KML/KMZ (Tomodat, Google Earth)',
+        exported: 'KML exportado: {elements} elementos · {cables} cabos',
+      },
     },
     // Ponto de acesso — editor de emendas (Tela 2 · FM-3)
     ap: {
@@ -308,6 +313,24 @@ const messages = {
       colLoss: 'Perda',
       colRx: 'Rx esperado',
       measured: 'medido {dbm} (Δ {delta} dB)',
+    },
+    kml: {
+      title: 'Importar KML/KMZ',
+      folder: 'Pasta destino',
+      file: 'Arquivo (.kml/.kmz)',
+      analyze: 'Analisar',
+      confirm: 'Importar {count} itens',
+      invalid: 'Escolha a pasta destino e o arquivo',
+      summary: '{file}: {elements} elementos e {cables} cabos a criar · {skipped} pulados',
+      colElement: 'Elemento',
+      colType: 'Tipo',
+      colStatus: 'Status',
+      colCable: 'Cabo',
+      colLength: 'Extensão',
+      colEndpoints: 'Pontas',
+      create: 'criar',
+      newPole: 'poste novo',
+      result: 'Importado: {elements} elementos · {poles} postes automáticos · {cables} cabos',
     },
     settings: {
       title: 'Configurações do FiberMap',

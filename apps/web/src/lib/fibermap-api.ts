@@ -5,7 +5,7 @@
  * Tipos replicados de @netx/shared (o web não importa o pacote direto —
  * convenção do repo). Manter em sincronia com packages/shared/src/fibermap.
  */
-import { api } from './api';
+import { api, apiUpload } from './api';
 
 // ─── Domínio ────────────────────────────────────────────────────────────────
 export type FibermapElementType =
@@ -643,6 +643,52 @@ export interface FibermapPowerBudgetResponse {
   maxDistanceM: number;
 }
 
+// ─── KML (FM-7) ─────────────────────────────────────────────────────────────
+export type FibermapKmlImportType = 'POP' | 'CEO' | 'CTO' | 'POLE';
+
+export interface FibermapKmlExportResponse {
+  fileName: string;
+  kml: string;
+  elements: number;
+  cables: number;
+}
+
+export interface FibermapKmlImportElementPreview {
+  name: string;
+  type: FibermapKmlImportType;
+  latitude: number;
+  longitude: number;
+  description: string | null;
+  status: 'CREATE' | 'SKIP';
+  reason: string | null;
+}
+
+export interface FibermapKmlImportCablePreview {
+  name: string;
+  vertices: number;
+  lengthMeters: number;
+  description: string | null;
+  fromElementName: string | null;
+  toElementName: string | null;
+  status: 'CREATE' | 'SKIP';
+  reason: string | null;
+  path: FibermapPathPoint[];
+}
+
+export interface FibermapKmlImportPreview {
+  folderId: string;
+  elements: FibermapKmlImportElementPreview[];
+  cables: FibermapKmlImportCablePreview[];
+  warnings: string[];
+}
+
+export interface FibermapKmlImportResult {
+  elementsCreated: number;
+  polesCreated: number;
+  cablesCreated: number;
+  skipped: Array<{ item: string; reason: string }>;
+}
+
 // ─── Atenuação ──────────────────────────────────────────────────────────────
 export type FibermapAttenuationKey =
   | 'FIBER_1310' | 'FIBER_1490' | 'FIBER_1550'
@@ -883,6 +929,34 @@ export const fibermapApi = {
       newExcessFactor: number;
       clamped: boolean;
     }>(`/v1/fibermap/cables/${cableId}/calibrate-excess`, { pairs }),
+
+  // KML (FM-7)
+  exportKml: (folderId?: string) =>
+    api.get<FibermapKmlExportResponse>(`/v1/fibermap/export/kml${qs({ folderId })}`),
+  kmlImportPreview: (folderId: string, file: File) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return apiUpload<FibermapKmlImportPreview>(
+      `/v1/fibermap/import/kml/preview${qs({ folderId })}`,
+      fd,
+    );
+  },
+  kmlImportConfirm: (input: {
+    folderId: string;
+    elements: Array<{
+      name: string;
+      type: FibermapKmlImportType;
+      latitude: number;
+      longitude: number;
+      description?: string | null;
+    }>;
+    cables: Array<{
+      name: string;
+      path: FibermapPathPoint[];
+      description?: string | null;
+    }>;
+  }) =>
+    api.post<FibermapKmlImportResult>('/v1/fibermap/import/kml/confirm', input),
 
   // Catálogo
   listProducts: (params: ListFibermapProductsParams = {}) =>

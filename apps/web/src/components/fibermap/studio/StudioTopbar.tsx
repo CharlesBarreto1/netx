@@ -12,12 +12,14 @@
 import {
   AlertTriangle,
   ChevronLeft,
+  Download,
   MousePointer,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
   Settings,
   Spline,
+  Upload,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useTranslations } from 'next-intl';
@@ -52,6 +54,9 @@ interface StudioTopbarProps {
   truncated: boolean;
   canWrite: boolean;
   canAdmin: boolean;
+  /** FM-7: export baixa o KML; import abre o modal (só com write). */
+  onExportKml: () => void;
+  onImportKml: () => void;
 }
 
 export function StudioTopbar({
@@ -65,6 +70,8 @@ export function StudioTopbar({
   truncated,
   canWrite,
   canAdmin,
+  onExportKml,
+  onImportKml,
 }: StudioTopbarProps) {
   const t = useTranslations('fibermap');
   const moreActive =
@@ -177,6 +184,26 @@ export function StudioTopbar({
         <span className="hidden text-xs text-text-muted sm:inline">
           {t('studio.topbar.count', { count })}
         </span>
+        <button
+          type="button"
+          onClick={onExportKml}
+          title={t('studio.kml.exportTitle')}
+          className="flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-text-muted hover:bg-surface-hover hover:text-text"
+        >
+          <Download className="h-3.5 w-3.5" />
+          KML
+        </button>
+        {canWrite && (
+          <button
+            type="button"
+            onClick={onImportKml}
+            title={t('studio.kml.importTitle')}
+            className="flex h-8 items-center gap-1 rounded-md px-2 text-xs font-medium text-text-muted hover:bg-surface-hover hover:text-text"
+          >
+            <Upload className="h-3.5 w-3.5" />
+            KML
+          </button>
+        )}
         {canAdmin && (
           <Link
             href="/fibermap/settings"
