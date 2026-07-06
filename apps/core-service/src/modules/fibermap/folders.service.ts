@@ -28,7 +28,14 @@ type FolderRow = Prisma.FibermapFolderGetPayload<{
 }>;
 
 const FOLDER_INCLUDE = {
-  _count: { select: { elements: true, cables: true } },
+  // Contadores da árvore só com itens VIVOS — sem o filtro, elementos/cabos
+  // soft-deletados viravam fantasmas no painel.
+  _count: {
+    select: {
+      elements: { where: { deletedAt: null } },
+      cables: { where: { deletedAt: null } },
+    },
+  },
 } satisfies Prisma.FibermapFolderInclude;
 
 function toResponse(f: FolderRow): FibermapFolderResponse {

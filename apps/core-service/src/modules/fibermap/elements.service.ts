@@ -350,16 +350,19 @@ export class FibermapElementsService {
     actorUserId: string,
     id: string,
   ): Promise<void> {
+    // Só dependências VIVAS bloqueiam: o delete de cabo é soft e mantém
+    // segmentos/reservas como histórico (FM-2) — sem o filtro pelo cabo
+    // vivo, um cabo já excluído prendia o elemento pra sempre.
     const existing = await this.prisma.fibermapElement.findFirst({
       where: { id, tenantId, deletedAt: null },
       include: {
         _count: {
           select: {
             devices: { where: { deletedAt: null } },
-            segmentsFrom: true,
-            segmentsTo: true,
-            slacks: true,
-            fiberCuts: true,
+            segmentsFrom: { where: { cable: { deletedAt: null } } },
+            segmentsTo: { where: { cable: { deletedAt: null } } },
+            slacks: { where: { cable: { deletedAt: null } } },
+            fiberCuts: { where: { fiber: { cable: { deletedAt: null } } } },
             connections: { where: { deletedAt: null } },
           },
         },
