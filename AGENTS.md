@@ -98,6 +98,14 @@ src/modules/
   disconnect/            # CoA disconnect estratégias (SSH Mikrotik, RADIUS CoA)
   finance/               # cobranças, caixas, descontos
   network/               # NAS (NetworkEquipment), POPs
+  fibermap/              # OSP v2 — planta externa (FIBERMAP-SPEC.md): mapa,
+                         #   catálogo, cabos/fibras, fusões, trace, OTDR,
+                         #   power budget, KML, e a costura assinante↔planta
+                         #   (subscriber.service — contracts.fibermap_port_id)
+  mapping/               # SÓ o mapa comercial de clientes (/mapping/customers).
+                         #   O estúdio antigo (/mapa) e o módulo optical (OSP
+                         #   v1) foram REMOVIDOS em jul/2026 — dados migrados
+                         #   pro fibermap (migration fibermap_osp_v1_migration)
   portal/                # portal do cliente final (público)
   prisma/                # PrismaService global (RLS infra-only)
   provisioning/          # OLT/ONT, drivers, install wizard
@@ -345,7 +353,13 @@ Cada **polígono** Ufinet = uma `Olt` (vendor=UFINET, providerMode=ORCHESTRATOR)
   `GET /v1/ufinet/services/:id/trace`. ⚠️ Tabela cresce infinito (sem purge) —
   inclui inventário inteiro em cada GET; limpar via SQL periodicamente.
 - **CTO_PORT = código COMPLETO da CTO** (`JLMPY-PY13734`), não "porta". É a CAIXA.
-  Vide dívida das CTOs do KMZ em "Estado pendente".
+  **Fonte (jul/2026): FiberMap.** O técnico escolhe a porta de drop no picker
+  (wizard de instalação) → `contracts.fibermap_port_id` → o CTO_PORT sai do
+  NOME do elemento CTO no FiberMap (`FibermapSubscriberService.getContractPortRef`).
+  Fallbacks na confirmação (`ufinet-orders.confirmService`): ctoPort persistido →
+  porta FiberMap do contrato → inventário Ufinet (`readCtoPort`). CTO de código
+  errado (dívida do KMZ) agora se corrige RENOMEANDO o elemento no estúdio
+  FiberMap (não mais via SQL em ufinet_services).
 
 ### TR-069 ACS (apps/cwmp-server)
 - Servidor SOAP/XML standalone na porta **7547**.
@@ -447,7 +461,9 @@ cancel/applyTrustExtend` + `Provisioning.installCustomer`. Backfill SQL em
         ↓
 2. Técnico abre /provisioning/install/<id> → escolhe OLT (modo EXTERNAL),
    digita SN GPON da ONT, escolhe modelo (BAND_STEERING ou DUAL_BAND),
-   SSID + senha Wi-Fi + VLAN 1010
+   SSID + senha Wi-Fi + VLAN 1010, e seleciona CTO/porta no picker FiberMap
+   (fibermapPortId → vincula contracts.fibermap_port_id; em OLT Ufinet o
+   CTO_PORT da confirmação sai do nome do elemento CTO)
         ↓
 3. NetX backend, em UMA tx:
    - NoOpOltDriver.authorize → cria Ont row + wifiBandMode salvo
@@ -568,8 +584,17 @@ SELECT migration_name, finished_at FROM _prisma_migrations ORDER BY finished_at 
   em formato inconsistente (`PY13734` sem prefixo, `FTTXPY13706` com prefixo
   errado) em vez de `JLMPY-PY####`. O `CTO_PORT` correto é o código COMPLETO
   (`JLMPY-PY13734`). Enquanto não normalizado, cada instalação Ufinet pode
-  travar no PATCH final de confirmação com 500 "Error no controlado" — corrige
-  via SQL no `ufinet_services.cto_port` + rearma (`current_order_id=NULL`).
+  travar no PATCH final de confirmação com 500 "Error no controlado".
+  **Jul/2026**: essas caixas viraram elementos CTO do FiberMap (migração
+  `fibermap_osp_v1_migration`) — normalizar é RENOMEAR o elemento no estúdio
+  (/fibermap). Instalação já travada ainda se rearma via SQL
+  (`ufinet_services.cto_port` + `current_order_id=NULL`).
+- **OSP v1 (tabelas)**: `optical_enclosures/optical_ports/fiber_cables/
+  fiber_splices/fiber_events/network_folders` ficaram no banco como legado
+  read-only após a migração pro FiberMap (código não lê/escreve mais).
+  Dropar numa migração futura depois de validar a planta migrada em produção.
+  Splices "no meio do cabo" (sem elemento comum) NÃO migraram — re-documentar
+  no estúdio FiberMap se fizerem falta (ver comentários da migration).
 - **Driver BR** (Parks/Fiberhome/Nokia): planejado quando expandir pra BR.
   Modo EXTERNAL cobre por enquanto.
 - **TR-069 auth**: hoje sem auth no protocolo. TODO HTTP Digest per-device.

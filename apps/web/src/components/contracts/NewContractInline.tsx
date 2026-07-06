@@ -22,11 +22,17 @@ import {
   type CreateContractInput,
 } from '@/lib/contracts-api';
 import type { Customer, Paginated } from '@/lib/crm-types';
+import { fibermapApi } from '@/lib/fibermap-api';
 import { btgApi, type BrPaymentGateway } from '@/lib/finance-api';
 import { plansApi, type Plan } from '@/lib/plans-api';
+import { hasPermission } from '@/lib/session';
 import { useTenantConfig } from '@/lib/tenant-config';
 import { pppoeLoginCandidates } from '@netx/shared';
 import { AddressPicker, EMPTY_ADDRESS, type AddressValue } from '@/components/contracts/AddressPicker';
+import {
+  SubscriberPortPicker,
+  type SubscriberPortSelection,
+} from '@/components/fibermap/SubscriberPortPicker';
 
 /**
  * NewContractInline — formulário reusável de criação de contrato.
@@ -180,6 +186,11 @@ export function NewContractInline({
     ...EMPTY_ADDRESS,
     installationAddress: initial?.installationAddress ?? '',
   });
+  // CTO/porta do FiberMap (opcional). O create de contrato NÃO aceita
+  // fibermapPortId — o vínculo é feito via assign-contract APÓS criar (vide
+  // onSubmit). Nada é persistido enquanto o operador só navega no picker.
+  const canFibermap = hasPermission('fibermap.read');
+  const [fibermapSel, setFibermapSel] = useState<SubscriberPortSelection | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   // Seção técnica (auth, início, credenciais) fica recolhida por padrão — usa
@@ -398,6 +409,21 @@ export function NewContractInline({
 
     try {
       const created = await contractsApi.create(payload);
+      // Vínculo FiberMap pós-criação: o DTO de criação não tem fibermapPortId,
+      // então o assign é uma chamada separada com o id retornado. Falha aqui
+      // NÃO desfaz o contrato — aviso não-fatal; o operador vincula depois no
+      // detalhe do contrato.
+      if (fibermapSel) {
+        try {
+          await fibermapApi.assignPortToContract(fibermapSel.portId, created.id);
+        } catch (assignErr) {
+          const assignMsg =
+            assignErr instanceof ApiError
+              ? assignErr.friendlyMessage
+              : (assignErr as Error).message;
+          toast.warning(t('newContract.fibermapAssignFailed', { error: assignMsg }));
+        }
+      }
       toast.success(t('newContract.createdToast'));
       onCreated(created);
     } catch (err) {
@@ -680,6 +706,29 @@ export function NewContractInline({
           {t('newContract.mapsUrlHelp')}
         </FieldHelp>
       </div>
+
+      {/* ─── CTO / Porta (FiberMap) — opcional ─────────────────────────── */}
+      {/* O form não tem LocationPicker (coordenadas entram depois, na edição),
+          então o picker busca só por nome — sem nearLat/nearLng. */}
+      {canFibermap && (
+        <div className="rounded-md border border-border p-3">
+          <p className="text-sm font-semibold text-text">
+            {t('newContract.fibermapHeading')}
+          </p>
+          <FieldHelp>{t('newContract.fibermapHelp')}</FieldHelp>
+          <div className="mt-2">
+            <SubscriberPortPicker
+              value={
+                fibermapSel
+                  ? { portId: fibermapSel.portId, label: fibermapSel.label }
+                  : null
+              }
+              onChange={setFibermapSel}
+              disabled={submitting}
+            />
+          </div>
+        </div>
+      )}
 
       {/* ─── Wi-Fi do cliente ──────────────────────────────────────────── */}
       <div className="rounded-md border border-slate-200 p-3 dark:border-slate-700">

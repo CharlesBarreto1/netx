@@ -6,7 +6,7 @@
  * Junta numa única chamada, para um assinante (Customer):
  *   - ERP: cliente, contratos (plano/valor/status), faturas em aberto, O.S recentes
  *   - CPE: ONT vinculada + sinal óptico persistido (lastRx/lastTx)
- *   - Rede óptica: porta/CTO onde o contrato é atendido
+ *   - Rede óptica (FiberMap/OSP v2): porta de drop/CTO onde o contrato é atendido
  *   - RADIUS: se a sessão está ativa (online) — mesma lógica batch do mapa
  *
  * É PURA LEITURA: não escreve, não é dono de schema, não chama equipamento.
@@ -87,8 +87,14 @@ export class Subscriber360Service {
             lastSeenAt: true,
           },
         },
-        opticalPort: {
-          select: { number: true, enclosure: { select: { code: true } } },
+        // FiberMap (OSP v2) — porta de drop (splitter OUT) onde o contrato é
+        // atendido. O nome do elemento CTO faz o papel do antigo código da
+        // caixa no DTO (shape preservado pro frontend/mobile).
+        fibermapPort: {
+          select: {
+            portNumber: true,
+            device: { select: { element: { select: { name: true } } } },
+          },
         },
       },
     });
@@ -164,8 +170,11 @@ export class Subscriber360Service {
             lastSeenAt: c.ont.lastSeenAt ? c.ont.lastSeenAt.toISOString() : null,
           }
         : null,
-      opticalPort: c.opticalPort
-        ? { enclosureCode: c.opticalPort.enclosure.code, number: c.opticalPort.number }
+      opticalPort: c.fibermapPort
+        ? {
+            enclosureCode: c.fibermapPort.device.element.name,
+            number: c.fibermapPort.portNumber,
+          }
         : null,
     }));
 

@@ -29,6 +29,7 @@ import { sifenApi } from '@/lib/sifen-api';
 
 import { AuditTrail } from '@/components/audit/AuditTrail';
 import { ContractComodatoCard } from '@/components/contracts/ContractComodatoCard';
+import { ContractFibermapPortCard } from '@/components/contracts/ContractFibermapPortCard';
 import { ContractSessionCard } from '@/components/contracts/ContractSessionCard';
 import { ContractWifiCard } from '@/components/contracts/ContractWifiCard';
 import { ContractUsageChart } from '@/components/contracts/ContractUsageChart';
@@ -603,6 +604,14 @@ export default function ContractDetailPage() {
 
       {/* Rede neutra Ufinet (PY) — só renderiza se o contrato tem serviço Ufinet */}
       <UfinetStatusPanel contractId={contract.id} />
+
+      {/* Vínculo físico CTO/porta no FiberMap (fonte de verdade do drop).
+          O ctoPort do painel Ufinet acima segue mostrando o valor persistido. */}
+      <ContractFibermapPortCard
+        contractId={contract.id}
+        nearLat={contract.latitude}
+        nearLng={contract.longitude}
+      />
 
       {/* Equipamentos em comodato (Estoque Fase 2) */}
       <InfoCard title="Equipamentos em comodato">

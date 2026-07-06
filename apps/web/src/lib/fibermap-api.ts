@@ -689,6 +689,70 @@ export interface FibermapKmlImportResult {
   skipped: Array<{ item: string; reason: string }>;
 }
 
+// ─── Assinante ↔ planta (spec §11 — picker CTO/porta) ───────────────────────
+/** CTO com ocupação agregada (picker passo 1). */
+export interface FibermapCtoSummary {
+  elementId: string;
+  name: string;
+  folderId: string;
+  latitude: number;
+  longitude: number;
+  address: string | null;
+  splitters: number;
+  outPortsTotal: number;
+  /** Sem contrato vinculado E sem face física ocupada. */
+  outPortsFree: number;
+  occupancyPct: number;
+  /** Metros até (nearLat, nearLng); null quando busca sem coordenada. */
+  distanceM: number | null;
+}
+
+/**
+ * Status da porta de drop:
+ *   FREE      — sem contrato e sem conexão física (selecionável);
+ *   CONNECTED — fibra documentada no FiberMap mas sem contrato
+ *               (selecionável — assinante legado ainda não vinculado);
+ *   ASSIGNED  — já atende um contrato (bloqueada no picker).
+ */
+export type FibermapSubscriberPortStatus = 'FREE' | 'CONNECTED' | 'ASSIGNED';
+
+export interface FibermapSubscriberPortRow {
+  portId: string;
+  deviceId: string;
+  deviceName: string;
+  /** Razão do splitter quando disponível (metadata.ratio), ex.: "1x8". */
+  deviceRatio: string | null;
+  portNumber: number;
+  label: string | null;
+  status: FibermapSubscriberPortStatus;
+  /** Alguma face (conector/fusão) ocupada no grafo óptico. */
+  connected: boolean;
+  contract: {
+    id: string;
+    code: string | null;
+    status: string;
+    customerName: string;
+  } | null;
+}
+
+export interface FibermapCtoPortsResponse {
+  element: { id: string; name: string; latitude: number; longitude: number };
+  ports: FibermapSubscriberPortRow[];
+}
+
+/** Referência resolvida da porta do contrato — elementName = CTO_PORT Ufinet. */
+export interface FibermapContractPortRef {
+  portId: string;
+  portNumber: number;
+  label: string | null;
+  deviceId: string;
+  deviceName: string;
+  elementId: string;
+  elementName: string;
+  latitude: number;
+  longitude: number;
+}
+
 // ─── Atenuação ──────────────────────────────────────────────────────────────
 export type FibermapAttenuationKey =
   | 'FIBER_1310' | 'FIBER_1490' | 'FIBER_1550'
@@ -987,4 +1051,31 @@ export const fibermapApi = {
     api.patch<FibermapAttenuation>('/v1/fibermap/settings/attenuation-defaults', {
       values,
     }),
+
+  // Assinante ↔ planta (spec §11 — picker CTO/porta + vínculo do contrato)
+  searchCtos: (
+    params: {
+      search?: string;
+      folderId?: string;
+      nearLat?: number;
+      nearLng?: number;
+      limit?: number;
+    } = {},
+  ) => api.get<FibermapCtoSummary[]>(`/v1/fibermap/ctos${qs(params)}`),
+  ctoPorts: (elementId: string) =>
+    api.get<FibermapCtoPortsResponse>(`/v1/fibermap/ctos/${elementId}/ports`),
+  assignPortToContract: (portId: string, contractId: string) =>
+    api.post<FibermapContractPortRef>(
+      `/v1/fibermap/ports/${portId}/assign-contract`,
+      { contractId },
+    ),
+  releaseContractPort: (contractId: string) =>
+    api.post<void>(`/v1/fibermap/contracts/${contractId}/release-port`, {}),
+  /** Path pra usar como key de SWR (fetcher global). */
+  contractPortPath: (contractId: string) =>
+    `/v1/fibermap/contracts/${contractId}/port`,
+  contractPort: (contractId: string) =>
+    api.get<FibermapContractPortRef | null>(
+      `/v1/fibermap/contracts/${contractId}/port`,
+    ),
 };

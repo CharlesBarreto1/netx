@@ -245,9 +245,10 @@ export type FieldMaterial = z.infer<typeof FieldMaterialSchema>;
  *   3. Vincula caixa/porta (Ufinet CTO/porta OU CTO óptica cadastrada)
  *   4. Anexa fotos + closeDescription e fecha a O.S
  *
- * `install` reusa o mesmo contrato do /provisioning/install. `enclosureId`/
- * `enclosurePort` são pro caso de OLT própria (CTO cadastrada); pra Ufinet, o
- * caixa/porta vão dentro de `install.ufinetCto`/`install.ufinetPort`.
+ * `install` reusa o mesmo contrato do /provisioning/install. O vínculo de
+ * caixa/porta preferido é `install.fibermapPortId` (porta de drop do FiberMap);
+ * `enclosureId`/`enclosurePort` e `install.ufinetCto`/`install.ufinetPort`
+ * ficam como fallback legado (apps antigos) — o backend resolve pro FiberMap.
  */
 export const CompleteInstallationRequestSchema = z.object({
   /** Dados de provisionamento (mesmo shape do /provisioning/install). */

@@ -1,11 +1,6 @@
+// Módulo network — NAS (NetworkEquipment) e POPs. Os DTOs do OSP v1
+// (optical/fiber/kml/power-budget/pon-tree/topology/folders) foram aposentados
+// junto com o módulo `optical` — a planta externa agora é o FiberMap
+// (packages/shared/src/fibermap).
 export * from './equipment.dto';
-export * from './fiber.dto';
-export * from './fiber-event.dto';
-export * from './folder.dto';
-export * from './kml.dto';
-export * from './optical.dto';
 export * from './pop.dto';
-export * from './power-budget.dto';
-export * from './pon-port.dto';
-export * from './pon-tree.dto';
-export * from './topology.dto';

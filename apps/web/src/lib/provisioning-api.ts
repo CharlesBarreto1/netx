@@ -189,7 +189,12 @@ export interface InstallCustomerRequest {
   /** Modo Wi-Fi do modelo da ONT (default BAND_STEERING). */
   wifiBandMode?: 'BAND_STEERING' | 'DUAL_BAND';
   notes?: string | null;
-  /** Ufinet (rede neutra): caixa (CTO) + porta reais informadas pelo técnico. */
+  /**
+   * FiberMap: porta de drop (splitter OUT numa CTO da planta) onde o técnico
+   * conectou o cliente. Em OLT UFINET o backend resolve o CTO_PORT sozinho.
+   */
+  fibermapPortId?: string | null;
+  /** LEGADO — preferir fibermapPortId. Mantidos pra apps mobile antigos. */
   ufinetCto?: string | null;
   ufinetPort?: string | null;
 }

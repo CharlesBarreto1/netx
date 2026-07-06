@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, ServiceOrderStatus as PrismaSOStatus } from '@prisma/client';
@@ -37,6 +38,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { ContractsService } from '../contracts/contracts.service';
+import { FibermapSubscriberService } from '../fibermap/subscriber.service';
 import { ProvisioningService } from '../provisioning/provisioning.service';
 import { OsConsumptionService } from '../stock/os-consumption.service';
 import { StorageService } from '../storage/storage.service';
@@ -67,6 +69,8 @@ import { StorageService } from '../storage/storage.service';
  */
 @Injectable()
 export class ServiceOrdersService {
+  private readonly logger = new Logger(ServiceOrdersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
@@ -74,6 +78,7 @@ export class ServiceOrdersService {
     private readonly consumption: OsConsumptionService,
     private readonly storage: StorageService,
     private readonly contracts: ContractsService,
+    private readonly fibermapSubscriber: FibermapSubscriberService,
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -830,7 +835,7 @@ export class ServiceOrdersService {
         'Provisionamento falhou — O.S não finalizada. Verifique OLT/ONT e tente novamente.',
       );
     }
-    await this.markCtoPortUsed(tenantId, so.contractId, input);
+    await this.markCtoPortUsed(tenantId, actorUserId, so.contractId, input);
 
     // 2. Materiais consumíveis.
     if (input.materials.length > 0) {
@@ -925,7 +930,7 @@ export class ServiceOrdersService {
         );
         if (install.status === 'FAILED')
           throw new ConflictException('Provisionamento falhou — O.S não finalizada.');
-        await this.markCtoPortUsed(tenantId, so.contractId, input);
+        await this.markCtoPortUsed(tenantId, actorUserId, so.contractId, input);
         await this.consumeMaterials(tenantId, actorUserId, id, input.materials, opts.isAdmin);
         break;
       }
@@ -1010,7 +1015,7 @@ export class ServiceOrdersService {
     );
     // NÃO lança em FAILED — materiais já foram usados em campo e o técnico
     // precisa cair na confirmação pra trocar/re-tentar a ONT.
-    await this.markCtoPortUsed(tenantId, so.contractId, input);
+    await this.markCtoPortUsed(tenantId, actorUserId, so.contractId, input);
     await this.consumeMaterials(tenantId, actorUserId, id, input.materials, opts.isAdmin);
     await this.savePhotos(tenantId, actorUserId, id, input.photos);
     await this.prisma.serviceOrder.update({
@@ -1031,62 +1036,64 @@ export class ServiceOrdersService {
   }
 
   /**
-   * Marca a porta da CTO (OpticalEnclosure) como USED vinculada ao contrato, ao
-   * instalar. Resolve a CTO por id (rede própria, `enclosureId`) ou por CÓDIGO
-   * (Ufinet, `install.ufinetCto`). A porta vem de `enclosurePort` ou
-   * `install.ufinetPort`. Sem isso, as CTOs apareciam sempre 0/16.
+   * Vincula a porta de drop do FiberMap ao contrato ao instalar. Caminho
+   * preferido: `install.fibermapPortId` (picker do wizard — o installCustomer
+   * já vincula; re-chamar é idempotente). Fallback legado (apps antigos):
+   * resolve a CTO pelo texto digitado (`install.ufinetCto`) casando com o
+   * NOME do elemento CTO no FiberMap, e a porta pelo número
+   * (`enclosurePort`/`install.ufinetPort`). Sem correspondência na planta →
+   * não marca (a O.S fecha — documentação se ajusta depois no estúdio).
    */
   private async markCtoPortUsed(
     tenantId: string,
+    actorUserId: string | null,
     contractId: string,
     input: {
       enclosureId?: string | null;
       enclosurePort?: string | null;
-      install: { ufinetCto?: string | null; ufinetPort?: string | null };
+      install: {
+        fibermapPortId?: string | null;
+        ufinetCto?: string | null;
+        ufinetPort?: string | null;
+      };
     },
   ): Promise<void> {
-    // CTO: id direto (rede própria) ou por código (Ufinet — a caixa real que o
-    // técnico escolheu, ex.: "JLMPY-MP0001").
-    let enclosureId = input.enclosureId ?? null;
-    const ufinetCto = input.install?.ufinetCto?.trim() || null;
-    if (!enclosureId && ufinetCto) {
-      const enc = await this.prisma.opticalEnclosure.findFirst({
-        where: { tenantId, code: ufinetCto, deletedAt: null },
-        select: { id: true },
+    try {
+      const explicit = input.install?.fibermapPortId ?? null;
+      if (explicit) {
+        await this.fibermapSubscriber.assignPort(tenantId, actorUserId, explicit, contractId);
+        return;
+      }
+
+      const ctoName = input.install?.ufinetCto?.trim() || null;
+      const portRaw = input.enclosurePort ?? input.install?.ufinetPort ?? null;
+      const portNum = portRaw != null ? Number(String(portRaw).trim()) : NaN;
+      if (!ctoName || !Number.isInteger(portNum) || portNum < 1) return;
+
+      const element = await this.prisma.fibermapElement.findFirst({
+        where: { tenantId, type: 'CTO', name: ctoName, deletedAt: null },
+        select: {
+          devices: {
+            where: { type: 'SPLITTER', deletedAt: null },
+            select: {
+              ports: {
+                where: { role: 'OUT', portNumber: portNum },
+                select: { id: true },
+              },
+            },
+          },
+        },
       });
-      enclosureId = enc?.id ?? null;
+      const port = element?.devices.flatMap((d) => d.ports)[0];
+      if (!port) return; // CTO/porta não documentada no FiberMap — não marca
+      await this.fibermapSubscriber.assignPort(tenantId, actorUserId, port.id, contractId);
+    } catch (err) {
+      // Porta ocupada por outro contrato (ou planta inconsistente) NÃO pode
+      // derrubar a finalização da O.S — o vínculo é documentação; o operador
+      // resolve o conflito pelo estúdio FiberMap.
+      const msg = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`[O.S] vínculo FiberMap não aplicado (${contractId}): ${msg}`);
     }
-    if (!enclosureId) return;
-
-    const portRaw = input.enclosurePort ?? input.install?.ufinetPort ?? null;
-    const portNum = portRaw != null ? Number(String(portRaw).trim()) : NaN;
-    if (!Number.isInteger(portNum) || portNum < 1) return;
-
-    const port = await this.prisma.opticalPort.findFirst({
-      where: { tenantId, enclosureId, number: portNum },
-      select: { id: true },
-    });
-    if (!port) return; // porta não cadastrada na CTO — não marca
-
-    await this.prisma.$transaction(async (tx) => {
-      // Libera porta anterior do contrato (re-instalação/troca de CTO).
-      await tx.opticalPort.updateMany({
-        where: { tenantId, contractId, NOT: { id: port.id } },
-        data: { status: 'FREE', contractId: null },
-      });
-      await tx.opticalPort.update({
-        where: { id: port.id },
-        data: { status: 'USED', contractId },
-      });
-    });
-
-    await this.audit.log({
-      tenantId,
-      action: 'optical.port.occupied_on_install',
-      resource: 'optical_ports',
-      resourceId: port.id,
-      afterState: { enclosureId, number: portNum, contractId },
-    });
   }
 
   private async consumeMaterials(

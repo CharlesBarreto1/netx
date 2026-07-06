@@ -29,6 +29,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
+  AssignFibermapPortRequestSchema,
   BulkFuseRequestSchema,
   CreateFibermapCableModelRequestSchema,
   CreateFibermapCableRequestSchema,
@@ -57,6 +58,7 @@ import {
   PatchFibermapAttenuationRequestSchema,
   PresignFibermapPhotoRequestSchema,
   RegisterFibermapPhotoRequestSchema,
+  SearchFibermapCtosQuerySchema,
   SearchFibermapElementsQuerySchema,
   UpdateFibermapCableRequestSchema,
   UpdateFibermapConnectionRequestSchema,
@@ -65,6 +67,7 @@ import {
   UpdateFibermapFolderRequestSchema,
   UpdateFibermapProductRequestSchema,
   UpdateFibermapSegmentRequestSchema,
+  type AssignFibermapPortRequest,
   type AuthenticatedPrincipal,
   type BulkFuseRequest,
   type CreateFibermapCableModelRequest,
@@ -94,6 +97,7 @@ import {
   type PatchFibermapAttenuationRequest,
   type PresignFibermapPhotoRequest,
   type RegisterFibermapPhotoRequest,
+  type SearchFibermapCtosQuery,
   type SearchFibermapElementsQuery,
   type UpdateFibermapCableRequest,
   type UpdateFibermapConnectionRequest,
@@ -121,6 +125,7 @@ import { FibermapKmlService } from './kml.service';
 import { FibermapOtdrService } from './otdr.service';
 import { FibermapPowerBudgetService } from './power-budget.service';
 import { FibermapReportsService } from './reports.service';
+import { FibermapSubscriberService } from './subscriber.service';
 
 @ApiTags('fibermap')
 @ApiBearerAuth()
@@ -141,6 +146,7 @@ export class FibermapController {
     private readonly powerBudget: FibermapPowerBudgetService,
     private readonly reports: FibermapReportsService,
     private readonly kml: FibermapKmlService,
+    private readonly subscriber: FibermapSubscriberService,
   ) {}
 
   // ───────────────────────────────────────────────────────────────────────
@@ -534,6 +540,62 @@ export class FibermapController {
     q: ListFibermapReportQuery,
   ) {
     return this.reports.cableUsage(u.tenantId, q);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Assinante ↔ planta (spec §11 — picker CTO/porta do cadastro/instalação)
+  // ───────────────────────────────────────────────────────────────────────
+  /** CTOs com ocupação — busca por nome e/ou proximidade (picker passo 1). */
+  @Get('ctos')
+  @RequirePermissions('fibermap.read')
+  searchCtos(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Query(new ZodQueryPipe(SearchFibermapCtosQuerySchema))
+    q: SearchFibermapCtosQuery,
+  ) {
+    return this.subscriber.searchCtos(u.tenantId, q);
+  }
+
+  /** Portas de drop da CTO com status FREE/CONNECTED/ASSIGNED (passo 2). */
+  @Get('ctos/:elementId/ports')
+  @RequirePermissions('fibermap.read')
+  listCtoPorts(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('elementId', new ParseUUIDPipe()) elementId: string,
+  ) {
+    return this.subscriber.listCtoPorts(u.tenantId, elementId);
+  }
+
+  /** Vincula a porta de drop ao contrato (contracts.fibermap_port_id). */
+  @Post('ports/:id/assign-contract')
+  @RequirePermissions('contracts.write')
+  assignPortToContract(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(AssignFibermapPortRequestSchema) body: AssignFibermapPortRequest,
+  ) {
+    return this.subscriber.assignPort(u.tenantId, u.sub, id, body.contractId);
+  }
+
+  /** Libera a porta do contrato (no-op sem vínculo). */
+  @Post('contracts/:contractId/release-port')
+  @RequirePermissions('contracts.write')
+  @HttpCode(204)
+  async releaseContractPort(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('contractId', new ParseUUIDPipe()) contractId: string,
+  ) {
+    await this.subscriber.releaseByContract(u.tenantId, u.sub, contractId);
+  }
+
+  /** Referência resolvida da porta do contrato (CTO, device, nº) — ou null. */
+  @Get('contracts/:contractId/port')
+  @RequirePermissions('fibermap.read')
+  contractPortRef(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('contractId', new ParseUUIDPipe()) contractId: string,
+  ) {
+    return this.subscriber.getContractPortRef(u.tenantId, contractId);
   }
 
   /** Calibração OTDR: ajusta o excess_factor da INSTÂNCIA (§5.5.8/§14.10). */

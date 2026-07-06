@@ -81,10 +81,20 @@ export const InstallCustomerRequestSchema = z
     notes: z.string().max(2000).nullish(),
 
     /**
-     * Ufinet (rede neutra PY): caixa (CTO) e porta REAIS onde o técnico
-     * conectou o drop em campo. Sobrescrevem a CTO *sugerida* pela Ufinet na
-     * confirmação do serviço (enviadas como CTO_PORT). Opcionais — só usadas em
-     * OLT UFINET/ORCHESTRATOR.
+     * FiberMap (OSP v2): porta de drop (splitter OUT numa CTO da planta) onde
+     * o técnico conectou o cliente. Vincula contracts.fibermap_port_id e, em
+     * OLT UFINET, resolve o CTO_PORT (nome do elemento CTO) e o dropPort
+     * automaticamente. Caminho preferido — os campos ufinetCto/ufinetPort
+     * abaixo ficam como fallback legado (apps mobile antigos).
+     */
+    fibermapPortId: z.string().uuid().nullish(),
+
+    /**
+     * LEGADO — Ufinet (rede neutra PY): caixa (CTO) e porta REAIS onde o
+     * técnico conectou o drop em campo, digitadas como texto. Sobrescrevem a
+     * CTO *sugerida* pela Ufinet na confirmação do serviço (enviadas como
+     * CTO_PORT). Preferir `fibermapPortId`; mantidos pra compat com apps
+     * mobile antigos. Só usados em OLT UFINET/ORCHESTRATOR.
      */
     ufinetCto: z.string().max(64).nullish(),
     ufinetPort: z.string().max(32).nullish(),

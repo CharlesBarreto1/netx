@@ -10,6 +10,12 @@ FM-7 completa: backend `1f3e3a3` + frontend `4049d1e`). **Todas as fases da
 spec (FM-0..FM-7) entregues e validadas** — restam os débitos de polish
 listados abaixo e os aceites manuais do Charles.
 
+**2026-07-06 (tarde): FM-8 "Costura" implementada na árvore de trabalho** —
+integração assinante↔planta (spec §11), aposentadoria do OSP v1 (módulo
+`optical` + estúdio `/mapa` + mapa de rede legado) e migração de dados. Ver
+seção "FM-8 · Integração NetX" abaixo. **Pendente: tsc/jest/build no box**
+(a máquina onde foi editado não tem Node) e `netx-update`.
+
 ## Estado por fase
 
 | Fase | Estado | Entrega |
@@ -27,6 +33,62 @@ listados abaixo e os aceites manuais do Charles.
 **Aceites interativos pendentes (manual, Charles):** desenhar cabo ponta a
 ponta, reproduzir o cenário dos prints no editor de emendas em <5 min,
 60 fps de pan com o seed sintético (`db:seed:fibermap:synthetic`).
+
+## FM-8 · Integração NetX (costura assinante ↔ planta) — 2026-07-06
+
+O FiberMap virou a FONTE DE VERDADE de CTO/porta pro resto do NetX; o OSP v1
+foi aposentado. O que existe:
+
+- **Vínculo contrato↔porta**: `contracts.fibermap_port_id` (uuid, unique,
+  FK→`fibermap_optical_ports`, SET NULL) — migration
+  `20260706180000_contract_fibermap_port`. FK no lado do contrato; a porta
+  segue nó puro do grafo.
+- **`FibermapSubscriberService`** (`subscriber.service.ts`, exportado pelo
+  módulo): `searchCtos` (busca por nome/proximidade KNN + ocupação),
+  `listCtoPorts` (FREE/CONNECTED/ASSIGNED), `assignPort`/`releaseByContract`
+  (auditados), `getContractPortRef(s)` (resolve CTO/device/porta — o
+  `elementName` é o CTO_PORT da Ufinet). Rotas: `GET /fibermap/ctos`,
+  `GET /fibermap/ctos/:id/ports`, `POST /fibermap/ports/:id/assign-contract`,
+  `POST /fibermap/contracts/:id/release-port`, `GET /fibermap/contracts/:id/port`.
+  DTOs em `packages/shared/src/fibermap/subscriber.dto.ts`.
+- **Consumidores re-apontados**: provisioning (`installCustomer` aceita
+  `fibermapPortId`, vincula ANTES de tocar estoque/OLT e deriva
+  CTO_PORT/dropPort pra Ufinet), ufinet-orders (fallback do CTO_PORT via
+  porta do contrato), service-orders (`markCtoPortUsed` → FiberMap, com
+  fallback legado por nome/número de porta), contracts.cancel (libera a
+  porta na mesma TX), field/subscriber360 (mesmo shape, fonte FiberMap),
+  field/coverage (PostGIS ST_DWithin/KNN), alarms (correlação CTO por
+  `fibermapPort→device→element`; escopo CABLE pelos segmentos que tocam a
+  caixa).
+- **Frontend**: `SubscriberPortPicker` (components/fibermap) no wizard
+  `/provisioning/install/[contractId]` (todos os modos; hint pra Ufinet), no
+  `NewContractInline` (opcional; assign pós-criação) e na página do técnico
+  `/os/[id]`; card "CTO/Porta" no detalhe do contrato (trocar/liberar).
+- **Migração de dados** `20260706190000_fibermap_osp_v1_migration`
+  (idempotente, ids preservados): enclosures→elementos (CTO/NAP/SPLITTER→CTO
+  + device SPLITTER com portas OUT e IN; EMENDA→CEO; RESERVA→SLACK_COIL),
+  `OpticalPort.contractId`→`contracts.fibermap_port_id`, cabos→cabos "sem
+  modelo" (1 tubo × N fibras ABNT + 1 segmento com o path original; POLEs
+  sintéticos em ponta solta), splices→FUSION quando os dois cabos terminam
+  no mesmo elemento migrado. Tudo cai na pasta "Importado OSP v1" por tenant.
+- **Removidos**: módulo backend `optical` (13 services), endpoint
+  `/mapping/network` (+ NetworkMapService e DTOs), estúdio `/mapa`, páginas
+  `/mapping/{network,backbone,technicians}` e `/network/{fiber,optical,
+  splices,otdr,pon-tree,power-budget,import-export}`, libs v1 do web.
+  `/mapping/customers` (mapa comercial com online RADIUS) FICOU — módulo
+  `mapping` enxugado só pra ele; manifest `netx-cpe` perdeu o prefixo
+  `/optical`.
+
+**Débitos da FM-8:**
+- Tabelas v1 (`optical_*`, `fiber_*`, `network_folders`) seguem no banco como
+  legado read-only — dropar em migração futura após validar a planta migrada
+  em produção (e remover os modelos v1 + `Contract.opticalPort` do
+  schema.prisma na mesma leva).
+- Splices "no meio do cabo" (sem elemento comum de terminação) NÃO migraram
+  (exigiriam corte de fibra); re-documentar no estúdio se fizerem falta.
+- Mapa de clientes segue como tela própria (`/mapping/customers`); candidata
+  a virar layer de assinantes online dentro do estúdio num próximo ciclo.
+- Validação completa (tsc/jest/build) pendente no box.
 
 ## Mapa de arquivos
 

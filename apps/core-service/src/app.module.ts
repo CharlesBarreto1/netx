@@ -23,7 +23,6 @@ import { HealthModule } from './modules/health/health.module';
 import { LicensingModule } from './modules/licensing/licensing.module';
 import { NetworkModule } from './modules/network/network.module';
 import { IpamModule } from './modules/ipam/ipam.module';
-import { OpticalModule } from './modules/optical/optical.module';
 import { FibermapModule } from './modules/fibermap/fibermap.module';
 import { PortalModule } from './modules/portal/portal.module';
 import { PrismaModule } from './modules/prisma/prisma.module';
@@ -116,7 +115,6 @@ import { FieldModule } from './modules/field/field.module';
     BackupsModule,
     NetworkModule,
     IpamModule,
-    OpticalModule,
     FibermapModule,
     PortalModule,
     RadiusModule,

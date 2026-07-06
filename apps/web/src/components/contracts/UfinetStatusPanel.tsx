@@ -246,6 +246,7 @@ export function UfinetStatusPanel({ contractId }: { contractId: string }) {
 }
 
 type OltOption = { id: string; name: string; vendor: string; providerMode: string };
+type OltList = { data: OltOption[] };
 
 /**
  * Card de adoção: aparece quando o contrato NÃO tem serviço Ufinet, mas existe
@@ -260,10 +261,10 @@ function UfinetAdoptCard({
   onAdopted: () => void;
 }) {
   const t = useTranslations('contractCards');
-  const { data: olts } = useSWR<OltOption[]>('/v1/optical/olts', (k: string) =>
-    api.get<OltOption[]>(k),
+  const { data: olts } = useSWR<OltList>('/v1/olts?pageSize=100', (k: string) =>
+    api.get<OltList>(k),
   );
-  const ufinetOlts = (olts ?? []).filter(
+  const ufinetOlts = (olts?.data ?? []).filter(
     (o) => o.vendor === 'UFINET' && o.providerMode === 'ORCHESTRATOR',
   );
   const [oltId, setOltId] = useState('');

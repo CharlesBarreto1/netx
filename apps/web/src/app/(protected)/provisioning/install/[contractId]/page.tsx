@@ -13,14 +13,20 @@
  */
 import { useTranslations } from 'next-intl';
 import { useParams, useRouter } from 'next/navigation';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import useSWR from 'swr';
 
+import {
+  SubscriberPortPicker,
+  type SubscriberPortSelection,
+} from '@/components/fibermap/SubscriberPortPicker';
 import { Button } from '@/components/ui/Button';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
 import { Input, Label, Select, Textarea } from '@/components/ui/Input';
 import { PageLoader } from '@/components/ui/Spinner';
 import { ApiError } from '@/lib/api';
+import type { Contract } from '@/lib/contracts-api';
+import { fibermapApi, type FibermapContractPortRef } from '@/lib/fibermap-api';
 import {
   oltsApi,
   provisioningApi,
@@ -28,8 +34,8 @@ import {
   type InstallTimelineEvent,
   type Olt,
 } from '@/lib/provisioning-api';
+import { hasPermission } from '@/lib/session';
 import { stockApi, type ComodatoAvailableSerial } from '@/lib/stock-api';
-import { opticalApi } from '@/lib/optical-api';
 
 function statusBadgeColor(status: InstallTimelineEvent['status']): string {
   switch (status) {
@@ -43,9 +49,11 @@ function statusBadgeColor(status: InstallTimelineEvent['status']): string {
 export default function InstallPage() {
   const t = useTranslations('provisioning.install');
   const tc = useTranslations('common');
+  const tPicker = useTranslations('fibermap.portPicker');
   const params = useParams();
   const router = useRouter();
   const contractId = params.contractId as string;
+  const canFibermap = hasPermission('fibermap.read');
 
   // OLTs cadastradas pra dropdown
   const { data: oltsResp, isLoading: oltsLoading } = useSWR(
@@ -53,6 +61,9 @@ export default function InstallPage() {
     () => oltsApi.list({ pageSize: 100 }),
   );
   const olts: Olt[] = oltsResp?.data ?? [];
+
+  // Contrato — só pras coordenadas do cliente (ordena o picker por proximidade).
+  const { data: contract } = useSWR<Contract>(`/v1/contracts/${contractId}`);
 
   // Equipamentos PATRIMONIAIS disponíveis em estoque (filtrados por ACL no backend)
   const { data: availableSerials } = useSWR<ComodatoAvailableSerial[]>(
@@ -77,32 +88,42 @@ export default function InstallPage() {
     'BAND_STEERING',
   );
   const [notes, setNotes] = useState('');
-  // Ufinet (rede neutra PY): o técnico ESCOLHE a caixa (CTO) de uma lista
-  // filtrada pela OLT (não digita) + informa a porta (controle interno).
-  const [ufinetEnclosureId, setUfinetEnclosureId] = useState('');
-  const [selectedCto, setSelectedCto] = useState<ComboboxOption | null>(null);
-  const [ufinetPort, setUfinetPort] = useState('');
+  // FiberMap: porta de drop (CTO/splitter) onde o técnico conectou o cliente.
+  // Universal — vale pra qualquer modo de OLT (substitui o par legado
+  // ufinetCto/ufinetPort, que a UI não envia mais).
+  const [fibermapSel, setFibermapSel] = useState<SubscriberPortSelection | null>(null);
+  // Técnico já mexeu no picker? Se sim, o pré-preenchimento (vínculo atual
+  // do contrato) para de sobrescrever.
+  const [fibermapTouched, setFibermapTouched] = useState(false);
 
   // Result state
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<InstallCustomerResponse | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // OLT selecionada — pra mostrar campos Ufinet só quando faz sentido.
+  // OLT selecionada — em Ufinet a porta do FiberMap é fortemente recomendada
+  // (resolve o CTO_PORT na confirmação do serviço).
   const selectedOlt = olts.find((o) => o.id === oltId);
   const isUfinet =
     selectedOlt?.vendor === 'UFINET' && selectedOlt?.providerMode === 'ORCHESTRATOR';
 
-  // Conta as CTOs da OLT só pra exibir o aviso de "OLT sem CTO cadastrada".
-  const { data: ctoCountResp } = useSWR(
-    isUfinet && oltId ? ['olt-enclosures-count', oltId] : null,
-    () => opticalApi.list({ oltId, pageSize: 1 }),
+  // Vínculo atual do contrato (re-instalação) — pré-popula o picker.
+  const { data: currentPortRef } = useSWR<FibermapContractPortRef | null>(
+    canFibermap ? fibermapApi.contractPortPath(contractId) : null,
   );
-  const ctoCount = ctoCountResp?.pagination.total ?? null;
+  useEffect(() => {
+    if (fibermapTouched || fibermapSel || !currentPortRef) return;
+    setFibermapSel({
+      portId: currentPortRef.portId,
+      elementName: currentPortRef.elementName,
+      portNumber: currentPortRef.portNumber,
+      label: tPicker('chip', {
+        cto: currentPortRef.elementName,
+        port: currentPortRef.portNumber,
+      }),
+    });
+  }, [currentPortRef, fibermapSel, fibermapTouched, tPicker]);
 
-  // CTOs atendidas pela OLT escolhida — busca server-side (suporta milhares,
-  // o filtro `search` casa em code + locationLabel no backend). O técnico
-  // escolhe via Combobox, não digita o id.
   // ONTs disponíveis em estoque — busca por serial (últimos números) client-side.
   const loadOntOptions = useCallback(
     async (query: string): Promise<ComboboxOption[]> => {
@@ -119,23 +140,6 @@ export default function InstallPage() {
         }));
     },
     [availableSerials],
-  );
-
-  const loadCtoOptions = useCallback(
-    async (query: string): Promise<ComboboxOption[]> => {
-      if (!oltId) return [];
-      const resp = await opticalApi.list({
-        oltId,
-        search: query.trim() || undefined,
-        pageSize: 50,
-      });
-      return resp.data.map((c) => ({
-        value: c.id,
-        label: c.code,
-        sublabel: c.locationLabel ?? undefined,
-      }));
-    },
-    [oltId],
   );
 
   if (oltsLoading) return <PageLoader />;
@@ -158,8 +162,9 @@ export default function InstallPage() {
         pppoeVlan: Number(pppoeVlan) || 1010,
         wifiBandMode,
         notes: notes.trim() || null,
-        ufinetCto: selectedCto?.label ?? null,
-        ufinetPort: ufinetPort.trim() || null,
+        // FiberMap: o backend vincula a porta e resolve o CTO_PORT da Ufinet
+        // sozinho. Os campos legados ufinetCto/ufinetPort não são mais enviados.
+        fibermapPortId: fibermapSel?.portId ?? null,
       });
       setResult(res);
     } catch (err) {
@@ -260,12 +265,7 @@ export default function InstallPage() {
             <select
               id="oltId"
               value={oltId}
-              onChange={(e) => {
-                setOltId(e.target.value);
-                // Troca de OLT invalida a CTO escolhida (CTOs são por OLT).
-                setUfinetEnclosureId('');
-                setSelectedCto(null);
-              }}
+              onChange={(e) => setOltId(e.target.value)}
               required
               className="block w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:ring-blue-500 dark:border-slate-700 dark:bg-slate-800"
             >
@@ -449,51 +449,31 @@ export default function InstallPage() {
           </div>
         </section>
 
-        {isUfinet && (
+        {/* CTO/porta do FiberMap — universal (qualquer modo de OLT). Em Ufinet
+            o backend usa o vínculo pra resolver o CTO_PORT da confirmação. */}
+        {canFibermap && (
           <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              {t('ufinet.heading')}
+              {t('fibermapDrop.heading')}
             </h2>
-            <p className="text-xs text-slate-500">
-              {t.rich('ufinet.help', {
-                strong: (chunks) => <strong>{chunks}</strong>,
-              })}
-            </p>
-            {ctoCount === 0 ? (
+            <p className="text-xs text-slate-500">{t('fibermapDrop.help')}</p>
+            <SubscriberPortPicker
+              value={
+                fibermapSel
+                  ? { portId: fibermapSel.portId, label: fibermapSel.label }
+                  : null
+              }
+              onChange={(sel) => {
+                setFibermapTouched(true);
+                setFibermapSel(sel);
+              }}
+              nearLat={contract?.latitude ?? null}
+              nearLng={contract?.longitude ?? null}
+            />
+            {isUfinet && !fibermapSel && (
               <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-800 dark:bg-amber-950 dark:text-amber-200">
-                {t('ufinet.empty')}
+                {t('fibermapDrop.ufinetHint')}
               </p>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="sm:col-span-2">
-                  <Label htmlFor="ufinetEnclosure">{t('ufinet.box')}</Label>
-                  <Combobox
-                    id="ufinetEnclosure"
-                    value={ufinetEnclosureId}
-                    selectedOption={selectedCto}
-                    onChange={(id, opt) => {
-                      setUfinetEnclosureId(id);
-                      setSelectedCto(opt);
-                    }}
-                    loadOptions={loadCtoOptions}
-                    resetKey={oltId}
-                    placeholder={tc('select')}
-                    searchPlaceholder={t('ufinet.searchBox')}
-                    emptyText={t('ufinet.searchEmpty')}
-                  />
-                  <p className="mt-1 text-xs text-slate-500">{t('ufinet.boxHelp')}</p>
-                </div>
-                <div>
-                  <Label htmlFor="ufinetPort">{t('ufinet.port')}</Label>
-                  <Input
-                    id="ufinetPort"
-                    value={ufinetPort}
-                    onChange={(e) => setUfinetPort(e.target.value)}
-                    placeholder="ex.: 4"
-                    className="sm:max-w-[140px]"
-                  />
-                </div>
-              </div>
             )}
           </section>
         )}

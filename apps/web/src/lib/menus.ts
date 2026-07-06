@@ -230,7 +230,8 @@ export const MENU_GROUPS: MenuGroup[] = [
           { key: 'tr069WifiCoverage', href: '/tr069/wifi-coverage', labelKey: 'tr069WifiCoverage', permission: 'provisioning.read' },
         ],
       },
-      // Planta de rede — infraestrutura física (POPs, fibra, OTDR, PON, KML).
+      // Planta de rede — infraestrutura física (POPs, equipamentos, IPAM).
+      // A planta externa (caixas, cabos, fusões, OTDR, PON) mora no FiberMap.
       {
         key: 'techNetworkPlant',
         labelKey: 'sub.networkPlant',
@@ -238,13 +239,6 @@ export const MENU_GROUPS: MenuGroup[] = [
           { key: 'pops', href: '/network/pops', labelKey: 'pops', permission: 'network.read' },
           { key: 'equipment', href: '/network/equipment', labelKey: 'equipment', permission: 'network.read' },
           { key: 'ipam', href: '/network/ipam', labelKey: 'ipam', permission: 'ipam.read' },
-          { key: 'opticalEnclosures', href: '/network/optical', labelKey: 'opticalEnclosures', permission: 'network.read' },
-          { key: 'fiberCables', href: '/network/fiber', labelKey: 'fiberCables', permission: 'network.read' },
-          { key: 'fiberSplices', href: '/network/splices', labelKey: 'fiberSplices', permission: 'network.read' },
-          { key: 'powerBudget', href: '/network/power-budget', labelKey: 'powerBudget', permission: 'network.read' },
-          { key: 'otdrEvents', href: '/network/otdr', labelKey: 'otdrEvents', permission: 'network.read' },
-          { key: 'ponTree', href: '/network/pon-tree', labelKey: 'ponTree', permission: 'network.read' },
-          { key: 'kmlImport', href: '/network/import-export', labelKey: 'kmlImport', permission: 'network.read' },
         ],
       },
       { key: 'alarms', href: '/alarms', labelKey: 'alarms', permission: 'provisioning.read', requiredModules: ['netx-cpe'] },
@@ -259,13 +253,9 @@ export const MENU_GROUPS: MenuGroup[] = [
     requiredModules: ['netx-maps'],
     items: [
       { key: 'mappingCustomers', href: '/mapping/customers', labelKey: 'mappingCustomers', permission: 'mapping.read' },
-      { key: 'mappingNetwork', href: '/mapping/network', labelKey: 'mappingNetwork', permission: 'mapping.read' },
-      { key: 'mapStudio', href: '/mapa', labelKey: 'mapStudio', permission: 'network.read' },
       // FiberMap (OSP v2) — documentação de planta externa. Módulo próprio.
       { key: 'fibermap', href: '/fibermap', labelKey: 'fibermap', permission: 'fibermap.read', requiredModules: ['netx-fibermap'] },
       { key: 'fibermapSettings', href: '/fibermap/settings', labelKey: 'fibermapSettings', permission: 'fibermap.admin', requiredModules: ['netx-fibermap'] },
-      { key: 'mappingBackbone', href: '/mapping/backbone', labelKey: 'mappingBackbone', permission: 'mapping.read' },
-      { key: 'mappingTechnicians', href: '/mapping/technicians', labelKey: 'mappingTechnicians', permission: 'mapping.read' },
     ],
   },
 

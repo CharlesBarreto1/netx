@@ -34,6 +34,7 @@ import {
 
 import { AuditService } from '../audit/audit.service';
 import { CryptoService } from '../crypto/crypto.service';
+import { FibermapSubscriberService } from '../fibermap/subscriber.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { UfinetClientService, UfinetApiError } from './ufinet-client.service';
@@ -87,6 +88,7 @@ export class UfinetOrdersService {
     private readonly client: UfinetClientService,
     private readonly audit: AuditService,
     private readonly health: UfinetHealthService,
+    private readonly fibermapSubscriber: FibermapSubscriberService,
   ) {}
 
   /** Estado do circuit breaker da Ufinet (pra UI/diagnóstico). */
@@ -1004,7 +1006,18 @@ export class UfinetOrdersService {
     if (!svc.serviceOrderId) return this.fail(svc, 'confirmação sem serviceOrderId');
 
     if (!svc.currentOrderId) {
-      const ctoPort = svc.ctoPort ?? (await this.readCtoPort(conn, svc.externalId, svc.parentServiceId));
+      // Prioridade do CTO_PORT: caixa já resolvida na confirmação da ONT
+      // (técnico/legado) → porta FiberMap vinculada ao contrato (nome do
+      // elemento CTO = código completo da caixa) → inventário da Ufinet.
+      let ctoPort = svc.ctoPort;
+      if (!ctoPort) {
+        const ref = await this.fibermapSubscriber.getContractPortRef(
+          svc.tenantId,
+          svc.contractId,
+        );
+        ctoPort = ref?.elementName ?? null;
+      }
+      ctoPort ??= await this.readCtoPort(conn, svc.externalId, svc.parentServiceId);
       if (!ctoPort) return this.keepPolling(svc, null, 'CTO_PORT ainda indisponível');
       await this.client.patchOrder(conn, svc.serviceOrderId, {
         region: conn.region,

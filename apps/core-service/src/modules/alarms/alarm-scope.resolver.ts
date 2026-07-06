@@ -4,14 +4,15 @@
  * determinística da correlação: o grafo SABE quais ONTs compartilham CTO/cabo,
  * então não é palpite — é query.
  *
- * Caminho do grafo (models reais):
- *   Ont.contractId → Contract.opticalPort → OpticalPort.enclosureId (CTO)
- *   OpticalEnclosure.ponPortId → PonPort.cableId → FiberCable (cabo backbone)
+ * Caminho do grafo (FiberMap / OSP v2 — models reais):
+ *   Ont.contractId → Contract.fibermapPort → FibermapDevice.elementId
+ *     (CTO = FibermapElement; o scopeId CTO é o id do elemento)
+ *   FibermapCableSegment (from/to o elemento) → FibermapCable (cabo do traçado)
  *   Ont.oltId (OLT, sempre disponível)  ·  Contract.lat/long (geo, fallback)
  *
  * "Afetado" = ONT em status de queda (OFFLINE/LOS/FAULT — o coletor de syslog
- * mantém Ont.status). Modo degradado: onde a CTO/porta óptica não está mapeada
- * (OpticalPort sem contrato), só os escopos OLT/PON/GEO funcionam.
+ * mantém Ont.status). Modo degradado: onde a porta de drop não está mapeada
+ * (contrato sem fibermapPortId), só os escopos OLT/PON/GEO funcionam.
  *
  * @provenance Y2hhcmxlc2JhcnJldG86MDg0NzI5Njg5MDE=
  */
@@ -59,13 +60,32 @@ export class AlarmScopeResolver {
           select: {
             latitude: true,
             longitude: true,
-            opticalPort: {
+            fibermapPort: {
               select: {
-                enclosure: {
+                device: {
                   select: {
-                    id: true,
-                    code: true,
-                    ponPort: { select: { cableId: true, cable: { select: { code: true } } } },
+                    element: {
+                      select: {
+                        id: true,
+                        name: true,
+                        // Cabo do traçado que chega/sai da caixa (segmentos).
+                        // Se mais de um cabo toca o elemento, a escolha é
+                        // determinística (cableId asc) — suficiente pra
+                        // correlacionar rompimento.
+                        segmentsTo: {
+                          where: { cable: { deletedAt: null } },
+                          orderBy: { cableId: 'asc' },
+                          take: 1,
+                          select: { cableId: true, cable: { select: { name: true } } },
+                        },
+                        segmentsFrom: {
+                          where: { cable: { deletedAt: null } },
+                          orderBy: { cableId: 'asc' },
+                          take: 1,
+                          select: { cableId: true, cable: { select: { name: true } } },
+                        },
+                      },
+                    },
                   },
                 },
               },
@@ -76,14 +96,14 @@ export class AlarmScopeResolver {
     });
     if (!ont) return null;
 
-    const enc = ont.contract?.opticalPort?.enclosure ?? null;
-    const cable = enc?.ponPort?.cable ?? null;
+    const el = ont.contract?.fibermapPort?.device.element ?? null;
+    const seg = el ? (el.segmentsTo[0] ?? el.segmentsFrom[0] ?? null) : null;
     return {
       oltId: ont.oltId,
-      ctoId: enc?.id ?? null,
-      ctoLabel: enc?.code ?? null,
-      cableId: enc?.ponPort?.cableId ?? null,
-      cableLabel: cable?.code ?? null,
+      ctoId: el?.id ?? null,
+      ctoLabel: el?.name ?? null,
+      cableId: seg?.cableId ?? null,
+      cableLabel: seg?.cable.name ?? null,
       ponSlot: ont.ponSlot,
       ponFrame: ont.ponFrame,
       lat: ont.contract?.latitude != null ? Number(ont.contract.latitude) : null,
@@ -91,20 +111,33 @@ export class AlarmScopeResolver {
     };
   }
 
-  /** ONTs de uma CTO (via OpticalPort.enclosureId → Contract → Ont). */
+  /** ONTs de uma CTO (FibermapElement → devices → portas de drop → contratos → ONTs). */
   async statsCto(tenantId: string, ctoId: string, reasonSince: Date): Promise<ScopeStats> {
     return this.statsFromWhere(
       tenantId,
-      { contract: { opticalPort: { enclosureId: ctoId } } },
+      { contract: { fibermapPort: { device: { elementId: ctoId } } } },
       reasonSince,
     );
   }
 
-  /** ONTs de um cabo (PonPort.cableId → enclosures → ports → contratos → ONTs). */
+  /** ONTs de um cabo (segmentos do cabo → elementos tocados → portas → contratos → ONTs). */
   async statsCable(tenantId: string, cableId: string, reasonSince: Date): Promise<ScopeStats> {
     return this.statsFromWhere(
       tenantId,
-      { contract: { opticalPort: { enclosure: { ponPort: { cableId } } } } },
+      {
+        contract: {
+          fibermapPort: {
+            device: {
+              element: {
+                OR: [
+                  { segmentsFrom: { some: { cableId } } },
+                  { segmentsTo: { some: { cableId } } },
+                ],
+              },
+            },
+          },
+        },
+      },
       reasonSince,
     );
   }

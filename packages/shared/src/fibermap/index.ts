@@ -9,4 +9,5 @@ export * from './otdr.dto';
 export * from './power-budget.dto';
 export * from './reports.dto';
 export * from './kml.dto';
+export * from './subscriber.dto';
 export * from './endpoint-key';

@@ -173,11 +173,11 @@ export class AlarmsService {
 
   // ── RSSI / sinal (F5) ──────────────────────────────────────────────────────
 
-  /** RSSI médio + por-ONT de uma CTO, com flags de sinal ruim/saturado. */
+  /** RSSI médio + por-ONT de uma CTO (FibermapElement), com flags de sinal ruim/saturado. */
   async rssiByCto(tenantId: string, ctoId: string): Promise<CtoRssiResponse> {
     const { low, high } = await this.signalThresholds(tenantId);
     const onts = await this.prisma.ont.findMany({
-      where: { tenantId, contract: { opticalPort: { enclosureId: ctoId } } },
+      where: { tenantId, contract: { fibermapPort: { device: { elementId: ctoId } } } },
       select: {
         id: true,
         snGpon: true,

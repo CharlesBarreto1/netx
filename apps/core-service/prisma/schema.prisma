@@ -1517,7 +1517,17 @@ model Contract {
   // atendido. 1 contrato pode ocupar 1 porta (1:1). Quando contrato é
   // cancelado: relação é desfeita (SetNull no OpticalPort.contractId)
   // pra liberar a porta — mantém histórico via audit log.
+  // LEGADO (OSP v1) — substituído por fibermapPort abaixo; mantido só até o
+  // drop das tabelas optical_* (dados migrados em fibermap_osp_v1_migration).
   opticalPort         OpticalPort?
+
+  // FiberMap (OSP v2) — porta de drop (splitter OUT na CTO) onde este
+  // contrato é atendido. FK fica AQUI (contrato → porta) pra porta continuar
+  // sendo um nó puro do grafo óptico; 1 porta atende no máximo 1 contrato
+  // (unique). SetNull: excluir a porta/planta não mexe no contrato — ele só
+  // perde o vínculo e o audit log guarda o histórico de quem ocupou.
+  fibermapPortId      String?        @unique @map("fibermap_port_id") @db.Uuid
+  fibermapPort        FibermapOpticalPort? @relation(fields: [fibermapPortId], references: [id], onDelete: SetNull)
 
   // IPAM — IP fixo documentado (1:1, espelha framedIpAddress) + entradas CGNAT.
   ipamAddress         IpamAddress?
@@ -6790,6 +6800,8 @@ model FibermapOpticalPort {
   device     FibermapDevice   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   connectionsA FibermapOpticalConnection[] @relation("FibermapConnPortA")
   connectionsB FibermapOpticalConnection[] @relation("FibermapConnPortB")
+  // Contrato atendido por esta porta de drop (FK vive em Contract.fibermapPortId).
+  contract   Contract?
 
   @@unique([deviceId, role, portNumber])
   @@index([tenantId])

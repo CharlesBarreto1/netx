@@ -75,12 +75,6 @@ interface InvoiceList {
   pagination: { total: number };
 }
 
-interface OltOption {
-  id: string;
-  name: string;
-  vendor: string;
-}
-
 export interface AgingBucket {
   label: string;
   count: number;
@@ -183,9 +177,9 @@ export function useDashboardData(lens: 'operador' | 'noc' | 'financeiro'): Dashb
     wantsNoc ? gate('provisioning.read', '/v1/alarms/incidents?status=OPEN&pageSize=10') : null,
     { shouldRetryOnError: false },
   );
-  // OLTs ativas (contagem).
-  const olts = useSWR<OltOption[]>(
-    wantsNoc ? gate('network.read', '/v1/optical/olts') : null,
+  // OLTs cadastradas (contagem) — /v1/olts é paginado; pageSize=1 basta.
+  const olts = useSWR<Paginated>(
+    wantsNoc ? gate('olts.admin', '/v1/olts?pageSize=1') : null,
   );
 
   // O.S abertas / vencidas (lente operador).
@@ -221,7 +215,7 @@ export function useDashboardData(lens: 'operador' | 'noc' | 'financeiro'): Dashb
     incidents: incidents.data,
     serviceOrdersOpen: soOpen.data?.pagination.total,
     serviceOrdersOverdue: soOverdue.data?.pagination.total,
-    oltCount: olts.data?.length,
+    oltCount: olts.data?.pagination.total,
     recentInvoices: recent.data?.data,
     aging: aging.data,
     mrrSeries: mrrSeries.data?.byMonth,

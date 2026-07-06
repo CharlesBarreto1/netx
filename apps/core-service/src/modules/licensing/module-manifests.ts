@@ -31,10 +31,12 @@ defineModule('netx-erp', {
 // RH/portal — gateado por netx-rh.
 defineModule('netx-rh', { apiPrefixes: ['/hr', '/me'] });
 
-// TR-069 + OLTs — gateado por netx-cpe.
-defineModule('netx-cpe', { apiPrefixes: ['/olts', '/provisioning', '/tr069', '/optical'] });
+// TR-069 + OLTs — gateado por netx-cpe. ('/optical' saiu com o OSP v1 —
+// a planta agora é o FiberMap.)
+defineModule('netx-cpe', { apiPrefixes: ['/olts', '/provisioning', '/tr069'] });
 
-// Mapas de rede — gateado por netx-maps.
+// Mapa comercial de clientes — gateado por netx-maps. (O mapa de REDE legado
+// foi aposentado; a planta vive no netx-fibermap.)
 defineModule('netx-maps', { apiPrefixes: ['/mapping'] });
 
 // FiberMap — documentação de planta externa OSP v2 (FIBERMAP-SPEC.md).

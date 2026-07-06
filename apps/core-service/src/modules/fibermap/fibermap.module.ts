@@ -25,6 +25,7 @@ import { FibermapKmlService } from './kml.service';
 import { FibermapOtdrService } from './otdr.service';
 import { FibermapPowerBudgetService } from './power-budget.service';
 import { FibermapReportsService } from './reports.service';
+import { FibermapSubscriberService } from './subscriber.service';
 
 @Module({
   imports: [AuditModule], // StorageModule é @Global — não precisa importar
@@ -43,6 +44,7 @@ import { FibermapReportsService } from './reports.service';
     FibermapPowerBudgetService,
     FibermapReportsService,
     FibermapKmlService,
+    FibermapSubscriberService,
   ],
   exports: [
     FibermapFoldersService,
@@ -52,6 +54,8 @@ import { FibermapReportsService } from './reports.service';
     FibermapCablesService,
     // OTDR (FM-5) e power budget (FM-6) reusam o grafo/trace.
     FibermapConnectivityGraphService,
+    // Costura assinante ↔ planta (provisioning/contracts/service-orders/field).
+    FibermapSubscriberService,
   ],
 })
 export class FibermapModule {}

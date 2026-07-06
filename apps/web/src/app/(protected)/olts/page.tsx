@@ -194,7 +194,7 @@ export default function OltsPage() {
                       )}
                       <Link href={`/olts/${o.id}`}>
                         <Button size="sm" variant="outline">
-                          {t('ponPorts')}
+                          {tc('seeDetails')}
                         </Button>
                       </Link>
                       {canAdmin && (

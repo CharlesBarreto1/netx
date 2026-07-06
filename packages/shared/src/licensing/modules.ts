@@ -64,7 +64,7 @@ export const MODULE_CATALOG: Record<ModuleCode, ModuleDescriptor> = {
     softDeps: ['netx-erp', 'netx-nms', 'netx-monitor', 'netx-cpe', 'netx-rh', 'netx-maps', 'netx-call'],
   },
   'netx-rh': { code: 'netx-rh', name: 'RH/portal', hardDeps: [], softDeps: ['netx-erp'] },
-  'netx-maps': { code: 'netx-maps', name: 'Mapas de rede', hardDeps: [], softDeps: ['netx-nms'] },
+  'netx-maps': { code: 'netx-maps', name: 'Mapa de clientes', hardDeps: [], softDeps: ['netx-nms'] },
   'netx-call': {
     code: 'netx-call',
     name: 'Callcenter',

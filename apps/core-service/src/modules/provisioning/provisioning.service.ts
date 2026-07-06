@@ -36,6 +36,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  type FibermapContractPortRef,
   type InstallCustomerRequest,
   type InstallCustomerResponse,
   type InstallTimelineEvent,
@@ -56,6 +57,7 @@ import {
 
 import { AuditService } from '../audit/audit.service';
 import { BrBillingService } from '../br-billing/br-billing.service';
+import { FibermapSubscriberService } from '../fibermap/subscriber.service';
 import { recalcCustomerStatus } from '../contracts/customer-status';
 import { InvoiceGeneratorService } from '../contracts/invoice-generator.service';
 import { RadiusSyncService } from '../contracts/radius-sync.service';
@@ -94,6 +96,7 @@ export class ProvisioningService {
     private readonly bus: EventBusPublisher,
     private readonly profiles: OltProvisioningProfilesService,
     private readonly brBilling: BrBillingService,
+    private readonly fibermapSubscriber: FibermapSubscriberService,
   ) {}
 
   /**
@@ -208,6 +211,28 @@ export class ProvisioningService {
           'OLT e troque "Modo" pra EXTERNAL — NetX registra a ONT e segue pra ' +
           'RADIUS + TR-069, com você provisionando o SN manualmente na OLT real.',
       );
+    }
+
+    // ── 1.2. FiberMap: vincula a porta de drop escolhida pelo técnico ──────
+    // Falha AQUI (porta ocupada por outro contrato / inválida) aborta antes
+    // de mexer em estoque/OLT — o técnico escolhe outra porta e re-tenta.
+    // Idempotente pro mesmo par contrato↔porta (re-provision). Sem porta no
+    // payload, reusa o vínculo existente (pré-atribuído no cadastro).
+    let fibermapRef: FibermapContractPortRef | null = null;
+    if (input.fibermapPortId) {
+      fibermapRef = await this.fibermapSubscriber.assignPort(
+        tenantId,
+        actorUserId,
+        input.fibermapPortId,
+        contractId,
+      );
+      pushEvent(
+        'OLT_AUTHORIZE',
+        'SUCCESS',
+        `Porta vinculada no FiberMap: ${fibermapRef.elementName} · porta ${fibermapRef.portNumber}`,
+      );
+    } else {
+      fibermapRef = await this.fibermapSubscriber.getContractPortRef(tenantId, contractId);
     }
 
     // ── 1.5. Resolve SerialItem (estoque) → SN GPON definitivo ────────────
@@ -620,10 +645,14 @@ export class ProvisioningService {
           actorUserId,
         });
         // A Ufinet controla só a CAIXA → ctoPort = caixa real do técnico
-        // (sobrescreve a sugerida). A porta é só doc interna do NetX.
+        // (sobrescreve a sugerida). Fonte preferida: porta do FiberMap
+        // (elementName = código completo da CTO, ex. "JLMPY-PY13734");
+        // ufinetCto/ufinetPort digitados seguem como override legado.
         await this.ufinet.requestConfirmOnt(tenantId, contractId, resolvedSnGpon, {
-          ctoPort: input.ufinetCto?.trim() || null,
-          dropPort: input.ufinetPort?.trim() || null,
+          ctoPort: input.ufinetCto?.trim() || fibermapRef?.elementName || null,
+          dropPort:
+            input.ufinetPort?.trim() ||
+            (fibermapRef ? String(fibermapRef.portNumber) : null),
           actorUserId,
         });
         pushEvent('OLT_AUTHORIZE', 'SUCCESS', 'ONT confirmada na fila Ufinet (poller conclui em background)');

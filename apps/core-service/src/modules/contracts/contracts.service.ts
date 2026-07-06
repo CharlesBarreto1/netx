@@ -1320,6 +1320,9 @@ export class ContractsService {
           status: PrismaContractStatus.CANCELLED,
           cancelledAt: new Date(),
           updatedById: actorUserId,
+          // FiberMap: libera a porta de drop — contrato cancelado não segura
+          // porta na CTO. Histórico de quem ocupou fica no audit log.
+          fibermapPortId: null,
         },
         include: DEFAULT_INCLUDE,
       });
@@ -1381,6 +1384,19 @@ export class ContractsService {
 
     // Ufinet: dispara baja (se ativo) ou cancelación (se ONT não confirmada).
     await this.tryUfinetTeardown(tenantId, updated.id, actorUserId);
+
+    // FiberMap: registra a liberação da porta (mutação já commitou na TX).
+    if (existing.fibermapPortId) {
+      await this.audit.log({
+        tenantId,
+        userId: actorUserId,
+        action: 'fibermap.port.released',
+        resource: 'contracts',
+        resourceId: updated.id,
+        beforeState: { fibermapPortId: existing.fibermapPortId },
+        afterState: { fibermapPortId: null },
+      });
+    }
 
     await this.audit.log({
       tenantId,

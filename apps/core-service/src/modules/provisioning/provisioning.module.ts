@@ -5,6 +5,7 @@ import { AuditModule } from '../audit/audit.module';
 import { BrBillingModule } from '../br-billing/br-billing.module';
 import { ContractsModule } from '../contracts/contracts.module';
 import { CryptoModule } from '../crypto/crypto.module';
+import { FibermapModule } from '../fibermap/fibermap.module';
 import { StockModule } from '../stock/stock.module';
 import { UfinetModule } from '../ufinet/ufinet.module';
 
@@ -31,7 +32,7 @@ import { Tr069ReconcileService } from './tr069-reconcile.service';
 import { Tr069TasksService } from './tr069-tasks.service';
 
 @Module({
-  imports: [AlarmsModule, AuditModule, BrBillingModule, CryptoModule, ContractsModule, StockModule, UfinetModule],
+  imports: [AlarmsModule, AuditModule, BrBillingModule, CryptoModule, ContractsModule, FibermapModule, StockModule, UfinetModule],
   controllers: [
     ProvisioningController,
     OltsController,

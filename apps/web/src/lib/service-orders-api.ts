@@ -203,8 +203,12 @@ export interface InstallFieldsInput {
   wifiBandMode?: 'BAND_STEERING' | 'DUAL_BAND';
   pppoeVlan?: number;
   notes?: string | null;
-  ufinetCto?: string | null;
-  ufinetPort?: string | null;
+  /**
+   * FiberMap (OSP v2): id da porta de drop (CTO/splitter) onde o técnico
+   * conectou o cliente. Substitui o par legado ufinetCto/ufinetPort — em OLT
+   * UFINET o backend resolve o CTO_PORT sozinho a partir do vínculo.
+   */
+  fibermapPortId?: string | null;
 }
 
 export interface FieldMaterialInput {
@@ -223,8 +227,6 @@ export interface ServiceOrderPhotoInput {
 
 export interface CompleteInstallationInput {
   install: InstallFieldsInput;
-  enclosureId?: string | null;
-  enclosurePort?: string | null;
   materials?: FieldMaterialInput[];
   photos?: ServiceOrderPhotoInput[];
   closeDescription: string;
@@ -262,8 +264,6 @@ export type CompleteFieldInput =
   | {
       mode: 'INSTALLATION';
       install: InstallFieldsInput;
-      enclosureId?: string | null;
-      enclosurePort?: string | null;
       materials?: FieldMaterialInput[];
       photos?: ServiceOrderPhotoInput[];
       closeDescription: string;

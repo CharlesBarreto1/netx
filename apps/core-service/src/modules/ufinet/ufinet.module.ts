@@ -10,6 +10,8 @@
 import { Module } from '@nestjs/common';
 
 import { AuditModule } from '../audit/audit.module';
+// FiberMap: fallback do CTO_PORT via porta vinculada ao contrato (spec §11).
+import { FibermapModule } from '../fibermap/fibermap.module';
 
 import { UfinetClientService } from './ufinet-client.service';
 import { UfinetController } from './ufinet.controller';
@@ -18,7 +20,7 @@ import { UfinetOrdersService } from './ufinet-orders.service';
 import { UfinetPollerService } from './ufinet-poller.service';
 
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, FibermapModule],
   controllers: [UfinetController],
   providers: [
     UfinetClientService,

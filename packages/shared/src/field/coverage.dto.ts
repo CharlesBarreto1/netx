@@ -2,9 +2,9 @@ import { z } from 'zod';
 
 /**
  * Consulta de cobertura (NetX Field / nova venda): dado um ponto (lat/lng),
- * existe CTO com porta livre por perto? Leitura pura sobre a rede óptica
- * (OpticalEnclosure/OpticalPort). Busca por raio via Haversine em memória
- * (sem PostGIS) — vide brief mapping/NMS.
+ * existe CTO com porta livre por perto? Leitura pura sobre o FiberMap (OSP
+ * v2: FibermapElement type=CTO + portas OUT de splitter). Busca por raio via
+ * PostGIS (ST_DWithin/KNN no geom do elemento).
  */
 export const CoverageCheckQuerySchema = z.object({
   latitude: z.coerce.number().min(-90).max(90),
@@ -23,8 +23,9 @@ export interface CoverageEnclosure {
   type: 'CTO' | 'NAP' | 'SPLITTER' | 'EMENDA' | 'RESERVA';
   latitude: number;
   longitude: number;
-  /** Distância do ponto consultado, em metros (Haversine). */
+  /** Distância do ponto consultado, em metros (PostGIS geography). */
   distanceMeters: number;
+  /** No FiberMap = total de portas OUT (igual a portsTotal; compat de shape). */
   capacity: number;
   portsTotal: number;
   portsFree: number;
