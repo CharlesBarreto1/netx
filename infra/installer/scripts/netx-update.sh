@@ -68,10 +68,14 @@ err() { echo "${C_RED}[FAIL]${C_RESET} $*" >&2; }
 warn(){ echo "${C_YELLOW}[WARN]${C_RESET} $*"; }
 dim() { echo "${C_DIM}$*${C_RESET}"; }
 
-# Log também em arquivo dedicado pra debug futuro
+# Log também em arquivo dedicado pra debug futuro. No re-exec (vide passo 1b)
+# o stdout já passa pelo tee da primeira invocação — repetir aqui duplicaria
+# cada linha no update.log.
 mkdir -p "${NETX_LOG}"
 UPDATE_LOG="${NETX_LOG}/update.log"
-exec > >(tee -a "${UPDATE_LOG}") 2>&1
+if [[ -z "${NETX_UPDATE_REEXEC:-}" ]]; then
+  exec > >(tee -a "${UPDATE_LOG}") 2>&1
+fi
 
 log "Iniciando atualização — $(date -Iseconds)"
 
@@ -133,6 +137,21 @@ if [[ "${CURRENT_SHA}" == "${NEW_SHA}" ]]; then
   NETX_FORCE_BUILD="${NETX_FORCE_BUILD:-0}"
 else
   dim "Versão: ${CURRENT_SHA:0:8} → ${NEW_SHA:0:8}"
+fi
+
+# -----------------------------------------------------------------------------
+# 1b. Re-exec com o script recém-baixado
+# -----------------------------------------------------------------------------
+# O reset --hard acima substitui ESTE arquivo, mas o bash mantém o fd antigo
+# aberto — sem re-exec, o resto do update roda a VERSÃO VELHA do netx-update
+# até o fim. Já mordeu em produção: o guard de PostGIS chegou no disco neste
+# mesmo run, mas o migrate rodou pelo script antigo (sem guard) e morreu com
+# 42501/0A000. Re-exec só quando o SHA mudou; o marker evita loop (na segunda
+# invocação CURRENT==NEW e o marker já está setado).
+if [[ -z "${NETX_UPDATE_REEXEC:-}" && "${CURRENT_SHA}" != "${NEW_SHA}" ]]; then
+  log "re-exec: continuando com o netx-update da versão nova (${NEW_SHA:0:8})"
+  export NETX_UPDATE_REEXEC=1
+  exec bash "${NETX_HOME}/infra/installer/scripts/netx-update.sh"
 fi
 
 # -----------------------------------------------------------------------------
