@@ -171,7 +171,7 @@ export class FibermapReportsService {
               FROM fibermap_cable_slacks
              GROUP BY cable_id
           ) sl ON sl.cable_id = c.id
-         WHERE c.id IN (${Prisma.join(cableIds)})`,
+         WHERE c.id IN (${Prisma.join(cableIds.map((id) => Prisma.sql`${id}::uuid`))})`,
       this.prisma.fibermapFiber.groupBy({
         by: ['cableId', 'status'],
         where: { cableId: { in: cableIds } },
