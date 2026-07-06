@@ -46,6 +46,10 @@ export interface TraceSegmentData {
   toElementId: string;
   /** coalesce(medido, geográfico × excessFactor) — resolvido pelo chamador. */
   opticalLengthM: number;
+  /** ST_Length::geography (trigger) — o OTDR converte ótico→fração geográfica. */
+  geometricLengthM: number;
+  /** Metragem de bobina/OTDR; null ⇒ ótico veio do geométrico (incerteza §5.5.6). */
+  measuredLengthM: number | null;
   /** GeoJSON [[lng,lat],…] — vira o MultiLineString do highlight. */
   path: number[][];
 }
@@ -249,11 +253,55 @@ export function splitterBranchLossDb(
 }
 
 // =============================================================================
+// Pedaços de fibra (sub-arestas entre pontas e cortes) — OTDR (FM-5) reusa
+// =============================================================================
+export interface FiberPiece {
+  /** Id determinístico da aresta no grafo: F:{fiberId}:{i}. */
+  edgeId: string;
+  /** Índices na cadeia de elementos do cabo (lo = lado A, hi = lado B). */
+  loIdx: number;
+  hiIdx: number;
+  /** Chaves dos nós de fronteira (FIBER:{id}:{A|B} ou CUT:{id}:{U|D}). */
+  loKey: string;
+  hiKey: string;
+}
+
+/** Pedaços da fibra na ordem A→B: pontas + cortes interiores ordenados. */
+export function fiberPieces(fiber: TraceFiberData, cable: TraceCableData): FiberPiece[] {
+  const chain = cableElementChain(cable);
+  if (chain.length === 0) return [];
+  const cuts = fiber.cuts
+    .map((cut) => ({ cut, idx: chain.indexOf(cut.elementId) }))
+    .filter((c) => c.idx > 0 && c.idx < chain.length - 1)
+    .sort((a, b) => a.idx - b.idx);
+  const pieces: FiberPiece[] = [];
+  let lo = { idx: 0, key: fibermapFiberEndKey(fiber.id, 'A') };
+  for (const { cut, idx } of cuts) {
+    pieces.push({
+      edgeId: `F:${fiber.id}:${pieces.length}`,
+      loIdx: lo.idx,
+      hiIdx: idx,
+      loKey: lo.key,
+      hiKey: fibermapCutEndKey(cut.id, 'U'),
+    });
+    lo = { idx, key: fibermapCutEndKey(cut.id, 'D') };
+  }
+  pieces.push({
+    edgeId: `F:${fiber.id}:${pieces.length}`,
+    loIdx: lo.idx,
+    hiIdx: chain.length - 1,
+    loKey: lo.key,
+    hiKey: fibermapFiberEndKey(fiber.id, 'B'),
+  });
+  return pieces;
+}
+
+// =============================================================================
 // Construção do grafo
 // =============================================================================
-type NodeType = 'FIBER_END' | 'CUT_END' | 'PORT' | 'DEV';
+export type NodeType = 'FIBER_END' | 'CUT_END' | 'PORT' | 'DEV';
 
-interface GraphNode {
+export interface GraphNode {
   key: string;
   type: NodeType;
   elementId: string | null;
@@ -262,7 +310,7 @@ interface GraphNode {
   device?: TraceDeviceData;
 }
 
-interface GraphEdge {
+export interface GraphEdge {
   id: string;
   kind: 'FIBER' | 'CONN' | 'SPL_IN' | 'SPL_OUT';
   a: string;
@@ -344,75 +392,32 @@ export function buildTraceGraph(data: TraceGraphData): TraceGraph {
     }
   }
 
-  // ── Fibras: sub-arestas entre pontas e cortes ordenados na cadeia ─────────
+  // ── Fibras: sub-arestas entre pontas e cortes (fiberPieces — FM-5 reusa) ──
   for (const fiber of data.fibers) {
     const cable = cablesById.get(fiber.cableId);
     if (!cable || cable.segments.length === 0) continue;
     const chain = cableElementChain(cable);
-
-    interface Boundary {
-      key: string;
-      chainIdx: number;
-      node: GraphNode;
-    }
-    const aEnd: Boundary = {
-      key: fibermapFiberEndKey(fiber.id, 'A'),
-      chainIdx: 0,
-      node: {
-        key: fibermapFiberEndKey(fiber.id, 'A'),
-        type: 'FIBER_END',
-        elementId: chain[0],
+    const ensureBoundary = (key: string, idx: number): void =>
+      addNode({
+        key,
+        type: key.startsWith('CUT:') ? 'CUT_END' : 'FIBER_END',
+        elementId: chain[idx],
         fiber,
-      },
-    };
-    const bEnd: Boundary = {
-      key: fibermapFiberEndKey(fiber.id, 'B'),
-      chainIdx: chain.length - 1,
-      node: {
-        key: fibermapFiberEndKey(fiber.id, 'B'),
-        type: 'FIBER_END',
-        elementId: chain[chain.length - 1],
-        fiber,
-      },
-    };
-    addNode(aEnd.node);
-    addNode(bEnd.node);
-
-    // Cortes ordenados pela posição do elemento na cadeia (interiores apenas).
-    const cuts = fiber.cuts
-      .map((cut) => ({ cut, chainIdx: chain.indexOf(cut.elementId) }))
-      .filter((c) => c.chainIdx > 0 && c.chainIdx < chain.length - 1)
-      .sort((x, y) => x.chainIdx - y.chainIdx);
-
-    let prev: Boundary = aEnd;
-    let piece = 0;
-    for (const { cut, chainIdx } of cuts) {
-      const uKey = fibermapCutEndKey(cut.id, 'U');
-      const dKey = fibermapCutEndKey(cut.id, 'D');
-      addNode({ key: uKey, type: 'CUT_END', elementId: cut.elementId, fiber });
-      addNode({ key: dKey, type: 'CUT_END', elementId: cut.elementId, fiber });
+      });
+    for (const piece of fiberPieces(fiber, cable)) {
+      ensureBoundary(piece.loKey, piece.loIdx);
+      ensureBoundary(piece.hiKey, piece.hiIdx);
       addEdge({
-        id: `F:${fiber.id}:${piece++}`,
+        id: piece.edgeId,
         kind: 'FIBER',
-        a: prev.key,
-        b: uKey,
+        a: piece.loKey,
+        b: piece.hiKey,
         fiber,
         cable,
-        aChainIdx: prev.chainIdx,
-        bChainIdx: chainIdx,
+        aChainIdx: piece.loIdx,
+        bChainIdx: piece.hiIdx,
       });
-      prev = { key: dKey, chainIdx, node: nodes.get(dKey)! };
     }
-    addEdge({
-      id: `F:${fiber.id}:${piece}`,
-      kind: 'FIBER',
-      a: prev.key,
-      b: bEnd.key,
-      fiber,
-      cable,
-      aChainIdx: prev.chainIdx,
-      bChainIdx: bEnd.chainIdx,
-    });
   }
 
   // ── Conexões ──────────────────────────────────────────────────────────────

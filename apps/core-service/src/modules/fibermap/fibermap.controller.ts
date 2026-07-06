@@ -37,8 +37,10 @@ import {
   CreateFibermapSegmentRequestSchema,
   CreateFibermapSlackRequestSchema,
   FibermapFiberTraceQuerySchema,
+  FibermapOtdrLocateRequestSchema,
   FibermapPortTraceQuerySchema,
   ListFibermapCablesQuerySchema,
+  ListFibermapOtdrReadingsQuerySchema,
   ListFibermapElementsQuerySchema,
   ListFibermapProductsQuerySchema,
   PatchFibermapAttenuationRequestSchema,
@@ -65,8 +67,10 @@ import {
   type CreateFibermapSegmentRequest,
   type CreateFibermapSlackRequest,
   type FibermapFiberTraceQuery,
+  type FibermapOtdrLocateRequest,
   type FibermapPortTraceQuery,
   type ListFibermapCablesQuery,
+  type ListFibermapOtdrReadingsQuery,
   type ListFibermapElementsQuery,
   type ListFibermapProductsQuery,
   type PatchFibermapAttenuationRequest,
@@ -95,6 +99,7 @@ import { FibermapCatalogService } from './catalog.service';
 import { FibermapElementPhotosService } from './element-photos.service';
 import { FibermapElementsService } from './elements.service';
 import { FibermapFoldersService } from './folders.service';
+import { FibermapOtdrService } from './otdr.service';
 
 @ApiTags('fibermap')
 @ApiBearerAuth()
@@ -111,6 +116,7 @@ export class FibermapController {
     private readonly accessPoint: FibermapAccessPointService,
     private readonly conns: FibermapConnectionsService,
     private readonly graph: FibermapConnectivityGraphService,
+    private readonly otdr: FibermapOtdrService,
   ) {}
 
   // ───────────────────────────────────────────────────────────────────────
@@ -408,6 +414,30 @@ export class FibermapController {
     q: FibermapPortTraceQuery,
   ) {
     return this.graph.tracePort(u.tenantId, id, q);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // OTDR (FM-5, spec §5.5)
+  // ───────────────────────────────────────────────────────────────────────
+  /** Distância OTDR → coordenada do evento + incerteza; persiste a leitura. */
+  @Post('otdr/locate')
+  @RequirePermissions('fibermap.write')
+  otdrLocate(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @ZodBody(FibermapOtdrLocateRequestSchema) body: FibermapOtdrLocateRequest,
+  ) {
+    return this.otdr.locate(u.tenantId, u.sub, body);
+  }
+
+  /** Histórico de leituras (log — nomes resolvidos best-effort). */
+  @Get('otdr/readings')
+  @RequirePermissions('fibermap.read')
+  otdrReadings(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Query(new ZodQueryPipe(ListFibermapOtdrReadingsQuerySchema))
+    q: ListFibermapOtdrReadingsQuery,
+  ) {
+    return this.otdr.listReadings(u.tenantId, q);
   }
 
   // ───────────────────────────────────────────────────────────────────────

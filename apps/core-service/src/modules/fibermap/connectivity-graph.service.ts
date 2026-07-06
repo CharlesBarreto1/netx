@@ -169,9 +169,10 @@ export class FibermapConnectivityGraphService {
   }
 
   // ───────────────────────────────────────────────────────────────────────
-  // Carregamento do componente conexo (ondas)
+  // Carregamento do componente conexo (ondas) — público: OTDR (FM-5) e
+  // power budget (FM-6) reusam o mesmo carregador.
   // ───────────────────────────────────────────────────────────────────────
-  private async loadComponent(
+  async loadComponent(
     tenantId: string,
     seedFiberIds: string[],
     seedPortIds: string[],
@@ -258,6 +259,8 @@ export class FibermapConnectivityGraphService {
                 opticalLengthM: s.measuredLengthM
                   ? Number(s.measuredLengthM)
                   : round2(Number(s.geometricLengthM) * excess),
+                geometricLengthM: Number(s.geometricLengthM),
+                measuredLengthM: s.measuredLengthM ? Number(s.measuredLengthM) : null,
                 path: (Array.isArray(s.path) ? s.path : []) as number[][],
               })),
               slacks: c.slacks.map((s) => ({

@@ -61,12 +61,17 @@ const seg = (
   from: string,
   to: string,
   opticalLengthM: number,
+  opts: { geometricLengthM?: number; measuredLengthM?: number | null } = {},
 ) => ({
   id,
   seq,
   fromElementId: from,
   toElementId: to,
   opticalLengthM,
+  // Default: ótico derivado do geométrico (sem medido) — os testes de OTDR
+  // passam valores explícitos quando a distinção importa (§5.5.6).
+  geometricLengthM: opts.geometricLengthM ?? opticalLengthM,
+  measuredLengthM: opts.measuredLengthM ?? null,
   path: [[0, 0], [1, 1]] as number[][],
 });
 
@@ -123,8 +128,11 @@ function makeData(opts: { semOlt?: boolean } = {}): TraceGraphData {
         id: 'cab-1',
         name: 'BB-CPM-R1',
         segments: [
-          seg('s11', 1, EL.pop, EL.ceo11, 510.0),
-          seg('s12', 2, EL.ceo11, EL.ceo12, 1000.0),
+          seg('s11', 1, EL.pop, EL.ceo11, 510.0, { geometricLengthM: 500 }),
+          seg('s12', 2, EL.ceo11, EL.ceo12, 1000.0, {
+            geometricLengthM: 985,
+            measuredLengthM: 1000,
+          }),
         ],
         slacks: [{ elementId: EL.ceo11, lengthM: 30 }],
       },
@@ -132,8 +140,8 @@ function makeData(opts: { semOlt?: boolean } = {}): TraceGraphData {
         id: 'cab-2',
         name: 'DIST-GUA-R2',
         segments: [
-          seg('s21', 1, EL.ceo12, EL.ceo13, 816.0),
-          seg('s22', 2, EL.ceo13, EL.cto01, 204.0),
+          seg('s21', 1, EL.ceo12, EL.ceo13, 816.0, { geometricLengthM: 800 }),
+          seg('s22', 2, EL.ceo13, EL.cto01, 204.0, { geometricLengthM: 200 }),
         ],
         slacks: [{ elementId: EL.ceo13, lengthM: 25 }],
       },

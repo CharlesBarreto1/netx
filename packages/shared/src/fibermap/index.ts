@@ -5,4 +5,5 @@ export * from './element.dto';
 export * from './cable.dto';
 export * from './access-point.dto';
 export * from './trace.dto';
+export * from './otdr.dto';
 export * from './endpoint-key';
