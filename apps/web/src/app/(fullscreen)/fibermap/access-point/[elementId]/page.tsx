@@ -8,7 +8,7 @@
  * Página fina no route group (fullscreen): header com volta pro estúdio +
  * nome do elemento, e o AccessPointEditor (SVG) ocupando o resto.
  */
-import { ChevronLeft, LocateFixed } from 'lucide-react';
+import { ChevronLeft, Gauge, LocateFixed } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
@@ -16,6 +16,7 @@ import { useState } from 'react';
 import useSWR from 'swr';
 
 import { AccessPointEditor } from '@/components/fibermap/access-point/AccessPointEditor';
+import { PowerBudgetModal } from '@/components/fibermap/budget/PowerBudgetModal';
 import { OtdrModal } from '@/components/fibermap/otdr/OtdrModal';
 import type { FibermapOtdrOverlay } from '@/components/fibermap/studio/FibermapMap';
 import { Button } from '@/components/ui/Button';
@@ -27,6 +28,7 @@ export default function AccessPointPage() {
   const router = useRouter();
   const elementId = params.elementId;
   const [otdrOpen, setOtdrOpen] = useState(false);
+  const [budgetOpen, setBudgetOpen] = useState(false);
   // Só pro título/deep-link de volta — o editor tem o próprio SWR.
   const { data: element } = useSWR<FibermapElement>(
     elementId ? `/v1/fibermap/elements/${elementId}` : null,
@@ -60,8 +62,12 @@ export default function AccessPointPage() {
           size="xs"
           variant="outline"
           className="ml-auto"
-          onClick={() => setOtdrOpen(true)}
+          onClick={() => setBudgetOpen(true)}
         >
+          <Gauge className="mr-1 h-3.5 w-3.5" />
+          {t('budget.open')}
+        </Button>
+        <Button size="xs" variant="outline" onClick={() => setOtdrOpen(true)}>
           <LocateFixed className="mr-1 h-3.5 w-3.5" />
           {t('otdr.open')}
         </Button>
@@ -75,6 +81,9 @@ export default function AccessPointPage() {
           onClose={() => setOtdrOpen(false)}
           onShowOnMap={showOtdrOnMap}
         />
+      )}
+      {budgetOpen && elementId && (
+        <PowerBudgetModal elementId={elementId} onClose={() => setBudgetOpen(false)} />
       )}
     </div>
   );

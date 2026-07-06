@@ -577,6 +577,54 @@ export interface FibermapOtdrReadingItem {
   result: unknown;
 }
 
+// ─── Power budget (FM-6) ────────────────────────────────────────────────────
+export type FibermapPowerBudgetLevel = 'OK' | 'WARN' | 'CRIT';
+
+export interface FibermapPowerBudgetBranch {
+  outPortNumber: number;
+  outPortLabel: string | null;
+  events: FibermapPowerBudgetEvent[];
+}
+
+export interface FibermapPowerBudgetEvent extends Omit<FibermapTraceEvent, 'branches'> {
+  expectedDbm: number;
+  level: FibermapPowerBudgetLevel;
+  measuredDbm?: number | null;
+  measuredAt?: string | null;
+  deltaDb?: number | null;
+  branches?: FibermapPowerBudgetBranch[];
+}
+
+export interface FibermapPowerBudgetTerminal {
+  branchPath: string | null;
+  elementId?: string;
+  elementName?: string;
+  deviceName?: string;
+  portId?: string;
+  portLabel?: string;
+  cableName?: string;
+  fiberNumber?: number;
+  endReason?: 'FREE_END' | 'LOOP';
+  distanceM: number;
+  lossDb: number;
+  expectedDbm: number;
+  level: FibermapPowerBudgetLevel;
+  measuredDbm?: number | null;
+  deltaDb?: number | null;
+}
+
+export interface FibermapPowerBudgetResponse {
+  wavelengthNm: number;
+  txDbm: number;
+  warnDbm: number;
+  critDbm: number;
+  origin: FibermapTraceResponse['origin'];
+  path: FibermapPowerBudgetEvent[];
+  terminals: FibermapPowerBudgetTerminal[];
+  worstDbm: number | null;
+  maxDistanceM: number;
+}
+
 // ─── Atenuação ──────────────────────────────────────────────────────────────
 export type FibermapAttenuationKey =
   | 'FIBER_1310' | 'FIBER_1490' | 'FIBER_1550'
@@ -788,6 +836,31 @@ export const fibermapApi = {
   }) => api.post<FibermapOtdrLocateResponse>('/v1/fibermap/otdr/locate', dto),
   otdrReadings: (params: { cableId?: string; limit?: number } = {}) =>
     api.get<FibermapOtdrReadingItem[]>(`/v1/fibermap/otdr/readings${qs(params)}`),
+
+  // Power budget (FM-6)
+  powerBudget: (
+    portId: string,
+    params: {
+      wavelength?: 1310 | 1490 | 1550;
+      txDbm?: number;
+      warnDbm?: number;
+      critDbm?: number;
+    } = {},
+  ) =>
+    api.get<FibermapPowerBudgetResponse>(
+      `/v1/fibermap/ports/${portId}/power-budget${qs(params)}`,
+    ),
+  calibrateExcess: (
+    cableId: string,
+    pairs: Array<{ expectedM: number; measuredM: number }>,
+  ) =>
+    api.post<{
+      cableId: string;
+      k: number;
+      oldExcessFactor: number;
+      newExcessFactor: number;
+      clamped: boolean;
+    }>(`/v1/fibermap/cables/${cableId}/calibrate-excess`, { pairs }),
 
   // Catálogo
   listProducts: (params: ListFibermapProductsParams = {}) =>
