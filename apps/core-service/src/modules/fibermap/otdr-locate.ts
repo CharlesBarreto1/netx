@@ -385,6 +385,9 @@ export interface ExcessCalibrationFit {
  * Aproximação de primeira ordem: sobras não escalam com o excesso — com
  * medições boas o erro residual delas é pequeno frente ao ganho.
  * k fora de [0,8 · 1,25] indica marco zero deslocado ⇒ erro amigável.
+ * Clamp em [1,0 · 1,2]: o piso segue o CHECK do banco
+ * (fibermap_cables_excess_chk exige ≥ 1,0 — fibra não encurta a rota);
+ * o teto é conservador (helicoidal+catenária real fica bem abaixo de 1,2).
  */
 export function fitExcessFactor(
   currentExcessFactor: number,
@@ -409,10 +412,10 @@ export function fitExcessFactor(
     );
   }
   const raw = currentExcessFactor * k;
-  const clampedValue = Math.min(1.2, Math.max(0.9, raw));
+  const clampedValue = Math.min(1.2, Math.max(1.0, raw));
   return {
     k: round4(k),
     newExcessFactor: round4(clampedValue),
-    clamped: raw < 0.9 || raw > 1.2,
+    clamped: raw < 1.0 || raw > 1.2,
   };
 }

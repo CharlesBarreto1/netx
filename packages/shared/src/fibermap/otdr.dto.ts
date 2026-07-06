@@ -120,7 +120,7 @@ export interface FibermapCalibrateExcessResponse {
   k: number;
   oldExcessFactor: number;
   newExcessFactor: number;
-  /** true quando o novo excesso bateu no limite [0,9 · 1,2]. */
+  /** true quando o novo excesso bateu no limite [1,0 · 1,2]. */
   clamped: boolean;
 }
 

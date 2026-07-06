@@ -204,12 +204,22 @@ describe('buildPowerBudget (spec §5.4)', () => {
 describe('fitExcessFactor (spec §5.5.8)', () => {
   it('curva proporcional: k = medido/teórico, excesso escala junto', () => {
     const fit = fitExcessFactor(1.02, [
-      { expectedM: 1000, measuredM: 980 },
-      { expectedM: 2000, measuredM: 1960 },
+      { expectedM: 1000, measuredM: 990 },
+      { expectedM: 2000, measuredM: 1980 },
     ]);
-    expect(fit.k).toBeCloseTo(0.98, 4);
-    expect(fit.newExcessFactor).toBeCloseTo(0.9996, 4);
+    expect(fit.k).toBeCloseTo(0.99, 4);
+    expect(fit.newExcessFactor).toBeCloseTo(1.0098, 4);
     expect(fit.clamped).toBe(false);
+  });
+
+  it('clamp no piso 1,0 (CHECK do banco: fibra não encurta a rota)', () => {
+    const fit = fitExcessFactor(1.02, [
+      { expectedM: 1000, measuredM: 950 },
+      { expectedM: 2000, measuredM: 1900 },
+    ]);
+    expect(fit.k).toBeCloseTo(0.95, 4);
+    expect(fit.newExcessFactor).toBeCloseTo(1.0, 4); // 0,969 clampado
+    expect(fit.clamped).toBe(true);
   });
 
   it('clamp em 1,2: k plausível mas excesso resultante estourando o teto', () => {
