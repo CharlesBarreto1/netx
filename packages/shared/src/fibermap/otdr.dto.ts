@@ -89,6 +89,41 @@ export type ListFibermapOtdrReadingsQuery = z.infer<
   typeof ListFibermapOtdrReadingsQuerySchema
 >;
 
+// =============================================================================
+// Calibração do fator de excesso (FM-6, spec §5.5.8)
+// =============================================================================
+/**
+ * 2+ eventos identificados na curva (distância MEDIDA no OTDR × distância
+ * TEÓRICA dos expected_events) ajustam o excess_factor DA INSTÂNCIA do cabo
+ * (nunca do produto — §14.10) por mínimos quadrados pela origem.
+ */
+export const FibermapCalibrateExcessRequestSchema = z.object({
+  pairs: z
+    .array(
+      z.object({
+        /** Distância teórica do evento (expected_otdr_m). */
+        expectedM: z.coerce.number().positive(),
+        /** Distância onde o evento apareceu na curva do OTDR. */
+        measuredM: z.coerce.number().positive(),
+      }),
+    )
+    .min(2)
+    .max(50),
+});
+export type FibermapCalibrateExcessRequest = z.infer<
+  typeof FibermapCalibrateExcessRequestSchema
+>;
+
+export interface FibermapCalibrateExcessResponse {
+  cableId: string;
+  /** Fator de correção ajustado (medido ÷ teórico). */
+  k: number;
+  oldExcessFactor: number;
+  newExcessFactor: number;
+  /** true quando o novo excesso bateu no limite [0,9 · 1,2]. */
+  clamped: boolean;
+}
+
 export interface FibermapOtdrReadingItem {
   id: string;
   cableId: string;

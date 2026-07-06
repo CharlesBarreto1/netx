@@ -360,3 +360,59 @@ export function locateOtdrEvent(
   events.sort((a, b) => a.expectedOtdrM - b.expectedOtdrM);
   return { candidates, flags: [...flags], expectedEvents: events };
 }
+
+// =============================================================================
+// Calibração do fator de excesso (FM-6, spec §5.5.8)
+// =============================================================================
+const round4 = (v: number): number => Math.round(v * 10_000) / 10_000;
+
+export interface ExcessCalibrationPair {
+  /** Distância teórica do evento (expected_otdr_m do locate). */
+  expectedM: number;
+  /** Distância onde o evento apareceu na curva do OTDR. */
+  measuredM: number;
+}
+
+export interface ExcessCalibrationFit {
+  k: number;
+  newExcessFactor: number;
+  clamped: boolean;
+}
+
+/**
+ * Mínimos quadrados PELA ORIGEM (marco zero compartilhado): k = Σ(m·e)/Σ(e²).
+ * O novo excesso = excesso atual × k, aplicado NA INSTÂNCIA do cabo (§14.10).
+ * Aproximação de primeira ordem: sobras não escalam com o excesso — com
+ * medições boas o erro residual delas é pequeno frente ao ganho.
+ * k fora de [0,8 · 1,25] indica marco zero deslocado ⇒ erro amigável.
+ */
+export function fitExcessFactor(
+  currentExcessFactor: number,
+  pairs: ExcessCalibrationPair[],
+): ExcessCalibrationFit {
+  if (pairs.length < 2) {
+    throw new TraceGraphError('Calibração exige pelo menos 2 eventos identificados');
+  }
+  let num = 0;
+  let den = 0;
+  for (const p of pairs) {
+    if (!(p.expectedM > 0) || !(p.measuredM > 0)) {
+      throw new TraceGraphError('Distâncias da calibração devem ser positivas');
+    }
+    num += p.measuredM * p.expectedM;
+    den += p.expectedM * p.expectedM;
+  }
+  const k = num / den;
+  if (k < 0.8 || k > 1.25) {
+    throw new TraceGraphError(
+      'Medições incompatíveis com o documentado (fator fora de 0,8–1,25) — confira o marco zero e os eventos',
+    );
+  }
+  const raw = currentExcessFactor * k;
+  const clampedValue = Math.min(1.2, Math.max(0.9, raw));
+  return {
+    k: round4(k),
+    newExcessFactor: round4(clampedValue),
+    clamped: raw < 0.9 || raw > 1.2,
+  };
+}

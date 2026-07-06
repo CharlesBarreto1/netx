@@ -25,6 +25,8 @@ import type {
   CreateFibermapCableRequest,
   CreateFibermapSegmentRequest,
   CreateFibermapSlackRequest,
+  FibermapCalibrateExcessRequest,
+  FibermapCalibrateExcessResponse,
   FibermapCableResponse,
   FibermapCableStub,
   FibermapCablesFeatureCollection,
@@ -42,6 +44,8 @@ import {
   FibermapCatalogError,
   instantiateCableFromModel,
 } from './instantiate-cable';
+import { fitExcessFactor } from './otdr-locate';
+import { TraceGraphError } from './trace-graph';
 
 /** API {lat,lng} → GeoJSON [[lng,lat],…] (formato do banco/trigger). */
 function toGeoJsonCoords(path: FibermapPathPoint[]): number[][] {
@@ -320,6 +324,60 @@ export class FibermapCablesService {
       resourceId: id,
       beforeState: { name: existing.name },
     });
+  }
+
+  /**
+   * Calibração OTDR (FM-6, spec §5.5.8): 2+ eventos identificados na curva
+   * (teórico × medido) ajustam o excess_factor DA INSTÂNCIA (§14.10 — nunca
+   * o produto) por mínimos quadrados pela origem.
+   */
+  async calibrateExcess(
+    tenantId: string,
+    actorUserId: string,
+    id: string,
+    input: FibermapCalibrateExcessRequest,
+  ): Promise<FibermapCalibrateExcessResponse> {
+    const cable = await this.prisma.fibermapCable.findFirst({
+      where: { id, tenantId, deletedAt: null },
+      select: { id: true, name: true, excessFactor: true },
+    });
+    if (!cable) throw new NotFoundException('Cabo não encontrado');
+    const oldExcessFactor = Number(cable.excessFactor);
+    let fit;
+    try {
+      fit = fitExcessFactor(oldExcessFactor, input.pairs);
+    } catch (err) {
+      if (err instanceof TraceGraphError) throw new BadRequestException(err.message);
+      throw err;
+    }
+    await this.prisma.fibermapCable.update({
+      where: { id },
+      data: {
+        excessFactor: new Prisma.Decimal(fit.newExcessFactor),
+        updatedById: actorUserId,
+      },
+    });
+    await this.audit.log({
+      tenantId,
+      userId: actorUserId,
+      action: 'fibermap.cable.calibrated',
+      resource: 'fibermap_cables',
+      resourceId: id,
+      beforeState: { excessFactor: oldExcessFactor },
+      afterState: {
+        excessFactor: fit.newExcessFactor,
+        k: fit.k,
+        pairs: input.pairs.length,
+        clamped: fit.clamped,
+      },
+    });
+    return {
+      cableId: id,
+      k: fit.k,
+      oldExcessFactor,
+      newExcessFactor: fit.newExcessFactor,
+      clamped: fit.clamped,
+    };
   }
 
   // ───────────────────────────────────────────────────────────────────────

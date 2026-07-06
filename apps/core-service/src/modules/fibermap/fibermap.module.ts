@@ -22,6 +22,8 @@ import { FibermapElementPhotosService } from './element-photos.service';
 import { FibermapElementsService } from './elements.service';
 import { FibermapFoldersService } from './folders.service';
 import { FibermapOtdrService } from './otdr.service';
+import { FibermapPowerBudgetService } from './power-budget.service';
+import { FibermapReportsService } from './reports.service';
 
 @Module({
   imports: [AuditModule], // StorageModule é @Global — não precisa importar
@@ -37,6 +39,8 @@ import { FibermapOtdrService } from './otdr.service';
     FibermapConnectionsService,
     FibermapConnectivityGraphService,
     FibermapOtdrService,
+    FibermapPowerBudgetService,
+    FibermapReportsService,
   ],
   exports: [
     FibermapFoldersService,

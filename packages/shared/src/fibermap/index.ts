@@ -6,4 +6,6 @@ export * from './cable.dto';
 export * from './access-point.dto';
 export * from './trace.dto';
 export * from './otdr.dto';
+export * from './power-budget.dto';
+export * from './reports.dto';
 export * from './endpoint-key';

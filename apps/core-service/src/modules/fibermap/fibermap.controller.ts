@@ -36,11 +36,15 @@ import {
   CreateFibermapProductRequestSchema,
   CreateFibermapSegmentRequestSchema,
   CreateFibermapSlackRequestSchema,
+  FibermapCalibrateExcessRequestSchema,
   FibermapFiberTraceQuerySchema,
   FibermapOtdrLocateRequestSchema,
   FibermapPortTraceQuerySchema,
+  FibermapPowerBudgetQuerySchema,
+  FibermapSpliceBookQuerySchema,
   ListFibermapCablesQuerySchema,
   ListFibermapOtdrReadingsQuerySchema,
+  ListFibermapReportQuerySchema,
   ListFibermapElementsQuerySchema,
   ListFibermapProductsQuerySchema,
   PatchFibermapAttenuationRequestSchema,
@@ -66,11 +70,15 @@ import {
   type CreateFibermapProductRequest,
   type CreateFibermapSegmentRequest,
   type CreateFibermapSlackRequest,
+  type FibermapCalibrateExcessRequest,
   type FibermapFiberTraceQuery,
   type FibermapOtdrLocateRequest,
   type FibermapPortTraceQuery,
+  type FibermapPowerBudgetQuery,
+  type FibermapSpliceBookQuery,
   type ListFibermapCablesQuery,
   type ListFibermapOtdrReadingsQuery,
+  type ListFibermapReportQuery,
   type ListFibermapElementsQuery,
   type ListFibermapProductsQuery,
   type PatchFibermapAttenuationRequest,
@@ -100,6 +108,8 @@ import { FibermapElementPhotosService } from './element-photos.service';
 import { FibermapElementsService } from './elements.service';
 import { FibermapFoldersService } from './folders.service';
 import { FibermapOtdrService } from './otdr.service';
+import { FibermapPowerBudgetService } from './power-budget.service';
+import { FibermapReportsService } from './reports.service';
 
 @ApiTags('fibermap')
 @ApiBearerAuth()
@@ -117,6 +127,8 @@ export class FibermapController {
     private readonly conns: FibermapConnectionsService,
     private readonly graph: FibermapConnectivityGraphService,
     private readonly otdr: FibermapOtdrService,
+    private readonly powerBudget: FibermapPowerBudgetService,
+    private readonly reports: FibermapReportsService,
   ) {}
 
   // ───────────────────────────────────────────────────────────────────────
@@ -414,6 +426,64 @@ export class FibermapController {
     q: FibermapPortTraceQuery,
   ) {
     return this.graph.tracePort(u.tenantId, id, q);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Power budget + relatórios (FM-6, spec §5.4/§6)
+  // ───────────────────────────────────────────────────────────────────────
+  /** dBm esperado em cada evento/ponta a partir da porta (OLT) — §5.4. */
+  @Get('ports/:id/power-budget')
+  @RequirePermissions('fibermap.read')
+  portPowerBudget(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Query(new ZodQueryPipe(FibermapPowerBudgetQuerySchema))
+    q: FibermapPowerBudgetQuery,
+  ) {
+    return this.powerBudget.budget(u.tenantId, id, q);
+  }
+
+  @Get('reports/cto-occupancy')
+  @RequirePermissions('fibermap.read')
+  reportCtoOccupancy(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Query(new ZodQueryPipe(ListFibermapReportQuerySchema))
+    q: ListFibermapReportQuery,
+  ) {
+    return this.reports.ctoOccupancy(u.tenantId, q);
+  }
+
+  /** Caderno de emendas do elemento (spec §6). */
+  @Get('reports/splice-book')
+  @RequirePermissions('fibermap.read')
+  reportSpliceBook(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Query(new ZodQueryPipe(FibermapSpliceBookQuerySchema))
+    q: FibermapSpliceBookQuery,
+  ) {
+    return this.reports.spliceBook(u.tenantId, q.elementId);
+  }
+
+  @Get('reports/cable-usage')
+  @RequirePermissions('fibermap.read')
+  reportCableUsage(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Query(new ZodQueryPipe(ListFibermapReportQuerySchema))
+    q: ListFibermapReportQuery,
+  ) {
+    return this.reports.cableUsage(u.tenantId, q);
+  }
+
+  /** Calibração OTDR: ajusta o excess_factor da INSTÂNCIA (§5.5.8/§14.10). */
+  @Post('cables/:id/calibrate-excess')
+  @RequirePermissions('fibermap.write')
+  calibrateExcess(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(FibermapCalibrateExcessRequestSchema)
+    body: FibermapCalibrateExcessRequest,
+  ) {
+    return this.cables.calibrateExcess(u.tenantId, u.sub, id, body);
   }
 
   // ───────────────────────────────────────────────────────────────────────
