@@ -13,6 +13,7 @@
  *   fibermap.admin  — catálogo de produtos + parâmetros (Tela 3)
  */
 import {
+  BadRequestException,
   Controller,
   Delete,
   Get,
@@ -22,7 +23,10 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import {
   BulkFuseRequestSchema,
@@ -36,8 +40,11 @@ import {
   CreateFibermapProductRequestSchema,
   CreateFibermapSegmentRequestSchema,
   CreateFibermapSlackRequestSchema,
+  ConfirmFibermapKmlImportRequestSchema,
   FibermapCalibrateExcessRequestSchema,
   FibermapFiberTraceQuerySchema,
+  FibermapKmlExportQuerySchema,
+  FibermapKmlPreviewQuerySchema,
   FibermapOtdrLocateRequestSchema,
   FibermapPortTraceQuerySchema,
   FibermapPowerBudgetQuerySchema,
@@ -70,8 +77,11 @@ import {
   type CreateFibermapProductRequest,
   type CreateFibermapSegmentRequest,
   type CreateFibermapSlackRequest,
+  type ConfirmFibermapKmlImportRequest,
   type FibermapCalibrateExcessRequest,
   type FibermapFiberTraceQuery,
+  type FibermapKmlExportQuery,
+  type FibermapKmlPreviewQuery,
   type FibermapOtdrLocateRequest,
   type FibermapPortTraceQuery,
   type FibermapPowerBudgetQuery,
@@ -107,6 +117,7 @@ import { FibermapCatalogService } from './catalog.service';
 import { FibermapElementPhotosService } from './element-photos.service';
 import { FibermapElementsService } from './elements.service';
 import { FibermapFoldersService } from './folders.service';
+import { FibermapKmlService } from './kml.service';
 import { FibermapOtdrService } from './otdr.service';
 import { FibermapPowerBudgetService } from './power-budget.service';
 import { FibermapReportsService } from './reports.service';
@@ -129,6 +140,7 @@ export class FibermapController {
     private readonly otdr: FibermapOtdrService,
     private readonly powerBudget: FibermapPowerBudgetService,
     private readonly reports: FibermapReportsService,
+    private readonly kml: FibermapKmlService,
   ) {}
 
   // ───────────────────────────────────────────────────────────────────────
@@ -433,6 +445,49 @@ export class FibermapController {
     q: FibermapPortTraceQuery,
   ) {
     return this.graph.tracePort(u.tenantId, id, q);
+  }
+
+  // ───────────────────────────────────────────────────────────────────────
+  // Import/export KML (FM-7, spec §12) — preview/commit síncrono (decisão nº7)
+  // ───────────────────────────────────────────────────────────────────────
+  /** KML 2.2 (Google Earth) como JSON {fileName, kml} — client baixa Blob. */
+  @Get('export/kml')
+  @RequirePermissions('fibermap.read')
+  exportKml(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Query(new ZodQueryPipe(FibermapKmlExportQuerySchema))
+    q: FibermapKmlExportQuery,
+  ) {
+    return this.kml.exportKml(u.tenantId, q);
+  }
+
+  /** Parse do .kml/.kmz → o que SERIA criado (nada é gravado ainda). */
+  @Post('import/kml/preview')
+  @RequirePermissions('fibermap.write')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 20 * 1024 * 1024 }, // migração Tomodat cabe folgado
+    }),
+  )
+  previewKml(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Query(new ZodQueryPipe(FibermapKmlPreviewQuerySchema))
+    q: FibermapKmlPreviewQuery,
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ) {
+    if (!file) throw new BadRequestException('Anexe um arquivo .kml ou .kmz');
+    return this.kml.parsePreview(u.tenantId, q.folderId, file.buffer);
+  }
+
+  /** Cria elementos/cabos por item (snap ≤ 25 m ou POLE automático). */
+  @Post('import/kml/confirm')
+  @RequirePermissions('fibermap.write')
+  confirmKml(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @ZodBody(ConfirmFibermapKmlImportRequestSchema)
+    body: ConfirmFibermapKmlImportRequest,
+  ) {
+    return this.kml.commitImport(u.tenantId, u.sub, body);
   }
 
   // ───────────────────────────────────────────────────────────────────────

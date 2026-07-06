@@ -21,6 +21,7 @@ import { FibermapController } from './fibermap.controller';
 import { FibermapElementPhotosService } from './element-photos.service';
 import { FibermapElementsService } from './elements.service';
 import { FibermapFoldersService } from './folders.service';
+import { FibermapKmlService } from './kml.service';
 import { FibermapOtdrService } from './otdr.service';
 import { FibermapPowerBudgetService } from './power-budget.service';
 import { FibermapReportsService } from './reports.service';
@@ -41,6 +42,7 @@ import { FibermapReportsService } from './reports.service';
     FibermapOtdrService,
     FibermapPowerBudgetService,
     FibermapReportsService,
+    FibermapKmlService,
   ],
   exports: [
     FibermapFoldersService,
