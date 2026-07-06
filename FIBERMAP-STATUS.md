@@ -5,9 +5,10 @@
 > decisões foram tomadas (e por quê divergem da spec), como validar, e como
 > atacar as fases restantes. Atualize este arquivo ao fechar cada fase.
 
-Última atualização: 2026-07-06 · último commit relevante: `1594ac8` (main —
-FM-6 completa: backend `a7e1cc7` + frontend `21f1fbd` + fixes `dbed9dc`/`ada3de3`);
-depois, extra entre fases: vínculo OLT ↔ inventário (ver tabela)
+Última atualização: 2026-07-06 · último commit relevante: `4049d1e` (main —
+FM-7 completa: backend `1f3e3a3` + frontend `4049d1e`). **Todas as fases da
+spec (FM-0..FM-7) entregues e validadas** — restam os débitos de polish
+listados abaixo e os aceites manuais do Charles.
 
 ## Estado por fase
 
@@ -21,7 +22,7 @@ depois, extra entre fases: vínculo OLT ↔ inventário (ver tabela)
 | FM-5 OTDR | ✅ validada (aguarda `netx-update`) | `otdr-locate.ts` puro (sobra antes do trecho, IN_SLACK/AMBIGUOUS_AFTER_SPLITTER/BEYOND_END, incerteza §5.5.6, expected_events do caminho inteiro), `POST otdr/locate` (ST_LineInterpolatePoint com fração já na orientação armazenada + vizinhos ST_DWithin + snapshot em `fibermap_otdr_readings`), `GET otdr/readings`, jest 10 casos (os 6 obrigatórios + reverso/corte/pra-trás), OtdrModal (estúdio popup + header do access-point) + círculo de incerteza vermelho no mapa; smoke no box: ponto a 0,00 m do esperado (aceite <5 m) |
 | FM-6 Power budget | ✅ validada (aguarda `netx-update`) | `GET ports/:id/power-budget` (trace com dBm esperado por evento + TERMINAIS com nível OK/WARN/CRIT e esperado×medido), relatórios `reports/cto-occupancy` · `splice-book?elementId=` · `cable-usage`, calibração `POST cables/:id/calibrate-excess` (mínimos quadrados pela origem, k 0,8–1,25, clamp [1,0·1,2] alinhado ao CHECK), PowerBudgetModal no access-point, jest 7 casos, planilha `docs/fixtures/power-budget-reference.xlsx` gerada do budget REAL da fixture (perda 11,79 dB · Rx −7,79 dBm nas 8 pontas) |
 | Vínculo OLT ↔ inventário (extra) | ✅ validada (aguarda `netx-update`) | device OLT só em elemento POP/CABINET + coluna `fibermap_devices.netx_olt_id` (FK → `olts`, índice único parcial: uma OLT do inventário = UM lugar vivo na planta), `GET /fibermap/olts` (fibermap.read) com placement, seletor obrigatório de OLT no DeviceCreateModal (já colocadas aparecem desabilitadas com o elemento), badge de vínculo/status no header do device — migration `20260706150000_fibermap_olt_binding`, decisão nº11 |
-| FM-7 KML + polish | ⬜ próxima | ver "Como atacar FM-7" abaixo |
+| FM-7 KML | ✅ validada (aguarda `netx-update`) | `kml-io.ts` puro (parse tolerante a Tomodat/Google Earth: Folders aninhados, MultiGeometry, sem-nome; tipo por NOME §12 + override `netx-type` em ExtendedData; builder KML 2.2 com Folder por pasta e LineString POR SEGMENTO na cor do cabo), `FibermapKmlService` preview/commit síncrono (transação POR ITEM, snap ≤ 25 m via ST_DWithin senão `POSTE-KML-n`, cabo sem produto + 1 fibra §14.9), rotas `GET export/kml?folderId=` (JSON→Blob) · `POST import/kml/{preview,confirm}` (multipart 20 MB), botões na topbar + KmlImportModal, jest 8 casos; smoke do aceite no box: round-trip export→import com desvio **0,000 m** (tolerância 1 m) |
 
 **Aceites interativos pendentes (manual, Charles):** desenhar cabo ponta a
 ponta, reproduzir o cenário dos prints no editor de emendas em <5 min,
@@ -42,11 +43,13 @@ apps/core-service/src/modules/fibermap/
   trace-graph.ts                       # FM-4: grafo/caminhada PUROS + opticalDistance/fiberPieces
   otdr-locate.ts · otdr.service.ts     # FM-5: caminhada OTDR pura + PostGIS/persistência (+ fitExcessFactor)
   power-budget.ts · power-budget.service.ts · reports.service.ts   # FM-6
+  kml-io.ts · kml.service.ts           # FM-7: parse/build KML puros + preview/commit/export
   instantiate-cable.ts                 # snapshot modelo→cabo (service + fixture usam)
   colors.spec.ts                       # jest (aceite FM-0)
   trace-graph.spec.ts                  # jest (aceite FM-4 — cálculo manual documentado)
   otdr-locate.spec.ts                  # jest (aceite FM-5 — 6 casos obrigatórios da spec §13)
   power-budget.spec.ts                 # jest (aceite FM-6 — budget + calibração)
+  kml-io.spec.ts                       # jest (aceite FM-7 — round-trip puro + inferência)
 docs/fixtures/power-budget-reference.xlsx   # aceite FM-6 (budget real da fixture)
 apps/core-service/prisma/
   migrations/20260705130000_fibermap_foundation/   # DDL manual (CHECKs, GiST, TRIGGERS)
@@ -60,6 +63,7 @@ apps/web/src/components/fibermap/
   access-point/                        # Tela 2 (AccessPointEditor SVG, layout.ts puro, modais, TracePanel)
   otdr/                                # OtdrModal (FM-5 — estúdio e access-point)
   budget/                              # PowerBudgetModal (FM-6 — header do access-point)
+  kml/                                 # KmlImportModal (FM-7 — topbar do estúdio)
 apps/web/src/app/(fullscreen)/fibermap/            # estúdio + access-point/[elementId]
 apps/web/src/app/(protected)/fibermap/settings/    # Tela 3
 ```
@@ -168,15 +172,22 @@ PATCH (remova defaults com `.extend`, ver `UpdateFibermapProductRequestSchema`).
 - Vínculo OLT: re-vincular/desvincular device OLT existente é só API
   (`PATCH /devices/:id { netxOltId }`) — sem UI; devices OLT antigos (sem
   vínculo) mostram badge âmbar no editor.
+- FM-7 (polish da spec §13 que ficou de fora): **dark mode do mapa** (tiles
+  OSM são claros; exigiria provider dark configurável — junto com o débito
+  de satélite/tiles), **auditoria visível na UI** (histórico do elemento —
+  os dados já estão em `audit_logs` com ações `fibermap.*`) e **undo de lote
+  do import KML** (fibermap_elements/cables não têm `import_batch_id`;
+  exigiria migration — o optical tem esse fluxo pra copiar). Associação de
+  modelo em lote pós-import (§12 "re-instancia tubos/fibras") também não
+  tem UI — o backend bloqueia associação só se o cabo tiver fusões/cortes.
 
 ## Como atacar as próximas fases
 
-### FM-7 — KML + polish
-- Import: copie o fluxo preview/commit de `optical/kml.service.ts`
-  (JSZip + fast-xml-parser com `processEntities:false`), mapeando pra
-  elementos/cabos do fibermap (cabo sem produto = badge "sem modelo",
-  `product_id null` — spec §14.9). Export: Placemarks + LineStrings.
-- Aceite: round-trip export→import num DB limpo (tolerância 1 m).
+**Todas as fases da spec (FM-0..FM-7) estão entregues.** O que resta são os
+débitos acima (nenhum bloqueia uso), os aceites manuais do Charles e o
+deploy (`netx-update`). Se um novo ciclo abrir, os candidatos naturais são:
+UI de relatórios/calibração (FM-6), drag de blocos no editor de emendas,
+arrastar vértices de rota, e o polish do FM-7 listado nos débitos.
 
 ## Convenções de trabalho
 
