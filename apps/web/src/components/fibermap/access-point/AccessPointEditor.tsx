@@ -569,6 +569,35 @@ export function AccessPointEditor({ elementId }: { elementId: string }) {
                     </text>
                     <title>{tc('delete')}</title>
                   </g>
+                  {/* Vínculo com a OLT do inventário (spec §11) */}
+                  {d.device.type === 'OLT' && (
+                    <g data-hit>
+                      <circle
+                        cx={d.x + d.width - 30}
+                        cy={d.y + 12}
+                        r={4}
+                        fill={
+                          !d.device.netxOlt
+                            ? '#f59e0b'
+                            : d.device.netxOlt.status === 'ONLINE'
+                              ? '#22c55e'
+                              : d.device.netxOlt.status === 'UNKNOWN'
+                                ? '#94a3b8'
+                                : '#ef4444'
+                        }
+                        stroke="#1e293b"
+                        strokeWidth={0.8}
+                      />
+                      <title>
+                        {d.device.netxOlt
+                          ? t('ap.oltLinked', {
+                              name: d.device.netxOlt.name,
+                              status: d.device.netxOlt.status,
+                            })
+                          : t('ap.oltUnlinked')}
+                      </title>
+                    </g>
+                  )}
 
                   {/* Portas */}
                   {d.rows.map(({ port, y }) => {
@@ -976,6 +1005,7 @@ export function AccessPointEditor({ elementId }: { elementId: string }) {
       {deviceModal && (
         <DeviceCreateModal
           elementId={elementId}
+          elementType={ap.element.type}
           onClose={() => setDeviceModal(false)}
           onCreated={() => {
             setDeviceModal(false);

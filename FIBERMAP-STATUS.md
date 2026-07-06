@@ -6,7 +6,8 @@
 > atacar as fases restantes. Atualize este arquivo ao fechar cada fase.
 
 Última atualização: 2026-07-06 · último commit relevante: `1594ac8` (main —
-FM-6 completa: backend `a7e1cc7` + frontend `21f1fbd` + fixes `dbed9dc`/`ada3de3`)
+FM-6 completa: backend `a7e1cc7` + frontend `21f1fbd` + fixes `dbed9dc`/`ada3de3`);
+depois, extra entre fases: vínculo OLT ↔ inventário (ver tabela)
 
 ## Estado por fase
 
@@ -19,6 +20,7 @@ FM-6 completa: backend `a7e1cc7` + frontend `21f1fbd` + fixes `dbed9dc`/`ada3de3
 | FM-4 Trace | ✅ validada (aguarda `netx-update`) | `trace-graph.ts` puro (grafo + caminhada + `opticalDistance` com marcos) + `FibermapConnectivityGraphService` (componente conexo em ondas), `GET fibers/:id/trace?from=A\|B\|cutId=&cutSide=` e `GET ports/:id/trace` (λ 1310/1490/1550), jest 13 casos com cálculo manual (±0,01 m/dB), painel de trace no access-point (ícone F por fibra/porta, seletor de λ) + "Ver no mapa" → highlight laranja no estúdio |
 | FM-5 OTDR | ✅ validada (aguarda `netx-update`) | `otdr-locate.ts` puro (sobra antes do trecho, IN_SLACK/AMBIGUOUS_AFTER_SPLITTER/BEYOND_END, incerteza §5.5.6, expected_events do caminho inteiro), `POST otdr/locate` (ST_LineInterpolatePoint com fração já na orientação armazenada + vizinhos ST_DWithin + snapshot em `fibermap_otdr_readings`), `GET otdr/readings`, jest 10 casos (os 6 obrigatórios + reverso/corte/pra-trás), OtdrModal (estúdio popup + header do access-point) + círculo de incerteza vermelho no mapa; smoke no box: ponto a 0,00 m do esperado (aceite <5 m) |
 | FM-6 Power budget | ✅ validada (aguarda `netx-update`) | `GET ports/:id/power-budget` (trace com dBm esperado por evento + TERMINAIS com nível OK/WARN/CRIT e esperado×medido), relatórios `reports/cto-occupancy` · `splice-book?elementId=` · `cable-usage`, calibração `POST cables/:id/calibrate-excess` (mínimos quadrados pela origem, k 0,8–1,25, clamp [1,0·1,2] alinhado ao CHECK), PowerBudgetModal no access-point, jest 7 casos, planilha `docs/fixtures/power-budget-reference.xlsx` gerada do budget REAL da fixture (perda 11,79 dB · Rx −7,79 dBm nas 8 pontas) |
+| Vínculo OLT ↔ inventário (extra) | ✅ validada (aguarda `netx-update`) | device OLT só em elemento POP/CABINET + coluna `fibermap_devices.netx_olt_id` (FK → `olts`, índice único parcial: uma OLT do inventário = UM lugar vivo na planta), `GET /fibermap/olts` (fibermap.read) com placement, seletor obrigatório de OLT no DeviceCreateModal (já colocadas aparecem desabilitadas com o elemento), badge de vínculo/status no header do device — migration `20260706150000_fibermap_olt_binding`, decisão nº11 |
 | FM-7 KML + polish | ⬜ próxima | ver "Como atacar FM-7" abaixo |
 
 **Aceites interativos pendentes (manual, Charles):** desenhar cabo ponta a
@@ -106,6 +108,14 @@ Menu: `apps/web/src/lib/menus.ts` (grupo mapping). Permissões:
     A/B; após localizar, a caminhada segue só-eventos até o fim (expected_
     events da curva inteira). Leituras: log histórico sem FK (nomes resolvidos
     best-effort na listagem).
+11. **Vínculo OLT ↔ inventário (spec §11)** — coluna real
+    `fibermap_devices.netx_olt_id` (FK → `olts`, SET NULL: apagar a OLT do
+    inventário não destrói o desenho), NÃO `metadata.netx_olt_id` como a spec
+    §3.5 sugere. Trava "uma OLT = UM lugar" = índice único parcial
+    (`WHERE deleted_at IS NULL` — soft-delete libera a OLT); regras amigáveis
+    no service: OLT só em POP/CABINET, vincular OLT ocupada → 409 com o nome
+    do elemento. `GET /v1/fibermap/olts` sob `fibermap.read` (a `/v1/olts`
+    exige `olts.admin`).
 
 ## Como validar (box 96.126.162.14, worktree `/root/netx-fm0`)
 
@@ -155,6 +165,9 @@ PATCH (remova defaults com `.extend`, ver `UpdateFibermapProductRequestSchema`).
   query params — a edição por tenant na Tela 3 (spec §10) ficou de fora.
 - FM-6: relatórios são só API (`/reports/*`) — sem página na UI; a
   calibração (`calibrate-excess`) também não tem formulário ainda.
+- Vínculo OLT: re-vincular/desvincular device OLT existente é só API
+  (`PATCH /devices/:id { netxOltId }`) — sem UI; devices OLT antigos (sem
+  vínculo) mostram badge âmbar no editor.
 
 ## Como atacar as próximas fases
 

@@ -4,14 +4,19 @@
  * DeviceCreateModal — splitter/DIO/OLT no ponto de acesso (FM-3, spec §8.3).
  *
  * Copyright (c) 2024-2026 NETX DESENVOLVIMENTO E TECNOLOGIA LTDA — proprietary.
+ *
+ * OLT (spec §11): só em elemento POP/CABINET e sempre vinculada a uma OLT do
+ * inventário (/olts) — uma OLT do inventário só pode estar em UM lugar da
+ * planta; as já colocadas aparecem desabilitadas com o elemento onde estão.
  */
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import useSWR from 'swr';
 
 import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/sonner';
 import { ApiError } from '@/lib/api';
-import { fibermapApi } from '@/lib/fibermap-api';
+import { fibermapApi, type FibermapInventoryOlt } from '@/lib/fibermap-api';
 
 import { StudioModal } from '../studio/StudioModal';
 
@@ -21,24 +26,48 @@ const RATIOS = ['1x2', '1x4', '1x8', '1x16', '1x32', '1x64'] as const;
 
 export function DeviceCreateModal({
   elementId,
+  elementType,
   onClose,
   onCreated,
 }: {
   elementId: string;
+  elementType: string;
   onClose: () => void;
   onCreated: () => void;
 }) {
   const t = useTranslations('fibermap');
   const tc = useTranslations('common');
+  const oltAllowed = elementType === 'POP' || elementType === 'CABINET';
   const [type, setType] = useState<'SPLITTER' | 'DIO' | 'OLT'>('SPLITTER');
   const [name, setName] = useState('');
   const [ratio, setRatio] = useState<(typeof RATIOS)[number]>('1x8');
   const [topology, setTopology] = useState<'BALANCED' | 'UNBALANCED'>('BALANCED');
   const [tap, setTap] = useState('10');
   const [ports, setPorts] = useState('12');
+  const [netxOltId, setNetxOltId] = useState('');
   const [busy, setBusy] = useState(false);
+  // Nome preenchido a partir da OLT escolhida — só sobrescreve se o operador
+  // não digitou nada por conta própria.
+  const autoNameRef = useRef('');
+
+  const { data: inventoryOlts } = useSWR<FibermapInventoryOlt[]>(
+    type === 'OLT' ? fibermapApi.listInventoryOltsPath : null,
+  );
+
+  function pickOlt(id: string) {
+    setNetxOltId(id);
+    const olt = inventoryOlts?.find((o) => o.id === id);
+    if (olt && (!name.trim() || name === autoNameRef.current)) {
+      setName(olt.name);
+      autoNameRef.current = olt.name;
+    }
+  }
 
   async function submit() {
+    if (type === 'OLT' && !netxOltId) {
+      toast.error(t('ap.oltLinkRequired'));
+      return;
+    }
     if (!name.trim()) {
       toast.error(t('studio.form.errorNameRequired'));
       return;
@@ -60,6 +89,7 @@ export function DeviceCreateModal({
               ...(topology === 'UNBALANCED' ? { tapPercent: Number(tap) } : {}),
             }
           : { portsCount }),
+        ...(type === 'OLT' ? { netxOltId } : {}),
       });
       toast.success(t('ap.deviceCreated'));
       onCreated();
@@ -97,9 +127,38 @@ export function DeviceCreateModal({
           >
             <option value="SPLITTER">{t('ap.deviceSplitter')}</option>
             <option value="DIO">DIO</option>
-            <option value="OLT">OLT</option>
+            <option value="OLT" disabled={!oltAllowed}>
+              {oltAllowed ? 'OLT' : `OLT — ${t('ap.oltOnlyPop')}`}
+            </option>
           </select>
         </label>
+        {type === 'OLT' && (
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="font-medium text-text">{t('ap.oltLink')}</span>
+            {inventoryOlts && inventoryOlts.length === 0 ? (
+              <p className="rounded-md border border-border bg-surface-2 px-3 py-2 text-xs text-text-muted">
+                {t('ap.oltLinkEmpty')}
+              </p>
+            ) : (
+              <select
+                className={FIELD}
+                value={netxOltId}
+                onChange={(e) => pickOlt(e.target.value)}
+              >
+                <option value="">{t('ap.oltLinkPlaceholder')}</option>
+                {(inventoryOlts ?? []).map((o) => (
+                  <option key={o.id} value={o.id} disabled={o.placement !== null}>
+                    {o.name} · {o.model}
+                    {o.placement
+                      ? ` — ${t('ap.oltLinkTaken', { element: o.placement.elementName })}`
+                      : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+            <span className="text-xs text-text-muted">{t('ap.oltLinkHelp')}</span>
+          </label>
+        )}
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-medium text-text">{tc('name')}</span>
           <input

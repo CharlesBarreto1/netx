@@ -421,7 +421,25 @@ export interface FibermapApDevice {
   type: 'SPLITTER' | 'DIO' | 'OLT' | 'ONU_SHELF' | 'RACK';
   name: string;
   metadata: Record<string, unknown>;
+  /** OLT: dados resolvidos do inventário quando vinculada (spec §11). */
+  netxOlt: { id: string; name: string; status: string } | null;
   ports: FibermapApPort[];
+}
+
+/** OLT do inventário (/olts) + onde já está colocada na planta. */
+export interface FibermapInventoryOlt {
+  id: string;
+  name: string;
+  vendor: string;
+  model: string;
+  status: string;
+  managementIp: string | null;
+  placement: {
+    deviceId: string;
+    elementId: string;
+    elementName: string;
+    elementType: string;
+  } | null;
 }
 
 export interface FibermapApConnectionSide {
@@ -802,11 +820,15 @@ export const fibermapApi = {
       topology?: 'BALANCED' | 'UNBALANCED';
       tapPercent?: number;
       portsCount?: number;
+      netxOltId?: string | null;
     },
   ) => api.post<{ id: string }>(`/v1/fibermap/elements/${elementId}/devices`, dto),
-  updateDevice: (id: string, dto: { name?: string }) =>
+  updateDevice: (id: string, dto: { name?: string; netxOltId?: string | null }) =>
     api.patch<void>(`/v1/fibermap/devices/${id}`, dto),
   deleteDevice: (id: string) => api.delete<void>(`/v1/fibermap/devices/${id}`),
+  /** OLTs do inventário (/olts) + onde já estão na planta (vínculo §11). */
+  listInventoryOltsPath: '/v1/fibermap/olts',
+  listInventoryOlts: () => api.get<FibermapInventoryOlt[]>('/v1/fibermap/olts'),
 
   // Trace (FM-4)
   traceFiber: (
