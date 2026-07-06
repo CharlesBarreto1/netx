@@ -27,6 +27,7 @@ import { InlineLoader } from '@/components/ui/Spinner';
 import { toast } from '@/components/ui/sonner';
 import { ApiError } from '@/lib/api';
 import {
+  FIBERMAP_OTDR_STORAGE_KEY,
   FIBERMAP_TRACE_STORAGE_KEY,
   fibermapApi,
   type FibermapElementSearchHit,
@@ -45,10 +46,12 @@ import { CableDetailDrawer } from './CableDetailDrawer';
 import { CableDrawModal } from './CableDrawModal';
 import { ElementCreateModal, type ElementDraft } from './ElementCreateModal';
 import { ElementDetailDrawer } from './ElementDetailDrawer';
+import { OtdrModal } from '../otdr/OtdrModal';
 import type {
   FibermapDrawResult,
   FibermapMapHandle,
   FibermapMapLabels,
+  FibermapOtdrOverlay,
   FibermapTraceHighlight,
 } from './FibermapMap';
 import { FolderEditModal } from './FolderEditModal';
@@ -128,6 +131,28 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
     window.sessionStorage.removeItem(FIBERMAP_TRACE_STORAGE_KEY);
   }, []);
 
+  // ── OTDR (FM-5): modal + overlay (círculo de incerteza) ───────────────────
+  const [otdrElementId, setOtdrElementId] = useState<string | null>(null);
+  const [otdr, setOtdr] = useState<FibermapOtdrOverlay | null>(null);
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem(FIBERMAP_OTDR_STORAGE_KEY);
+      if (raw) setOtdr(JSON.parse(raw) as FibermapOtdrOverlay);
+    } catch {
+      window.sessionStorage.removeItem(FIBERMAP_OTDR_STORAGE_KEY);
+    }
+  }, []);
+  const clearOtdr = useCallback(() => {
+    setOtdr(null);
+    window.sessionStorage.removeItem(FIBERMAP_OTDR_STORAGE_KEY);
+  }, []);
+  const handleOpenOtdr = useCallback((id: string) => setOtdrElementId(id), []);
+  const applyOtdrOverlay = useCallback((overlay: FibermapOtdrOverlay) => {
+    setOtdr(overlay);
+    window.sessionStorage.setItem(FIBERMAP_OTDR_STORAGE_KEY, JSON.stringify(overlay));
+    setOtdrElementId(null);
+  }, []);
+
   // ── Pastas (SWR — fetcher global do layout) ────────────────────────────────
   const { data: foldersData, mutate: mutateFolders } = useSWR<FibermapFolder[]>(
     '/v1/fibermap/folders',
@@ -145,6 +170,7 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
       remove: t('studio.popup.delete'),
       loadError: t('studio.map.loadError'),
       accessPoint: t('studio.popup.accessPoint'),
+      otdr: t('studio.popup.otdr'),
       drawStartOnElement: t('studio.cable.drawStartOnElement'),
       typeLabels: Object.fromEntries(
         ELEMENT_TYPES.map((et) => [et, t(`studio.type.${et}`)]),
@@ -301,7 +327,7 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
       if (isTypingTarget(e.target)) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const modalOpen = Boolean(
-        draft || drawResult || folderModal || folderDeleting || deleteRequest,
+        draft || drawResult || folderModal || folderDeleting || deleteRequest || otdrElementId,
       );
       if (e.key === 'Escape') {
         if (modalOpen) return; // os modais fecham a si próprios
@@ -324,7 +350,7 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
     }
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [mode, draft, drawResult, folderModal, folderDeleting, deleteRequest, canWrite]);
+  }, [mode, draft, drawResult, folderModal, folderDeleting, deleteRequest, otdrElementId, canWrite]);
 
   return (
     <div className="flex h-screen w-screen flex-col bg-bg text-text">
@@ -387,7 +413,9 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
             types={typeArray}
             folderId={selectedFolderId ?? undefined}
             canDelete={canDelete}
+            canWrite={canWrite}
             trace={trace}
+            otdr={otdr}
             labels={mapLabels}
             onViewChange={handleViewChange}
             onData={handleData}
@@ -397,22 +425,42 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
             onDrawComplete={handleDrawComplete}
             onOpenCable={handleOpenCable}
             onOpenAccessPoint={handleOpenAccessPoint}
+            onOpenOtdr={handleOpenOtdr}
           />
 
-          {/* Chip do trace ativo (FM-4) — highlight laranja no mapa */}
-          {trace && (
-            <div className="absolute left-1/2 top-3 z-[500] flex -translate-x-1/2 items-center gap-2 rounded-full bg-slate-900/95 px-3 py-1.5 text-xs font-medium text-white shadow-lg">
-              <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-orange-400" />
-              <span className="max-w-[280px] truncate">
-                {t('studio.trace.active', { label: trace.label })}
-              </span>
-              <button
-                type="button"
-                className="rounded-full bg-white/10 px-2 py-0.5 hover:bg-white/20"
-                onClick={clearTrace}
-              >
-                {t('studio.trace.clear')}
-              </button>
+          {/* Chips de overlays ativos (trace FM-4 / OTDR FM-5) */}
+          {(trace || otdr) && (
+            <div className="absolute left-1/2 top-3 z-[500] flex -translate-x-1/2 flex-col items-center gap-1.5">
+              {trace && (
+                <div className="flex items-center gap-2 rounded-full bg-slate-900/95 px-3 py-1.5 text-xs font-medium text-white shadow-lg">
+                  <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-orange-400" />
+                  <span className="max-w-[280px] truncate">
+                    {t('studio.trace.active', { label: trace.label })}
+                  </span>
+                  <button
+                    type="button"
+                    className="rounded-full bg-white/10 px-2 py-0.5 hover:bg-white/20"
+                    onClick={clearTrace}
+                  >
+                    {t('studio.trace.clear')}
+                  </button>
+                </div>
+              )}
+              {otdr && (
+                <div className="flex items-center gap-2 rounded-full bg-slate-900/95 px-3 py-1.5 text-xs font-medium text-white shadow-lg">
+                  <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-red-500" />
+                  <span className="max-w-[280px] truncate">
+                    {t('studio.otdr.active', { label: otdr.label })}
+                  </span>
+                  <button
+                    type="button"
+                    className="rounded-full bg-white/10 px-2 py-0.5 hover:bg-white/20"
+                    onClick={clearOtdr}
+                  >
+                    {t('studio.trace.clear')}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -510,6 +558,14 @@ export function FibermapStudio({ initialView }: { initialView: StudioView }) {
             await mutateFolders();
             setFolderModal(null);
           }}
+        />
+      )}
+
+      {otdrElementId && (
+        <OtdrModal
+          elementId={otdrElementId}
+          onClose={() => setOtdrElementId(null)}
+          onShowOnMap={applyOtdrOverlay}
         />
       )}
 

@@ -59,6 +59,8 @@ export interface FibermapMapLabels {
   loadError: string;
   /** Botão do popup: abre o editor de emendas (FM-3, spec §7). */
   accessPoint: string;
+  /** Botão do popup: abre a ferramenta OTDR (FM-5, spec §9). */
+  otdr: string;
   /** Aviso do modo desenho: o 1º clique precisa cair num elemento. */
   drawStartOnElement: string;
   typeLabels: Record<FibermapElementType, string>;
@@ -81,6 +83,31 @@ export interface FibermapTraceHighlight {
   markers: Array<{ latitude: number; longitude: number; name?: string }>;
 }
 
+/** Resultado do localizador OTDR pro mapa (FM-5, spec §9). */
+export interface FibermapOtdrOverlay {
+  label: string;
+  candidates: Array<{
+    latitude: number;
+    longitude: number;
+    uncertaintyRadiusM: number;
+    kind: 'ON_SEGMENT' | 'IN_SLACK' | 'BEYOND_END';
+    branchLabel: string | null;
+  }>;
+}
+
+/** Círculo geodésico aproximado (raio em metros) como anel GeoJSON. */
+function circleRing(latitude: number, longitude: number, radiusM: number): number[][] {
+  const dLat = radiusM / 111_320;
+  const cos = Math.cos((latitude * Math.PI) / 180);
+  const dLng = radiusM / (111_320 * (Math.abs(cos) < 1e-6 ? 1e-6 : cos));
+  const ring: number[][] = [];
+  for (let i = 0; i <= 48; i++) {
+    const a = (i / 48) * 2 * Math.PI;
+    ring.push([longitude + Math.cos(a) * dLng, latitude + Math.sin(a) * dLat]);
+  }
+  return ring;
+}
+
 export interface FibermapMapProps {
   /** Preenchido no load do mapa; next/dynamic não repassa ref de verdade. */
   handleRef: { current: FibermapMapHandle | null };
@@ -91,8 +118,12 @@ export interface FibermapMapProps {
   types: FibermapElementType[];
   folderId?: string;
   canDelete: boolean;
+  /** OTDR persiste leitura ⇒ exige fibermap.write (botão some sem ela). */
+  canWrite: boolean;
   /** Caminho de trace destacado (laranja) — null limpa (FM-4). */
   trace: FibermapTraceHighlight | null;
+  /** Resultado OTDR (vermelho, círculo de incerteza) — null limpa (FM-5). */
+  otdr: FibermapOtdrOverlay | null;
   labels: FibermapMapLabels;
   onViewChange: (view: StudioView) => void;
   onData: (info: { count: number; truncated: boolean }) => void;
@@ -105,6 +136,8 @@ export interface FibermapMapProps {
   onOpenCable: (cableId: string) => void;
   /** Clique em [Ponto de acesso] no popup do elemento (FM-3). */
   onOpenAccessPoint: (elementId: string) => void;
+  /** Clique em [OTDR] no popup do elemento (FM-5). */
+  onOpenOtdr: (elementId: string) => void;
 }
 
 // ─── Style / constantes ──────────────────────────────────────────────────────
@@ -113,6 +146,7 @@ const HIGHLIGHT_SOURCE_ID = 'fibermap-highlight';
 const CABLES_SOURCE_ID = 'fibermap-cables';
 const DRAW_SOURCE_ID = 'fibermap-draw';
 const TRACE_SOURCE_ID = 'fibermap-trace';
+const OTDR_SOURCE_ID = 'fibermap-otdr';
 /** Raio de snap do desenho em pixels (≈15 m nos zooms de trabalho, spec §7). */
 const SNAP_PX = 12;
 
@@ -139,7 +173,9 @@ export function FibermapMap({
   types,
   folderId,
   canDelete,
+  canWrite,
   trace,
+  otdr,
   labels,
   onViewChange,
   onData,
@@ -149,6 +185,7 @@ export function FibermapMap({
   onDrawComplete,
   onOpenCable,
   onOpenAccessPoint,
+  onOpenOtdr,
 }: FibermapMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MaplibreMap | null>(null);
@@ -165,6 +202,7 @@ export function FibermapMap({
     folderId,
   });
   const canDeleteRef = useRef(canDelete);
+  const canWriteRef = useRef(canWrite);
   const labelsRef = useRef(labels);
   const cbRef = useRef({
     onViewChange,
@@ -175,6 +213,7 @@ export function FibermapMap({
     onDrawComplete,
     onOpenCable,
     onOpenAccessPoint,
+    onOpenOtdr,
   });
   useEffect(() => {
     cbRef.current = {
@@ -186,9 +225,11 @@ export function FibermapMap({
       onDrawComplete,
       onOpenCable,
       onOpenAccessPoint,
+      onOpenOtdr,
     };
     labelsRef.current = labels;
     canDeleteRef.current = canDelete;
+    canWriteRef.current = canWrite;
   });
 
   // Estado do desenho de cabo (modo draw) — vive fora do React de propósito:
@@ -203,9 +244,11 @@ export function FibermapMap({
   // Preenchidos no load do mapa (precisam do source/listeners vivos).
   const resetDrawRef = useRef<(() => void) | null>(null);
   const drawKeyCleanupRef = useRef<(() => void) | null>(null);
-  // Trace: o prop pode chegar antes ou depois do load — ref + aplicador.
+  // Trace/OTDR: o prop pode chegar antes ou depois do load — ref + aplicador.
   const traceRef = useRef<FibermapTraceHighlight | null>(trace);
   const applyTraceRef = useRef<((fit: boolean) => void) | null>(null);
+  const otdrRef = useRef<FibermapOtdrOverlay | null>(otdr);
+  const applyOtdrRef = useRef<((fit: boolean) => void) | null>(null);
 
   // ── Ciclo de vida do mapa (uma vez) ────────────────────────────────────────
   useEffect(() => {
@@ -333,6 +376,19 @@ export function FibermapMap({
         cbRef.current.onOpenAccessPoint(props.id);
       });
       actions.append(apBtn);
+      // [OTDR] — persiste leitura, então exige write (FM-5).
+      if (canWriteRef.current) {
+        const otdrBtn = document.createElement('button');
+        otdrBtn.type = 'button';
+        otdrBtn.className =
+          'rounded-md bg-rose-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-rose-700';
+        otdrBtn.textContent = l.otdr;
+        otdrBtn.addEventListener('click', () => {
+          popupRef.current?.remove();
+          cbRef.current.onOpenOtdr(props.id);
+        });
+        actions.append(otdrBtn);
+      }
       const detailBtn = document.createElement('button');
       detailBtn.type = 'button';
       detailBtn.className =
@@ -386,6 +442,10 @@ export function FibermapMap({
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
       });
+      map.addSource(OTDR_SOURCE_ID, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
 
       // Cabos por baixo dos elementos (linhas coloridas por display_color).
       map.addLayer({
@@ -426,6 +486,31 @@ export function FibermapMap({
           'circle-color': '#f97316',
           'circle-stroke-color': '#ffffff',
           'circle-stroke-width': 1.5,
+        },
+      });
+
+      // OTDR (FM-5): círculo de incerteza + ponto estimado do rompimento.
+      map.addLayer({
+        id: 'fibermap-otdr-circle',
+        type: 'fill',
+        source: OTDR_SOURCE_ID,
+        filter: ['==', ['geometry-type'], 'Polygon'],
+        paint: {
+          'fill-color': '#ef4444',
+          'fill-opacity': 0.14,
+          'fill-outline-color': '#ef4444',
+        },
+      });
+      map.addLayer({
+        id: 'fibermap-otdr-points',
+        type: 'circle',
+        source: OTDR_SOURCE_ID,
+        filter: ['==', ['geometry-type'], 'Point'],
+        paint: {
+          'circle-radius': 6,
+          'circle-color': '#ef4444',
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
         },
       });
 
@@ -785,6 +870,37 @@ export function FibermapMap({
       applyTraceRef.current = applyTrace;
       if (traceRef.current) applyTrace(true);
 
+      // ── Overlay OTDR (FM-5) ───────────────────────────────────────────────
+      function applyOtdr(fit: boolean) {
+        const src = map.getSource(OTDR_SOURCE_ID) as GeoJSONSource | undefined;
+        if (!src) return;
+        const ov = otdrRef.current;
+        if (!ov || ov.candidates.length === 0) {
+          src.setData({ type: 'FeatureCollection', features: [] });
+          return;
+        }
+        const features: GeoJSON.Feature[] = [];
+        const bounds = new maplibregl.LngLatBounds();
+        for (const c of ov.candidates) {
+          const ring = circleRing(c.latitude, c.longitude, c.uncertaintyRadiusM);
+          features.push({
+            type: 'Feature',
+            geometry: { type: 'Polygon', coordinates: [ring] },
+            properties: { kind: c.kind },
+          });
+          features.push({
+            type: 'Feature',
+            geometry: { type: 'Point', coordinates: [c.longitude, c.latitude] },
+            properties: { kind: c.kind, branch: c.branchLabel ?? '' },
+          });
+          for (const p of ring) bounds.extend(p as [number, number]);
+        }
+        src.setData({ type: 'FeatureCollection', features });
+        if (fit) map.fitBounds(bounds, { padding: 90, maxZoom: 17 });
+      }
+      applyOtdrRef.current = applyOtdr;
+      if (otdrRef.current) applyOtdr(true);
+
       // API imperativa pro estúdio.
       handleRef.current = {
         flyTo: (longitude, latitude, zoom) => {
@@ -838,6 +954,7 @@ export function FibermapMap({
       drawKeyCleanupRef.current = null;
       resetDrawRef.current = null;
       applyTraceRef.current = null;
+      applyOtdrRef.current = null;
       scheduleFetchRef.current = null;
       handleRef.current = null;
       popupRef.current?.remove();
@@ -869,6 +986,12 @@ export function FibermapMap({
     traceRef.current = trace;
     applyTraceRef.current?.(Boolean(trace));
   }, [trace]);
+
+  // ── OTDR (FM-5) — mesmo padrão do trace ────────────────────────────────────
+  useEffect(() => {
+    otdrRef.current = otdr;
+    applyOtdrRef.current?.(Boolean(otdr));
+  }, [otdr]);
 
   return <div ref={containerRef} className="h-full w-full" />;
 }

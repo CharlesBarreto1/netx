@@ -521,6 +521,62 @@ export interface FibermapTraceResponse {
   mapGeometry: { type: 'MultiLineString'; coordinates: number[][][] };
 }
 
+// ─── OTDR (FM-5) ────────────────────────────────────────────────────────────
+/** sessionStorage: resultado do OTDR no access-point → overlay no estúdio. */
+export const FIBERMAP_OTDR_STORAGE_KEY = 'netx.fibermap.otdr';
+
+export type FibermapOtdrFlag = 'IN_SLACK' | 'AMBIGUOUS_AFTER_SPLITTER' | 'BEYOND_END';
+export type FibermapOtdrEventType = 'BREAK' | 'HIGH_LOSS' | 'REFLECTIVE' | 'END';
+
+export interface FibermapOtdrCandidate {
+  kind: 'ON_SEGMENT' | 'IN_SLACK' | 'BEYOND_END';
+  latitude: number;
+  longitude: number;
+  uncertaintyRadiusM: number;
+  branchLabel: string | null;
+  cableId?: string;
+  cableName?: string;
+  segmentId?: string;
+  betweenElements?: [string, string];
+  offsetM?: number;
+  elementId?: string;
+  elementName?: string;
+}
+
+export interface FibermapOtdrExpectedEvent {
+  type: 'FUSION' | 'CONNECTOR' | 'SPLITTER' | 'END';
+  elementId: string | null;
+  elementName: string | null;
+  expectedOtdrM: number;
+  detail: string | null;
+}
+
+export interface FibermapOtdrLocateResponse {
+  readingId: string;
+  flags: FibermapOtdrFlag[];
+  point: { latitude: number; longitude: number } | null;
+  uncertaintyRadiusM: number | null;
+  candidates: FibermapOtdrCandidate[];
+  nearestElements: Array<{ id: string; name: string; distanceM: number }>;
+  expectedEvents: FibermapOtdrExpectedEvent[];
+}
+
+export interface FibermapOtdrReadingItem {
+  id: string;
+  cableId: string;
+  cableName: string | null;
+  fiberNumber: number;
+  referenceElementId: string | null;
+  referenceElementName: string | null;
+  directionElementId: string;
+  directionElementName: string | null;
+  distanceM: number;
+  wavelengthNm: number;
+  eventType: FibermapOtdrEventType;
+  createdAt: string;
+  result: unknown;
+}
+
 // ─── Atenuação ──────────────────────────────────────────────────────────────
 export type FibermapAttenuationKey =
   | 'FIBER_1310' | 'FIBER_1490' | 'FIBER_1550'
@@ -719,6 +775,19 @@ export const fibermapApi = {
     ),
   tracePort: (portId: string, params: { wavelength?: FibermapTraceWavelength } = {}) =>
     api.get<FibermapTraceResponse>(`/v1/fibermap/ports/${portId}/trace${qs(params)}`),
+
+  // OTDR (FM-5)
+  otdrLocate: (dto: {
+    referenceElementId: string;
+    cableId: string;
+    fiberNumber: number;
+    directionElementId: string;
+    distanceM: number;
+    wavelengthNm?: 1310 | 1490 | 1550;
+    eventType?: FibermapOtdrEventType;
+  }) => api.post<FibermapOtdrLocateResponse>('/v1/fibermap/otdr/locate', dto),
+  otdrReadings: (params: { cableId?: string; limit?: number } = {}) =>
+    api.get<FibermapOtdrReadingItem[]>(`/v1/fibermap/otdr/readings${qs(params)}`),
 
   // Catálogo
   listProducts: (params: ListFibermapProductsParams = {}) =>
