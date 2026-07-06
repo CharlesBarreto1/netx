@@ -85,6 +85,8 @@ export const CreateFibermapDeviceRequestSchema = z
     tapPercent: z.coerce.number().int().min(1).max(50).optional(),
     /** DIO/OLT: nº de portas BIDI (bandejas/PONs). */
     portsCount: z.coerce.number().int().min(1).max(576).optional(),
+    /** OLT: vínculo com a OLT do inventário (/olts) — spec §11. */
+    netxOltId: z.string().uuid().nullish(),
   })
   .superRefine((v, ctx) => {
     if (v.type === 'SPLITTER' && !v.ratio) {
@@ -100,6 +102,13 @@ export const CreateFibermapDeviceRequestSchema = z
     if (v.type !== 'SPLITTER' && !v.portsCount) {
       ctx.addIssue({ code: 'custom', path: ['portsCount'], message: 'informe o nº de portas' });
     }
+    if (v.netxOltId && v.type !== 'OLT') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['netxOltId'],
+        message: 'vínculo com o inventário é só pra devices OLT',
+      });
+    }
   });
 export type CreateFibermapDeviceRequest = z.infer<
   typeof CreateFibermapDeviceRequestSchema
@@ -111,10 +120,33 @@ export const UpdateFibermapDeviceRequestSchema = z.object({
   diagramPos: z
     .object({ col: z.enum(['L', 'R']), order: z.coerce.number().int().min(0).max(999) })
     .nullish(),
+  /** OLT: re-vincular (uuid) ou desvincular (null); omitido = não mexe. */
+  netxOltId: z.string().uuid().nullish(),
 });
 export type UpdateFibermapDeviceRequest = z.infer<
   typeof UpdateFibermapDeviceRequestSchema
 >;
+
+/**
+ * GET /fibermap/olts — OLTs do inventário (/olts) com onde já estão na
+ * planta. Exposto sob fibermap.read (a listagem /v1/olts exige olts.admin,
+ * que o operador de planta normalmente não tem).
+ */
+export interface FibermapInventoryOlt {
+  id: string;
+  name: string;
+  vendor: string;
+  model: string;
+  status: string;
+  managementIp: string | null;
+  /** null = livre pra colocar num POP/Armário. */
+  placement: {
+    deviceId: string;
+    elementId: string;
+    elementName: string;
+    elementType: string;
+  } | null;
+}
 
 // =============================================================================
 // Fusão em sequência (spec §8.1 — "fibras 1-8 do A nas 1-8 do B")
@@ -190,6 +222,8 @@ export interface FibermapApDevice {
   type: 'SPLITTER' | 'DIO' | 'OLT' | 'ONU_SHELF' | 'RACK';
   name: string;
   metadata: Record<string, unknown>;
+  /** OLT: dados resolvidos do inventário quando vinculada (spec §11). */
+  netxOlt: { id: string; name: string; status: string } | null;
   ports: FibermapApPort[];
 }
 

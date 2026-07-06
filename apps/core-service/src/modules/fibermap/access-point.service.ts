@@ -119,6 +119,18 @@ export class FibermapAccessPointService {
       orderBy: { name: 'asc' },
     });
 
+    // ── OLTs do inventário vinculadas (nome/status pro cabeçalho do device) ─
+    const oltIds = [
+      ...new Set(devices.map((d) => d.netxOltId).filter((v): v is string => Boolean(v))),
+    ];
+    const inventoryOlts = oltIds.length
+      ? await this.prisma.olt.findMany({
+          where: { id: { in: oltIds } },
+          select: { id: true, name: true, status: true },
+        })
+      : [];
+    const oltById = new Map(inventoryOlts.map((o) => [o.id, o]));
+
     // ── Conexões vivas do elemento ─────────────────────────────────────────
     const connections = await this.prisma.fibermapOpticalConnection.findMany({
       where: { tenantId, elementId, deletedAt: null },
@@ -230,6 +242,7 @@ export class FibermapAccessPointService {
         type: d.type,
         name: d.name,
         metadata: (d.metadata ?? {}) as Record<string, unknown>,
+        netxOlt: (d.netxOltId && oltById.get(d.netxOltId)) || null,
         ports: d.ports.map((p) => ({
           id: p.id,
           role: p.role,

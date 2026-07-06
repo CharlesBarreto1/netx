@@ -29,6 +29,7 @@ import {
   type CreateFibermapCutRequest,
   type CreateFibermapDeviceRequest,
   type FibermapEndpointRef,
+  type FibermapInventoryOlt,
   type UpdateFibermapConnectionRequest,
   type UpdateFibermapDeviceRequest,
 } from '@netx/shared';
@@ -496,9 +497,17 @@ export class FibermapConnectionsService {
   ): Promise<{ id: string }> {
     const element = await this.prisma.fibermapElement.findFirst({
       where: { id: elementId, tenantId, deletedAt: null },
-      select: { id: true },
+      select: { id: true, type: true },
     });
     if (!element) throw new BadRequestException('elementId inválido');
+
+    // Spec §2: POP abriga OLTs; armário idem. CEO/CTO/poste não.
+    if (input.type === 'OLT' && element.type !== 'POP' && element.type !== 'CABINET') {
+      throw new BadRequestException('OLT só pode ser cadastrada num POP ou Armário');
+    }
+    if (input.netxOltId) {
+      await this.assertOltBindingFree(tenantId, input.netxOltId, null);
+    }
 
     if (input.productId) {
       const product = await this.prisma.fibermapProduct.findFirst({
@@ -534,19 +543,29 @@ export class FibermapConnectionsService {
       }
     }
 
-    const created = await this.prisma.fibermapDevice.create({
-      data: {
-        tenantId,
-        elementId,
-        type: input.type,
-        name: input.name.trim(),
-        productId: input.productId ?? null,
-        metadata: metadata as Prisma.InputJsonValue,
-        createdById: actorUserId,
-        ports: { create: ports },
-      },
-      select: { id: true },
-    });
+    let created: { id: string };
+    try {
+      created = await this.prisma.fibermapDevice.create({
+        data: {
+          tenantId,
+          elementId,
+          type: input.type,
+          name: input.name.trim(),
+          productId: input.productId ?? null,
+          netxOltId: input.netxOltId ?? null,
+          metadata: metadata as Prisma.InputJsonValue,
+          createdById: actorUserId,
+          ports: { create: ports },
+        },
+        select: { id: true },
+      });
+    } catch (err) {
+      // Rede de segurança do índice único parcial (corrida entre pré-check e create).
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException('Esta OLT já está colocada em outro elemento da planta');
+      }
+      throw err;
+    }
     await this.audit.log({
       tenantId,
       userId: actorUserId,
@@ -566,9 +585,17 @@ export class FibermapConnectionsService {
   ): Promise<void> {
     const existing = await this.prisma.fibermapDevice.findFirst({
       where: { id, tenantId, deletedAt: null },
-      select: { id: true, metadata: true },
+      select: { id: true, type: true, metadata: true },
     });
     if (!existing) throw new NotFoundException('Device não encontrado');
+    if (input.netxOltId !== undefined) {
+      if (existing.type !== 'OLT') {
+        throw new BadRequestException('Vínculo com o inventário é só pra devices OLT');
+      }
+      if (input.netxOltId) {
+        await this.assertOltBindingFree(tenantId, input.netxOltId, id);
+      }
+    }
     const metadata =
       input.diagramPos === undefined
         ? undefined
@@ -576,16 +603,99 @@ export class FibermapConnectionsService {
             ...((existing.metadata ?? {}) as Record<string, unknown>),
             diagram_pos: input.diagramPos,
           } as Prisma.InputJsonValue);
-    await this.prisma.fibermapDevice.update({
-      where: { id },
-      data: { name: input.name?.trim(), metadata, updatedById: actorUserId },
-    });
+    try {
+      await this.prisma.fibermapDevice.update({
+        where: { id },
+        data: {
+          name: input.name?.trim(),
+          metadata,
+          netxOltId: input.netxOltId,
+          updatedById: actorUserId,
+        },
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        throw new ConflictException('Esta OLT já está colocada em outro elemento da planta');
+      }
+      throw err;
+    }
     await this.audit.log({
       tenantId,
       userId: actorUserId,
       action: 'fibermap.device.updated',
       resource: 'fibermap_devices',
       resourceId: id,
+    });
+  }
+
+  /**
+   * OLT do inventário livre pra vincular? (trava "uma OLT = um lugar").
+   * ignoreDeviceId: no update, o próprio device não conta como conflito.
+   */
+  private async assertOltBindingFree(
+    tenantId: string,
+    netxOltId: string,
+    ignoreDeviceId: string | null,
+  ): Promise<void> {
+    const olt = await this.prisma.olt.findFirst({
+      where: { id: netxOltId, tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!olt) throw new BadRequestException('OLT do inventário não encontrada');
+    const taken = await this.prisma.fibermapDevice.findFirst({
+      where: {
+        tenantId,
+        netxOltId,
+        deletedAt: null,
+        ...(ignoreDeviceId ? { id: { not: ignoreDeviceId } } : {}),
+      },
+      select: { element: { select: { name: true } } },
+    });
+    if (taken) {
+      throw new ConflictException(
+        `Esta OLT já está colocada em "${taken.element.name}" — remova de lá antes`,
+      );
+    }
+  }
+
+  /** OLTs do inventário + onde já estão na planta (pro seletor de vínculo). */
+  async listInventoryOlts(tenantId: string): Promise<FibermapInventoryOlt[]> {
+    const olts = await this.prisma.olt.findMany({
+      where: { tenantId, deletedAt: null },
+      select: {
+        id: true,
+        name: true,
+        vendor: true,
+        model: true,
+        status: true,
+        managementIp: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+    if (!olts.length) return [];
+    const placements = await this.prisma.fibermapDevice.findMany({
+      where: { tenantId, netxOltId: { in: olts.map((o) => o.id) }, deletedAt: null },
+      select: {
+        id: true,
+        netxOltId: true,
+        elementId: true,
+        element: { select: { name: true, type: true } },
+      },
+    });
+    const byOlt = new Map(placements.map((p) => [p.netxOltId!, p]));
+    return olts.map((o) => {
+      const p = byOlt.get(o.id);
+      return {
+        ...o,
+        placement: p
+          ? {
+              deviceId: p.id,
+              elementId: p.elementId,
+              elementName: p.element.name,
+              elementType: p.element.type,
+            }
+          : null,
+      };
     });
   }
 

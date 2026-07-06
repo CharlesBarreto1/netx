@@ -3549,6 +3549,7 @@ model Olt {
   ponPorts            PonPort[]
   enclosures          OpticalEnclosure[]
   ufinetServices      UfinetService[]
+  fibermapDevices     FibermapDevice[]
 
   @@unique([tenantId, name])
   @@index([tenantId])
@@ -6744,8 +6745,12 @@ model FibermapDevice {
   productId      String?             @map("product_id") @db.Uuid
   type           FibermapDeviceType
   name           String              @db.VarChar(120)
+  // OLT: vínculo com o inventário (/olts, spec §11). Coluna real (não
+  // metadata) pra FK + índice único parcial (WHERE deleted_at IS NULL, no
+  // SQL da migration) travarem "uma OLT do inventário = UM lugar na planta".
+  netxOltId      String?             @map("netx_olt_id") @db.Uuid
   // SPLITTER: { ratio, topology, tap_percent } · RACK: { rack_units }
-  // OLT: { netx_olt_id, pon_ports } — referência cruzada ao inventário.
+  // OLT: { pon_ports }
   metadata       Json                @default("{}")
 
   createdById    String?             @map("created_by_id") @db.Uuid
@@ -6759,6 +6764,9 @@ model FibermapDevice {
   parentDevice   FibermapDevice?     @relation("FibermapDeviceChildren", fields: [parentDeviceId], references: [id], onDelete: SetNull)
   childDevices   FibermapDevice[]    @relation("FibermapDeviceChildren")
   product        FibermapProduct?    @relation(fields: [productId], references: [id], onDelete: SetNull)
+  // SetNull: apagar a OLT do inventário não some com o device da planta —
+  // vira OLT "sem vínculo" e o operador re-vincula (mesma filosofia do R8.2).
+  netxOlt        Olt?                @relation(fields: [netxOltId], references: [id], onDelete: SetNull)
   createdBy      User?               @relation("FibermapDeviceCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy      User?               @relation("FibermapDeviceUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   ports          FibermapOpticalPort[]

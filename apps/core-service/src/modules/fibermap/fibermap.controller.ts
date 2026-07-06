@@ -369,6 +369,13 @@ export class FibermapController {
     await this.conns.removeCut(u.tenantId, u.sub, id);
   }
 
+  /** OLTs do inventário (/olts) + onde já estão na planta — vínculo §11. */
+  @Get('olts')
+  @RequirePermissions('fibermap.read')
+  listInventoryOlts(@CurrentUser() u: AuthenticatedPrincipal) {
+    return this.conns.listInventoryOlts(u.tenantId);
+  }
+
   /** Splitter/DIO/OLT dentro do elemento (portas geradas, §3.5). */
   @Post('elements/:id/devices')
   @RequirePermissions('fibermap.write')

@@ -57,6 +57,17 @@ Onde os dois conflitam, decidimos assim:
 8. **Rotas em `/v1/fibermap/*`** (prefixo global do core) — via gateway fica
    `/api/v1/fibermap/*`. Spec dizia `/api/fibermap`; o `/v1` é regra do repo.
 
+9. **Vínculo OLT ↔ inventário em coluna real (`netx_olt_id`), não em
+   `metadata`** como a spec §3.5 sugere. Motivo: a trava "uma OLT do
+   inventário só pode estar colocada em UM elemento vivo" vira FK pra `olts`
+   (SET NULL — apagar a OLT do inventário não destrói o desenho) + índice
+   único parcial (`WHERE deleted_at IS NULL`, migration
+   `20260706150000_fibermap_olt_binding`). Regras no service (spec §14):
+   device OLT só em elemento POP/CABINET; vincular OLT já colocada → 409
+   dizendo onde ela está. `GET /v1/fibermap/olts` (fibermap.read) lista o
+   inventário com o placement — a listagem `/v1/olts` exige `olts.admin`,
+   que operador de planta não tem.
+
 ## Permissões
 
 `fibermap.read` · `fibermap.write` (desenhar planta) · `fibermap.delete` ·
