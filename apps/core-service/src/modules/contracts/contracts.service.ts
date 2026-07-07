@@ -680,6 +680,30 @@ export class ContractsService {
       }
     }
 
+    // TR-069: credencial PPPoE mudou → empurra pro CPE também. RADIUS sozinho
+    // não basta — a ONT seguiria discando com o usuário antigo (e falhando,
+    // já que o identificador velho é limpo do RADIUS acima) até alguém
+    // reconfigurar o equipamento na mão. Vendor-aware (Huawei/VSOL/...);
+    // best-effort: falha no enqueue não desfaz o update do contrato.
+    if (
+      (changed('pppoeUsername') || changed('pppoePassword')) &&
+      targetMethod === 'PPPOE' &&
+      updated.status !== PrismaContractStatus.PENDING_INSTALL &&
+      updated.pppoeUsername &&
+      updated.pppoePassword
+    ) {
+      await this.enqueuePppoePush(
+        tenantId,
+        updated.id,
+        updated.pppoeUsername,
+        updated.pppoePassword,
+      ).catch((err: unknown) =>
+        this.logger.error(
+          `[contracts.update] push PPPoE via TR-069 falhou contrato=${updated.id}: ${String(err)}`,
+        ),
+      );
+    }
+
     // IPAM: reconcilia o IP fixo documentado quando o Framed-IP mudou.
     if (input.framedIpAddress !== undefined) {
       await this.syncIpamContract(tenantId, actorUserId, updated.id, updated.framedIpAddress);
@@ -693,6 +717,76 @@ export class ContractsService {
       resourceId: updated.id,
     });
     return toContractResponse(updated, { includePassword: true });
+  }
+
+  /**
+   * Enfileira SET_PARAMS com a credencial PPPoE nova pra ONT do contrato (via
+   * TR-069, paths por vendor). Sem ONT vinculada não há CPE gerenciado — sai
+   * silencioso (contrato IPoE/bridge ou instalação antiga sem TR-069).
+   * O CPE re-disca sozinho ao receber a credencial; o Inform seguinte (≤60s
+   * após o SET, que também reduz o intervalo) confirma o novo status PPP.
+   */
+  private async enqueuePppoePush(
+    tenantId: string,
+    contractId: string,
+    pppoeUsername: string,
+    pppoePassword: string,
+  ): Promise<void> {
+    const ont = await this.prisma.ont.findFirst({
+      where: { tenantId, contractId },
+      select: {
+        id: true,
+        snGpon: true,
+        tr069Device: { select: { id: true, manufacturer: true } },
+      },
+    });
+    if (!ont) return;
+
+    // CPE nunca fez Inform → placeholder (mesmo padrão do applyWifiUpdate);
+    // a task fica PENDING e aplica quando o CPE conectar.
+    let deviceDbId = ont.tr069Device?.id;
+    if (!deviceDbId) {
+      const identity = placeholderIdentityFor(ont.snGpon);
+      const created = await this.prisma.tr069Device.upsert({
+        where: { deviceId: identity.deviceId },
+        create: {
+          tenantId,
+          ontId: ont.id,
+          deviceId: identity.deviceId,
+          manufacturer: identity.manufacturer,
+          oui: identity.oui,
+          status: 'UNKNOWN',
+        },
+        update: { ontId: ont.id },
+      });
+      deviceDbId = created.id;
+    }
+
+    const vendor = vendorFor(ont.tr069Device?.manufacturer, ont.snGpon);
+    const P = provisioningPathsFor(vendor);
+    const task = await this.prisma.tr069Task.create({
+      data: {
+        tenantId,
+        deviceId: deviceDbId,
+        contractId,
+        action: 'SET_PARAMS',
+        status: 'PENDING',
+        payload: {
+          params: [
+            { name: P.pppoeUsername, value: pppoeUsername, type: 'xsd:string' },
+            { name: P.pppoePassword, value: pppoePassword, type: 'xsd:string' },
+            { name: P.pppoeEnable, value: '1', type: 'xsd:boolean' },
+            // Próximo Inform rápido pra confirmar o redial na UI.
+            { name: P.informInterval, value: '60', type: 'xsd:unsignedInt' },
+          ],
+          purpose: 'PPPOE_CREDENTIALS',
+        },
+      },
+    });
+    this.logger.log(
+      `[contracts.update] PPPoE novo empurrado via TR-069 contrato=${contractId} ` +
+        `vendor=${vendor} task=${task.id.slice(0, 8)}`,
+    );
   }
 
   /** Espelho best-effort do Framed-IP no IPAM — nunca quebra a operação. */
