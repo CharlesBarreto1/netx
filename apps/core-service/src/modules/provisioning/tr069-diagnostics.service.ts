@@ -63,7 +63,8 @@ import {
   TR143_PING,
   TR143_UPLOAD,
 } from './tr069-paths.huawei';
-import { diagnosticParamNamesFor, notificationAttributesFor } from './tr069-paths.registry';
+import { diagnosticParamNamesFor, isVsol, notificationAttributesFor } from './tr069-paths.registry';
+import { VSOL_WIFI_CHANNELS, vsolWlanPaths, vsolWlanSecurityParams } from './tr069-paths.vsol';
 
 /** Intervalo (min) entre coletas proativas por device. */
 const DIAGNOSTIC_INTERVAL_MIN = parseInt(process.env.TR069_DIAGNOSTIC_INTERVAL_MIN ?? '15', 10);
@@ -408,31 +409,46 @@ export class Tr069DiagnosticsService {
   ): Promise<{ taskId: string; message: string }> {
     const device = await this.prisma.tr069Device.findFirst({
       where: { id: deviceId, tenantId },
-      select: { id: true },
+      select: { id: true, manufacturer: true },
     });
     if (!device) throw new NotFoundException('Device TR-069 não encontrado');
 
+    // VSOL/Realtek: canal/potência/criptografia via paths padrão TR-098;
+    // largura de canal é enum vendor não mapeado (X_CT-COM_ChannelWidth) —
+    // rejeita com mensagem clara em vez de dar fault no CPE.
+    const vsol = isVsol(device.manufacturer);
     const w = huaweiWlanPaths(input.band);
+    const wV = vsolWlanPaths(input.band);
     const params: Array<{ name: string; value: string; type: string }> = [];
 
     // Canal: auto vs. manual (auto=0 é obrigatório pra fixar o canal).
+    // Paths de canal/potência são padrão TR-098 — só muda a origem por vendor
+    // (na VSOL os índices de WLAN são invertidos: 1=5G, 5=2.4G) e a lista de
+    // canais válidos (PossibleChannels do firmware — 2.4G da VSOL para no 11).
+    const chanPaths = vsol ? wV : w;
+    const validChannels = vsol ? VSOL_WIFI_CHANNELS[input.band] : HUAWEI_WIFI_CHANNELS[input.band];
     if (input.autoChannel === true) {
-      params.push({ name: w.autoChannel, value: '1', type: 'xsd:boolean' });
+      params.push({ name: chanPaths.autoChannel, value: '1', type: 'xsd:boolean' });
     } else if (input.channel !== undefined || input.autoChannel === false) {
       if (input.channel === undefined) {
         throw new BadRequestException('Canal manual exige escolher o canal');
       }
-      if (!HUAWEI_WIFI_CHANNELS[input.band].includes(input.channel)) {
+      if (!validChannels.includes(input.channel)) {
         throw new BadRequestException(
-          `Canal ${input.channel} inválido para ${input.band} (válidos: ${HUAWEI_WIFI_CHANNELS[input.band].join(', ')})`,
+          `Canal ${input.channel} inválido para ${input.band} (válidos: ${validChannels.join(', ')})`,
         );
       }
-      params.push({ name: w.autoChannel, value: '0', type: 'xsd:boolean' });
-      params.push({ name: w.channel, value: String(input.channel), type: 'xsd:unsignedInt' });
+      params.push({ name: chanPaths.autoChannel, value: '0', type: 'xsd:boolean' });
+      params.push({ name: chanPaths.channel, value: String(input.channel), type: 'xsd:unsignedInt' });
     }
 
-    // Largura de canal (enum vendor X_HW_HT20).
+    // Largura de canal (enum vendor X_HW_HT20 — Huawei apenas).
     if (input.channelWidth !== undefined) {
+      if (vsol) {
+        throw new BadRequestException(
+          'Largura de canal não é ajustável neste modelo (VSOL) — use canal/potência.',
+        );
+      }
       if (!HUAWEI_WIFI_WIDTHS[input.band].includes(input.channelWidth)) {
         throw new BadRequestException(
           `Largura ${input.channelWidth} não suportada em ${input.band} (válidas: ${HUAWEI_WIFI_WIDTHS[input.band].join(', ')})`,
@@ -445,19 +461,23 @@ export class Tr069DiagnosticsService {
       });
     }
 
-    // Potência (%).
+    // Potência (%) — TransmitPower é % do máximo em ambos os vendors.
     if (input.txPower !== undefined) {
       if (!HUAWEI_TX_POWER_LEVELS.includes(input.txPower as (typeof HUAWEI_TX_POWER_LEVELS)[number])) {
         throw new BadRequestException(
           `Potência ${input.txPower} inválida (válidas: ${HUAWEI_TX_POWER_LEVELS.join(', ')})`,
         );
       }
-      params.push({ name: w.txPower, value: String(input.txPower), type: 'xsd:unsignedInt' });
+      params.push({ name: chanPaths.txPower, value: String(input.txPower), type: 'xsd:unsignedInt' });
     }
 
     // Criptografia (nunca abre a rede — só WPA2 ou WPA/WPA2).
     if (input.security) {
-      params.push(...huaweiWlanSecurityParams(input.band, input.security));
+      params.push(
+        ...(vsol
+          ? vsolWlanSecurityParams(input.band, input.security)
+          : huaweiWlanSecurityParams(input.band, input.security)),
+      );
     }
 
     if (params.length === 0) {
@@ -510,9 +530,14 @@ export class Tr069DiagnosticsService {
   ): Promise<{ taskId: string; message: string }> {
     const device = await this.prisma.tr069Device.findFirst({
       where: { id: deviceId, tenantId },
-      select: { id: true },
+      select: { id: true, manufacturer: true },
     });
     if (!device) throw new NotFoundException('Device TR-069 não encontrado');
+
+    // Time.* é padrão TR-098 (vale pra todos); BandSteering é X_HW_ (Huawei).
+    if (input.bandSteering !== undefined && isVsol(device.manufacturer)) {
+      throw new BadRequestException('Band steering não é exposto via TR-069 neste modelo (VSOL).');
+    }
 
     const params: Array<{ name: string; value: string; type: string }> = [];
     if (input.timeEnable !== undefined) {
@@ -583,9 +608,14 @@ export class Tr069DiagnosticsService {
   ): Promise<{ message: string }> {
     const device = await this.prisma.tr069Device.findFirst({
       where: { id: deviceId, tenantId },
-      select: { id: true },
+      select: { id: true, manufacturer: true },
     });
     if (!device) throw new NotFoundException('Device TR-069 não encontrado');
+    // NeighboringWiFiDiagnostic não existe no data model VSOL/Realtek —
+    // rejeita com mensagem clara em vez de enfileirar SET que vai dar fault.
+    if (isVsol(device.manufacturer)) {
+      throw new BadRequestException('Scan de canais não é exposto via TR-069 neste modelo (VSOL).');
+    }
     await this.prisma.tr069Task.create({
       data: {
         tenantId,

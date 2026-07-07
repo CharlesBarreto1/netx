@@ -72,6 +72,69 @@ const ZYXEL_PATHS = {
   cpuUsage: 'InternetGatewayDevice.DeviceInfo.ProcessStatus.CPUUsage',
 };
 
+// ── VSOL/Realtek (espelha tr069-paths.vsol.ts do core-service) ───────────────
+// Óptico em X_CT-COM_GponInterfaceConfig (grafia correta "Interface" — não o
+// typo Huawei) com valores CRUS estilo DDM SFF-8472: TX/RXPower em 0.1µW,
+// SupplyVottage (typo do firmware VSOL!) em 100µV, BiasCurrent em 2µA,
+// temperatura em 0.01°C — normalizados aqui. PPPoE/WAN stats usam os MESMOS
+// paths padrão do Huawei (WAN 2), já cobertos pelos keys Huawei acima.
+// ⚠️ Wi-Fi tem índices INVERTIDOS: WLAN 1 = rádio 5GHz, WLAN 5 = rádio 2.4GHz
+// (confirmado por Standard/PossibleChannels e em bancada) — por isso os keys
+// de Wi-Fi próprios abaixo. Usado como FALLBACK — Huawei/Zyxel intocados.
+const VSOL_GPON_IFACE =
+  process.env.VSOL_GPON_IFACE_PATH ??
+  'InternetGatewayDevice.WANDevice.1.X_CT-COM_GponInterfaceConfig';
+const VSOL_PATHS = {
+  rxPower: `${VSOL_GPON_IFACE}.RXPower`,
+  txPower: `${VSOL_GPON_IFACE}.TXPower`,
+  temperature: `${VSOL_GPON_IFACE}.TransceiverTemperature`,
+  voltage: `${VSOL_GPON_IFACE}.SupplyVottage`,
+  biasCurrent: `${VSOL_GPON_IFACE}.BiasCurrent`,
+  status: `${VSOL_GPON_IFACE}.Status`,
+  fecErrors: `${VSOL_GPON_IFACE}.Stats.FECError`,
+  hecErrors: `${VSOL_GPON_IFACE}.Stats.HECError`,
+};
+
+// Wi-Fi VSOL — WLAN 5 é o rádio 2.4GHz e WLAN 1 é o 5GHz (inverso do Huawei).
+const VSOL_WIFI_PATHS = {
+  clients24: `${WLAN_50}.TotalAssociations`,
+  clients5: `${WLAN_24}.TotalAssociations`,
+  channel24: `${WLAN_50}.Channel`,
+  channel5: `${WLAN_24}.Channel`,
+};
+
+/** Banda por índice de WLAN, por vendor (VSOL é invertido). */
+const HUAWEI_BAND_BY_WLAN: Record<string, string> = { '1': '2.4GHz', '5': '5GHz' };
+const VSOL_BAND_BY_WLAN: Record<string, string> = { '1': '5GHz', '5': '2.4GHz' };
+
+/**
+ * Potência DDM (unidade 0.1µW, SFF-8472) → dBm. Ex.: 19078 → +2.81 dBm.
+ * Zero/negativo = sem leitura → null. ⚠️ O RX abaixo de -30 dBm com o enlace
+ * Up é fisicamente impossível em GPON (sensibilidade classe C+ = -30) — esse
+ * firmware às vezes devolve lixo no RXPower (ex.: raw 8 → -31 dBm); nesses
+ * casos devolvemos null (saúde UNKNOWN) em vez de abrir alerta CRITICAL falso.
+ */
+function vsolDdmPowerToDbm(raw: string | undefined): number | null {
+  const n = numOrNull(raw);
+  if (n === null || n <= 0) return null;
+  const dbm = round2(10 * Math.log10(n / 10000)); // n × 0.1µW → mW
+  return dbm < -30 ? null : dbm;
+}
+
+// Paths padrão TR-098 de memória (VSOL/Zyxel) — % calculado de Total/Free.
+const MEMORY_STATUS_PATHS = {
+  total: 'InternetGatewayDevice.DeviceInfo.MemoryStatus.Total',
+  free: 'InternetGatewayDevice.DeviceInfo.MemoryStatus.Free',
+};
+
+/** % de memória usada a partir de MemoryStatus.Total/Free (padrão TR-098). */
+function memUsageFromStatus(params: Record<string, string>): number | null {
+  const total = numOrNull(params[MEMORY_STATUS_PATHS.total]);
+  const free = numOrNull(params[MEMORY_STATUS_PATHS.free]);
+  if (total === null || free === null || total <= 0) return null;
+  return Math.round((1 - free / total) * 100);
+}
+
 // Regex de host da LAN: ...Hosts.Host.{i}.{campo}
 const HOST_RE = /Hosts\.Host\.(\d+)\.(.+)$/;
 
@@ -327,20 +390,23 @@ function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
-const ASSOC_RE = /WLANConfiguration\.(\d+)\.AssociatedDevice\.(\d+)\.(.+)$/;
-
-function bandOf(wlanIdx: string): string {
-  if (wlanIdx === '1') return '2.4GHz';
-  if (wlanIdx === '5') return '5GHz';
-  return `WLAN${wlanIdx}`;
+/** Divide por `divisor` e arredonda a 2 casas, propagando null. */
+function round2Null(n: number | null, divisor: number): number | null {
+  return n === null ? null : round2(n / divisor);
 }
+
+const ASSOC_RE = /WLANConfiguration\.(\d+)\.AssociatedDevice\.(\d+)\.(.+)$/;
 
 /**
  * Reconstrói a lista de clientes Wi-Fi a partir dos params da subárvore
  * AssociatedDevice. Tolerante a variações de firmware: casa MAC/RSSI/taxas
- * por substring no nome do campo.
+ * por substring no nome do campo. `bandByWlan` mapeia índice de WLAN → banda
+ * (na VSOL os índices são invertidos vs Huawei).
  */
-export function extractWifiClients(params: Record<string, string>): {
+export function extractWifiClients(
+  params: Record<string, string>,
+  bandByWlan: Record<string, string> = HUAWEI_BAND_BY_WLAN,
+): {
   clients: WifiClient[];
   worstRssi: number | null;
   avgRssi: number | null;
@@ -353,7 +419,13 @@ export function extractWifiClients(params: Record<string, string>): {
     const key = `${wlanIdx}:${clientIdx}`;
     let c = byKey.get(key);
     if (!c) {
-      c = { mac: null, band: bandOf(wlanIdx), rssi: null, txRate: null, rxRate: null };
+      c = {
+        mac: null,
+        band: bandByWlan[wlanIdx] ?? `WLAN${wlanIdx}`,
+        rssi: null,
+        txRate: null,
+        rxRate: null,
+      };
       byKey.set(key, c);
     }
     if (/MACAddress/i.test(field)) c.mac = value || null;
@@ -391,23 +463,49 @@ export function extractLanHosts(params: Record<string, string>): LanHost[] {
 
 /** Extrai métricas de diagnóstico de uma ParameterList já achatada. */
 export function extractDiagnostics(params: Record<string, string>): ExtractedDiagnostics {
-  const { clients: wifiClients, worstRssi: wifiWorstRssi, avgRssi: wifiAvgRssi } =
-    extractWifiClients(params);
-  const hosts = extractLanHosts(params);
   // Óptico: Huawei (com normalização de unidade) tem prioridade; se os keys
-  // Huawei não vierem, cai no Zyxel (valores já em dBm/°C/V — sem normalizar).
+  // Huawei não vierem, cai no Zyxel (valores já em dBm/°C/V — sem normalizar)
+  // e depois no VSOL/Realtek (valores DDM crus — convertidos aqui).
   const zyxelOptical = OPTICAL_PATHS.rxPower in params ? false : ZYXEL_PATHS.rxPower in params;
-  const rxPower = zyxelOptical
-    ? numOrNull(params[ZYXEL_PATHS.rxPower])
-    : normalizePower(params[OPTICAL_PATHS.rxPower]);
-  const txPower = zyxelOptical
-    ? numOrNull(params[ZYXEL_PATHS.txPower])
-    : normalizePower(params[OPTICAL_PATHS.txPower]);
-  const temperature = numOrNull(params[OPTICAL_PATHS.temperature] ?? params[ZYXEL_PATHS.temperature]);
-  const voltage = zyxelOptical
-    ? numOrNull(params[ZYXEL_PATHS.voltage])
-    : normalizeVoltage(params[OPTICAL_PATHS.voltage]);
-  const biasCurrent = numOrNull(params[OPTICAL_PATHS.biasCurrent]);
+  // Qualquer key óptico VSOL ativa o branch — Inform de notificação passiva
+  // ("4 VALUE CHANGE") traz SÓ os params que mudaram (ex.: RXPower sem
+  // TXPower); exigir um key específico descartaria a leitura.
+  const vsolOptical =
+    !zyxelOptical &&
+    !(OPTICAL_PATHS.rxPower in params) &&
+    [
+      VSOL_PATHS.rxPower,
+      VSOL_PATHS.txPower,
+      VSOL_PATHS.temperature,
+      VSOL_PATHS.voltage,
+      VSOL_PATHS.biasCurrent,
+    ].some((k) => k in params);
+  // Wi-Fi: na VSOL o mapa índice→banda é invertido (WLAN 1=5G, 5=2.4G).
+  const { clients: wifiClients, worstRssi: wifiWorstRssi, avgRssi: wifiAvgRssi } =
+    extractWifiClients(params, vsolOptical ? VSOL_BAND_BY_WLAN : HUAWEI_BAND_BY_WLAN);
+  const wifiPaths = vsolOptical ? VSOL_WIFI_PATHS : WIFI_PATHS;
+  const hosts = extractLanHosts(params);
+  const rxPower = vsolOptical
+    ? vsolDdmPowerToDbm(params[VSOL_PATHS.rxPower])
+    : zyxelOptical
+      ? numOrNull(params[ZYXEL_PATHS.rxPower])
+      : normalizePower(params[OPTICAL_PATHS.rxPower]);
+  const txPower = vsolOptical
+    ? vsolDdmPowerToDbm(params[VSOL_PATHS.txPower])
+    : zyxelOptical
+      ? numOrNull(params[ZYXEL_PATHS.txPower])
+      : normalizePower(params[OPTICAL_PATHS.txPower]);
+  const temperature = vsolOptical
+    ? round2Null(numOrNull(params[VSOL_PATHS.temperature]), 100) // 0.01°C → °C
+    : numOrNull(params[OPTICAL_PATHS.temperature] ?? params[ZYXEL_PATHS.temperature]);
+  const voltage = vsolOptical
+    ? round2Null(numOrNull(params[VSOL_PATHS.voltage]), 10000) // 100µV → V
+    : zyxelOptical
+      ? numOrNull(params[ZYXEL_PATHS.voltage])
+      : normalizeVoltage(params[OPTICAL_PATHS.voltage]);
+  const biasCurrent = vsolOptical
+    ? round2Null(numOrNull(params[VSOL_PATHS.biasCurrent]), 500) // 2µA → mA
+    : numOrNull(params[OPTICAL_PATHS.biasCurrent]);
 
   const hasOptical =
     rxPower !== null ||
@@ -423,24 +521,26 @@ export function extractDiagnostics(params: Record<string, string>): ExtractedDia
     voltage,
     biasCurrent,
     opticalHealth: classifyRxPower(rxPower),
-    gponStatus: params[STATS_PATHS.status] || null,
-    fecErrors: intOrNull(params[STATS_PATHS.fecErrors]),
-    hecErrors: intOrNull(params[STATS_PATHS.hecErrors]),
+    gponStatus: params[STATS_PATHS.status] || params[VSOL_PATHS.status] || null,
+    fecErrors: intOrNull(params[STATS_PATHS.fecErrors] ?? params[VSOL_PATHS.fecErrors]),
+    hecErrors: intOrNull(params[STATS_PATHS.hecErrors] ?? params[VSOL_PATHS.hecErrors]),
     dropRate: numOrNull(params[STATS_PATHS.dropRate]),
     errorRate: numOrNull(params[STATS_PATHS.errorRate]),
     pppStatus: params[PPP_PATHS.status] ?? params[ZYXEL_PATHS.pppStatus] ?? null,
     pppLastError: params[PPP_PATHS.lastError] ?? params[ZYXEL_PATHS.pppLastError] ?? null,
     wanUptime: intOrNull(params[PPP_PATHS.uptime] ?? params[ZYXEL_PATHS.pppUptime]),
     hosts,
-    wifiClients24: intOrNull(params[WIFI_PATHS.clients24]),
-    wifiClients5: intOrNull(params[WIFI_PATHS.clients5]),
-    wifiChannel24: intOrNull(params[WIFI_PATHS.channel24]),
-    wifiChannel5: intOrNull(params[WIFI_PATHS.channel5]),
+    wifiClients24: intOrNull(params[wifiPaths.clients24]),
+    wifiClients5: intOrNull(params[wifiPaths.clients5]),
+    wifiChannel24: intOrNull(params[wifiPaths.channel24]),
+    wifiChannel5: intOrNull(params[wifiPaths.channel5]),
     wifiClients,
     wifiWorstRssi,
     wifiAvgRssi,
     cpuUsage: intOrNull(params[RESOURCE_PATHS.cpuUsed] ?? params[ZYXEL_PATHS.cpuUsage]),
-    memUsage: intOrNull(params[RESOURCE_PATHS.memUsed]),
+    // X_HW_MemUsed (Huawei) ou % derivado de MemoryStatus.Total/Free (padrão
+    // TR-098 — VSOL/Zyxel reportam os dois escalares, não o percentual).
+    memUsage: intOrNull(params[RESOURCE_PATHS.memUsed]) ?? memUsageFromStatus(params),
     deviceTemp: intOrNull(params[RESOURCE_PATHS.deviceTemp]),
     wanRxBytes: intOrNull(params[WAN_STATS_PATHS.rxBytes] ?? params[ZYXEL_PATHS.wanRxBytes]),
     wanTxBytes: intOrNull(params[WAN_STATS_PATHS.txBytes] ?? params[ZYXEL_PATHS.wanTxBytes]),

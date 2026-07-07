@@ -366,11 +366,16 @@ export class Tr069ReconcileService {
   /** Acha o profile ativo mais específico pro device (productClass > curinga). */
   private async resolveProfile(device: DeviceForReconcile) {
     // Fabricante efetivo: o reportado no Inform, ou inferido pelo OUI
-    // (00259E = Huawei) quando o CPE não preenche manufacturer. Match é
-    // tolerante (case-insensitive "contém") porque o Huawei reporta
-    // "Huawei Technologies Co., Ltd." e o profile guarda só "Huawei".
+    // (00259E = Huawei, 006D61 = VSOL/Realtek) quando o CPE não preenche
+    // manufacturer. Match é tolerante (case-insensitive "contém") porque o
+    // Huawei reporta "Huawei Technologies Co., Ltd." e o profile guarda só
+    // "Huawei".
+    const OUI_MANUFACTURER: Record<string, string> = {
+      '00259E': 'Huawei',
+      '006D61': 'Realtek',
+    };
     const devMan = (
-      device.manufacturer ?? (device.oui === '00259E' ? 'Huawei' : '')
+      device.manufacturer ?? OUI_MANUFACTURER[device.oui ?? ''] ?? ''
     ).toLowerCase();
     if (!devMan) return null;
     const candidates = await this.prisma.tr069Profile.findMany({

@@ -210,16 +210,12 @@ export class CwmpSessionService {
       });
       state.deviceDbId = updated.id;
     } else {
-      // Device desconhecido: resolve o tenant pela ONT (SN GPON == SerialNumber
-      // do CPE, típico em Huawei). NUNCA cair no "primeiro tenant" — isso
-      // poluía cross-tenant (multi-tenancy estrito). Sem ONT correspondente,
-      // logamos e NÃO persistimos (evita órfão mal-atribuído).
-      const ont = inform.serialNumber
-        ? await this.prisma.ont.findFirst({
-            where: { snGpon: { equals: inform.serialNumber, mode: 'insensitive' } },
-            select: { id: true, tenantId: true, tr069Device: { select: { id: true } } },
-          })
-        : null;
+      // Device desconhecido: resolve o tenant pela ONT — SN GPON == SerialNumber
+      // (Huawei e afins) ou padrão VSOL/Realtek (serial = "12345"+MAC, derivado
+      // do SN GPON). NUNCA cair no "primeiro tenant" — isso poluía cross-tenant
+      // (multi-tenancy estrito). Sem ONT correspondente, logamos e NÃO
+      // persistimos (evita órfão mal-atribuído).
+      const ont = await this.resolveOntBySerial(inform);
 
       if (!ont) {
         // Sem ONT: se a caixa de adoção estiver ligada (qualquer tenant / env),
@@ -320,6 +316,64 @@ export class CwmpSessionService {
     const value = !!any;
     this.acceptUnknownCache = { value, at: now };
     return value;
+  }
+
+  /**
+   * Resolve a ONT dona do CPE a partir do Inform:
+   *   1. Exato: SN GPON == SerialNumber (Huawei reporta o SN GPON direto).
+   *   2. VSOL/Realtek: SerialNumber = "12345" + MAC base (ex.:
+   *      12345006D61EF2342). O SN GPON desses modelos termina nos 3 últimos
+   *      bytes do MAC ("GPON00EF2342") — deriva o sufixo e casa a ONT.
+   *      Guardas de segurança: o candidato PRECISA ter SN no formato VSOL
+   *      (prefixo "GPON" — sem isso um SN Huawei "HWTC..EF2342" de OUTRO
+   *      tenant colidiria no sufixo e o CPE seria adotado no lugar errado),
+   *      o MAC deve começar com o OUI reportado e o match precisa ser ÚNICO
+   *      no banco — ambiguidade = ignora (não adota CPE pra tenant errado).
+   */
+  private async resolveOntBySerial(inform: InformPayload): Promise<{
+    id: string;
+    tenantId: string;
+    tr069Device: { id: string } | null;
+  } | null> {
+    if (!inform.serialNumber) return null;
+    const select = {
+      id: true,
+      tenantId: true,
+      tr069Device: { select: { id: true } },
+    } as const;
+
+    const exact = await this.prisma.ont.findFirst({
+      where: { snGpon: { equals: inform.serialNumber, mode: 'insensitive' } },
+      select,
+    });
+    if (exact) return exact;
+
+    const VSOL_SERIAL_RE = /^12345([0-9A-F]{12})$/i;
+    const m = VSOL_SERIAL_RE.exec(inform.serialNumber);
+    if (!m) return null;
+    const mac = m[1].toUpperCase();
+    if (inform.oui && !mac.startsWith(inform.oui.toUpperCase())) return null;
+    const suffix = mac.slice(-6);
+    const candidates = await this.prisma.ont.findMany({
+      // startsWith 'GPON' restringe ao formato de SN da VSOL — ONTs de outros
+      // vendors (HWTC.., ZTEG..) também terminam em 6 hex e colidiriam.
+      where: { snGpon: { startsWith: 'GPON', endsWith: suffix, mode: 'insensitive' } },
+      select,
+      take: 2,
+    });
+    if (candidates.length === 1) {
+      this.logger.log(
+        `[CWMP] match VSOL por sufixo de MAC (${suffix}) — device=${inform.deviceId}`,
+      );
+      return candidates[0];
+    }
+    if (candidates.length > 1) {
+      this.logger.warn(
+        `[CWMP] sufixo ${suffix} casa mais de uma ONT — ignorando match VSOL ` +
+          `(ambíguo, não cruza tenants). device=${inform.deviceId}`,
+      );
+    }
+    return null;
   }
 
   /** Registra/atualiza um CPE desconhecido na caixa de adoção (tenantless). */

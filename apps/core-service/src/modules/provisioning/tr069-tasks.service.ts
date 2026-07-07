@@ -21,6 +21,7 @@ import type { Tr069TaskAction, Tr069TaskStatus } from '@prisma/client';
 import { CryptoService } from '../crypto/crypto.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { HUAWEI_EG8145_PATHS, HUAWEI_IPV6_ADDR_ORIGIN, ssid5gFor } from './tr069-paths.huawei';
+import { placeholderIdentityFor, provisioningPathsFor, vendorFor } from './tr069-paths.registry';
 
 // Re-export pra compat com código existente que importava daqui
 export { HUAWEI_EG8145_PATHS, ssid5gFor };
@@ -68,38 +69,49 @@ export class Tr069TasksService {
     snGpon: string,
     input: SetWifiInput,
   ): Promise<{ taskId: string; deviceId: string }> {
-    // Device id Huawei segue padrão "<OUI>-<SerialNumber>". OUI da Huawei
-    // (Huawei Technologies) é "00259E". Como ainda não recebemos Inform
-    // (não sabemos o serial real reportado), usamos placeholder estável
-    // baseado no SN GPON. Quando Inform chegar, o servidor CWMP faz upsert
-    // pelo deviceId real.
-    const deviceIdPlaceholder = `00259E-${snGpon.toUpperCase()}`;
+    // Device pode já existir (re-provisionamento pós-Inform, com deviceId
+    // real). Busca pela ONT primeiro — upsert cego pelo placeholder criaria
+    // uma 2ª linha pro mesmo ontId (unique) e estourava P2002. Sem device,
+    // cria placeholder "<OUI>-<SN_GPON>" com identidade coerente com o vendor
+    // (inferido pelo prefixo do SN GPON) — assim o registry já escolhe os
+    // paths certos antes do primeiro Inform. Quando o Inform chegar, o ACS
+    // regrava o deviceId real.
+    const identity = placeholderIdentityFor(snGpon);
+    const existing = await this.prisma.tr069Device.findUnique({ where: { ontId } });
+    const device = existing
+      ? await this.prisma.tr069Device.update({
+          where: { id: existing.id },
+          data: { tenantId },
+        })
+      : await this.prisma.tr069Device.upsert({
+          where: { deviceId: identity.deviceId },
+          create: {
+            tenantId,
+            ontId,
+            deviceId: identity.deviceId,
+            manufacturer: identity.manufacturer,
+            oui: identity.oui,
+            status: 'UNKNOWN',
+          },
+          update: { ontId, tenantId },
+        });
 
-    const device = await this.prisma.tr069Device.upsert({
-      where: { deviceId: deviceIdPlaceholder },
-      create: {
-        tenantId,
-        ontId,
-        deviceId: deviceIdPlaceholder,
-        manufacturer: 'Huawei',
-        oui: '00259E',
-        status: 'UNKNOWN',
-      },
-      update: { ontId, tenantId },
-    });
+    // Paths por vendor: manufacturer real (se já houve Inform) > prefixo do SN.
+    const vendor = vendorFor(existing?.manufacturer, snGpon);
+    const P = provisioningPathsFor(vendor);
 
     const bothBands = input.bothBands ?? true;
     type ParamType = 'xsd:string' | 'xsd:unsignedInt' | 'xsd:boolean';
     const params: Array<{ name: string; value: string; type: ParamType }> = [
-      { name: HUAWEI_EG8145_PATHS.ssid24, value: input.ssid, type: 'xsd:string' },
-      { name: HUAWEI_EG8145_PATHS.pwd24, value: input.password, type: 'xsd:string' },
+      { name: P.ssid24, value: input.ssid, type: 'xsd:string' },
+      { name: P.pwd24, value: input.password, type: 'xsd:string' },
     ];
     if (bothBands) {
       // 5GHz: SSID único (band steering) ou nome+"-5G" (dual band).
       const ssid5g = ssid5gFor(input.ssid, input.wifiBandMode ?? 'BAND_STEERING');
       params.push(
-        { name: HUAWEI_EG8145_PATHS.ssid50, value: ssid5g, type: 'xsd:string' },
-        { name: HUAWEI_EG8145_PATHS.pwd50, value: input.password, type: 'xsd:string' },
+        { name: P.ssid50, value: ssid5g, type: 'xsd:string' },
+        { name: P.pwd50, value: input.password, type: 'xsd:string' },
       );
     }
 
@@ -107,28 +119,35 @@ export class Tr069TasksService {
     // A ONT (modo roteador) disca PPPoE sozinha — técnico não toca em rede.
     if (input.pppoe) {
       params.push(
-        { name: HUAWEI_EG8145_PATHS.pppoeUsername, value: input.pppoe.username, type: 'xsd:string' },
-        { name: HUAWEI_EG8145_PATHS.pppoePassword, value: input.pppoe.password, type: 'xsd:string' },
+        { name: P.pppoeUsername, value: input.pppoe.username, type: 'xsd:string' },
+        { name: P.pppoePassword, value: input.pppoe.password, type: 'xsd:string' },
         // VLAN 802.1Q da WAN PPPoE — o preset já traz, reaplica por garantia.
-        { name: HUAWEI_EG8145_PATHS.pppoeVlan, value: String(input.pppoe.vlan), type: 'xsd:unsignedInt' },
-        // IPv6 dual-stack: ONT negocia /64 (WAN) + /56 (PD) — ambos vêm do RADIUS.
-        { name: HUAWEI_EG8145_PATHS.ipv6Enable, value: '1', type: 'xsd:boolean' },
-        // IP Acquisition Mode = Automatic (não DHCPv6). Corrige o default errado
-        // do preset de fábrica/Ufinet — sem isso o IPv6 não é entregue. ⚠️ só
-        // aplica após reboot (o provisionamento reinicia logo após este SET).
-        { name: HUAWEI_EG8145_PATHS.ipv6AddrOrigin, value: HUAWEI_IPV6_ADDR_ORIGIN, type: 'xsd:string' },
-        { name: HUAWEI_EG8145_PATHS.pppoeEnable, value: '1', type: 'xsd:boolean' },
+        { name: P.pppoeVlan, value: String(input.pppoe.vlan), type: 'xsd:unsignedInt' },
       );
+      if (vendor === 'HUAWEI') {
+        params.push(
+          // IPv6 dual-stack: ONT negocia /64 (WAN) + /56 (PD) — ambos vêm do RADIUS.
+          { name: HUAWEI_EG8145_PATHS.ipv6Enable, value: '1', type: 'xsd:boolean' },
+          // IP Acquisition Mode = Automatic (não DHCPv6). Corrige o default errado
+          // do preset de fábrica/Ufinet — sem isso o IPv6 não é entregue. ⚠️ só
+          // aplica após reboot (o provisionamento reinicia logo após este SET).
+          { name: HUAWEI_EG8145_PATHS.ipv6AddrOrigin, value: HUAWEI_IPV6_ADDR_ORIGIN, type: 'xsd:string' },
+        );
+      }
+      // Params X_HW_IPv6* são exclusivos Huawei; na VSOL o IPv6 fica por conta
+      // do preset/OMCI até provarmos os paths X_CT-COM_IPv6* em bancada.
+      params.push({ name: P.pppoeEnable, value: '1', type: 'xsd:boolean' });
       this.logger.log(
         `[TR-069] ZTP PPPoE — injetando credencial user=${input.pppoe.username} ` +
-          `vlan=${input.pppoe.vlan} + IPv6 dual-stack na ONT`,
+          `vlan=${input.pppoe.vlan} vendor=${vendor}` +
+          (vendor === 'HUAWEI' ? ' + IPv6 dual-stack' : ''),
       );
     }
 
     // Acelera o próximo Inform pra ACS confirmar config rapidamente (60s).
     // Default Huawei é 86400 (1 dia) — terrível pra ZTP.
     params.push({
-      name: HUAWEI_EG8145_PATHS.informInterval,
+      name: P.informInterval,
       value: '60',
       type: 'xsd:unsignedInt',
     });
@@ -154,8 +173,8 @@ export class Tr069TasksService {
       });
     }
     params.push(
-      { name: HUAWEI_EG8145_PATHS.connReqUsername, value: crUser, type: 'xsd:string' },
-      { name: HUAWEI_EG8145_PATHS.connReqPassword, value: crPass, type: 'xsd:string' },
+      { name: P.connReqUsername, value: crUser, type: 'xsd:string' },
+      { name: P.connReqPassword, value: crPass, type: 'xsd:string' },
     );
 
     const task = await this.prisma.tr069Task.create({
@@ -170,8 +189,8 @@ export class Tr069TasksService {
     });
 
     this.logger.log(
-      `[TR-069] enqueued SET_PARAMS task=${task.id} device=${deviceIdPlaceholder} ` +
-        `params=${params.length} (Fase 3 ACS aplica)`,
+      `[TR-069] enqueued SET_PARAMS task=${task.id} device=${device.deviceId} ` +
+        `vendor=${vendor} params=${params.length} (Fase 3 ACS aplica)`,
     );
     return { taskId: task.id, deviceId: device.id };
   }

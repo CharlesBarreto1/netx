@@ -45,7 +45,12 @@ import { AuditService } from '../audit/audit.service';
 import { IpamSyncService } from '../ipam/ipam-sync.service';
 import { CryptoService } from '../crypto/crypto.service';
 import { DisconnectService } from '../disconnect/disconnect.service';
-import { HUAWEI_EG8145_PATHS, ssid5gFor } from '../provisioning/tr069-paths.huawei';
+import { ssid5gFor } from '../provisioning/tr069-paths.huawei';
+import {
+  placeholderIdentityFor,
+  provisioningPathsFor,
+  vendorFor,
+} from '../provisioning/tr069-paths.registry';
 import { UfinetOrdersService } from '../ufinet/ufinet-orders.service';
 import {
   daysBetween,
@@ -1803,25 +1808,30 @@ export class ContractsService {
     }
 
     // Tr069Device pode ainda não existir se o CPE nunca fez Inform. Criamos
-    // placeholder usando padrão "<OUI>-<SN_GPON>" (mesmo do enqueueSetWifi).
+    // placeholder usando padrão "<OUI>-<SN_GPON>" (mesmo do enqueueSetWifi),
+    // com identidade coerente com o vendor inferido pelo prefixo do SN GPON.
     // Quando CPE realmente conectar, o session matchupa pelo SN.
     let deviceDbId = contract.ont.tr069Device?.id;
     if (!deviceDbId) {
-      const placeholder = `00259E-${contract.ont.snGpon.toUpperCase()}`;
+      const identity = placeholderIdentityFor(contract.ont.snGpon);
       const created = await this.prisma.tr069Device.upsert({
-        where: { deviceId: placeholder },
+        where: { deviceId: identity.deviceId },
         create: {
           tenantId,
           ontId: contract.ont.id,
-          deviceId: placeholder,
-          manufacturer: 'Huawei',
-          oui: '00259E',
+          deviceId: identity.deviceId,
+          manufacturer: identity.manufacturer,
+          oui: identity.oui,
           status: 'UNKNOWN',
         },
         update: { ontId: contract.ont.id },
       });
       deviceDbId = created.id;
     }
+
+    // Paths por vendor: manufacturer real (se já houve Inform) > prefixo do SN.
+    const wifiVendor = vendorFor(contract.ont.tr069Device?.manufacturer, contract.ont.snGpon);
+    const P = provisioningPathsFor(wifiVendor);
 
     // Persiste SSID em plaintext + senha encrypted no Contract. `updatedById`
     // só quando o ator é um User (operador) — no portal não há User pra FK.
@@ -1845,17 +1855,17 @@ export class ContractsService {
         status: 'PENDING',
         payload: {
           params: [
-            { name: HUAWEI_EG8145_PATHS.ssid24, value: input.ssid, type: 'xsd:string' },
-            { name: HUAWEI_EG8145_PATHS.pwd24, value: input.wifiPassword, type: 'xsd:string' },
+            { name: P.ssid24, value: input.ssid, type: 'xsd:string' },
+            { name: P.pwd24, value: input.wifiPassword, type: 'xsd:string' },
             // 5GHz: SSID único (band steering) ou nome+"-5G" (dual band),
             // conforme o modelo da ONT registrado no install.
             {
-              name: HUAWEI_EG8145_PATHS.ssid50,
+              name: P.ssid50,
               value: ssid5gFor(input.ssid, contract.ont.wifiBandMode),
               type: 'xsd:string',
             },
-            { name: HUAWEI_EG8145_PATHS.pwd50, value: input.wifiPassword, type: 'xsd:string' },
-            { name: HUAWEI_EG8145_PATHS.informInterval, value: '60', type: 'xsd:unsignedInt' },
+            { name: P.pwd50, value: input.wifiPassword, type: 'xsd:string' },
+            { name: P.informInterval, value: '60', type: 'xsd:unsignedInt' },
           ],
         },
       },
