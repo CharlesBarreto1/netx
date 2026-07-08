@@ -178,7 +178,21 @@ export class UfinetOrdersService {
     const existing = await this.prisma.ufinetService.findUnique({
       where: { contractId: input.contractId },
     });
-    if (existing) return existing;
+    if (existing) {
+      // Terminal (baja/cancelación): a Ufinet CONSOME o externalId/marquilla. A
+      // API NÃO tem operação de "reativar cancelado" — o REACTIVATE_SERVICE é só
+      // o par da SUSPENSÃO. O único caminho documentado pra voltar a ter serviço
+      // depois de baja/cancelación é uma ALTA NOVA. E re-enviar `provide` com o
+      // MESMO externalId é recusado por duplicidade (erro MOP-410 "existen
+      // servicios asociados al ExternalServiceId" / "el externalService ID ya se
+      // ha usado anteriormente"). Então re-armamos a MESMA linha com marquilla
+      // NOVA (sufixo -R{n}) e voltamos pra PENDING_PROVIDE. Ver ufinet/ (PDF +
+      // planilha de erros) na raiz do repo.
+      if (existing.lifecycle === 'CANCELLED' || existing.lifecycle === 'CEASED') {
+        return this.reprovisionTerminal(existing, input.actorUserId ?? null);
+      }
+      return existing;
+    }
 
     // externalId/Marquilla = código do contrato (Contract.code, ex.: ZUX-234),
     // gerado na CRIAÇÃO do contrato. A Ufinet só HERDA esse código — não há
@@ -227,6 +241,71 @@ export class UfinetOrdersService {
       }
       throw err;
     }
+  }
+
+  /**
+   * Re-arma um serviço em estado TERMINAL (CANCELLED/CEASED) pra uma alta NOVA:
+   * gera marquilla nova (Contract.code + sufixo -R{n}), zera todos os ids do
+   * lado Ufinet e volta pra PENDING_PROVIDE. Preserva serialNumber + ctoPort
+   * (dropPort): quando a ONT física continua instalada (ex.: reativar um
+   * contrato que estava ativo), o `providePoll` reconfirma sozinho ao reservar
+   * a porta — sem precisar de nova visita. A MESMA linha é reusada (o unique é
+   * por contractId); o trace antigo fica preservado sob o externalId anterior.
+   */
+  private async reprovisionTerminal(
+    svc: UfinetService,
+    actorUserId: string | null,
+  ): Promise<UfinetService> {
+    const contract = await this.prisma.contract.findUnique({
+      where: { id: svc.contractId },
+      select: { code: true },
+    });
+    const baseCode = contract?.code?.trim();
+    if (!baseCode) {
+      throw new Error(
+        `Ufinet: contrato ${svc.contractId} sem código (Contract.code) — não dá ` +
+          'pra re-armar a alta com marquilla nova',
+      );
+    }
+    const newExternalId = nextReactivationExternalId(svc.externalId, baseCode);
+    const updated = await this.prisma.ufinetService.update({
+      where: { id: svc.id },
+      data: {
+        externalId: newExternalId,
+        labelDrop: newExternalId,
+        lifecycle: 'PENDING_PROVIDE',
+        // Serviço NOVO na Ufinet → zera todos os ids do bundle e da operação.
+        ufinetContractId: null,
+        serviceOrderId: null,
+        parentServiceId: null,
+        fiberAccessServiceId: null,
+        hsdServiceId: null,
+        resPonAccessServiceId: null,
+        currentOrderId: null,
+        ufinetState: null,
+        waitingCode: null,
+        // Preserva serialNumber + ctoPort + dropPort (ONT física segue lá).
+        attempts: 0,
+        error: null,
+        pendingSince: null,
+        nextAttemptAt: new Date(),
+      },
+    });
+    await this.audit.log({
+      tenantId: svc.tenantId,
+      userId: actorUserId ?? null,
+      actor: actorUserId ? undefined : 'system',
+      action: 'ufinet.reprovision.rearmed',
+      resource: 'ufinet_services',
+      resourceId: svc.id,
+      beforeState: { lifecycle: svc.lifecycle, externalId: svc.externalId },
+      afterState: { lifecycle: 'PENDING_PROVIDE', externalId: newExternalId },
+    });
+    this.logger.log(
+      `[ufinet] ${svc.externalId} (${svc.lifecycle}) RE-ARMADO como ${newExternalId} → ` +
+        'PENDING_PROVIDE (alta nova, marquilla nova)',
+    );
+    return updated;
   }
 
   /**
@@ -1464,6 +1543,21 @@ export class UfinetOrdersService {
 
 function msg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Próxima marquilla de reativação: `{baseCode}-R{n}`. A Ufinet consome o
+ * externalId após baja/cancelación, então cada re-alta precisa de um NOVO.
+ * baseCode = Contract.code (ex.: "ZUX-234"). 1ª reativação → "ZUX-234-R2";
+ * se o externalId atual já é "...-R3", a próxima é "...-R4".
+ *
+ * ⚠️ Formato "-R{n}" ainda NÃO validado contra a Ufinet real — validar no box
+ * que eles aceitam esse externalId/marquilla (senão trocar pra sequencial novo).
+ */
+function nextReactivationExternalId(currentExternalId: string, baseCode: string): string {
+  const m = /-R(\d+)$/i.exec(currentExternalId);
+  const n = m ? Number(m[1]) + 1 : 2;
+  return `${baseCode}-R${n}`;
 }
 
 

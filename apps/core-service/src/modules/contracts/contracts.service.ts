@@ -146,6 +146,33 @@ export class ContractsService {
   }
 
   /**
+   * Dispara a re-alta Ufinet ao reabrir um contrato cancelado (best-effort).
+   * A API da Ufinet não reativa um serviço com baja/cancelación — o único
+   * caminho é uma ALTA NOVA com marquilla nova. O `enqueueProvide` re-arma o
+   * serviço terminal (CANCELLED/CEASED) pra PENDING_PROVIDE com externalId novo;
+   * como o SN/CTO são preservados, o poller reconfirma a ONT sozinho. Só faz
+   * sentido quando o contrato volta ACTIVE (já instalado): em PENDING_INSTALL é
+   * o `installCustomer` que dispara a alta ao reinstalar em campo.
+   */
+  private async tryUfinetReprovision(tenantId: string, contractId: string, actorUserId: string): Promise<void> {
+    try {
+      const svc = await this.prisma.ufinetService.findUnique({
+        where: { contractId },
+        select: { oltId: true, lifecycle: true },
+      });
+      if (!svc) return;
+      if (svc.lifecycle !== 'CANCELLED' && svc.lifecycle !== 'CEASED') return;
+      await this.ufinet.enqueueProvide({ tenantId, contractId, oltId: svc.oltId, actorUserId });
+      this.logger.log(`[ufinet] re-alta disparada pra contrato ${contractId} reaberto`);
+    } catch (err) {
+      this.logger.warn(
+        `[ufinet] falha na re-alta de ${contractId} — reabertura mantida. ` +
+          `erro: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  /**
    * Resolve o endereço estruturado (BR) de um create/update.
    *
    * Quando `streetId` vem preenchido, carrega o logradouro (com bairro/cidade),
@@ -1010,6 +1037,13 @@ export class ContractsService {
       await recalcCustomerStatus(tx, tenantId, c.customerId);
       return c;
     });
+
+    // Ufinet: se o contrato volta ACTIVE (já estava instalado), a rede neutra
+    // precisa de uma ALTA NOVA — baja/cancelación não é reversível lá. Em
+    // PENDING_INSTALL não dispara aqui: o installCustomer refaz a alta em campo.
+    if (nextStatus === PrismaContractStatus.ACTIVE) {
+      await this.tryUfinetReprovision(tenantId, updated.id, actorUserId);
+    }
 
     await this.audit.log({
       tenantId,
