@@ -4113,7 +4113,8 @@ const messages = {
       wifiPasswordLabel: 'Contraseña Wi-Fi',
       passwordPlaceholder: 'Mínimo 8 caracteres',
       generate: 'Generar',
-      passwordHelp: 'Estándar WPA2-PSK (8–63 chars). La contraseña se cifra at-rest con KMS.',
+      passwordHelp:
+        'Contraseña fuerte: mayúscula, minúscula, número y símbolo (8–63, sin espacios ni acentos). Se cifra at-rest con KMS.',
       rebootLabel: 'Reiniciar ONT después de aplicar',
       rebootHelp: 'Recomendado si el cliente reclama que el Wi-Fi nuevo no apareció. Agrega ~60s de downtime. Sin marcar, Huawei aplica sin reboot en la mayoría de los casos.',
       applyInfo: 'La aplicación ocurre en el próximo Inform del CPE (típico hasta ~60s). La tarjeta de la pantalla mostrará el estado (PENDING → RUNNING → DONE).',
@@ -4257,6 +4258,8 @@ const messages = {
         ssidInvalid: 'SSID inválido (hasta 32 caracteres ASCII)',
         wifiPasswordRequired: 'Ingresá la contraseña del Wi-Fi',
         wifiPasswordLen: 'La contraseña del Wi-Fi debe tener de 8 a 63 caracteres',
+        wifiPasswordWeak:
+          'Contraseña débil. Usá mayúscula, minúscula, número y símbolo (8–63, sin espacios ni acentos)',
       },
     },
     editContract: {
@@ -5478,6 +5481,16 @@ const messages = {
       ssidLabel: 'Nombre de la red (SSID)',
       updated: 'Wi-Fi actualizado.',
     },
+  },
+  wifiPassword: {
+    checkMinLength: '8 a 63 caracteres',
+    checkUpper: '1 letra mayúscula',
+    checkLower: '1 letra minúscula',
+    checkDigit: '1 número',
+    checkSymbol: '1 carácter especial (!@#$…)',
+    checkCharset: 'Sin espacios ni acentos',
+    help: 'Usá mayúscula, minúscula, número y símbolo — sin espacios ni acentos. Las contraseñas débiles o con acento son rechazadas en silencio por algunas ONTs.',
+    weak: 'La contraseña del Wi-Fi no cumple la política de contraseña fuerte',
   },
 };
 

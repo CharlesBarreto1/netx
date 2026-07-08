@@ -25,19 +25,12 @@ import {
   type UpdateContractWifiInput,
 } from '@/lib/contracts-api';
 import { hasPermission } from '@/lib/session';
+import { checkWifiPassword, generateWifiPassword } from '@/lib/wifi-password';
+
+import { WifiPasswordChecklist } from './WifiPasswordChecklist';
 
 interface Props {
   contractId: string;
-}
-
-function generatePassword(): string {
-  const alphabet =
-    'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  let out = '';
-  const arr = new Uint8Array(10);
-  crypto.getRandomValues(arr);
-  for (let i = 0; i < arr.length; i++) out += alphabet[arr[i] % alphabet.length];
-  return out;
 }
 
 type WifiTranslate = ReturnType<typeof useTranslations>;
@@ -255,8 +248,11 @@ function EditWifiModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const pwdOk = checkWifiPassword(pwd).ok;
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!pwdOk) return;
     setError(null);
     setSaving(true);
     try {
@@ -311,7 +307,7 @@ function EditWifiModal({
             <Button
               type="button"
               variant="secondary"
-              onClick={() => setPwd(generatePassword())}
+              onClick={() => setPwd(generateWifiPassword())}
             >
               {t('wifi.generate')}
             </Button>
@@ -319,6 +315,7 @@ function EditWifiModal({
           <p className="mt-1 text-xs text-text-muted">
             {t('wifi.passwordHelp')}
           </p>
+          {pwd.length > 0 && <WifiPasswordChecklist value={pwd} />}
         </div>
 
         <label className="flex items-start gap-2 rounded-md border border-border p-3 text-sm">
@@ -348,7 +345,7 @@ function EditWifiModal({
           <Button type="button" variant="ghost" onClick={onClose}>
             {tc('cancel')}
           </Button>
-          <Button type="submit" loading={saving}>
+          <Button type="submit" loading={saving} disabled={!pwdOk}>
             {tc('apply')}
           </Button>
         </div>

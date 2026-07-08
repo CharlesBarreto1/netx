@@ -4091,7 +4091,8 @@ const messages = {
       wifiPasswordLabel: 'Wi-Fi password',
       passwordPlaceholder: 'Minimum 8 characters',
       generate: 'Generate',
-      passwordHelp: 'WPA2-PSK standard (8–63 chars). Password is encrypted at-rest with KMS.',
+      passwordHelp:
+        'Strong password: uppercase, lowercase, number and symbol (8–63, no spaces or accents). Encrypted at-rest with KMS.',
       rebootLabel: 'Reboot ONT after applying',
       rebootHelp: 'Recommended if the customer complains the new Wi-Fi did not appear. Adds ~60s of downtime. Without checking, Huawei applies without reboot in most cases.',
       applyInfo: 'Applied on the next CPE Inform (typically within ~60s). The on-screen card will show the status (PENDING → RUNNING → DONE).',
@@ -4235,6 +4236,8 @@ const messages = {
         ssidInvalid: 'Invalid SSID (up to 32 ASCII characters)',
         wifiPasswordRequired: 'Enter the Wi-Fi password',
         wifiPasswordLen: 'Wi-Fi password must be 8 to 63 characters',
+        wifiPasswordWeak:
+          'Weak password. Use uppercase, lowercase, number and symbol (8–63, no spaces or accents)',
       },
     },
     editContract: {
@@ -5456,6 +5459,16 @@ const messages = {
       ssidLabel: 'Network name (SSID)',
       updated: 'Wi-Fi updated.',
     },
+  },
+  wifiPassword: {
+    checkMinLength: '8 to 63 characters',
+    checkUpper: '1 uppercase letter',
+    checkLower: '1 lowercase letter',
+    checkDigit: '1 number',
+    checkSymbol: '1 special character (!@#$…)',
+    checkCharset: 'No spaces or accents',
+    help: 'Use uppercase, lowercase, number and symbol — no spaces or accents. Weak or accented passwords are silently rejected by some ONTs.',
+    weak: 'Wi-Fi password does not meet the strong-password policy',
   },
 };
 

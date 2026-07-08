@@ -116,11 +116,52 @@ export const SsidSchema = z
   .max(32)
   .regex(/^[\x20-\x7E]+$/, 'SSID deve ser ASCII imprimível');
 
-/** Senha WPA2/WPA3: 8-63 chars (WPA spec). */
+/**
+ * Política de senha Wi-Fi forte (WPA2/WPA3-PSK), conforme normas vigentes.
+ *
+ * Regras:
+ *   - 8–63 caracteres (limite do passphrase WPA).
+ *   - Só ASCII imprimível SEM espaço (0x21–0x7E). Acentos, espaços e caracteres
+ *     de controle fazem várias ONTs (Huawei/VSOL/Realtek) recusarem a senha em
+ *     SILÊNCIO: o SetParameterValues "passa" mas o Wi-Fi não muda. Restringir o
+ *     charset aqui é o que resolve o "operador cadastra e a ONT não aceita".
+ *   - 1+ minúscula, 1+ maiúscula, 1+ dígito e 1+ caractere especial (o firmware
+ *     de muitas ONTs também rejeita passphrase fraca em silêncio).
+ *
+ * Espelhada no client em apps/web/src/lib/wifi-password.ts (checklist + gerador).
+ */
+export const WIFI_PASSWORD_RULES = {
+  minLength: 8,
+  maxLength: 63,
+  /** ASCII imprimível, sem espaço (0x20) — evita acentos/controle. */
+  charset: /^[\x21-\x7E]+$/u,
+  hasLower: /[a-z]/u,
+  hasUpper: /[A-Z]/u,
+  hasDigit: /[0-9]/u,
+  /** "Especial" = qualquer não-alfanumérico (dentro do charset acima). */
+  hasSpecial: /[^A-Za-z0-9]/u,
+} as const;
+
 export const WifiPasswordSchema = z
   .string()
-  .min(8, 'Senha Wi-Fi precisa ter no mínimo 8 caracteres')
-  .max(63, 'Senha Wi-Fi precisa ter no máximo 63 caracteres');
+  .min(WIFI_PASSWORD_RULES.minLength, 'Senha Wi-Fi precisa ter no mínimo 8 caracteres')
+  .max(WIFI_PASSWORD_RULES.maxLength, 'Senha Wi-Fi precisa ter no máximo 63 caracteres')
+  .regex(
+    WIFI_PASSWORD_RULES.charset,
+    'Senha Wi-Fi só aceita letras, números e símbolos ASCII (sem espaços ou acentos)',
+  )
+  .refine((v) => WIFI_PASSWORD_RULES.hasUpper.test(v), {
+    message: 'Senha Wi-Fi precisa de 1 letra maiúscula',
+  })
+  .refine((v) => WIFI_PASSWORD_RULES.hasLower.test(v), {
+    message: 'Senha Wi-Fi precisa de 1 letra minúscula',
+  })
+  .refine((v) => WIFI_PASSWORD_RULES.hasDigit.test(v), {
+    message: 'Senha Wi-Fi precisa de 1 número',
+  })
+  .refine((v) => WIFI_PASSWORD_RULES.hasSpecial.test(v), {
+    message: 'Senha Wi-Fi precisa de 1 caractere especial',
+  });
 
 /** MAC address — aceita AA:BB:CC:DD:EE:FF ou aabbccddeeff, normaliza. */
 export const MacAddressSchema = z

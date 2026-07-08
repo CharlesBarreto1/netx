@@ -27,8 +27,10 @@ import { btgApi, type BrPaymentGateway } from '@/lib/finance-api';
 import { plansApi, type Plan } from '@/lib/plans-api';
 import { hasPermission } from '@/lib/session';
 import { useTenantConfig } from '@/lib/tenant-config';
+import { checkWifiPassword, generateWifiPassword } from '@/lib/wifi-password';
 import { pppoeLoginCandidates } from '@netx/shared';
 import { AddressPicker, EMPTY_ADDRESS, type AddressValue } from '@/components/contracts/AddressPicker';
+import { WifiPasswordChecklist } from '@/components/contracts/WifiPasswordChecklist';
 import {
   SubscriberPortPicker,
   type SubscriberPortSelection,
@@ -76,16 +78,6 @@ export interface NewContractInlineProps {
  * (que ainda é injetada na ONT via TR-069, o cliente nunca a digita).
  */
 const DEFAULT_PPPOE_PASSWORD = '1234';
-
-/** Gera uma senha Wi-Fi de 10 chars sem ambíguos (0/O, 1/l) — fácil de ditar. */
-function generateWifiPassword(): string {
-  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  const arr = new Uint8Array(10);
-  crypto.getRandomValues(arr);
-  let out = '';
-  for (let i = 0; i < arr.length; i++) out += alphabet[arr[i] % alphabet.length];
-  return out;
-}
 
 export function NewContractInline({
   lockedCustomerId,
@@ -324,8 +316,8 @@ export function NewContractInline({
     else if (ssid.length > 32 || !/^[\x20-\x7E]+$/u.test(ssid))
       e.ssid = t('newContract.errors.ssidInvalid');
     if (!form.wifiPassword) e.wifiPassword = t('newContract.errors.wifiPasswordRequired');
-    else if (form.wifiPassword.length < 8 || form.wifiPassword.length > 63)
-      e.wifiPassword = t('newContract.errors.wifiPasswordLen');
+    else if (!checkWifiPassword(form.wifiPassword).ok)
+      e.wifiPassword = t('newContract.errors.wifiPasswordWeak');
     if (form.installationMapsUrl) {
       const normalized = normalizeMapsUrl(form.installationMapsUrl);
       try {
@@ -769,6 +761,9 @@ export function NewContractInline({
                 {t('newContract.wifiGenerate')}
               </Button>
             </div>
+            {form.wifiPassword.length > 0 && (
+              <WifiPasswordChecklist value={form.wifiPassword} />
+            )}
             <FieldError>{errors.wifiPassword}</FieldError>
           </div>
         </div>
