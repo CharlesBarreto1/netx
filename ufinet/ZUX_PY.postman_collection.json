@@ -1,0 +1,1357 @@
+{
+  "info": {
+    "_postman_id": "3c6af5e7-0bd2-4f1d-9aeb-a20a2dd0bcd9",
+    "name": "ZUX_PY",
+    "description": "👋 **Introducción**  \nBienvenido a la **API Multi‑Operador FTHH v1**.  \nEsta API te permite gestionar y procesar órdenes de servicio del sistema FTHH (Fiber To The Home) en múltiples operadores, de forma ágil y confiable.\n\n---\n\n🚀 **Pre-requisitos**\n\n1. **Registro de cliente**\n    \n    - Envía un correo a [dmolinaa@ufinet.com](https://mailto:dmolinaa@ufinet.com) o [pgonzalezs@ufinet.com](https://mailto:pgonzalezs@ufinet.com) solicitando tu Client ID y Client Secret.\n        \n    - Indica la IP, puerto o URL desde donde harás las pruebas (podría dar problemas de CORS una vez se encuentra publicado en un ambiente qa o prod).\n        \n    - Se enviará un link onesecret que solo se puede abrir una vez con la información por ambiente según sea requerido. (se puede enviar varias veces en caso de que se pierda dicha información).\n        \n2. **Registro de Operador**\n    \n    1. Solicitar registro de usuario de aplicación en portal FTTH, se recomienda enviar un usuario por entorno y que no se ligue a un usuario físico como tal. Por ejemplo: [<b>miempresa-qa@ufinet.com</b>](https://mailto:miempresa-qa@ufinet.com).\n        \n    2. Solicitar creación de operador, región, contrato dentro del portal FTTH y carga de datos suficientes para pruebas desde el portal.\n        \n3. **Uso del token**\n    \n    1. El token expira en **3 599 s**\n        \n    2. Utiliza mecanismos de reutilzación del token para evitar bloqueos. Por ejemplo implementar IConfidentialClientApplication en C#.\n        \n\n``` csharp\nprotected override async Task<HttpResponseMessage> SendAsync(\n    HttpRequestMessage request, \n    CancellationToken cancellationToken)\n{\n    // Acquire token\n    var result = await _msalClient\n        .AcquireTokenForClient(_scopes)\n        .ExecuteAsync(cancellationToken);\n    // Add the token to the Authorization header\n    request.Headers.Authorization = \n        new AuthenticationHeaderValue(\"Bearer\", result.AccessToken);\n    return await base.SendAsync(request, cancellationToken);\n}\n\n ```\n\n🔧 **Primeros pasos**\n\nValida la configuración de variables de entorno. Deben existir como mínimo los siguientes datos:\n\n- **Código de operador**\n    \n- **Región**\n    \n- **Contrato**\n    \n- **Perfil de ancho de banda**\n    \n\n🌍 **Entornos**\n\nConfigura estas variables según tu entorno en Postman, Swagger UI o similar:\n\n| Entorno | Variable | Valor |\n| --- | --- | --- |\n| QA | baseUrl | `https://apim-ufinet-qa.azure-api.net/multiop` |\n| Producción | baseUrl | `https://apim-ufinet.azure-api.net/multiop` |\n\n**NOTA: Este collection es para apoyo de pruebas e integración en QA por lo que no contempla el ambiente de producción para evitar errores involuntarios**",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "36668710"
+  },
+  "item": [
+    {
+      "name": "Consulta de cobertura",
+      "item": [
+        {
+          "name": "Paso 1b - Crear orden de servicio - Coordenadas",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"orderDate\": \"{{$isoTimestamp}}\",\r\n    \"username\": \"{{userName}}\",\r\n    \"serviceOrderType\": \"servicecoverage\",\r\n    \"serviceOrderItem\": [{\r\n            \"action\": \"NOCHANGE\",\r\n            \"service\": {\r\n                \"place\": [{\r\n                        \"address\": {\r\n                            \"country\": \"{{country}}\",\r\n                            \"city\": \"{{city}}\",\r\n                            \"Geometry\": {\r\n                                \"GeometryType\": \"point\",\r\n                                \"Latitude\": \"{{Latitude}}\",\r\n                                \"Longitude\": \"{{Longitude}}\",\r\n                                \"Altitude\": \"\"\r\n                            }\r\n                        }\r\n                    }\r\n                ]\r\n            }\r\n        }\r\n    ],\r\n    \"operator\": \"{{operator}}\",\r\n    \"region\": \"{{region}}\",\r\n    \"externalId\": \"{{externalId}}\", //Identificador único enviado por el operador (consecutivo de servicio interno del operador)\r\n    \"description\": \"CONSULTA DE COBERTURA\", // Descripción de la acción a realizar, Ejemplo Consulta de disponibilidad\r\n    \"contractId\": \"{{contractId}}\"\r\n}                                                ",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order/",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order",
+                ""
+              ]
+            },
+            "description": "## Crear orden de servicio ⚙️ _(Opcional)_\n\n**`POST https://apim.ufinet.com/multiop/ServiceOrder/order/`**\n\n**Descripción**  \nEste endpoint permite verificar si existen puertos disponibles en una ubicación con cobertura de servicio **antes** de generar una orden. Aunque es opcional, se recomienda su uso para anticipar posibles bloqueos o trabajos de campo.\n\n---\n\n### Comportamiento\n\n- **201 Created**\n    \n    - La solicitud fue procesada con éxito.\n        \n- **Error**\n    \n    - Cualquier código distinto de **201** se considera fallo.\n        \n    - El mensaje de error aparece en la propiedad `message` del JSON de respuesta.\n        \n\n---\n\n### Cuerpo de la respuesta\n\n- **ID** (`integer`):\n    - Este valor permite identificar el número de orden de servicio para consultar el estado en el siguiente paso.\n        \n\n> ⚠️ **Muy importante**:  \nLuego de crear la orden de servicio se debe consultar el estado de la misma. Ver documentación en el paso 2"
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 1a - Crear orden de servicio - Polígono",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"orderDate\": \"{{$isoTimestamp}}\",\r\n    \"username\": \"{{userName}}\",\r\n    \"serviceOrderType\": \"servicecoverage\",\r\n    \"serviceOrderItem\": [{\r\n            \"action\": \"NOCHANGE\",\r\n            \"service\": {\r\n                \"place\": [{\r\n                        \"address\": {\r\n                            \"country\": \"{{country}}\",\r\n                            \"city\": \"{{cyty}}\",\r\n                            \"polygonAlias\": \"{{PoligonAlias}}\"\r\n                        }\r\n                    }\r\n                ]\r\n            }\r\n        }\r\n    ],\r\n    \"operator\": \"{{operator}}\",\r\n    \"region\": \"{{region}}\",\r\n    \"externalId\": \"{{externalId}}\", //Identificador único enviado por el operador (consecutivo de servicio interno del operador)\r\n    \"description\": \"CONSULTA DE COBERTURA\", // Descripción de la acción a realizar, Ejemplo Consulta de disponibilidad\r\n    \"contractId\": \"{{contractId}}\"\r\n}                                                ",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order/",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order",
+                ""
+              ]
+            },
+            "description": "## Crear orden de servicio ⚙️ _(Opcional)_\n\n**`POST https://apim.ufinet.com/multiop/ServiceOrder/order/`**\n\n**Descripción**  \nEste endpoint permite verificar si existen puertos disponibles en una ubicación con cobertura de servicio **antes** de generar una orden. Aunque es opcional, se recomienda su uso para anticipar posibles bloqueos o trabajos de campo.\n\n---\n\n### Comportamiento\n\n- **201 Created**\n    \n    - La solicitud fue procesada con éxito.\n        \n- **Error**\n    \n    - Cualquier código distinto de **201** se considera fallo.\n        \n    - El mensaje de error aparece en la propiedad `message` del JSON de respuesta.\n        \n\n---\n\n### Cuerpo de la respuesta\n\n- **ID** (`integer`):\n    - Este valor permite identificar el número de orden de servicio para consultar el estado en el siguiente paso.\n        \n\n> ⚠️ **Muy importante**:  \nLuego de crear la orden de servicio se debe consultar el estado de la misma. Ver documentación en el paso 2"
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 2 - Consulta de orden de servicio",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order/{{ServiceOrderId}}",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order",
+                "{{ServiceOrderId}}"
+              ]
+            },
+            "description": "### Obtener detalle de orden de servicio\n\n**`GET https://apim.ufinet.com/multiop/ServiceOrder/order/{ServiceOrderId}`**\n\n**Descripción**  \nRecupera el detalle completo de una orden de servicio recién creada . **Debe ejecutarse siempre** después de hacer un `POST /ServiceOrder/order` para validar el estado y atributos clave.\n\n---\n\n#### Encabezados\n\n- `Authorization: Bearer {ACCESS_TOKEN}`\n    \n- `Access: {ACCESS_KEY}`\n    \n\n#### Parámetros de ruta\n\n| Parámetro | Tipo | Obligatorio | Descripción |\n| --- | --- | --- | --- |\n| `ServiceOrderId` | string | Sí | ID único de la orden generada |\n\n---\n\n#### Ejemplo de petición\n\n``` bash\ncurl --location 'https://apim.ufinet.com/multiop/ServiceOrder/order/ORD-20250728-001' \\\n  --header 'Authorization: Bearer {ACCESS_TOKEN}' \\\n  --header 'Access: {ACCESS_KEY}'\n\n ```\n\n#### Códigos de respuesta\n\n| Código | Descripción |\n| --- | --- |\n| 200 | Petición exitosa |\n| 400 | Petición mal formada |\n| 401 | No autorizado o credenciales inválidas |\n| 500 | Error interno del servidor |\n\n#### Cuerpo de la respuesta\n\n- **availability** (`booleano`):\n    \n    - `true` → Hay puertos disponibles.\n        \n    - `false` → No hay puertos libres.\n        \n- **waitingCode** (`string`):\n    \n    - Código que indica si se requiere trabajo de campo adicional. Si el valore es diferente de \"0\".\n        \n- **state** (`string`):\n    \n    - `Completed` → Verificación realizada con éxito.\n        \n    - `Failed` → Se produjo un error durante la consulta de disponibilidad.\n        \n    - `Initial` → Inicio de proceso; **no definitivo**.\n        \n    - `InProgress` → Proceso en curso; **no definitivo**.\n        \n\n⚠️ **Muy importante**:\n\n- Si `state` está en `Initial` o `InProgress`, **debes implementar un mecanismo de reintento** hasta que el valor cambie a `Completed` o `Failed`.\n    \n- En el caso de la consulta de disponibilidad solo se considera la respuesta final cuando `state` sea `Completed` (éxito) o `Failed` (error)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Consulta de puerto",
+      "item": [
+        {
+          "name": "Paso 1b - Crear orden de servicio - Coordenadas",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"orderDate\": \"{{$isoTimestamp}}\",\r\n    \"username\": \"{{userName}}\",\r\n    \"serviceOrderType\": \"serviceavailability\",\r\n    \"serviceOrderItem\": [{\r\n            \"action\": \"NOCHANGE\",\r\n            \"service\": {\r\n                \"place\": [{\r\n                        \"address\": {\r\n                            \"country\": \"{{country}}\",\r\n                            \"city\": \"{{city}}\",\r\n                            \"Geometry\": {\r\n                                \"GeometryType\": \"point\",\r\n                                \"Latitude\": \"{{Latitude}}\",\r\n                                \"Longitude\": \"{{Longitude}}\",\r\n                                \"Altitude\": \"\"\r\n                            }\r\n                        }\r\n                    }\r\n                ]\r\n            }\r\n        }\r\n    ],\r\n    \"operator\": \"{{operator}}\",\r\n    \"region\": \"{{region}}\",\r\n    \"externalId\": \"{{externalId}}\", //Identificador único enviado por el operador (consecutivo de servicio interno del operador)\r\n    \"description\": \"CONSULTA DE DISPONIBILIDAD DE PUERTO\", // Descripción de la acción a realizar, Ejemplo Consulta de disponibilidad\r\n    \"contractId\": \"{{contractId}}\"\r\n}                                                ",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order/",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order",
+                ""
+              ]
+            },
+            "description": "## Crear orden de servicio ⚙️ _(Opcional)_\n\n**`POST https://apim.ufinet.com/multiop/ServiceOrder/order/`**\n\n**Descripción**  \nEste endpoint permite verificar si existen puertos disponibles en una ubicación con cobertura de servicio **antes** de generar una orden. Aunque es opcional, se recomienda su uso para anticipar posibles bloqueos o trabajos de campo.\n\n---\n\n### Comportamiento\n\n- **201 Created**\n    \n    - La solicitud fue procesada con éxito.\n        \n- **Error**\n    \n    - Cualquier código distinto de **201** se considera fallo.\n        \n    - El mensaje de error aparece en la propiedad `message` del JSON de respuesta.\n        \n\n---\n\n### Cuerpo de la respuesta\n\n- **ID** (`integer`):\n    - Este valor permite identificar el número de orden de servicio para consultar el estado en el siguiente paso.\n        \n\n> ⚠️ **Muy importante**:  \nLuego de crear la orden de servicio se debe consultar el estado de la misma. Ver documentación en el paso 2"
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 1a - Crear orden de servicio - Polígono",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"orderDate\": \"{{$isoTimestamp}}\",\r\n    \"username\": \"{{userName}}\",\r\n    \"serviceOrderType\": \"serviceavailability\",\r\n    \"serviceOrderItem\": [{\r\n            \"action\": \"NOCHANGE\",\r\n            \"service\": {\r\n                \"place\": [{\r\n                        \"address\": {\r\n                            \"country\": \"{{country}}\",\r\n                            \"city\": \"{{cyty}}\",\r\n                            \"polygonAlias\": \"{{PoligonAlias}}\"\r\n                        }\r\n                    }\r\n                ]\r\n            }\r\n        }\r\n    ],\r\n    \"operator\": \"{{operator}}\",\r\n    \"region\": \"{{region}}\",\r\n    \"externalId\": \"{{externalId}}\", //Identificador único enviado por el operador (consecutivo de servicio interno del operador)\r\n    \"description\": \"CONSULTA DE DISPONIBILIDAD DE PUERTO\", // Descripción de la acción a realizar, Ejemplo Consulta de disponibilidad\r\n    \"contractId\": \"{{contractId}}\"\r\n}                                                ",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order/",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order",
+                ""
+              ]
+            },
+            "description": "## Crear orden de servicio ⚙️ _(Opcional)_\n\n**`POST https://apim.ufinet.com/multiop/ServiceOrder/order/`**\n\n**Descripción**  \nEste endpoint permite verificar si existen puertos disponibles en una ubicación con cobertura de servicio **antes** de generar una orden. Aunque es opcional, se recomienda su uso para anticipar posibles bloqueos o trabajos de campo.\n\n---\n\n### Comportamiento\n\n- **201 Created**\n    \n    - La solicitud fue procesada con éxito.\n        \n- **Error**\n    \n    - Cualquier código distinto de **201** se considera fallo.\n        \n    - El mensaje de error aparece en la propiedad `message` del JSON de respuesta.\n        \n\n---\n\n### Cuerpo de la respuesta\n\n- **ID** (`integer`):\n    - Este valor permite identificar el número de orden de servicio para consultar el estado en el siguiente paso.\n        \n\n> ⚠️ **Muy importante**:  \nLuego de crear la orden de servicio se debe consultar el estado de la misma. Ver documentación en el paso 2"
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 2 - Consulta de orden de servicio",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order/{{ServiceOrderId}}",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order",
+                "{{ServiceOrderId}}"
+              ]
+            },
+            "description": "### Obtener detalle de orden de servicio\n\n**`GET https://apim.ufinet.com/multiop/ServiceOrder/order/{ServiceOrderId}`**\n\n**Descripción**  \nRecupera el detalle completo de una orden de servicio recién creada . **Debe ejecutarse siempre** después de hacer un `POST /ServiceOrder/order` para validar el estado y atributos clave.\n\n---\n\n#### Encabezados\n\n- `Authorization: Bearer {ACCESS_TOKEN}`\n    \n- `Access: {ACCESS_KEY}`\n    \n\n#### Parámetros de ruta\n\n| Parámetro | Tipo | Obligatorio | Descripción |\n| --- | --- | --- | --- |\n| `ServiceOrderId` | string | Sí | ID único de la orden generada |\n\n---\n\n#### Ejemplo de petición\n\n``` bash\ncurl --location 'https://apim.ufinet.com/multiop/ServiceOrder/order/ORD-20250728-001' \\\n  --header 'Authorization: Bearer {ACCESS_TOKEN}' \\\n  --header 'Access: {ACCESS_KEY}'\n\n ```\n\n#### Códigos de respuesta\n\n| Código | Descripción |\n| --- | --- |\n| 200 | Petición exitosa |\n| 400 | Petición mal formada |\n| 401 | No autorizado o credenciales inválidas |\n| 500 | Error interno del servidor |\n\n#### Cuerpo de la respuesta\n\n- **availability** (`booleano`):\n    \n    - `true` → Hay puertos disponibles.\n        \n    - `false` → No hay puertos libres.\n        \n- **waitingCode** (`string`):\n    \n    - Código que indica si se requiere trabajo de campo adicional. Si el valore es diferente de \"0\".\n        \n- **state** (`string`):\n    \n    - `Completed` → Verificación realizada con éxito.\n        \n    - `Failed` → Se produjo un error durante la consulta de disponibilidad.\n        \n    - `Initial` → Inicio de proceso; **no definitivo**.\n        \n    - `InProgress` → Proceso en curso; **no definitivo**.\n        \n\n⚠️ **Muy importante**:\n\n- Si `state` está en `Initial` o `InProgress`, **debes implementar un mecanismo de reintento** hasta que el valor cambie a `Completed` o `Failed`.\n    \n- En el caso de la consulta de disponibilidad solo se considera la respuesta final cuando `state` sea `Completed` (éxito) o `Failed` (error)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Alta de servicio",
+      "item": [
+        {
+          "name": "Paso 1a - Crear Orden de servicio -  Coordenadas",
+          "protocolProfileBehavior": {
+            "disabledSystemHeaders": {
+              "accept": true
+            }
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}",
+                "type": "text"
+              },
+              {
+                "key": "origin",
+                "value": "application/atom+xml",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"orderDate\": \"{{$isoTimestamp}}\",\r\n    \"username\": \"{{userName}}\",\r\n    \"serviceOrderType\": \"provide\",\r\n    \"requestedStartDate\": \"{{$isoTimestamp}}\",\r\n    \"operator\": \"{{operator}}\",\r\n    \"region\": \"{{region}}\",\r\n    \"externalId\": \"{{externalId}}\", //Identificador único del servicio en el operador.\r\n    \"description\": \"SOLICITUD DE ALTA DE SERVICIO\",\r\n    \"contractId\": \"{{contractId}}\",\r\n    \"serviceOrderItem\": [\r\n        {\r\n            \"action\": \"ADD\",\r\n            \"service\": {\r\n                \"serviceType\": \"CFS\",\r\n                \"serviceName\": \"Conectividad\",\r\n                \"externalServiceId\": \"{{externalId}}\",\r\n                \"serviceSpecification\": {\r\n                    \"id\": \"Datos\",\r\n                    \"version\": \"1.0\"\r\n                },\r\n                \"serviceCharacteristic\": [\r\n                    {\r\n                        \"id\": \"110\",\r\n                        \"name\": \"CONTACT_NAME\",\r\n                        \"description\": \"Nombre contacto\",\r\n                        \"valueType\": \"string\",\r\n                        \"value\": \"{{contactName}}\"\r\n                    },\r\n                    {\r\n                        \"id\": \"111\",\r\n                        \"name\": \"CONTACT_PHONE\",\r\n                        \"description\": \"Teléfono de contacto\",\r\n                        \"valueType\": \"string\",\r\n                        \"value\": \"{{ContactPhone}}\"\r\n                    },\r\n                    {\r\n                        \"id\": \"{{idNMS}}\",\r\n                        \"name\": \"NMS\",\r\n                        \"description\": \"NMS\",\r\n                        \"valueType\": \"string\",\r\n                        \"value\": \"{{NMSName}}\"\r\n                    },\r\n                    {\r\n                        \"id\": \"{{idBandwidthProfile}}\",\r\n                        \"name\": \"BANDWIDTH_PROFILE\",\r\n                        \"description\": \"Perfil de ancho de banda\",\r\n                        \"valueType\": \"string\",\r\n                        \"value\": \"{{BandwidthProfile}}\"\r\n                    }\r\n                ],\r\n                \"place\": [\r\n                    {\r\n                        \"address\": {\r\n                            \"country\": \"{{country}}\",\r\n                            \"city\": \"{{city}}\",\r\n                            \"geometry\": {\r\n                                \"latitude\": \"{{Latitude}}\",\r\n                                \"longitude\": \"{{Longitude}}\"\r\n                            }\r\n                        }\r\n                    }\r\n                ]\r\n            }\r\n        }\r\n    ]\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order"
+              ]
+            },
+            "description": "### Crear orden de servicio (provide) 🚀\n\n**`POST https://apim.ufinet.com/multiop/ServiceOrder/order`**\n\n**Descripción**  \nEste endpoint crea una orden de servicio de tipo **provide** (alta de servicio) con todos los datos necesarios para aprovisionar un nuevo servicio.\n\n---\n\n#### Encabezados\n\n- `Authorization: Bearer {ACCESS_TOKEN}`\n    \n- `Access: {ACCESS_KEY}`\n    \n- `Content-Type: application/json`\n    \n\n---\n\n#### Ejemplo de petición\n\n``` bash\ncurl --location 'https://apim.ufinet.com/multiop/ServiceOrder/order' \\\n  --header 'Authorization: Bearer {ACCESS_TOKEN}' \\\n  --header 'Access: {ACCESS_KEY}' \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"orderDate\": \"2025-07-11T16:54:28.240Z\",\n    \"username\": \"jsanchez\",\n    \"serviceOrderType\": \"provide\",\n    \"requestedStartDate\": \"2025-07-11T16:54:28.240Z\",\n    \"operator\": \"OP123\",\n    \"region\": \"CR-SJ\",\n    \"externalId\": \"testidexternal01\",\n    \"description\": \"Alta de servicio CFS para cliente test\",\n    \"contractId\": \"CTR-20250711-001\",\n    \"serviceOrderItem\": [\n      {\n        \"action\": \"ADD\",\n        \"service\": {\n          \"serviceType\": \"CFS\",\n          \"serviceName\": \"Conectividad\",\n          \"externalServiceId\": \"testidexternal01\",\n          \"serviceSpecification\": {\n            \"id\": \"Datos\",\n            \"version\": \"1.0\"\n          },\n          \"serviceCharacteristic\": [\n            {\n              \"id\": \"110\",\n              \"name\": \"CONTACT_NAME\",\n              \"description\": \"Nombre contacto\",\n              \"valueType\": \"string\",\n              \"value\": \"Juan Pérez\"\n            },\n            {\n              \"id\": \"111\",\n              \"name\": \"CONTACT_PHONE\",\n              \"description\": \"Teléfono de contacto\",\n              \"valueType\": \"string\",\n              \"value\": \"3000000000\"\n            }\n          ],\n          \"place\": [\n            {\n              \"address\": {\n                \"country\": \"CO\",\n                \"city\": \"Bogotá\",\n                \"geometry\": {\n                  \"latitude\": \"4.71357\",\n                  \"longitude\": \"-74.10092\"\n                }\n              }\n            }\n          ]\n        }\n      }\n    ]\n  }'\n\n ```\n\n#### Códigos de estado y errores\n\n| Código | Descripción |\n| --- | --- |\n| 201 | Created – Orden creada con éxito |\n| 400 | Bad Request – Petición mal formada o datos inválidos |\n| 401 | Unauthorized – Credenciales inválidas o caducadas |\n| 500 | Internal Server Error – Error interno del servidor |\n\n#### Cuerpo de la respuesta\n\n- **ID** (`integer`):\n    - Este valor permite identificar el número de orden de servicio para consultar el estado en el siguiente paso.\n        \n\n> ⚠️ **Muy importante**:  \nLuego de crear la orden de servicio de alta se debe consultar el estado de la misma. Ver documentación en el paso 2"
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 1b - Crear Orden de servicio -  Poligono",
+          "protocolProfileBehavior": {
+            "disabledSystemHeaders": {
+              "accept": true
+            }
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}",
+                "type": "text"
+              },
+              {
+                "key": "origin",
+                "value": "application/atom+xml",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"orderDate\": \"{{$isoTimestamp}}\",\r\n    \"username\": \"{{userName}}\",\r\n    \"serviceOrderType\": \"provide\",\r\n    \"requestedStartDate\": \"{{$isoTimestamp}}\",\r\n    \"operator\": \"{{operator}}\",\r\n    \"region\": \"{{region}}\",\r\n    \"externalId\": \"{{externalId}}\", //Identificador único del servicio en el operador.\r\n    \"description\": \"SOLICITUD DE ALTA DE SERVICIO\",\r\n    \"contractId\": \"{{contractId}}\",\r\n    \"serviceOrderItem\": [\r\n        {\r\n            \"action\": \"ADD\",\r\n            \"service\": {\r\n                \"serviceType\": \"CFS\",\r\n                \"serviceName\": \"Conectividad\",\r\n                \"externalServiceId\": \"{{externalId}}\",\r\n                \"serviceSpecification\": {\r\n                    \"id\": \"Datos\",\r\n                    \"version\": \"1.0\"\r\n                },\r\n                \"serviceCharacteristic\": [\r\n                    {\r\n                        \"id\": \"110\",\r\n                        \"name\": \"CONTACT_NAME\",\r\n                        \"description\": \"Nombre contacto\",\r\n                        \"valueType\": \"string\",\r\n                        \"value\": \"{{contactName}}\"\r\n                    },\r\n                    {\r\n                        \"id\": \"111\",\r\n                        \"name\": \"CONTACT_PHONE\",\r\n                        \"description\": \"Teléfono de contacto\",\r\n                        \"valueType\": \"string\",\r\n                        \"value\": \"{{ContactPhone}}\"\r\n                    },\r\n                    {\r\n                        \"id\": \"{{idNMS}}\",\r\n                        \"name\": \"NMS\",\r\n                        \"description\": \"NMS\",\r\n                        \"valueType\": \"string\",\r\n                        \"value\": \"{{NMSName}}\"\r\n                    },\r\n                    {\r\n                        \"id\": \"{{idBandwidthProfile}}\",\r\n                        \"name\": \"BANDWIDTH_PROFILE\",\r\n                        \"description\": \"Perfil de ancho de banda\",\r\n                        \"valueType\": \"string\",\r\n                        \"value\": \"{{BandwidthProfile}}\"\r\n                    }\r\n                ],\r\n                \"place\": [\r\n                    {\r\n                        \"address\": {\r\n                            \"country\": \"{{country}}\",\r\n                            \"city\": \"{{city}}\",\r\n                            \"polygonAlias\": \"{{PoligonAlias}}\"\r\n                        }\r\n                    }\r\n                ]\r\n            }\r\n        }\r\n    ]\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order"
+              ]
+            },
+            "description": "### Crear orden de servicio (provide) 🚀\n\n**`POST https://apim.ufinet.com/multiop/ServiceOrder/order`**\n\n**Descripción**  \nEste endpoint crea una orden de servicio de tipo **provide** (alta de servicio) con todos los datos necesarios para aprovisionar un nuevo servicio.\n\n---\n\n#### Encabezados\n\n- `Authorization: Bearer {ACCESS_TOKEN}`\n    \n- `Access: {ACCESS_KEY}`\n    \n- `Content-Type: application/json`\n    \n\n---\n\n#### Ejemplo de petición\n\n``` bash\ncurl --location 'https://apim.ufinet.com/multiop/ServiceOrder/order' \\\n  --header 'Authorization: Bearer {ACCESS_TOKEN}' \\\n  --header 'Access: {ACCESS_KEY}' \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"orderDate\": \"2025-07-11T16:54:28.240Z\",\n    \"username\": \"jsanchez\",\n    \"serviceOrderType\": \"provide\",\n    \"requestedStartDate\": \"2025-07-11T16:54:28.240Z\",\n    \"operator\": \"OP123\",\n    \"region\": \"CR-SJ\",\n    \"externalId\": \"testidexternal01\",\n    \"description\": \"Alta de servicio CFS para cliente test\",\n    \"contractId\": \"CTR-20250711-001\",\n    \"serviceOrderItem\": [\n      {\n        \"action\": \"ADD\",\n        \"service\": {\n          \"serviceType\": \"CFS\",\n          \"serviceName\": \"Conectividad\",\n          \"externalServiceId\": \"testidexternal01\",\n          \"serviceSpecification\": {\n            \"id\": \"Datos\",\n            \"version\": \"1.0\"\n          },\n          \"serviceCharacteristic\": [\n            {\n              \"id\": \"110\",\n              \"name\": \"CONTACT_NAME\",\n              \"description\": \"Nombre contacto\",\n              \"valueType\": \"string\",\n              \"value\": \"Juan Pérez\"\n            },\n            {\n              \"id\": \"111\",\n              \"name\": \"CONTACT_PHONE\",\n              \"description\": \"Teléfono de contacto\",\n              \"valueType\": \"string\",\n              \"value\": \"3000000000\"\n            }\n          ],\n          \"place\": [\n            {\n              \"address\": {\n                \"country\": \"CO\",\n                \"city\": \"Bogotá\",\n                \"geometry\": {\n                  \"latitude\": \"4.71357\",\n                  \"longitude\": \"-74.10092\"\n                }\n              }\n            }\n          ]\n        }\n      }\n    ]\n  }'\n\n ```\n\n#### Códigos de estado y errores\n\n| Código | Descripción |\n| --- | --- |\n| 201 | Created – Orden creada con éxito |\n| 400 | Bad Request – Petición mal formada o datos inválidos |\n| 401 | Unauthorized – Credenciales inválidas o caducadas |\n| 500 | Internal Server Error – Error interno del servidor |\n\n#### Cuerpo de la respuesta\n\n- **ID** (`integer`):\n    - Este valor permite identificar el número de orden de servicio para consultar el estado en el siguiente paso.\n        \n\n> ⚠️ **Muy importante**:  \nLuego de crear la orden de servicio de alta se debe consultar el estado de la misma. Ver documentación en el paso 2"
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 2 - Consulta de orden de servicio",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order/{{ServiceOrderId}}",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order",
+                "{{ServiceOrderId}}"
+              ]
+            },
+            "description": "### Obtener detalle de orden de servicio\n\n**`GET https://apim.ufinet.com/multiop/ServiceOrder/order/{ServiceOrderId}`**\n\n**Descripción**  \nRecupera el detalle completo de una orden de servicio recién creada . **Debe ejecutarse siempre** después de hacer un `POST /ServiceOrder/order` para validar el estado y atributos clave.\n\n---\n\n#### Encabezados\n\n- `Authorization: Bearer {ACCESS_TOKEN}`\n    \n- `Access: {ACCESS_KEY}`\n    \n\n#### Parámetros de ruta\n\n| Parámetro | Tipo | Obligatorio | Descripción |\n| --- | --- | --- | --- |\n| `ServiceOrderId` | string | Sí | ID único de la orden generada |\n\n---\n\n#### Ejemplo de petición\n\n``` bash\ncurl --location 'https://apim.ufinet.com/multiop/ServiceOrder/order/ORD-20250728-001' \\\n  --header 'Authorization: Bearer {ACCESS_TOKEN}' \\\n  --header 'Access: {ACCESS_KEY}'\n\n ```\n\n#### Ejemplo de petición\n\n| Código | Descripción |  \n| 200 | Petición exitosa |  \n| 400 | Petición mal formada |  \n| 401 | No autorizado o credenciales inválidas |  \n| 500 | Error interno del servidor |\n\n#### Cuerpo de la respuesta\n\n- **waitingCode** (string):\n    \n    - Determina si el puerto está inmendiatamente disponible (0) o si se debe ejecutar algún trabajo de infraestructura (diferente de 0).\n        \n- **state** (`string`):\n    \n    - `Failed` → Se produjo un error durante la consulta de disponibilidad.\n        \n    - `Initial` → Inicio de proceso; **no definitivo**.\n        \n    - `InProgress` → Proceso en curso; **no definitivo la orden de servicio puede quedar en estado inProgress un tiempo mientras se ejecutan trabajos de campo de acuerdo a los convenios comerciales.**.\n        \n    - `Pending` → Proceso de alta finalizado. Una vez se consulte la orden y se encuentre en estado pending el proceso ha sido completado y de debe proceder a hacer la confirmación del servicio. (Existe un proceso de autoconfirmación). Si el estado es Pending no se requiere evaluar el waitingCode.\n        \n\n⚠️ **Muy importante**:\n\n- Si `state` está en `Initial` o `InProgress` y no se requieren trabajos de campo (waitingCode = 0), **debes implementar un mecanismo de reintento** hasta que el valor cambie a `Pending` o `Failed`. En los otros casos existe un proceso de autoconfirmación luego de algunos días por lo que el estado `InProgress` puede tomarse como \"definitivo\" a la espera de la confirmación o autoconfirmación.\n\n- Una vez que el estado sea `completed`, se debe almacenar el valor de `relatedServiceId` del servicio Datos, ubicado en serviceOrderItem.service.serviceRelationship.  \n    Este valor se requiere para poder extraer la información del servicio y con ello poder optener el CTO_PORT asignado, necesario para poder hacer la confirmación del servicio.\n    \n\n``` bash\n\"serviceRelationship\": [\n                    {\n                        \"name\": \"Datos\",\n                        \"serviceSpecificationName\": \"Datos\",\n                        \"relatedServiceId\": \"1110802\",\n                        \"state\": \"designed\",\n                        \"stateDescription\": \"En diseño\",\n                        \"parent\": true,\n                        \"hrchyOrder\": null\n                    },\n                    {\n                        \"name\": \"Fiber Access\",\n                        \"serviceSpecificationName\": \"Fiber Access\",\n                        \"relatedServiceId\": \"1110803\",\n                        \"state\": \"reserved\",\n                        \"stateDescription\": \"Entregado\",\n                        \"parent\": false,\n                        \"hrchyOrder\": null\n                    },\n                    {\n                        \"name\": \"Hsd\",\n                        \"serviceSpecificationName\": \"Hsd\",\n                        \"relatedServiceId\": \"1110804\",\n                        \"state\": \"initial\",\n                        \"stateDescription\": \"Inicial\",\n                        \"parent\": false,\n                        \"hrchyOrder\": null\n                    },\n                    {\n                        \"name\": \"Res Pon Access\",\n                        \"serviceSpecificationName\": \"Res Pon Access\",\n                        \"relatedServiceId\": \"1110805\",\n                        \"state\": \"feasibility_Checked\",\n                        \"stateDescription\": \"Viabilidad comprobada\",\n                        \"parent\": false,\n                        \"hrchyOrder\": null\n                    }\n                ]\n\n ```"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Confirmar ONT",
+      "item": [
+        {
+          "name": "Paso 1 - Confirmar ONT",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"operator\": \"{{operator}}\",\r\n  \"region\": \"{{region}}\",\r\n  \"state\": \"completed\",\r\n  \"serviceCharacteristic\": [\r\n    {\r\n      \"name\": \"SerialNumber\",\r\n      \"value\": \"{{SerialNumber}}\"\r\n    }\r\n  ]\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlQA}}ServiceInventory/service/{{IdResponAccess}}",
+              "host": [
+                "{{UrlQA}}ServiceInventory"
+              ],
+              "path": [
+                "service",
+                "{{IdResponAccess}}"
+              ]
+            },
+            "description": "### Confirmar ont ✅\n\n**`PATCH https://apim-ufinet-qa.azure-api.net/multiop/ServiceInventory/service/update-ont/{{ServiceId}}`**\n\n**Descripción**  \nRealiza la confirmación de la ONT, pasando el estado de la orden de servicio de en progreso a pendiente **pending**.\n\n---\n\n#### Encabezados\n\n- `Authorization: Bearer {ACCESS_TOKEN}`\n    \n- `Access: {ACCESS_KEY}`\n    \n- `Content-Type: application/json`\n    \n\n#### Parámetros de ruta\n\n| Parámetro | Tipo | Obligatorio | Descripción |\n| --- | --- | --- | --- |\n| `idServiceOrder` | string | Sí | ID de la orden de servicio a actualizar. |\n\n---\n\n``` json\n{\n  \"operator\": \"{{operator}}\",\n  \"region\": \"{{region}}\",\n  \"state\": \"completed\",\n  \"serviceCharacteristic\": [\n    {\n      \"name\": \"SerialNumber\",\n      \"value\": \"{{SerialNumber}}\"\n    }\n  ]\n}\n\n ```\n\n#### Códigos de estado y errores\n\n| Código | Descripción |\n| --- | --- |\n| 202 | Accepted – Confirmación aceptada y procesada correctamente. |\n| 406 | Not Acceptable – Parámetros inválidos (por ejemplo, `Access` faltante o malformado). |\n| 409 | Conflict – La orden no está en estado **Pending** o `state` distinto de `completed`. |\n| 400 | Bad Request – Petición mal formada o JSON inválido. |\n| 500 | Internal Server Error – Error interno del servidor (u otros errores definidos por el manejador de errores). |\n\n#### Consulta de errores\n\n> ⚠️ **Importante:**  \nSiempre se debe validar la sección de error message en la respuesta. Despues de confirmar la ONT, se debe hacer una sincroinizacion del servicio padre para luego proceder a la confirmación de la orden"
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 2 - Sincronizar servicio",
+          "protocolProfileBehavior": {
+            "disabledSystemHeaders": {
+              "accept": true
+            }
+          },
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}",
+                "type": "text"
+              },
+              {
+                "key": "origin",
+                "value": "application/atom+xml",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"Region\": \"{{region}}\",\r\n  \"Operator\": \"{{operator}}\",\r\n      \"serviceCharacteristic\": [\r\n    ]\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlQA}}ServiceInventory/service/{{idService}}",
+              "host": [
+                "{{UrlQA}}ServiceInventory"
+              ],
+              "path": [
+                "service",
+                "{{idService}}"
+              ]
+            },
+            "description": "### Crear orden de servicio (provide) 🚀\n\n**`POST https://apim.ufinet.com/multiop/ServiceOrder/order`**\n\n**Descripción**  \nEste endpoint crea una orden de servicio de tipo **provide** (alta de servicio) con todos los datos necesarios para aprovisionar un nuevo servicio.\n\n---\n\n#### Encabezados\n\n- `Authorization: Bearer {ACCESS_TOKEN}`\n    \n- `Access: {ACCESS_KEY}`\n    \n- `Content-Type: application/json`\n    \n\n---\n\n#### Ejemplo de petición\n\n``` bash\ncurl --location 'https://apim.ufinet.com/multiop/ServiceOrder/order' \\\n  --header 'Authorization: Bearer {ACCESS_TOKEN}' \\\n  --header 'Access: {ACCESS_KEY}' \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"orderDate\": \"2025-07-11T16:54:28.240Z\",\n    \"username\": \"jsanchez\",\n    \"serviceOrderType\": \"provide\",\n    \"requestedStartDate\": \"2025-07-11T16:54:28.240Z\",\n    \"operator\": \"OP123\",\n    \"region\": \"CR-SJ\",\n    \"externalId\": \"testidexternal01\",\n    \"description\": \"Alta de servicio CFS para cliente test\",\n    \"contractId\": \"CTR-20250711-001\",\n    \"serviceOrderItem\": [\n      {\n        \"action\": \"ADD\",\n        \"service\": {\n          \"serviceType\": \"CFS\",\n          \"serviceName\": \"Conectividad\",\n          \"externalServiceId\": \"testidexternal01\",\n          \"serviceSpecification\": {\n            \"id\": \"Datos\",\n            \"version\": \"1.0\"\n          },\n          \"serviceCharacteristic\": [\n            {\n              \"id\": \"110\",\n              \"name\": \"CONTACT_NAME\",\n              \"description\": \"Nombre contacto\",\n              \"valueType\": \"string\",\n              \"value\": \"Juan Pérez\"\n            },\n            {\n              \"id\": \"111\",\n              \"name\": \"CONTACT_PHONE\",\n              \"description\": \"Teléfono de contacto\",\n              \"valueType\": \"string\",\n              \"value\": \"3000000000\"\n            }\n          ],\n          \"place\": [\n            {\n              \"address\": {\n                \"country\": \"CO\",\n                \"city\": \"Bogotá\",\n                \"geometry\": {\n                  \"latitude\": \"4.71357\",\n                  \"longitude\": \"-74.10092\"\n                }\n              }\n            }\n          ]\n        }\n      }\n    ]\n  }'\n\n ```\n\n#### Códigos de estado y errores\n\n| Código | Descripción |\n| --- | --- |\n| 201 | Created – Orden creada con éxito |\n| 400 | Bad Request – Petición mal formada o datos inválidos |\n| 401 | Unauthorized – Credenciales inválidas o caducadas |\n| 500 | Internal Server Error – Error interno del servidor |\n\n#### Cuerpo de la respuesta\n\n- **ID** (`integer`):\n    - Este valor permite identificar el número de orden de servicio para consultar el estado en el siguiente paso.\n        \n\n> ⚠️ **Muy importante**:  \nLuego de crear la orden de servicio de alta se debe consultar el estado de la misma. Ver documentación en el paso 2"
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 3 - Consulta de servicio",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}"
+              },
+              {
+                "key": "",
+                "value": "",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{UrlQA}}ServiceInventory/service/{{ServiceId}}",
+              "host": [
+                "{{UrlQA}}ServiceInventory"
+              ],
+              "path": [
+                "service",
+                "{{ServiceId}}"
+              ]
+            },
+            "description": "### Consultar servicio 🚀\n\n**`GET {{UrlQA}}ServiceInventory/service/{{ServiceId}}`**\n\n**Descripción**  \nEste endpoint permite consultar un servicio específico utilizando su `ServiceId`. Su objetivo es validar el estado del servicio antes de la confirmación, asegurando que se cumplan los requisitos necesarios para la provisión de servicios.\n\n#### Parámetros de entrada\n\n- `ServiceId`: Identificador único del servicio que se desea consultar.\n    \n\n#### Encabezados\n\n- `Authorization: Bearer {ACCESS_TOKEN}`: Token de autorización para acceder al recurso.\n    \n- `Access: {ACCESS_KEY}`: Clave de acceso necesaria para la autenticación.\n    \n- `Content-Type: application/json`: Indica que el tipo de contenido de la solicitud es JSON.\n    \n\n#### Estructura de la respuesta\n\nLa respuesta será un objeto JSON que contiene la siguiente información sobre el servicio:\n\n- `operator`: (string) Operador asociado al servicio.\n    \n- `region`: (string) Región donde se encuentra el servicio.\n    \n- `name`: (string) Nombre del servicio.\n    \n- `parent`: (boolean) Indica si el servicio es un servicio padre.\n    \n- `parentServiceId`: (string) Identificador del servicio padre, si aplica.\n    \n- `createdDate`: (string) Fecha de creación del servicio.\n    \n- `acceptanceDate`: (string|null) Fecha de aceptación del servicio.\n    \n- `startDate`: (string|null) Fecha de inicio del servicio.\n    \n- `billingStartDate`: (string|null) Fecha de inicio de facturación.\n    \n- `endDate`: (string|null) Fecha de finalización del servicio.\n    \n- `modifiedDate`: (string) Fecha de la última modificación.\n    \n- `cancellationDate`: (string|null) Fecha de cancelación, si aplica.\n    \n- `symServiceId`: (string) Identificador del servicio simbólico.\n    \n- `description`: (string) Descripción del servicio.\n    \n- `networkType`: (string) Tipo de red asociada al servicio.\n    \n- `installDrop`: (boolean) Indica si se requiere instalación de caída.\n    \n- `ont`: (boolean) Indica si se utiliza ONT.\n    \n- `startMode`: (integer) Modo de inicio del servicio.\n    \n- `isStateful`: (boolean) Indica si el servicio es stateful.\n    \n- `relatedParty`: (array) Lista de partes relacionadas con el servicio.\n    \n- `serviceOrderItem`: (array) Lista de ítems de orden de servicio.\n    \n- `serviceSpecification`: (object) Especificación del servicio.\n    \n- `cnt`: (integer) Contador de servicios.\n    \n- `notes`: (array) Notas relacionadas con el servicio.\n    \n- `id`: (string) Identificador del servicio.\n    \n- `externalServiceId`: (string) Identificador del servicio externo.\n    \n- `state`: (string) Estado actual del servicio.\n    \n- `stateDescription`: (string) Descripción del estado del servicio.\n    \n- `href`: (string) Enlace al recurso del servicio.\n    \n- `serviceType`: (string) Tipo de servicio.\n    \n- `place`: (array) Información sobre la ubicación del servicio.\n    \n- `serviceCharacteristic`: (array) Características del servicio.\n    \n- `serviceRelationship`: (array) Relaciones del servicio.\n    \n\n---\n\n``` bash\n#### Códigos de estado y errores\n| Código | Descripción |\n| --- | --- |\n| 200 | OK – Solicitud exitosa, se devuelve la información del servicio. |\n| 400 | Bad Request – Petición mal formada o datos inválidos. |\n| 401 | Unauthorized – Credenciales inválidas o caducadas. |\n| 500 | Internal Server Error – Error interno del servidor. |\n\n ```\n\n> ⚠️ **Muy importante**:  \nUna vez consultados los servicios, es indispensable verificar que cada uno se encuentre en el estado correspondiente: \n  \n\n- Datos: debe estar en estado 'reserved'.\n    \n- Fiber Access: debe estar en estado 'reserved'.\n    \n- HSD: debe estar en estado 'active'.\n    \n- Res Pon Access: debe estar en estado 'active'.  \n    Esta validación garantiza que la provisión se haya completado correctamente y que los servicios estén activos según lo esperado.\n    \n    \\`\\`\\`"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Confirmación de servicio",
+      "item": [
+        {
+          "name": "Paso 1 - Consulta de servicio-Sacar CTO_PORT",
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          },
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}"
+              },
+              {
+                "key": "",
+                "value": "",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlQA}}ServiceInventory/service/{{ServiceOrderId}}",
+              "host": [
+                "{{UrlQA}}ServiceInventory"
+              ],
+              "path": [
+                "service",
+                "{{ServiceOrderId}}"
+              ]
+            },
+            "description": "### Obtener CTO_PORT\n\n**`GET https://apim-ufinet-qa.azure-api.net/multiop/ServiceInventory/service/{{ServiceId}}`**\n\n**Descripción**  \nRecupera el detalle completo de un servicio. **Debe ejecutarse Previo a la confirmación de un servicio para optener el CTO_PORT** después de hacer un `POST /ServiceOrder/order` para validar el estado y atributos clave.\n\n⚠️ **Muy importante**:\n\n- Se debe enviar el id del servicio obtenido durante el paso 2 del alta del servicio.\n    \n\n---\n\n#### Encabezados\n\n- `Authorization: Bearer {ACCESS_TOKEN}`\n    \n- `Access: {ACCESS_KEY}`\n    \n\n#### Parámetros de ruta\n\n| Parámetro | Tipo | Obligatorio | Descripción |\n| --- | --- | --- | --- |\n| `ServiceOrderId` | string | Sí | ID único de la orden generada |\n\n---\n\n#### Ejemplo de petición\n\n``` bash\ncurl --location 'https://apim.ufinet.com/multiop/ServiceOrder/order/ORD-20250728-001' \\\n  --header 'Authorization: Bearer {ACCESS_TOKEN}' \\\n  --header 'Access: {ACCESS_KEY}'\n\n ```\n\n#### Códigos de respuesta\n\n| Código | Descripción |\n| --- | --- |\n| 200 | Petición exitosa |\n| 400 | Petición mal formada |\n| 401 | No autorizado o credenciales inválidas |\n| 500 | Error interno del servidor |\n\n#### Cuerpo de la respuesta\n\n- **serviceCharacteristic** (`Lista de caracteristicas`):\n    \n    - Se debe buscar el item cuyo name sea `CTO_PORT` y obtener el value para enviarlo en la confirmación."
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 2 - Confirmar Orden de servicio",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"region\": \"{{region}}\",\r\n  \"operator\": \"{{operator}}\",\r\n  \"state\": \"completed\",\r\n  \"serviceOrderItem\": [\r\n    {\r\n      \"service\": {\r\n        \"serviceCharacteristic\": [\r\n          {\r\n            \"name\": \"CTO_PORT\",\r\n            \"value\": \"{{CTO_PORT}}\"\r\n          },\r\n          {\r\n            \"name\": \"LABEL_DROP\",\r\n        \"value\": \"{{LABEL_DROP}}\"\r\n          }\r\n        ]\r\n      }\r\n    }\r\n  ]\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order/{{idServiceOrder}}",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order",
+                "{{idServiceOrder}}"
+              ]
+            },
+            "description": "### Confirmar orden de servicio (finalización) ✅\n\n**`PATCH https://apim.ufinet.com/multiop/ServiceOrder/order/{idServiceOrder}`**\n\n**Descripción**  \nRealiza la confirmación final de una orden de servicio, marcándola como **completed**.\n\n---\n\n#### Encabezados\n\n- `Authorization: Bearer {ACCESS_TOKEN}`\n    \n- `Access: {ACCESS_KEY}`\n    \n- `Content-Type: application/json`\n    \n\n#### Parámetros de ruta\n\n| Parámetro | Tipo | Obligatorio | Descripción |\n| --- | --- | --- | --- |\n| `idServiceOrder` | string | Sí | ID de la orden de servicio a actualizar. |\n\n---\n\n``` json\n{ \n  \"Region\": \"CR-SJ\",\n  \"Operator\": \"OP123\",\n  \"state\": \"completed\"\n}\n\n ```\n\n#### Códigos de estado y errores\n\n| Código | Descripción |\n| --- | --- |\n| 202 | Accepted – Confirmación aceptada y procesada correctamente. |\n| 406 | Not Acceptable – Parámetros inválidos (por ejemplo, `Access` faltante o malformado). |\n| 409 | Conflict – La orden no está en estado **Pending** o `state` distinto de `completed`. |\n| 400 | Bad Request – Petición mal formada o JSON inválido. |\n| 500 | Internal Server Error – Error interno del servidor (u otros errores definidos por el manejador de errores). |\n\n#### Consulta de errores\n\n> ⚠️ **Importante:**  \nSiempre se debe validar la sección de error message en la respuesta \n  \n\n``` json\n{ ...\n\"errorMessages\": [\n    {\n        \"code\": \"MOP-500\",\n        \"message\": \"Error no controlado.\",\n        \"reason\": \"El CTO ingresado no es válido (UFINET.FTTH.MultiOp.Core.Services.ServiceOrderService+<FinalizeServiceOrder>d__15)\",\n        \"referenceError\": \"\",\n        \"status\": 500,\n        \"timestamp\": \"2025-08-11T15:18:15.577\"\n    }\n]...\n}\n\n ```"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Cancelación de servicio",
+      "item": [
+        {
+          "name": "Paso 1 - Crear orden de cancelación",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"Region\": \"{{region}}\",\r\n    \"Operator\": \"{{operator}}\",\r\n    \"cancellationReason\": \"Customer cancellation\",\r\n    \"description\": \"Cancelación de servicios\",\r\n    \"serviceOrder\": {\r\n        \"id\": {{idServiceOrder}}\r\n    }\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlQA}}CancelServiceOrder",
+              "host": [
+                "{{UrlQA}}CancelServiceOrder"
+              ]
+            },
+            "description": "### Cancelar orden de servicio 🛑\n\n**`POST https://apim.ufinet.com/multiop/CancelServiceOrder`**\n\n**Descripción**  \nEste endpoint permite cancelar un servicio previamente dado de alta. Debes enviar los datos de región, operador y los motivos de la cancelación.\n\n**Importante:**  \n**No se pueden cancelar servicios confirmados**\n\n---\n\n#### Encabezados\n\n- `Authorization: Bearer {ACCESS_TOKEN}`\n    \n- `Access: {ACCESS_KEY}`\n    \n- `Content-Type: application/json`\n    \n\n---\n\n#### Cuerpo de la petición\n\n``` json\n{\n  \"Region\": \"CR-SJ\",\n  \"Operator\": \"OP123\",\n  \"cancellationReason\": \"Customer cancellation\",\n  \"description\": \"Cancelación de servicios solicitados por error\",\n  \"serviceOrder\": {\n    \"id\": 12345\n  }\n}\n\n ```\n\n#### Códigos de estado y errores\n\n| Código | Descripción |\n| --- | --- |\n| 200 | OK – Cancelación realizada con éxito |\n| 400 | Bad Request – Petición mal formada o datos inválidos |\n| 401 | Unauthorized – Credenciales inválidas o caducadas |\n| 404 | Not Found – La orden de servicio no existe |\n| 500 | Internal Server Error – Error interno del servidor |\n\n#### Cuerpo de la respuesta\n\n- **ID** (`integer`):\n    - Este valor permite identificar el número de orden de cancelación de servicio para consultar el estado en el siguiente paso.\n        \n\n> ⚠️ **Muy importante**:  \nLuego de crear la orden de cancelación de servicio se debe consultar el estado de la misma. Ver documentación en el paso 2"
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 2 - Consulta de orden cancelación",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlQA}}CancelServiceOrder/order/{{idCancelServiceOrder}}",
+              "host": [
+                "{{UrlQA}}CancelServiceOrder"
+              ],
+              "path": [
+                "order",
+                "{{idCancelServiceOrder}}"
+              ]
+            },
+            "description": "# 📄 Cancelar Orden de Servicio — Consulta de Estado\n\n**Endpoint:**  \n`GET https://apim.ufinet.com/multiop/CancelServiceOrder/order/{idCancelServiceOrder}`\n\n---\n\n## 🔍 Descripción\n\nPermite consultar el estado de una orden de cancelación de servicio previamente creada.\n\n---\n\n## ⚙️ Método\n\n`GET`\n\n---\n\n## 📥 Parámetros de ruta\n\n| Nombre | Tipo | Descripción |\n| --- | --- | --- |\n| `idCancelServiceOrder` | string | Identificador único de la orden de cancelación. |\n\n---\n\n## 🔄 Estados posibles\n\n| Valor | Descripción |\n| --- | --- |\n| `accepted` | La orden ha sido aceptada y está en cola para su procesamiento. |\n| `inProgress` | La orden se está procesando actualmente. |\n| `terminatedWithError` | El procesamiento finalizó con error. |\n| `done` | El procesamiento finalizó correctamente. |\n\n---\n\n## 🚧 Códigos de error\n\n| Código | Descripción |\n| --- | --- |\n| 200 | Petición exitosa. |\n| 400 | Parámetro inválido (p. ej. `idCancelServiceOrder` mal formado). |\n| 401 | No autorizado (token ausente o inválido). |\n| 404 | No se encontró la orden con ese `idCancelServiceOrder`. |\n| 500 | Error interno del servidor. |\n\n---\n\n## 📑 Ejemplo de uso\n\n### Solicitud\n\n``` bash\ncurl -X GET \\\n  \"https://apim.ufinet.com/multiop/CancelServiceOrder/order/12345-abcde\" \\\n  -H \"Authorization: Bearer {token}\"\n\n ```"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Baja de servicio",
+      "item": [
+        {
+          "name": "Paso 1 - Crear orden de servicio",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"region\": \"{{region}}\",\r\n  \"operator\": \"{{operator}}\",\r\n  \"serviceOrderType\": \"cease\",\r\n  \"description\": \"BAJA DE SERVICIO\",\r\n  \"externalId\": \"{{externalId}}\", // Identificador único del servicio\r\n  \"RequestedStartDate\": \"{{$isoTimestamp}}\",\r\n  \"Priority\": \"1\",\r\n  \"contractId\": \"{{contractId}}\",\r\n  \"relatedParty\": [\r\n        {\r\n            \"name\": \"dmolinaa@ufinet.com\", //nombre de usuario que realiza la acción\r\n            \"role\": \"requester\"\r\n        }\r\n    ],\r\n  \"serviceOrderItem\": [\r\n    {\r\n      \"action\": \"delete\",\r\n      \"service\": {       \r\n        \"externalServiceId\": \"{{externalId}}\" // Identificador único del servicio\r\n      }\r\n    }\r\n  ]\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order"
+              ]
+            },
+            "description": "### Dar de baja servicio (cease) 🗑️\n\n**`POST https://apim.ufinet.com/multiop/ServiceOrder/order`**\n\n**Descripción**  \nEste endpoint crea una orden de baja de servicio (tipo `cease`) para un servicio ya confirmado.\n\n---\n\n#### Encabezados\n\n- `Authorization: Bearer {ACCESS_TOKEN}`\n    \n- `Access: {ACCESS_KEY}`\n    \n- `Content-Type: application/json`\n    \n\n---\n\n#### Ejemplo de petición\n\n``` bash\ncurl --location 'https://apim.ufinet.com/multiop/ServiceOrder/order' \\\n  --header 'Authorization: Bearer {ACCESS_TOKEN}' \\\n  --header 'Access: {ACCESS_KEY}' \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"region\": \"CR-SJ\",\n    \"operator\": \"OP123\",\n    \"serviceOrderType\": \"cease\",\n    \"description\": \"BAJA DE SERVICIO\",\n    \"externalId\": \"SERV-20250728-001\",\n    \"RequestedStartDate\": \"2025-07-28T15:00:00.000Z\",\n    \"Priority\": \"1\",\n    \"contractId\": \"CTR-20250711-001\",\n    \"relatedParty\": [\n      {\n        \"name\": \"email@ufinet.com\",\n        \"role\": \"requester\"\n      }\n    ],\n    \"serviceOrderItem\": [\n      {\n        \"action\": \"delete\",\n        \"service\": {\n          \"externalServiceId\": \"SERV-20250728-001\"\n        }\n      }\n    ]\n  }'\n\n ```\n\n#### Códigos de estado y errores\n\n| Código | Descripción |\n| --- | --- |\n| 201 | Created – Baja de servicio iniciada con éxito |\n| 400 | Bad Request – Petición mal formada o datos inválidos |\n| 401 | Unauthorized – Credenciales inválidas o caducadas |\n| 404 | Not Found – Servicio o contrato no encontrado |\n| 500 | Internal Server Error – Error interno del servidor |\n\n#### Cuerpo de la respuesta\n\n- **ID** (`integer`):\n    - Este valor permite identificar el número de orden de servicio para consultar el estado en el siguiente paso.\n        \n\n> ⚠️ **Muy importante**:  \nLuego de crear la orden de servicio de baja se debe consultar el estado de la misma. Ver documentación en el paso 2"
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 2 - Sincronizar servicio",
+          "protocolProfileBehavior": {
+            "disabledSystemHeaders": {
+              "accept": true
+            }
+          },
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}",
+                "type": "text"
+              },
+              {
+                "key": "origin",
+                "value": "application/atom+xml",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"Region\": \"{{region}}\",\r\n  \"Operator\": \"{{operator}}\",\r\n      \"serviceCharacteristic\": [\r\n    ]\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlQA}}ServiceInventory/service/{{idService}}",
+              "host": [
+                "{{UrlQA}}ServiceInventory"
+              ],
+              "path": [
+                "service",
+                "{{idService}}"
+              ]
+            },
+            "description": "### Sincronizacion y consulta de servicios 🚀\n\n**`POST https://apim-ufinet-qa.azure-api.net/multiop/ServiceInventory/service/{{idService}}`**\n\n**Descripción**  \nEste endpoint permite sincronizar y validar el estado de un servicio específico mediante su ServiceId. Al invocarlo, se obtiene una respuesta que incluye las características actuales del servicio padre e hijos, lo que facilita la verificación de condiciones previas a su confirmación.  \nSu propósito principal es garantizar que se cumplan los requisitos necesarios para la provisión, evitando inconsistencias o errores en etapas posteriores del flujo operativo.\n\n---\n\n#### Encabezados\n\n- `Authorization: Bearer {ACCESS_TOKEN}`\n    \n- `Access: {ACCESS_KEY}`\n    \n- `Content-Type: application/json`\n    \n\n---\n\n#### Ejemplo de petición\n\n``` bash\ncurl --location 'https://apim.ufinet.com/multiop/ServiceOrder/order' \\\n  --header 'Authorization: Bearer {ACCESS_TOKEN}' \\\n  --header 'Access: {ACCESS_KEY}' \\\n  --header 'Content-Type: application/json' \\\n  --data '{\n    \"orderDate\": \"2025-07-11T16:54:28.240Z\",\n    \"username\": \"jsanchez\",\n    \"serviceOrderType\": \"provide\",\n    \"requestedStartDate\": \"2025-07-11T16:54:28.240Z\",\n    \"operator\": \"OP123\",\n    \"region\": \"CR-SJ\",\n    \"externalId\": \"testidexternal01\",\n    \"description\": \"Alta de servicio CFS para cliente test\",\n    \"contractId\": \"CTR-20250711-001\",\n    \"serviceOrderItem\": [\n      {\n        \"action\": \"ADD\",\n        \"service\": {\n          \"serviceType\": \"CFS\",\n          \"serviceName\": \"Conectividad\",\n          \"externalServiceId\": \"testidexternal01\",\n          \"serviceSpecification\": {\n            \"id\": \"Datos\",\n            \"version\": \"1.0\"\n          },\n          \"serviceCharacteristic\": [\n            {\n              \"id\": \"110\",\n              \"name\": \"CONTACT_NAME\",\n              \"description\": \"Nombre contacto\",\n              \"valueType\": \"string\",\n              \"value\": \"Juan Pérez\"\n            },\n            {\n              \"id\": \"111\",\n              \"name\": \"CONTACT_PHONE\",\n              \"description\": \"Teléfono de contacto\",\n              \"valueType\": \"string\",\n              \"value\": \"3000000000\"\n            }\n          ],\n          \"place\": [\n            {\n              \"address\": {\n                \"country\": \"CO\",\n                \"city\": \"Bogotá\",\n                \"geometry\": {\n                  \"latitude\": \"4.71357\",\n                  \"longitude\": \"-74.10092\"\n                }\n              }\n            }\n          ]\n        }\n      }\n    ]\n  }'\n\n ```\n\n#### Códigos de estado y errores\n\n| Código | Descripción |\n| --- | --- |\n| 201 | Created – Orden creada con éxito |\n| 400 | Bad Request – Petición mal formada o datos inválidos |\n| 401 | Unauthorized – Credenciales inválidas o caducadas |\n| 500 | Internal Server Error – Error interno del servidor |\n\n#### Estructura de la respuesta\n\nLa respuesta será un objeto JSON que contiene la siguiente información sobre el servicio:\n\n- `operator`: (string) Operador asociado al servicio.\n    \n- `region`: (string) Región donde se encuentra el servicio.\n    \n- `name`: (string) Nombre del servicio.\n    \n- `parent`: (boolean) Indica si el servicio es un servicio padre.\n    \n- `parentServiceId`: (string) Identificador del servicio padre, si aplica.\n    \n- `createdDate`: (string) Fecha de creación del servicio.\n    \n- `acceptanceDate`: (string|null) Fecha de aceptación del servicio.\n    \n- `startDate`: (string|null) Fecha de inicio del servicio.\n    \n- `billingStartDate`: (string|null) Fecha de inicio de facturación.\n    \n- `endDate`: (string|null) Fecha de finalización del servicio.\n    \n- `modifiedDate`: (string) Fecha de la última modificación.\n    \n- `cancellationDate`: (string|null) Fecha de cancelación, si aplica.\n    \n- `symServiceId`: (string) Identificador del servicio simbólico.\n    \n- `description`: (string) Descripción del servicio.\n    \n- `networkType`: (string) Tipo de red asociada al servicio.\n    \n- `installDrop`: (boolean) Indica si se requiere instalación de caída.\n    \n- `ont`: (boolean) Indica si se utiliza ONT.\n    \n- `startMode`: (integer) Modo de inicio del servicio.\n    \n- `isStateful`: (boolean) Indica si el servicio es stateful.\n    \n- `relatedParty`: (array) Lista de partes relacionadas con el servicio.\n    \n- `serviceOrderItem`: (array) Lista de ítems de orden de servicio.\n    \n- `serviceSpecification`: (object) Especificación del servicio.\n    \n- `cnt`: (integer) Contador de servicios.\n    \n- `notes`: (array) Notas relacionadas con el servicio.\n    \n- `id`: (string) Identificador del servicio.\n    \n- `externalServiceId`: (string) Identificador del servicio externo.\n    \n- `state`: (string) Estado actual del servicio.\n    \n- `stateDescription`: (string) Descripción del estado del servicio.\n    \n- `href`: (string) Enlace al recurso del servicio.\n    \n- `serviceType`: (string) Tipo de servicio.\n    \n- `place`: (array) Información sobre la ubicación del servicio.\n    \n- `serviceCharacteristic`: (array) Características del servicio.\n    \n- `serviceRelationship`: (array) Relaciones del servicio.\n    \n\n> ⚠️ **Muy importante**:  \nUna vez consultados los servicios, es indispensable verificar que cada uno se encuentre en el estado correspondiente: \n  \n\n- Datos: debe estar en estado 'reserved'.\n    \n- Fiber Access: debe estar en estado 'reserved'.\n    \n- HSD: debe estar en estado 'active'.\n    \n- Res Pon Access: debe estar en estado 'active'.  \n    Esta validación garantiza que la provisión se haya completado correctamente y que los servicios estén activos según lo esperado."
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 3 - Consulta de orden de servicio",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order/{{ServiceOrderId}}",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order",
+                "{{ServiceOrderId}}"
+              ]
+            },
+            "description": "### Obtener detalle de orden de servicio\n\n**`GET https://apim.ufinet.com/multiop/ServiceOrder/order/{ServiceOrderId}`**\n\n**Descripción**  \nRecupera el detalle completo de una orden de servicio recién creada . **Debe ejecutarse siempre** después de hacer un `POST /ServiceOrder/order` para validar el estado y atributos clave.\n\n---\n\n#### Encabezados\n\n- `Authorization: Bearer {ACCESS_TOKEN}`\n    \n- `Access: {ACCESS_KEY}`\n    \n\n#### Parámetros de ruta\n\n| Parámetro | Tipo | Obligatorio | Descripción |\n| --- | --- | --- | --- |\n| `ServiceOrderId` | string | Sí | ID único de la orden generada |\n\n---\n\n#### Ejemplo de petición\n\n``` bash\ncurl --location 'https://apim.ufinet.com/multiop/ServiceOrder/order/ORD-20250728-001' \\\n  --header 'Authorization: Bearer {ACCESS_TOKEN}' \\\n  --header 'Access: {ACCESS_KEY}'\n\n ```\n\n#### Codigos de respuesta\n\n| Código | Descripción                                      |\n|--------|--------------------------------------------------|\n| 200    | Petición exitosa                                 |\n| 400    | Petición mal formada                             |\n| 401    | No autorizado o credenciales inválidas           |\n| 500    | Error interno del servidor                       |\n\n\n#### Cuerpo de la respuesta\n\n- **state** (`string`):\n    \n    - `Failed` → Se produjo un error durante la consulta de el procesamiento de la orden de servicio.\n        \n    - `Initial` → Inicio de proceso; **no definitivo**.\n        \n    - `InProcess` → Proceso en curso; **no definitivo**.\n        \n    - `Completed` → Proceso de baja ha finalizado.\n        \n\n⚠️ **Muy importante**:\n\n- Si `state` está en `Initial` o `InProgress` , **debes implementar un mecanismo de reintento** hasta que el valor cambie a `Completed` o `Failed`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Consulta de Ordenes",
+      "item": [
+        {
+          "name": "Listado de ordenes de servicio",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order"
+              ]
+            },
+            "description": "### Listar órdenes de servicio\n\n**`GET https://apim.ufinet.com/multiop/ServiceOrder/order`**\n\nObtiene un listado con la información de las órdenes de servicio.\n\n---\n\n#### Encabezados\n\n- `Authorization: Bearer {ACCESS_TOKEN}`\n    \n- `Access: {ACCESS_KEY}`\n    \n\n#### Parámetros de consulta\n\n> Actualmente este endpoint no requiere parámetros obligatorios.  \nEn futuras versiones se podrán añadir filtros (por operador, fecha, estado, etc.). \n  \n\n---\n\n#### Ejemplo de petición\n\n``` bash\ncurl --location 'https://apim.ufinet.com/multiop/ServiceOrder/order' \\\n--header 'Authorization: Bearer {ACCESS_TOKEN}' \\\n--header 'Access: {ACCESS_KEY}'\n\n ```\n\n#### Códigos de estado y errores\n\n| Código | Descripción |\n| --- | --- |\n| 200 | Petición exitosa |\n| 400 | Petición mal formada |\n| 401 | No autorizado o credenciales inválidas |\n| 500 | Error interno del servidor |"
+          },
+          "response": []
+        },
+        {
+          "name": "Consulta de orden de servicio",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order/{{ServiceOrderId}}",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order",
+                "{{ServiceOrderId}}"
+              ]
+            },
+            "description": "### Obtener detalle de orden de servicio\n\n**`GET https://apim.ufinet.com/multiop/ServiceOrder/order/{ServiceOrderId}`**\n\n**Descripción**  \nRecupera el detalle completo de una orden de servicio recién creada o existente. **Debe ejecutarse siempre** después de hacer un `POST /ServiceOrder/order` para validar el estado y atributos clave.\n\n---\n\n#### Encabezados\n\n- `Authorization: Bearer {ACCESS_TOKEN}`\n    \n- `Access: {ACCESS_KEY}`\n    \n\n#### Parámetros de ruta\n\n| Parámetro | Tipo | Obligatorio | Descripción |\n| --- | --- | --- | --- |\n| `ServiceOrderId` | string | Sí | ID único de la orden generada |\n\n---\n\n#### Ejemplo de petición\n\n``` bash\ncurl --location 'https://apim.ufinet.com/multiop/ServiceOrder/order/ORD-20250728-001' \\\n  --header 'Authorization: Bearer {ACCESS_TOKEN}' \\\n  --header 'Access: {ACCESS_KEY}'\n\n ```\n\n#### Ejemplo de petición\n\n| Código | Descripción |\n| --- | --- |\n| 200 | Petición exitosa |\n| 400 | Petición mal formada |\n| 401 | No autorizado o credenciales inválidas |\n| 500 | Error interno del servidor |"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Consulta de servicios",
+      "item": [
+        {
+          "name": "Consulta de servicios",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}"
+              },
+              {
+                "key": "",
+                "value": "",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{UrlQA}}ServiceInventory/service/{{ServiceId}}",
+              "host": [
+                "{{UrlQA}}ServiceInventory"
+              ],
+              "path": [
+                "service",
+                "{{ServiceId}}"
+              ]
+            },
+            "description": "### Consultar servicio 🚀\n\nEste endpoint permite recuperar información detallada sobre un servicio específico en el inventario. Al proporcionar el identificador único del servicio, se accede a los datos asociados.\n\n---\n\n### 🔧 Solicitud\n\n- **Método**: `GET`\n    \n- **URL**: `{{UrlQA}}ServiceInventory/service/{{ServiceId}}`\n    \n\n---\n\n### 📌 Parámetros de Ruta\n\n| Parámetro | Tipo | Requerido | Descripción |\n| --- | --- | --- | --- |\n| ServiceId | string | Sí | Identificador único del servicio de datos que se desea consultar. |\n\n---\n\n### 📦 Respuesta\n\nLa respuesta contiene los detalles del servicio solicitado en formato estructurado. El objeto `ServiceDetails` incluye:\n\n| Campo | Tipo | Descripción |\n| --- | --- | --- |\n| Name | string | Nombre del servicio. |\n| Description | string | Breve descripción de lo que ofrece el servicio. |\n| Status | string | Estado actual del servicio. |\n| Pricing | object | Información relacionada con el precio del servicio. |\n| Availability | object | Detalles sobre la disponibilidad del servicio. |\n\n---\n\n### 🧩 Uso\n\nEste endpoint es útil para clientes que necesitan obtener información específica de un servicio para mostrarla o procesarla en sus aplicaciones."
+          },
+          "response": []
+        },
+        {
+          "name": "Listado de servicios",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}"
+              },
+              {
+                "key": "",
+                "value": "",
+                "type": "text",
+                "disabled": true
+              }
+            ],
+            "url": {
+              "raw": "{{UrlQA}}ServiceInventory/service",
+              "host": [
+                "{{UrlQA}}ServiceInventory"
+              ],
+              "path": [
+                "service"
+              ]
+            },
+            "description": "### Obtener inventario de servicio\n\n**`GET https://apim.ufinet.com/multiop/ServiceInventory/service`**\n\n**Descripción**  \nDevuelve un listado con los registros de inventario de servicio disponibles en el sistema. Útil para consultar el estado y características actuales de los servicios (perfil de ancho de banda, puerto CTO, fecha de servicio, etc.).\n\n---\n\n#### Encabezados\n\n- `Authorization: Bearer {ACCESS_TOKEN}`  \n- `Access: {ACCESS_KEY}`  \n\n\n---\n\n#### Ejemplo de petición\n\n```bash\ncurl --location 'https://apim.ufinet.com/multiop/ServiceInventory/service' \\\n  --header 'Authorization: Bearer {ACCESS_TOKEN}' \\\n  --header 'Access: {ACCESS_KEY}'\n\n#### Códigos de estado y errores\n\n| Código | Descripción                            |\n| ------ | -------------------------------------- |\n| 200    | OK – Respuesta exitosa                 |\n| 400    | Petición mal formada                   |\n| 401    | No autorizado o credenciales inválidas |\n| 500    | Error interno del servidor             |\n"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Cambio de ancho de banda",
+      "item": [
+        {
+          "name": "Paso 1 - Cambio de ancho de banda",
+          "protocolProfileBehavior": {
+            "disabledSystemHeaders": {
+              "accept": true
+            }
+          },
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"Region\": \"{{region}}\",\r\n    \"Operator\": \"{{operator}}\",\r\n    \"ServiceOrderType\": \"CHANGE_SERVICE\",\r\n    \"Description\": \"CAMBIO DE ANCHO DE BANDA\",\r\n    \"ExternalId\": \"{{ExternalId}}\",\r\n    \"RequestedStartDate\": \"2025-07-11\",\r\n    \"Priority\": \"1\",\r\n    \"RelatedParty\": [{\r\n            \"name\": \"{{userName}}\",\r\n            \"role\": \"requester\"\r\n        }\r\n    ],\r\n    \"ServiceOrderItem\": [{\r\n            \"Action\": \"MODIFY\",\r\n            \"Service\": {\r\n                \"ExternalServiceId\": \"{{HSDServiceId}}\",\r\n                \"ServiceType\": \"CFS\",\r\n                \"serviceCharacteristic\": [{\r\n                        \"id\": null,\r\n                        \"name\": \"BANDWIDTH_PROFILE\",\r\n                        \"description\": \"Perfil de ancho de banda\",\r\n                        \"valueType\": \"string\",\r\n                        \"size\": null,\r\n                        \"value\": \"{{NewBandwithProfile}}\"\r\n                    }\r\n],\r\n                \"ServiceSpecification\": {\r\n                    \"id\": \"RES_PON_ACCESS\",\r\n                    \"version\": \"1.0\"\r\n                }\r\n            }\r\n        }\r\n    ]\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlQA}}/ServiceOrder/order",
+              "host": [
+                "{{UrlQA}}"
+              ],
+              "path": [
+                "ServiceOrder",
+                "order"
+              ]
+            },
+            "description": "## Service Order Creation\n\nThis endpoint allows users to create a new service order in the system. The service order can be used to manage various services and track their status.\n\n### Request\n\n**Method**: POST  \n**Endpoint**: `{{UrlQA}}ServiceOrder/order`\n\n### Request Body\n\nThe request body must be in JSON format and should include the following parameters:\n\n- **Region** (string): The geographical region where the service order is applicable.\n    \n- **Operator** (string): The operator responsible for the service order.\n    \n- **ServiceOrderType** (string): The type of service order, e.g., `STATUS_ONT`.\n    \n- **Description** (string): A brief description of the service order.\n    \n- **ExternalId** (string): An external identifier associated with the service order.\n    \n- **RequestedStartDate** (string, date format): The date when the service order is requested to start.\n    \n- **Priority** (string): The priority level of the service order (e.g., `1` for high priority).\n    \n- **RelatedParty** (array of objects): A list of parties related to the service order, where each object contains:\n    \n    - **name** (string): The name of the related party.\n        \n    - **role** (string): The role of the related party (e.g., `requester`).\n        \n- **ServiceOrderItem** (array of objects): A list of items included in the service order, where each object contains:\n    \n    - **Action** (string): The action to be taken for the service order item (e.g., `NOCHANGE`).\n        \n    - **Service** (object): Details of the service, including:\n        \n        - **ExternalServiceId** (string): An external identifier for the service.\n            \n        - **ServiceType** (string): The type of service (e.g., `CFS`).\n            \n        - **serviceCharacteristic** (array): An array of service characteristics (can be empty).\n            \n        - **ServiceSpecification** (object): Specifications of the service, including:\n            \n            - **id** (string): The identifier for the service specification (e.g., `RES_PON_ACCESS`).\n                \n            - **version** (string): The version of the service specification (e.g., `1.0`).\n                \n\n### Response\n\nUpon successful creation of the service order, the response will typically include a confirmation of the order details, including the unique identifier for the created service order and any relevant status information. The exact structure of the response may vary based on the implementation but generally includes:\n\n- **OrderId** (string): The unique identifier for the created service order.\n    \n- **Status** (string): The current status of the service order.\n    \n- Additional metadata related to the service order.\n    \n\n### Usage Notes\n\nEnsure that all required fields are filled in correctly to avoid errors during the service order creation process. The `RelatedParty` and `ServiceOrderItem` fields can contain multiple entries, allowing for flexibility in specifying multiple parties and items related to the order.\n\nThis endpoint allows users to create a new service order within the system. The request requires various parameters that define the service order's characteristics, including the region, operator, service order type, and a description of the order.\n\n#### Request Body Parameters:\n\n- **Region** (string): The geographical region associated with the service order.\n    \n- **Operator** (string): The operator managing the service order.\n    \n- **ServiceOrderType** (string): The type of service order being created (e.g., STATUS_ONT).\n    \n- **Description** (string): A brief description of the service order.\n    \n- **ExternalId** (string): An external identifier for tracking the service order.\n    \n- **RequestedStartDate** (date): The date when the service order is requested to start.\n    \n- **Priority** (string): The priority level of the service order (e.g., \"1\" for high priority).\n    \n- **RelatedParty** (array): An array of parties related to the service order. Each party includes:\n    \n    - **name** (string): The name of the related party.\n        \n    - **role** (string): The role of the related party (e.g., requester).\n        \n- **ServiceOrderItem** (array): An array of items included in the service order. Each item includes:\n    \n    - **Action** (string): The action to be taken for the service order item (e.g., NOCHANGE).\n        \n    - **Service** (object): Details about the service being ordered, including:\n        \n        - **ExternalServiceId** (string): The external identifier for the service.\n            \n        - **ServiceType** (string): The type of service (e.g., CFS).\n            \n        - **serviceCharacteristic** (array): An array of service characteristics (currently empty).\n            \n        - **ServiceSpecification** (object): Specifications for the service, including:\n            \n            - **id** (string): The identifier for the service specification (e.g., RES_PON_ACCESS).\n                \n            - **version** (string): The version of the service specification (e.g., \"1.0\").\n                \n\nThis endpoint is essential for initiating service orders and managing service requests effectively."
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 2 - Consulta de estado de ancho de banda",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order/{{ServiceOrderId}}",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order",
+                "{{ServiceOrderId}}"
+              ]
+            },
+            "description": "### Obtener detalle de orden de servicio\n\n**`GET https://apim.ufinet.com/multiop/ServiceOrder/order/{ServiceOrderId}`**\n\n**Descripción**  \nRecupera el detalle completo de una orden de servicio recién creada . **Debe ejecutarse siempre** después de hacer un `POST /ServiceOrder/order` para validar el estado y atributos clave.\n\n---\n\n#### Encabezados\n\n- `Authorization: Bearer {ACCESS_TOKEN}`\n    \n- `Access: {ACCESS_KEY}`\n    \n\n#### Parámetros de ruta\n\n| Parámetro | Tipo | Obligatorio | Descripción |\n| --- | --- | --- | --- |\n| `ServiceOrderId` | string | Sí | ID único de la orden generada |\n\n---\n\n#### Ejemplo de petición\n\n``` bash\ncurl --location 'https://apim.ufinet.com/multiop/ServiceOrder/order/ORD-20250728-001' \\\n  --header 'Authorization: Bearer {ACCESS_TOKEN}' \\\n  --header 'Access: {ACCESS_KEY}'\n\n ```\n\n#### Ejemplo de petición\n\n| Código | Descripción |  \n| 200 | Petición exitosa |  \n| 400 | Petición mal formada |  \n| 401 | No autorizado o credenciales inválidas |  \n| 500 | Error interno del servidor |\n\n#### Cuerpo de la respuesta\n\n- **waitingCode** (string):\n    \n    - Determina si el puerto está inmendiatamente disponible (0) o si se debe ejecutar algún trabajo de infraestructura (diferente de 0).\n        \n- **state** (`string`):\n    \n    - `Failed` → Se produjo un error durante la consulta de disponibilidad.\n        \n    - `Initial` → Inicio de proceso; **no definitivo**.\n        \n    - `InProgress` → Proceso en curso; **no definitivo la orden de servicio puede quedar en estado inProgress un tiempo mientras se ejecutan trabajos de campo de acuerdo a los convenios comerciales.**.\n        \n    - completed→ Proceso cambio de ancho de banda finalizado.\n        \n\n⚠️ **Muy importante**:\n\n- Si `state` está en `Initial` o `InProgress` y no se requieren trabajos de campo (waitingCode = 0), **debes implementar un mecanismo de reintento** hasta que el valor cambie a completed o `Failed.`"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Consulta de niveles",
+      "item": [
+        {
+          "name": "Paso 1 - Consulta de niveles",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"Region\": \"{{region}}\",\r\n    \"Operator\": \"{{operator}}\",\r\n    \"ServiceOrderType\": \"STATUS_ONT\",\r\n    \"Description\": \"CONSULTA DE NIVELES\",\r\n    \"ExternalId\": \"{{externalId}}\",\r\n    \"RequestedStartDate\": \"2025-08-14\",\r\n    \"Priority\": \"1\",\r\n    \"RelatedParty\": [{\r\n            \"name\": \"{{userName}}\",\r\n            \"role\": \"requester\"\r\n        }\r\n    ],\r\n    \"ServiceOrderItem\": [{\r\n            \"Action\": \"NOCHANGE\",\r\n            \"Service\": {\r\n                \"ExternalServiceId\": \"{{ServiceId}}\",\r\n                \"ServiceType\": \"CFS\",\r\n                \"serviceCharacteristic\": [],\r\n                \"ServiceSpecification\": {\r\n                    \"id\": \"RES_PON_ACCESS\",\r\n                    \"version\": \"1.0\"\r\n                }\r\n            }\r\n        }\r\n    ]\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 2 - Consulta de estado consulta de niveles",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order/{{ServiceOrderId}}",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order",
+                "{{ServiceOrderId}}"
+              ]
+            },
+            "description": "### Obtener detalle de orden de servicio\n\n**`GET https://apim.ufinet.com/multiop/ServiceOrder/order/{ServiceOrderId}`**\n\n**Descripción**  \nRecupera el detalle completo de una orden de servicio recién creada . **Debe ejecutarse siempre** después de hacer un `POST /ServiceOrder/order` para validar el estado y atributos clave.\n\n---\n\n#### Encabezados\n\n- `Authorization: Bearer {ACCESS_TOKEN}`\n    \n- `Access: {ACCESS_KEY}`\n    \n\n#### Parámetros de ruta\n\n| Parámetro | Tipo | Obligatorio | Descripción |\n| --- | --- | --- | --- |\n| `ServiceOrderId` | string | Sí | ID único de la orden generada |\n\n---\n\n#### Ejemplo de petición\n\n``` bash\ncurl --location 'https://apim.ufinet.com/multiop/ServiceOrder/order/ORD-20250728-001' \\\n  --header 'Authorization: Bearer {ACCESS_TOKEN}' \\\n  --header 'Access: {ACCESS_KEY}'\n\n ```\n\n#### Ejemplo de petición\n\n| Código | Descripción |  \n| 200 | Petición exitosa |  \n| 400 | Petición mal formada |  \n| 401 | No autorizado o credenciales inválidas |  \n| 500 | Error interno del servidor |\n\n#### Cuerpo de la respuesta\n\n- **waitingCode** (string):\n    \n    - Determina si el puerto está inmendiatamente disponible (0) o si se debe ejecutar algún trabajo de infraestructura (diferente de 0).\n        \n- **state** (`string`):\n    \n    - `Failed` → Se produjo un error durante la consulta de disponibilidad.\n        \n    - `Initial` → Inicio de proceso; **no definitivo**.\n        \n    - `InProgress` → Proceso en curso; **no definitivo la orden de servicio puede quedar en estado inProgress un tiempo mientras se ejecutan trabajos de campo de acuerdo a los convenios comerciales.**.\n        \n    - completed→ Proceso cambio de ancho de banda finalizado.\n        \n\n⚠️ **Muy importante**:\n\n- Si `state` está en `Initial` o `InProgress` y no se requieren trabajos de campo (waitingCode = 0), **debes implementar un mecanismo de reintento** hasta que el valor cambie a completed o `Failed.`"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Refrescar y Resetear ONT",
+      "item": [
+        {
+          "name": "Paso 1a - Refrescar ONT",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"Region\": \"{{region}}\",\r\n    \"Operator\": \"{{operator}}\",\r\n    \"ServiceOrderType\": \"REFRESH_ONT\",\r\n    \"Description\": \"REFRESCAR ONT\",\r\n    \"ExternalId\": \"{{ExternalId}}\",\r\n    \"RequestedStartDate\": \"{{$isoTimestamp}}\",\r\n    \"Priority\": \"1\",\r\n    \"RelatedParty\": [{\r\n            \"name\": \"{{userName}}\",\r\n            \"role\": \"requester\"\r\n        }\r\n    ],\r\n    \"ServiceOrderItem\": [{\r\n            \"Action\": \"NOCHANGE\",\r\n            \"Service\": {\r\n                \"ExternalServiceId\": \"{{ServiceId}}\",\r\n                \"ServiceType\": \"CFS\",\r\n                \"serviceCharacteristic\": [],\r\n                \"ServiceSpecification\": {\r\n                    \"id\": \"RES_PON_ACCESS\",\r\n                    \"version\": \"1.0\"\r\n                }\r\n            }\r\n        }\r\n    ]\r\n}\r\n",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 1b - Resetear ONT",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"Region\": \"{{region}}\",\r\n    \"Operator\": \"{{operator}}\",\r\n    \"ServiceOrderType\": \"RESET_ONT\",\r\n    \"Description\": \"RESETEAR ONT\",\r\n    \"ExternalId\": \"{{ExternalId}}\",\r\n    \"RequestedStartDate\": \"{{$isoTimestamp}}\",\r\n    \"Priority\": \"1\",\r\n    \"RelatedParty\": [{\r\n            \"name\": \"{{userName}}\",\r\n            \"role\": \"requester\"\r\n        }\r\n    ],\r\n    \"ServiceOrderItem\": [{\r\n            \"Action\": \"NOCHANGE\",\r\n            \"Service\": {\r\n                \"ExternalServiceId\": \"{{ServiceId}}\",\r\n                \"ServiceType\": \"CFS\",\r\n                \"serviceCharacteristic\": [],\r\n                \"ServiceSpecification\": {\r\n                    \"id\": \"RES_PON_ACCESS\",\r\n                    \"version\": \"1.0\"\r\n                }\r\n            }\r\n        }\r\n    ]\r\n}\r\n",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 2 - Consulta de Refrescar o Resetear ONT",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order/{{ServiceOrderId}}",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order",
+                "{{ServiceOrderId}}"
+              ]
+            },
+            "description": "### Obtener detalle de orden de servicio\n\n**`GET https://apim.ufinet.com/multiop/ServiceOrder/order/{ServiceOrderId}`**\n\n**Descripción**  \nRecupera el detalle completo de una orden de servicio recién creada . **Debe ejecutarse siempre** después de hacer un `POST /ServiceOrder/order` para validar el estado y atributos clave.\n\n---\n\n#### Encabezados\n\n- `Authorization: Bearer {ACCESS_TOKEN}`\n    \n- `Access: {ACCESS_KEY}`\n    \n\n#### Parámetros de ruta\n\n| Parámetro | Tipo | Obligatorio | Descripción |\n| --- | --- | --- | --- |\n| `ServiceOrderId` | string | Sí | ID único de la orden generada |\n\n---\n\n#### Ejemplo de petición\n\n``` bash\ncurl --location 'https://apim.ufinet.com/multiop/ServiceOrder/order/ORD-20250728-001' \\\n  --header 'Authorization: Bearer {ACCESS_TOKEN}' \\\n  --header 'Access: {ACCESS_KEY}'\n\n ```\n\n#### Ejemplo de petición\n\n| Código | Descripción |  \n| 200 | Petición exitosa |  \n| 400 | Petición mal formada |  \n| 401 | No autorizado o credenciales inválidas |  \n| 500 | Error interno del servidor |\n\n#### Cuerpo de la respuesta\n\n- **waitingCode** (string):\n    \n    - Determina si el puerto está inmendiatamente disponible (0) o si se debe ejecutar algún trabajo de infraestructura (diferente de 0).\n        \n- **state** (`string`):\n    \n    - `Failed` → Se produjo un error durante la consulta de disponibilidad.\n        \n    - `Initial` → Inicio de proceso; **no definitivo**.\n        \n    - `InProgress` → Proceso en curso; **no definitivo la orden de servicio puede quedar en estado inProgress un tiempo mientras se ejecutan trabajos de campo de acuerdo a los convenios comerciales.**.\n        \n    - completed→ Proceso cambio de ancho de banda finalizado.\n        \n\n⚠️ **Muy importante**:\n\n- Si `state` está en `Initial` o `InProgress` y no se requieren trabajos de campo (waitingCode = 0), **debes implementar un mecanismo de reintento** hasta que el valor cambie a completed o `Failed.`"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Cambio de ONT",
+      "item": [
+        {
+          "name": "Paso 1 - Cambio de ONT",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n    \"Region\": \"{{region}}\",\r\n    \"Operator\": \"{{operator}}\",\r\n    \"ServiceOrderType\": \"CHANGE_RESOURCE\",\r\n    \"Description\": \"CAMBIO DE ONT\",\r\n    \"ExternalId\": \"{{ExternalId}}\",\r\n    \"RequestedStartDate\": \"2025-05-28T16:04:26.900Z\",\r\n    \"Priority\": \"1\",\r\n    \"RelatedParty\": [{\r\n            \"name\": \"{{userName}}\",\r\n            \"role\": \"requester\"\r\n        }\r\n    ],\r\n    \"ServiceOrderItem\": [{\r\n            \"Action\": \"MODIFY\",\r\n            \"Service\": {\r\n                \"ExternalServiceId\": \"{{ExternalServiceId}}\",\r\n                \"ServiceType\": \"CFS\",\r\n                \"serviceCharacteristic\": [{\r\n                        \"name\": \"SERIAL_NUMBER\",\r\n                        \"value\": \"{{SERIAL_NUMBER}}\",\r\n                        \"valueType\": \"string\"\r\n                    }\r\n                ],\r\n                \"ServiceSpecification\": {\r\n                    \"id\": \"RES_PON_ACCESS\",\r\n                    \"version\": \"1.0\"\r\n                }\r\n            }\r\n        }\r\n    ]\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 2 - Consulta de cambio de ONT",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order/{{ServiceOrderId}}",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order",
+                "{{ServiceOrderId}}"
+              ]
+            },
+            "description": "### Obtener detalle de orden de servicio\n\n**`GET https://apim.ufinet.com/multiop/ServiceOrder/order/{ServiceOrderId}`**\n\n**Descripción**  \nRecupera el detalle completo de una orden de servicio recién creada . **Debe ejecutarse siempre** después de hacer un `POST /ServiceOrder/order` para validar el estado y atributos clave.\n\n---\n\n#### Encabezados\n\n- `Authorization: Bearer {ACCESS_TOKEN}`\n    \n- `Access: {ACCESS_KEY}`\n    \n\n#### Parámetros de ruta\n\n| Parámetro | Tipo | Obligatorio | Descripción |\n| --- | --- | --- | --- |\n| `ServiceOrderId` | string | Sí | ID único de la orden generada |\n\n---\n\n#### Ejemplo de petición\n\n``` bash\ncurl --location 'https://apim.ufinet.com/multiop/ServiceOrder/order/ORD-20250728-001' \\\n  --header 'Authorization: Bearer {ACCESS_TOKEN}' \\\n  --header 'Access: {ACCESS_KEY}'\n\n ```\n\n#### Ejemplo de petición\n\n| Código | Descripción |  \n| 200 | Petición exitosa |  \n| 400 | Petición mal formada |  \n| 401 | No autorizado o credenciales inválidas |  \n| 500 | Error interno del servidor |\n\n#### Cuerpo de la respuesta\n\n- **waitingCode** (string):\n    \n    - Determina si el puerto está inmendiatamente disponible (0) o si se debe ejecutar algún trabajo de infraestructura (diferente de 0).\n        \n- **state** (`string`):\n    \n    - `Failed` → Se produjo un error durante la consulta de disponibilidad.\n        \n    - `Initial` → Inicio de proceso; **no definitivo**.\n        \n    - `InProgress` → Proceso en curso; **no definitivo la orden de servicio puede quedar en estado inProgress un tiempo mientras se ejecutan trabajos de campo de acuerdo a los convenios comerciales.**.\n        \n    - completed→ Proceso cambio de ancho de banda finalizado.\n        \n\n⚠️ **Muy importante**:\n\n- Si `state` está en `Initial` o `InProgress` y no se requieren trabajos de campo (waitingCode = 0), **debes implementar un mecanismo de reintento** hasta que el valor cambie a completed o `Failed.`"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Suspención y reactivación",
+      "item": [
+        {
+          "name": "Paso 1a - Suspender",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n\t\"Region\": \"{{region}}\",\r\n\t\"Operator\": \"{{operator}}\",\r\n\t\"ServiceOrderType\": \"SUSPEND_SERVICE\",\r\n\t\"Description\": \"SUSPENCION DE SERVICIO\",\r\n\t\"ExternalId\": \"{{ExternalId}}\",\r\n\t\"RequestedStartDate\": \"{{$isoTimestamp}}\",\r\n\t\"Priority\": \"1\",\r\n\t\"RelatedParty\": [\r\n\t\t{\r\n\t\t\t\"name\": \"{{userName}}\",\r\n\t\t\t\"role\": \"requester\"\r\n\t\t}\r\n\t],\r\n\t\"ServiceOrderItem\": [\r\n\t\t{\r\n\t\t\t\"Action\": \"MODIFY\",\r\n\t\t\t\"Service\": {\r\n\t\t\t\t\"ExternalServiceId\": \"{{ServiceId}}\",\r\n\t\t\t\t\"ServiceType\": \"CFS\",\r\n\t\t\t\t\"serviceCharacteristic\": [],\r\n\t\t\t\t\"ServiceSpecification\": {\r\n\t\t\t\t\t\"id\": \"RES_PON_ACCESS\",\r\n\t\t\t\t\t\"version\": \"1.0\"\r\n\t\t\t\t}\r\n\t\t\t}\r\n\t\t}\r\n\t]\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 1b - Reactivar",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n\t\"Region\": \"{{region}}\",\r\n\t\"Operator\": \"{{operator}}\",\r\n\t\"ServiceOrderType\": \"REACTIVATE_SERVICE\",\r\n\t\"Description\": \"REACTIVACION DE SERVICIO\",\r\n\t\"ExternalId\": \"{{ExternalId}}\",\r\n\t\"RequestedStartDate\": \"{{$isoTimestamp}}\",\r\n\t\"Priority\": \"1\",\r\n\t\"RelatedParty\": [\r\n\t\t{\r\n\t\t\t\"name\": \"{{userName}}\",\r\n\t\t\t\"role\": \"requester\"\r\n\t\t}\r\n\t],\r\n\t\"ServiceOrderItem\": [\r\n\t\t{\r\n\t\t\t\"Action\": \"MODIFY\",\r\n\t\t\t\"Service\": {\r\n\t\t\t\t\"ExternalServiceId\": \"{{ServiceId}}\",\r\n\t\t\t\t\"ServiceType\": \"CFS\",\r\n\t\t\t\t\"serviceCharacteristic\": [],\r\n\t\t\t\t\"ServiceSpecification\": {\r\n\t\t\t\t\t\"id\": \"RES_PON_ACCESS\",\r\n\t\t\t\t\t\"version\": \"1.0\"\r\n\t\t\t\t}\r\n\t\t\t}\r\n\t\t}\r\n\t]\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Paso 2 - Consulta de Suspensión o Reactivación",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Access",
+                "value": "{{ApiAccess}}"
+              }
+            ],
+            "url": {
+              "raw": "{{UrlQA}}ServiceOrder/order/{{ServiceOrderId}}",
+              "host": [
+                "{{UrlQA}}ServiceOrder"
+              ],
+              "path": [
+                "order",
+                "{{ServiceOrderId}}"
+              ]
+            },
+            "description": "### Obtener detalle de orden de servicio\n\n**`GET https://apim.ufinet.com/multiop/ServiceOrder/order/{ServiceOrderId}`**\n\n**Descripción**  \nRecupera el detalle completo de una orden de servicio recién creada . **Debe ejecutarse siempre** después de hacer un `POST /ServiceOrder/order` para validar el estado y atributos clave.\n\n---\n\n#### Encabezados\n\n- `Authorization: Bearer {ACCESS_TOKEN}`\n    \n- `Access: {ACCESS_KEY}`\n    \n\n#### Parámetros de ruta\n\n| Parámetro | Tipo | Obligatorio | Descripción |\n| --- | --- | --- | --- |\n| `ServiceOrderId` | string | Sí | ID único de la orden generada |\n\n---\n\n#### Ejemplo de petición\n\n``` bash\ncurl --location 'https://apim.ufinet.com/multiop/ServiceOrder/order/ORD-20250728-001' \\\n  --header 'Authorization: Bearer {ACCESS_TOKEN}' \\\n  --header 'Access: {ACCESS_KEY}'\n\n ```\n\n#### Ejemplo de petición\n\n| Código | Descripción |  \n| 200 | Petición exitosa |  \n| 400 | Petición mal formada |  \n| 401 | No autorizado o credenciales inválidas |  \n| 500 | Error interno del servidor |\n\n#### Cuerpo de la respuesta\n\n- **waitingCode** (string):\n    \n    - Determina si el puerto está inmendiatamente disponible (0) o si se debe ejecutar algún trabajo de infraestructura (diferente de 0).\n        \n- **state** (`string`):\n    \n    - `Failed` → Se produjo un error durante la consulta de disponibilidad.\n        \n    - `Initial` → Inicio de proceso; **no definitivo**.\n        \n    - `InProgress` → Proceso en curso; **no definitivo la orden de servicio puede quedar en estado inProgress un tiempo mientras se ejecutan trabajos de campo de acuerdo a los convenios comerciales.**.\n        \n    - completed→ Proceso cambio de ancho de banda finalizado.\n        \n\n⚠️ **Muy importante**:\n\n- Si `state` está en `Initial` o `InProgress` y no se requieren trabajos de campo (waitingCode = 0), **debes implementar un mecanismo de reintento** hasta que el valor cambie a completed o `Failed.`"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Obtener token de Autenticación",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {
+              "key": "grant_type",
+              "value": "client_credentials",
+              "description": "Es un valor constante",
+              "type": "text"
+            },
+            {
+              "key": "client_ID",
+              "value": "",
+              "description": "Se debe solicitar a ufinet ver documentación en overview de este collection",
+              "type": "text"
+            },
+            {
+              "key": "client_secret",
+              "value": "",
+              "description": "Se debe solicitar a ufinet ver documentación en overview de este collection",
+              "type": "text"
+            },
+            {
+              "key": "scope",
+              "value": "",
+              "description": "Se debe solicitar a ufinet ver documentación en overview de este collection",
+              "type": "text"
+            }
+          ]
+        },
+        "url": {
+          "raw": "https://login.microsoftonline.com/7820112f-0e93-4eca-9b2f-88061e82e876/oauth2/v2.0/token",
+          "protocol": "https",
+          "host": [
+            "login",
+            "microsoftonline",
+            "com"
+          ],
+          "path": [
+            "7820112f-0e93-4eca-9b2f-88061e82e876",
+            "oauth2",
+            "v2.0",
+            "token"
+          ]
+        },
+        "description": "### Generar token de autenticación\n\n**`POST https://login.microsoftonline.com/7820112f-0e93-4eca-9b2f-88061e82e876/oauth2/v2.0/token`**\n\nObtén un **Bearer token** usando el flujo _Client Credentials_ de OAuth 2.0.\n\n---\n\n#### Encabezados\n\n- `Content-Type: application/x-www-form-urlencoded`\n    \n\n#### Parámetros (form-data)\n\n| Parámetro | Tipo | Obligatorio | Descripción |\n| --- | --- | --- | --- |\n| `grant_type` | string | Sí | Tipo de grant. Debe ser: `client_credentials`. |\n| `client_id` | string | Sí | Identificador de la aplicación (Client ID). |\n| `client_secret` | string | Sí | Secreto de la aplicación (Client Secret). |\n| `scope` | string | Sí | Ámbito al que se solicita acceso. Ejemplo: `api://ufinet.com/operatormultiop/prod/.default`. |\n\n---\n\n#### Ejemplo de petición\n\n``` bash\ncurl --location 'https://login.microsoftonline.com/7820112f-0e93-4eca-9b2f-88061e82e876/oauth2/v2.0/token' \\\n  --header 'Content-Type: application/x-www-form-urlencoded' \\\n  --data-urlencode 'grant_type=client_credentials' \\\n  --data-urlencode 'client_id=TU_CLIENT_ID' \\\n  --data-urlencode 'client_secret=TU_CLIENT_SECRET' \\\n  --data-urlencode 'scope=api://ufinet.com/etbmultiop/prod/.default'\n\n ```\n\n#### Respuesta exitosa (200 OK)\n\n``` json\n{  \n\"token_type\": \"Bearer\",  \n\"expires_in\": 3599,  \n\"ext_expires_in\": 3599,  \n\"access_token\": \"eyJ0eXAiOiJKV1Qi...\"  \n}\n\n ```"
+      },
+      "response": []
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6Ilh0LW83aERicHVwQXotWlBtNkh4Q0ZXUzNjSSIsImtpZCI6Ilh0LW83aERicHVwQXotWlBtNkh4Q0ZXUzNjSSJ9.eyJhdWQiOiJhcGk6Ly91ZmluZXQuY29tL1p1eE5ldC9xYSIsImlzcyI6Imh0dHBzOi8vc3RzLndpbmRvd3MubmV0Lzc4MjAxMTJmLTBlOTMtNGVjYS05YjJmLTg4MDYxZTgyZTg3Ni8iLCJpYXQiOjE3Nzk5MDc4ODgsIm5iZiI6MTc3OTkwNzg4OCwiZXhwIjoxNzc5OTExNzg4LCJhaW8iOiJrMkZnWUZDcEZpemVwZWJ2Zk9ESWxHRGwvTmRxaitVdlBDNCtOclY4WlRmN21tTkhGQmdCIiwiYXBwaWQiOiJlMDEwZTU4MS1mMGRkLTQ4ZTAtYmVhNS0xZjFiMjNkNWZiOWMiLCJhcHBpZGFjciI6IjEiLCJpZHAiOiJodHRwczovL3N0cy53aW5kb3dzLm5ldC83ODIwMTEyZi0wZTkzLTRlY2EtOWIyZi04ODA2MWU4MmU4NzYvIiwib2lkIjoiZmUzYzE4MWQtYWFiZS00MDRiLTgyNzctMDRiMzljMjI4Y2RiIiwicmgiOiIxLkFTd0FMeEVnZUpNT3lrNmJMNGdHSG9Mb2RvSGxFT0RkOE9CSXZxVWZHeVBWLTV3QUFBQXNBQS4iLCJzdWIiOiJmZTNjMTgxZC1hYWJlLTQwNGItODI3Ny0wNGIzOWMyMjhjZGIiLCJ0aWQiOiI3ODIwMTEyZi0wZTkzLTRlY2EtOWIyZi04ODA2MWU4MmU4NzYiLCJ1dGkiOiI2R04yejNxRU5VYTZSMDlwTlE0WEFBIiwidmVyIjoiMS4wIiwieG1zX2Z0ZCI6Ik5QVE1DUXZPUkxJVi1CdVFid0o5TTJVYmdtUWtDY2hLU1ZOTFVsYWttUUVCZFhObFlYTjBMV1J6YlhNIn0.cYkWRgKRS59njDThVpx9wCD9x1DgHazIcJocWxYXBiaZxArFhu7q6DlDyyUxui7YGa6hQNOCXX3VHo7UweBXg7EjpdD5Zrffl8_KlRug3W7IOElllWqMpFbdL6d0O-aN-XU4SEimTvxU3aMoU5MeR1slPCwXCAZyyZOqZ6xd9xFTpHZDiSgEvH2MQ9kr5wMVFE9sSqLYeF3x1nQL1DGLogMOnuYt0S3FkbHj_1WZ5axtAbDTBts0meJxNQRwsAYCCPoR_tQsIxGbYwJNSfXqlRgb7-FZT0uk77LEaI2MYyI7Xi82xpdfboBvbaSVLzwSDI_Tx8JctCGPRuQN4If6kg",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "ApiAccess",
+      "value": "78D804334C71D52DC233B24EB4BDD5DF7D9F782F"
+    },
+    {
+      "key": "UrlQA",
+      "value": "https://apim-ufinet-qa.azure-api.net/multiop/"
+    },
+    {
+      "key": "contractId",
+      "value": "FTTH_ZUX_PY"
+    },
+    {
+      "key": "userName",
+      "value": "ufinet.api@multiopufinet.onmicrosoft.com"
+    },
+    {
+      "key": "operator",
+      "value": "ZUX_PY"
+    },
+    {
+      "key": "region",
+      "value": "MQN-PY"
+    },
+    {
+      "key": "PoligonAlias",
+      "value": "JLMPY-MALLORQUIN"
+    },
+    {
+      "key": "country",
+      "value": "Paraguay"
+    },
+    {
+      "key": "city",
+      "value": "MALLORQUIN"
+    },
+    {
+      "key": "Latitude",
+      "value": "-25.438682"
+    },
+    {
+      "key": "Longitude",
+      "value": "-55.2669334"
+    },
+    {
+      "key": "contactName",
+      "value": "test"
+    },
+    {
+      "key": "ContactPhone",
+      "value": "3000000000"
+    },
+    {
+      "key": "idNMS",
+      "value": "2"
+    },
+    {
+      "key": "NMSName",
+      "value": "HUAWEI-NCE"
+    },
+    {
+      "key": "idBandwidthProfile",
+      "value": "499"
+    },
+    {
+      "key": "BandwidthProfile",
+      "value": "ZUX 1G"
+    }
+  ]
+}
