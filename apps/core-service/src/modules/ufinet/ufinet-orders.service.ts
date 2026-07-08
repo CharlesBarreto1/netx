@@ -512,6 +512,34 @@ export class UfinetOrdersService {
       );
     }
 
+    // Estado ambíguo (ex.: FAILED depois de um cambio que falhou "ONT Not
+    // Found"): se a ALTA já COMPLETOU na Ufinet, o serviço está ativo lá → um
+    // cambio é SEMPRE CHANGE_RESOURCE, nunca reconfirmação da alta. Reconfirmar
+    // a ordem já completed dá 409 "no está pendiente" em loop (a ordem não
+    // aceita nova confirmação). Só cai na reconfirmação (b) se a alta NÃO fechou.
+    if (svc.serviceOrderId && svc.parentServiceId) {
+      let altaCompleted = false;
+      try {
+        const conn = await this.connForContract(tenantId, contractId);
+        const order = await ufinetTrace.run(
+          { tenantId: svc.tenantId, externalId: svc.externalId },
+          () => this.client.getOrder(conn, svc.serviceOrderId!),
+        );
+        altaCompleted = normalizeUfinetState(order.state) === UFINET_STATE.COMPLETED;
+      } catch {
+        /* não deu pra checar a ordem → mantém o comportamento antigo abaixo */
+      }
+      if (altaCompleted) {
+        return this.transition(
+          svc,
+          'SWAPPING_ONT',
+          { ...this.resetStep(), serialNumber: newSerial },
+          actorUserId,
+          'ufinet.swap_ont.requested',
+        );
+      }
+    }
+
     // b) Alta não-ativa mas com bundle reservado → re-confirma a alta com o SN
     //    novo (a Ufinet não aceita cambio aqui; reenviar serial na confirmação).
     if (svc.resPonAccessServiceId && svc.parentServiceId) {
@@ -1098,21 +1126,49 @@ export class UfinetOrdersService {
       }
       ctoPort ??= await this.readCtoPort(conn, svc.externalId, svc.parentServiceId);
       if (!ctoPort) return this.keepPolling(svc, null, 'CTO_PORT ainda indisponível');
-      await this.client.patchOrder(conn, svc.serviceOrderId, {
-        region: conn.region,
-        operator: conn.operator,
-        state: 'completed',
-        serviceOrderItem: [
-          {
-            service: {
-              serviceCharacteristic: [
-                { name: 'CTO_PORT', value: ctoPort },
-                { name: 'LABEL_DROP', value: svc.labelDrop },
-              ],
+      try {
+        await this.client.patchOrder(conn, svc.serviceOrderId, {
+          region: conn.region,
+          operator: conn.operator,
+          state: 'completed',
+          serviceOrderItem: [
+            {
+              service: {
+                serviceCharacteristic: [
+                  { name: 'CTO_PORT', value: ctoPort },
+                  { name: 'LABEL_DROP', value: svc.labelDrop },
+                ],
+              },
             },
-          },
-        ],
-      });
+          ],
+        });
+      } catch (err) {
+        // 409 "El service order no está pendiente de recibir la Confirmación" =
+        // a ordem de alta JÁ está confirmada/completed. Acontece quando caímos
+        // aqui indevidamente (ex.: reconfirmar a alta depois de um cambio de ONT
+        // que falhou). NÃO é erro retentável — repollar dá 409 em loop até o
+        // MAX_ATTEMPTS. Verifica a ordem: se completed, o serviço está ativo na
+        // Ufinet → finaliza ACTIVE.
+        if (err instanceof UfinetApiError && err.status === 409) {
+          const order = await this.client.getOrder(conn, svc.serviceOrderId);
+          if (normalizeUfinetState(order.state) === UFINET_STATE.COMPLETED) {
+            await this.save(svc.id, {
+              lifecycle: 'ACTIVE',
+              ctoPort,
+              currentOrderId: null,
+              nextAttemptAt: null,
+              attempts: 0,
+              error: null,
+              ufinetState: UFINET_STATE.COMPLETED,
+            });
+            this.logger.warn(
+              `[ufinet] ${svc.externalId} confirmação retornou 409 (ordem já confirmada) → ACTIVE`,
+            );
+            return;
+          }
+        }
+        throw err;
+      }
       await this.save(svc.id, {
         ctoPort,
         currentOrderId: svc.serviceOrderId,
@@ -1192,6 +1248,14 @@ export class UfinetOrdersService {
   // CAMBIO DE ONT — POST CHANGE_RESOURCE (Action MODIFY + SERIAL_NUMBER novo) + poll
   private async swapStep(svc: UfinetService, conn: UfinetConnection): Promise<void> {
     if (!svc.currentOrderId) {
+      // Idempotência / recuperação de POST abortado: se o serial na Ufinet JÁ é
+      // o alvo, o cambio já aconteceu. O POST do CHANGE_RESOURCE pode estourar o
+      // timeout de 60s do cliente E MESMO ASSIM ser processado pela Ufinet —
+      // re-postar geraria ordem duplicada e o falso "serial-not-changed". Se o
+      // serial já bate, finaliza ACTIVE sem reenviar.
+      if (await this.serialAlreadyApplied(svc, conn)) {
+        return this.finishSwapActive(svc, 'serial já ativo na Ufinet (sem reenvio)');
+      }
       const resp = await this.client.createOrder(conn, this.buildSwapPayload(svc, conn));
       const orderId = extractOrderId(resp);
       if (!orderId) return this.fail(svc, 'swap ONT sem orderId');
@@ -1204,23 +1268,48 @@ export class UfinetOrdersService {
     }
     const order = await this.client.getOrder(conn, svc.currentOrderId);
     const state = normalizeUfinetState(order.state);
-    if (state === UFINET_STATE.FAILED)
+    if (state === UFINET_STATE.FAILED) {
+      // "ONT Serial not changed": a Ufinet recusa o cambio porque o serial já é
+      // o alvo (um POST anterior — possivelmente abortado por timeout — já
+      // trocou). Confirma na Ufinet e finaliza ACTIVE, não FAILED (falso negativo).
+      const errTxt = (this.errText(order) ?? '').toLowerCase();
+      if (errTxt.includes('serial-not-changed') || errTxt.includes('serial not changed')) {
+        if (await this.serialAlreadyApplied(svc, conn)) {
+          return this.finishSwapActive(svc, 'serial-not-changed = já estava trocado');
+        }
+      }
       return this.fail(svc, this.errText(order) ?? 'swap ONT falhou');
+    }
     if (state === UFINET_STATE.COMPLETED) {
-      await this.save(svc.id, {
-        lifecycle: 'ACTIVE',
-        currentOrderId: null,
-        nextAttemptAt: null,
-        attempts: 0,
-        error: null,
-        ufinetState: state,
-      });
-      this.logger.log(
-        `[ufinet] ${svc.externalId} troca de ONT ok → ACTIVE (SN ${svc.serialNumber})`,
-      );
-      return;
+      return this.finishSwapActive(svc, `SN ${svc.serialNumber}`);
     }
     return this.keepPolling(svc, order);
+  }
+
+  /** True se o serial ativo no Res Pon Access da Ufinet já é o alvo (svc.serialNumber). */
+  private async serialAlreadyApplied(svc: UfinetService, conn: UfinetConnection): Promise<boolean> {
+    if (!svc.serialNumber || !svc.resPonAccessServiceId) return false;
+    try {
+      const access = await this.client.getService(conn, svc.resPonAccessServiceId);
+      const current = access?.serviceCharacteristic?.find(
+        (c) => (c.name ?? '').replace(/[^a-z0-9]/gi, '').toUpperCase() === 'SERIALNUMBER',
+      )?.value;
+      return !!current && current === svc.serialNumber;
+    } catch {
+      return false; // não deu pra checar → deixa o fluxo normal (POST/fail) seguir
+    }
+  }
+
+  private async finishSwapActive(svc: UfinetService, why: string): Promise<void> {
+    await this.save(svc.id, {
+      lifecycle: 'ACTIVE',
+      currentOrderId: null,
+      nextAttemptAt: null,
+      attempts: 0,
+      error: null,
+      ufinetState: UFINET_STATE.COMPLETED,
+    });
+    this.logger.log(`[ufinet] ${svc.externalId} troca de ONT ok → ACTIVE (${why})`);
   }
 
   // CANCEL — POST CancelServiceOrder (imediato; sem poll dedicado na Fase 1)
