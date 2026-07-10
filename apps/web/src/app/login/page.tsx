@@ -54,17 +54,17 @@ function BrandPanel() {
       {/* Base: azul (canto inferior-direito) escurecendo pro topo-esquerdo. */}
       <div
         aria-hidden
-        className="absolute inset-0 bg-gradient-to-br from-[hsl(220_68%_9%)] via-[hsl(218_80%_19%)] to-[hsl(214_86%_35%)]"
+        className="absolute inset-0 bg-gradient-to-br from-[hsl(219_74%_15%)] via-[hsl(217_82%_24%)] to-[hsl(213_86%_36%)]"
       />
-      {/* Núcleo preto POR CIMA do logo (centro em ~7%/5%, dentro da tela) pra
-          ele não se fundir no azul; + brilho azul embaixo-à-direita pra dar vida. */}
+      {/* Escurecimento SUTIL no canto do logo (topo-esquerdo) — só o suficiente
+          pra dar contraste, sem virar um bloco preto; + brilho azul embaixo. */}
       <div
         aria-hidden
         className="absolute inset-0"
         style={{
           background:
-            'radial-gradient(80% 85% at 7% 5%, #000 0%, rgba(0,0,0,0.94) 26%, rgba(0,0,0,0) 60%),' +
-            'radial-gradient(640px 470px at 116% 118%, hsl(210 100% 55% / 0.25), transparent 55%)',
+            'radial-gradient(55% 55% at 4% 2%, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.2) 34%, transparent 62%),' +
+            'radial-gradient(640px 470px at 116% 118%, hsl(210 100% 55% / 0.22), transparent 55%)',
         }}
       />
       {/* Grade de pontos — evoca topologia de rede; puxada pro lado direito
@@ -191,26 +191,28 @@ function FormPanel() {
 
   // Sessão ativa → redirecionando pro app; não pinta o form.
   if (checkingSession) {
-    return <section className="min-h-screen bg-bg" />;
+    return <section className="min-h-screen bg-white" />;
   }
 
+  // O painel do formulário é SEMPRE claro (fundo branco), independente do tema
+  // do app — como na referência (Hubsoft). Por isso usamos cores fixas (slate/
+  // brand) em vez dos tokens semânticos que trocam com `.dark`.
   return (
-    <section className="flex min-h-screen flex-col justify-center px-6 py-12 sm:px-10">
+    <section className="flex min-h-screen flex-col justify-center bg-white px-6 py-12 sm:px-10">
       <div className="mx-auto w-full max-w-sm">
-        {/* Logotipo — ancora o formulário (no ≥lg o painel de marca à esquerda
-            também carrega o branding). Troca branco/preto conforme o tema. */}
+        {/* Logotipo — NET preto, pois o fundo é sempre branco. */}
         <div className="mb-8">
-          <NetxLogo variant="auto" className="h-8" />
+          <NetxLogo variant="onLight" className="h-8" />
         </div>
 
-        <h2 className="text-2xl font-bold tracking-tight text-text">{t('title')}</h2>
-        <p className="mt-1.5 text-sm text-text-muted">{t('subtitle')}</p>
+        <h2 className="text-2xl font-bold tracking-tight text-slate-900">{t('title')}</h2>
+        <p className="mt-1.5 text-sm text-slate-500">{t('subtitle')}</p>
 
         <form onSubmit={onSubmit} className="mt-8 space-y-5">
           <div>
             <label
               htmlFor="login-email"
-              className="mb-1.5 block text-sm font-medium text-text"
+              className="mb-1.5 block text-sm font-medium text-slate-700"
             >
               {t('email')}
             </label>
@@ -219,7 +221,7 @@ function FormPanel() {
               type="email"
               autoComplete="username"
               autoFocus
-              className="block w-full rounded-lg border border-border bg-surface px-3.5 py-2.5 text-sm text-text shadow-xs transition-colors placeholder:text-text-subtle focus:border-accent focus:outline-hidden focus:ring-2 focus:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-60"
+              className="block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-xs transition-colors placeholder:text-slate-400 focus:border-brand-500 focus:outline-hidden focus:ring-2 focus:ring-brand-500/30 disabled:cursor-not-allowed disabled:opacity-60"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="voce@provedor.com"
@@ -231,7 +233,7 @@ function FormPanel() {
           <div>
             <label
               htmlFor="login-password"
-              className="mb-1.5 block text-sm font-medium text-text"
+              className="mb-1.5 block text-sm font-medium text-slate-700"
             >
               {t('password')}
             </label>
@@ -240,7 +242,7 @@ function FormPanel() {
                 id="login-password"
                 type={showPassword ? 'text' : 'password'}
                 autoComplete="current-password"
-                className="block w-full rounded-lg border border-border bg-surface px-3.5 py-2.5 pr-11 text-sm text-text shadow-xs transition-colors placeholder:text-text-subtle focus:border-accent focus:outline-hidden focus:ring-2 focus:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-60"
+                className="block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 pr-11 text-sm text-slate-900 shadow-xs transition-colors placeholder:text-slate-400 focus:border-brand-500 focus:outline-hidden focus:ring-2 focus:ring-brand-500/30 disabled:cursor-not-allowed disabled:opacity-60"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
@@ -252,7 +254,7 @@ function FormPanel() {
                 onClick={() => setShowPassword((v) => !v)}
                 tabIndex={-1}
                 aria-label={showPassword ? t('hidePassword') : t('showPassword')}
-                className="absolute inset-y-0 right-0 flex items-center px-3 text-text-subtle transition-colors hover:text-text disabled:opacity-40"
+                className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-400 transition-colors hover:text-slate-600 disabled:opacity-40"
                 disabled={needsMfa}
               >
                 {showPassword ? (
@@ -268,7 +270,7 @@ function FormPanel() {
             <div>
               <label
                 htmlFor="login-mfa"
-                className="mb-1.5 block text-sm font-medium text-text"
+                className="mb-1.5 block text-sm font-medium text-slate-700"
               >
                 {t('mfaLabel')}
               </label>
@@ -278,20 +280,20 @@ function FormPanel() {
                 autoComplete="one-time-code"
                 autoFocus
                 maxLength={8}
-                className="block w-full rounded-lg border border-border bg-surface px-3.5 py-2.5 font-mono text-sm tracking-[0.4em] text-text shadow-xs transition-colors placeholder:tracking-normal placeholder:text-text-subtle focus:border-accent focus:outline-hidden focus:ring-2 focus:ring-accent/40"
+                className="block w-full rounded-lg border border-slate-300 bg-white px-3.5 py-2.5 font-mono text-sm tracking-[0.4em] text-slate-900 shadow-xs transition-colors placeholder:tracking-normal placeholder:text-slate-400 focus:border-brand-500 focus:outline-hidden focus:ring-2 focus:ring-brand-500/30"
                 value={mfaToken}
                 onChange={(e) => setMfaToken(e.target.value.replace(/[\s-]/gu, ''))}
                 placeholder="000000"
                 required
               />
-              <p className="mt-1.5 text-xs text-text-subtle">{t('mfaHelp')}</p>
+              <p className="mt-1.5 text-xs text-slate-500">{t('mfaHelp')}</p>
             </div>
           )}
 
           {err && (
             <div
               role="alert"
-              className="rounded-lg border border-danger/30 bg-danger-muted px-3.5 py-2.5 text-sm text-danger"
+              className="rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700"
             >
               {err}
             </div>
@@ -299,7 +301,7 @@ function FormPanel() {
 
           <button
             disabled={loading || (needsMfa && mfaToken.length < 6)}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent py-2.5 text-sm font-semibold text-accent-foreground shadow-sm transition-colors hover:bg-accent/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent/50 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-brand-500/50 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {loading && (
               <svg
@@ -329,7 +331,7 @@ function FormPanel() {
                 setMfaToken('');
                 setErr(null);
               }}
-              className="w-full text-xs text-text-muted transition-colors hover:text-text"
+              className="w-full text-xs text-slate-500 transition-colors hover:text-slate-700"
             >
               {t('back')}
             </button>
