@@ -86,6 +86,7 @@ import { useEffect, useMemo, useState, type ComponentType } from 'react';
 import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 
+import { NetxLogo } from '@/components/brand/NetxLogo';
 import { CommandPalette } from '@/components/layout/CommandPalette';
 import { NotificationBell } from '@/components/layout/NotificationBell';
 import { CopilotRail } from '@/components/layout/CopilotRail';
@@ -381,14 +382,14 @@ export function AppShell({
             <MenuIcon />
           </button>
 
+          {/* Logo → sempre volta pro dashboard. `auto` troca branco/preto
+              conforme o tema do shell. */}
           <Link
             href="/dashboard"
-            className="flex items-center gap-2 text-md font-bold tracking-tight text-text"
+            aria-label="NetX — ir para o dashboard"
+            className="flex items-center rounded-md focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <span className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-accent text-accent-foreground shadow-sm">
-              N
-            </span>
-            <span className="hidden sm:inline">NetX</span>
+            <NetxLogo variant="auto" className="h-6 sm:h-7" />
           </Link>
 
           <span className="ml-2 hidden truncate text-2xs uppercase tracking-wider text-text-subtle md:inline">
@@ -492,7 +493,14 @@ export function AppShell({
               />
               <aside className="relative z-10 h-full w-64 animate-slide-right bg-surface shadow-lg">
                 <div className="flex h-14 items-center justify-between border-b border-border px-4">
-                  <span className="font-bold">NetX</span>
+                  <Link
+                    href="/dashboard"
+                    onClick={() => setMobileOpen(false)}
+                    aria-label="NetX — ir para o dashboard"
+                    className="flex items-center"
+                  >
+                    <NetxLogo variant="auto" className="h-6" />
+                  </Link>
                   <button
                     type="button"
                     onClick={() => setMobileOpen(false)}
