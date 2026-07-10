@@ -43,10 +43,15 @@
   --border: 220 13% 91%;
   --border-strong: 220 13% 82%;
 
-  /* Text */
+  /* Text — hierarquia: strong (títulos) > text > muted > subtle > disabled */
+  --text-strong: 222 47% 8%;
   --text: 222 47% 11%;
   --text-muted: 222 14% 36%;
   --text-subtle: 222 10% 54%;
+  --text-disabled: 220 14% 72%;
+
+  /* Card = superfície de card/painel (branco sobre o bg off-white) */
+  --card: 0 0% 100%;
 
   /* Accent (azul sóbrio Linear-like — único tom vivo, resto neutro) */
   --accent: 217 91% 60%;
@@ -108,9 +113,13 @@
   --border: 240 6% 14%;        /* ~ rgba(255,255,255,0.07) sobre near-black */
   --border-strong: 240 6% 22%;
 
+  --text-strong: 240 7% 98%;   /* títulos */
   --text: 240 6% 93%;          /* text-primary  #ededef */
   --text-muted: 240 4% 62%;    /* text-muted    #9b9ba3 */
   --text-subtle: 240 5% 50%;   /* text-dim      #82828b */
+  --text-disabled: 240 5% 38%; /* labels apagados */
+
+  --card: 240 9% 6%;           /* = surface (bg-card) */
 
   /* Marca (azul) — handoff brand */
   --accent: 222 83% 62%;
@@ -171,8 +180,11 @@
   --color-border-strong: hsl(var(--border-strong));
 
   --color-text: hsl(var(--text));
+  --color-text-strong: hsl(var(--text-strong));
   --color-text-muted: hsl(var(--text-muted));
   --color-text-subtle: hsl(var(--text-subtle));
+  --color-text-disabled: hsl(var(--text-disabled));
+  --color-card: hsl(var(--card));
 
   --color-accent: hsl(var(--accent));
   --color-accent-foreground: hsl(var(--accent-foreground));
