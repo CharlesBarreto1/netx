@@ -54,17 +54,17 @@ function BrandPanel() {
       {/* Base: azul (canto inferior-direito) escurecendo pro topo-esquerdo. */}
       <div
         aria-hidden
-        className="absolute inset-0 bg-gradient-to-br from-[hsl(221_72%_11%)] via-[hsl(219_80%_21%)] to-[hsl(214_88%_37%)]"
+        className="absolute inset-0 bg-gradient-to-br from-[hsl(220_68%_9%)] via-[hsl(218_80%_19%)] to-[hsl(214_86%_35%)]"
       />
-      {/* Preto quase 100% no canto do logo (topo-esquerdo) pra não mascará-lo,
-          + um brilho azul embaixo-à-direita pra dar vida. */}
+      {/* Núcleo preto POR CIMA do logo (centro em ~7%/5%, dentro da tela) pra
+          ele não se fundir no azul; + brilho azul embaixo-à-direita pra dar vida. */}
       <div
         aria-hidden
         className="absolute inset-0"
         style={{
           background:
-            'radial-gradient(85% 90% at -8% -12%, #000 0%, rgba(0,0,0,0.92) 20%, rgba(0,0,0,0) 56%),' +
-            'radial-gradient(640px 470px at 114% 116%, hsl(210 100% 55% / 0.28), transparent 55%)',
+            'radial-gradient(80% 85% at 7% 5%, #000 0%, rgba(0,0,0,0.94) 26%, rgba(0,0,0,0) 60%),' +
+            'radial-gradient(640px 470px at 116% 118%, hsl(210 100% 55% / 0.25), transparent 55%)',
         }}
       />
       {/* Grade de pontos — evoca topologia de rede; puxada pro lado direito
