@@ -83,3 +83,10 @@ apps/*/var/
 # --- Arquivos antigos / zip de migração ---------------------------------------
 NetX.zip
 *.bak
+.DS_Store
+.DS_Store
+.DS_Store
+apps/.DS_Store
+apps/nms/.DS_Store
+infra/.DS_Store
+packages/.DS_Store
