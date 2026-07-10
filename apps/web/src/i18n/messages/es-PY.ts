@@ -2200,6 +2200,10 @@ const messages = {
   auth: {
     login: {
       title: 'Ingresar a NetX',
+      subtitle: 'Accedé al panel de gestión de tu proveedor.',
+      panelBadge: 'Plataforma para proveedores',
+      showPassword: 'Mostrar contraseña',
+      hidePassword: 'Ocultar contraseña',
       email: 'Email',
       password: 'Contraseña',
       mfaLabel: 'Código de la app autenticadora',

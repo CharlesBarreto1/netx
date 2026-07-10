@@ -2178,6 +2178,10 @@ const messages = {
   auth: {
     login: {
       title: 'Sign in to NetX',
+      subtitle: 'Access your provider’s management dashboard.',
+      panelBadge: 'Platform for internet providers',
+      showPassword: 'Show password',
+      hidePassword: 'Hide password',
       email: 'Email',
       password: 'Password',
       mfaLabel: 'Authenticator app code',

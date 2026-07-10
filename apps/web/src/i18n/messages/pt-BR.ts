@@ -2208,6 +2208,10 @@ const messages = {
   auth: {
     login: {
       title: 'Entrar no NetX',
+      subtitle: 'Acesse o painel de gestão do seu provedor.',
+      panelBadge: 'Plataforma para provedores',
+      showPassword: 'Mostrar senha',
+      hidePassword: 'Ocultar senha',
       email: 'Email',
       password: 'Senha',
       mfaLabel: 'Código do app autenticador',

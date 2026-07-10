@@ -1,51 +1,30 @@
 'use client';
 
-import Link from 'next/link';
-import { useTranslations } from 'next-intl';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
-import { AuthI18nProvider } from '@/lib/auth-i18n-provider';
+import { getSession } from '@/lib/session';
 
+/**
+ * Raiz do sistema (`/`) — gateway de entrada. O antigo hotsite foi aposentado:
+ * a raiz agora não tem conteúdo próprio, só decide o destino.
+ *
+ *   • Com sessão ativa  → /dashboard
+ *   • Sem sessão        → /login  (a tela de login é a "cara" do sistema pra
+ *                         quem não está logado)
+ *
+ * Por que client-side e não middleware: a sessão vive em localStorage (ver
+ * lib/session.ts), inacessível no edge/server. Todo o resto do app já resolve
+ * auth no cliente (ProtectedLayout, interceptor de 401 em lib/api.ts), então o
+ * gateway segue o mesmo modelo. Renderiza um fundo neutro enquanto redireciona
+ * pra evitar flash de conteúdo.
+ */
 export default function Home() {
-  return (
-    <AuthI18nProvider>
-      <LandingContent />
-    </AuthI18nProvider>
-  );
-}
+  const router = useRouter();
 
-function LandingContent() {
-  const t = useTranslations('landing');
+  useEffect(() => {
+    router.replace(getSession() ? '/dashboard' : '/login');
+  }, [router]);
 
-  return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-200 dark:from-slate-900 dark:to-slate-800 flex items-center justify-center px-4">
-      <div className="max-w-2xl text-center space-y-6">
-        <p className="text-sm font-semibold uppercase tracking-widest text-brand-600">NetX</p>
-        <h1 className="text-5xl font-bold text-slate-900 dark:text-slate-100">
-          {t('headline')}
-        </h1>
-        <p className="text-lg text-slate-600 dark:text-slate-300">
-          {t('subhead')}
-        </p>
-        <div className="flex gap-4 justify-center pt-4">
-          <Link
-            href="/login"
-            className="px-6 py-3 rounded-lg bg-brand-600 text-white font-semibold hover:bg-brand-700 transition"
-          >
-            {t('signIn')}
-          </Link>
-          <a
-            href="http://localhost:3000/api/docs"
-            target="_blank"
-            rel="noreferrer"
-            className="px-6 py-3 rounded-lg border border-slate-300 dark:border-slate-600 font-semibold hover:bg-slate-100 dark:hover:bg-slate-700 transition"
-          >
-            API Docs
-          </a>
-        </div>
-        <p className="text-xs text-slate-400 pt-8">
-          {t('footer')}
-        </p>
-      </div>
-    </main>
-  );
+  return <main className="min-h-screen bg-bg" />;
 }

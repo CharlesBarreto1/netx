@@ -3,13 +3,19 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
+import { Eye, EyeOff } from 'lucide-react';
 
 import { ApiError, apiLogin } from '@/lib/api';
 import { AuthI18nProvider } from '@/lib/auth-i18n-provider';
 import { getSession } from '@/lib/session';
+import { NetxLogo } from '@/components/brand/NetxLogo';
 
 /**
- * Tela de login. Quando o user tem 2FA ativo, o backend devolve 401 com
+ * Tela de login — raiz efetiva do sistema para quem não está logado (o `/`
+ * redireciona pra cá; ver app/page.tsx). Layout split-screen: painel de marca
+ * à esquerda (só ≥lg) + formulário à direita.
+ *
+ * Quando o user tem 2FA ativo, o backend devolve 401 com
  * `type: 'urn:netx:error:mfa-required'` e mostramos o campo de token TOTP.
  * Próxima tentativa de submit reenvia email/senha + mfaToken.
  *
@@ -19,19 +25,102 @@ import { getSession } from '@/lib/session';
 export default function LoginPage() {
   return (
     <AuthI18nProvider>
-      <LoginForm />
+      <LoginLayout />
     </AuthI18nProvider>
   );
 }
 
-function LoginForm() {
+function LoginLayout() {
+  return (
+    <main className="grid min-h-screen bg-bg lg:grid-cols-[1.05fr_1fr]">
+      <BrandPanel />
+      <FormPanel />
+    </main>
+  );
+}
+
+/**
+ * Painel de marca (esquerda). Gradiente azul sempre-escuro — independe do tema
+ * do resto do app — com motivo de rede sutil, headline/subhead reaproveitados
+ * do antigo hotsite (chaves `landing.*`) e assinatura de copyright no rodapé.
+ * Escondido em telas <lg pra não roubar espaço do formulário no mobile.
+ */
+function BrandPanel() {
+  const t = useTranslations('auth.login');
+  const tl = useTranslations('landing');
+
+  return (
+    <aside className="relative hidden overflow-hidden bg-[#04060c] lg:flex lg:flex-col lg:justify-between lg:p-12 xl:p-16">
+      {/* Base: azul (canto inferior-direito) escurecendo pro topo-esquerdo. */}
+      <div
+        aria-hidden
+        className="absolute inset-0 bg-gradient-to-br from-[hsl(221_72%_11%)] via-[hsl(219_80%_21%)] to-[hsl(214_88%_37%)]"
+      />
+      {/* Preto quase 100% no canto do logo (topo-esquerdo) pra não mascará-lo,
+          + um brilho azul embaixo-à-direita pra dar vida. */}
+      <div
+        aria-hidden
+        className="absolute inset-0"
+        style={{
+          background:
+            'radial-gradient(85% 90% at -8% -12%, #000 0%, rgba(0,0,0,0.92) 20%, rgba(0,0,0,0) 56%),' +
+            'radial-gradient(640px 470px at 114% 116%, hsl(210 100% 55% / 0.28), transparent 55%)',
+        }}
+      />
+      {/* Grade de pontos — evoca topologia de rede; puxada pro lado direito
+          pra deixar o canto do logo limpo. */}
+      <div
+        aria-hidden
+        className="absolute inset-0 opacity-[0.12]"
+        style={{
+          backgroundImage:
+            'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.9) 1px, transparent 0)',
+          backgroundSize: '28px 28px',
+          maskImage: 'radial-gradient(ellipse 90% 90% at 82% 88%, #000 28%, transparent 74%)',
+        }}
+      />
+
+      {/* Topo: logotipo NetX (NET branco — fundo escuro) */}
+      <div className="relative">
+        <NetxLogo variant="onDark" className="h-9" />
+      </div>
+
+      {/* Meio: pitch */}
+      <div className="relative max-w-lg">
+        <span className="inline-flex items-center rounded-full bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-wider text-brand-100 ring-1 ring-white/15 backdrop-blur">
+          {t('panelBadge')}
+        </span>
+        <h1 className="mt-6 text-4xl font-bold leading-tight tracking-tight text-white xl:text-5xl">
+          {tl('headline')}
+        </h1>
+        <p className="mt-5 text-base leading-relaxed text-brand-100/80">
+          {tl('subhead')}
+        </p>
+      </div>
+
+      {/* Rodapé: copyright */}
+      <div className="relative text-xs text-brand-100/50">
+        © 2024-2026 NETX DESENVOLVIMENTO E TECNOLOGIA LTDA
+      </div>
+    </aside>
+  );
+}
+
+/**
+ * Painel do formulário (direita). Segue o tema do app (escuro por padrão).
+ * Mantém intacta toda a lógica de auth: session check + redirect, apiLogin,
+ * persistência em localStorage, mustChangePassword → /first-login e o fluxo MFA.
+ */
+function FormPanel() {
   const t = useTranslations('auth.login');
   const router = useRouter();
-  const [email, setEmail] = useState('admin@netx.local');
+  // Sem pré-preenchimento de admin@netx — o campo começa vazio.
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   // Vazio por padrão — o backend cai no DEFAULT_TENANT_SLUG do .env quando
   // tenantSlug não é enviado. Cada instância NetX = um ISP = um tenant.
-  const [tenantSlug, setTenantSlug] = useState('');
+  const [tenantSlug] = useState('');
   const [mfaToken, setMfaToken] = useState('');
   const [needsMfa, setNeedsMfa] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -102,102 +191,151 @@ function LoginForm() {
 
   // Sessão ativa → redirecionando pro app; não pinta o form.
   if (checkingSession) {
-    return <main className="min-h-screen bg-slate-50 dark:bg-slate-900" />;
+    return <section className="min-h-screen bg-bg" />;
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900 px-4">
-      <form
-        onSubmit={onSubmit}
-        className="w-full max-w-md rounded-xl shadow-xl bg-white dark:bg-slate-800 p-8 space-y-4"
-      >
-        <h1 className="text-2xl font-bold text-center mb-2">{t('title')}</h1>
-
-        {/*
-          Tenant é detalhe interno — cada instância NetX serve um único ISP,
-          e o backend resolve via DEFAULT_TENANT_SLUG do .env. Não exposto na
-          UI. Se precisar debug multi-tenant no futuro, edita o setState
-          inicial ou usa searchParams.
-        */}
-
-        <div>
-          <label className="block text-sm font-medium mb-1">{t('email')}</label>
-          <input
-            type="email"
-            className="w-full px-3 py-2 rounded-md border border-slate-300 dark:border-slate-600 bg-transparent"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            disabled={needsMfa}
-          />
+    <section className="flex min-h-screen flex-col justify-center px-6 py-12 sm:px-10">
+      <div className="mx-auto w-full max-w-sm">
+        {/* Logotipo — ancora o formulário (no ≥lg o painel de marca à esquerda
+            também carrega o branding). Troca branco/preto conforme o tema. */}
+        <div className="mb-8">
+          <NetxLogo variant="auto" className="h-8" />
         </div>
 
-        <div>
-          <label className="block text-sm font-medium mb-1">
-            {t('password')}
-          </label>
-          <input
-            type="password"
-            className="w-full px-3 py-2 rounded-md border border-slate-300 dark:border-slate-600 bg-transparent"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            disabled={needsMfa}
-          />
-        </div>
+        <h2 className="text-2xl font-bold tracking-tight text-text">{t('title')}</h2>
+        <p className="mt-1.5 text-sm text-text-muted">{t('subtitle')}</p>
 
-        {needsMfa && (
+        <form onSubmit={onSubmit} className="mt-8 space-y-5">
           <div>
-            <label className="block text-sm font-medium mb-1">
-              {t('mfaLabel')}
+            <label
+              htmlFor="login-email"
+              className="mb-1.5 block text-sm font-medium text-text"
+            >
+              {t('email')}
             </label>
             <input
-              inputMode="numeric"
+              id="login-email"
+              type="email"
+              autoComplete="username"
               autoFocus
-              maxLength={8}
-              className="w-full px-3 py-2 rounded-md border border-slate-300 dark:border-slate-600 bg-transparent font-mono tracking-widest"
-              value={mfaToken}
-              onChange={(e) => setMfaToken(e.target.value.replace(/[\s-]/gu, ''))}
-              placeholder="000000"
+              className="block w-full rounded-lg border border-border bg-surface px-3.5 py-2.5 text-sm text-text shadow-xs transition-colors placeholder:text-text-subtle focus:border-accent focus:outline-hidden focus:ring-2 focus:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-60"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="voce@provedor.com"
               required
+              disabled={needsMfa}
             />
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-              {t('mfaHelp')}
-            </p>
           </div>
-        )}
 
-        {err && (
-          <div className="text-sm text-red-600 bg-red-50 dark:bg-red-950/40 rounded-md px-3 py-2">
-            {err}
+          <div>
+            <label
+              htmlFor="login-password"
+              className="mb-1.5 block text-sm font-medium text-text"
+            >
+              {t('password')}
+            </label>
+            <div className="relative">
+              <input
+                id="login-password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                className="block w-full rounded-lg border border-border bg-surface px-3.5 py-2.5 pr-11 text-sm text-text shadow-xs transition-colors placeholder:text-text-subtle focus:border-accent focus:outline-hidden focus:ring-2 focus:ring-accent/40 disabled:cursor-not-allowed disabled:opacity-60"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                disabled={needsMfa}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((v) => !v)}
+                tabIndex={-1}
+                aria-label={showPassword ? t('hidePassword') : t('showPassword')}
+                className="absolute inset-y-0 right-0 flex items-center px-3 text-text-subtle transition-colors hover:text-text disabled:opacity-40"
+                disabled={needsMfa}
+              >
+                {showPassword ? (
+                  <EyeOff className="h-4.5 w-4.5" aria-hidden />
+                ) : (
+                  <Eye className="h-4.5 w-4.5" aria-hidden />
+                )}
+              </button>
+            </div>
           </div>
-        )}
 
-        <button
-          disabled={loading || (needsMfa && mfaToken.length < 6)}
-          className="w-full py-2.5 rounded-md bg-brand-600 text-white font-semibold hover:bg-brand-700 disabled:opacity-60"
-        >
-          {loading
-            ? t('submitting')
-            : needsMfa
-              ? t('confirmCode')
-              : t('submit')}
-        </button>
+          {needsMfa && (
+            <div>
+              <label
+                htmlFor="login-mfa"
+                className="mb-1.5 block text-sm font-medium text-text"
+              >
+                {t('mfaLabel')}
+              </label>
+              <input
+                id="login-mfa"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                autoFocus
+                maxLength={8}
+                className="block w-full rounded-lg border border-border bg-surface px-3.5 py-2.5 font-mono text-sm tracking-[0.4em] text-text shadow-xs transition-colors placeholder:tracking-normal placeholder:text-text-subtle focus:border-accent focus:outline-hidden focus:ring-2 focus:ring-accent/40"
+                value={mfaToken}
+                onChange={(e) => setMfaToken(e.target.value.replace(/[\s-]/gu, ''))}
+                placeholder="000000"
+                required
+              />
+              <p className="mt-1.5 text-xs text-text-subtle">{t('mfaHelp')}</p>
+            </div>
+          )}
 
-        {needsMfa && (
+          {err && (
+            <div
+              role="alert"
+              className="rounded-lg border border-danger/30 bg-danger-muted px-3.5 py-2.5 text-sm text-danger"
+            >
+              {err}
+            </div>
+          )}
+
           <button
-            type="button"
-            onClick={() => {
-              setNeedsMfa(false);
-              setMfaToken('');
-              setErr(null);
-            }}
-            className="w-full text-xs text-slate-500 hover:underline dark:text-slate-400"
+            disabled={loading || (needsMfa && mfaToken.length < 6)}
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent py-2.5 text-sm font-semibold text-accent-foreground shadow-sm transition-colors hover:bg-accent/90 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-accent/50 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {t('back')}
+            {loading && (
+              <svg
+                className="h-4 w-4 animate-spin"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                aria-hidden
+              >
+                <circle className="opacity-25" cx="12" cy="12" r="10" />
+                <path className="opacity-75" d="M4 12a8 8 0 018-8" />
+              </svg>
+            )}
+            {loading
+              ? t('submitting')
+              : needsMfa
+                ? t('confirmCode')
+                : t('submit')}
           </button>
-        )}
-      </form>
-    </main>
+
+          {needsMfa && (
+            <button
+              type="button"
+              onClick={() => {
+                setNeedsMfa(false);
+                setMfaToken('');
+                setErr(null);
+              }}
+              className="w-full text-xs text-text-muted transition-colors hover:text-text"
+            >
+              {t('back')}
+            </button>
+          )}
+        </form>
+      </div>
+    </section>
   );
 }
