@@ -30,6 +30,7 @@ import { ApiError } from '@/lib/api';
 import { AuthI18nProvider } from '@/lib/auth-i18n-provider';
 import { authApi } from '@/lib/auth-api';
 import { getSession } from '@/lib/session';
+import { NetxLogo } from '@/components/brand/NetxLogo';
 
 interface PasswordCheck {
   /** Chave de tradução em `auth.firstLogin`. */
@@ -148,6 +149,9 @@ function FirstLoginForm() {
         onSubmit={onSubmit}
         className="w-full max-w-md rounded-xl shadow-xl bg-white dark:bg-slate-800 p-8 space-y-4"
       >
+        <div className="mb-2 flex justify-center">
+          <NetxLogo variant="auto" className="h-7" />
+        </div>
         <div className="space-y-1 text-center">
           <h1 className="text-2xl font-bold">{t('title')}</h1>
           <p className="text-sm text-slate-600 dark:text-slate-400">

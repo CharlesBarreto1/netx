@@ -45,12 +45,12 @@ export const metadata: Metadata = {
  * classe .dark/.light no <html>. Sem isso, haveria um flash do tema errado
  * em cada navegação (o React só hidrata depois do paint).
  *
- * Regra: ESCURO por padrão (design_handoff_netx_shell: "tema escuro por
- * padrão"). Só fica claro se o usuário escolheu 'light' explicitamente.
+ * Regra: CLARO por padrão. Só fica escuro se o usuário escolheu 'dark'
+ * explicitamente (persistido em localStorage['netx.theme']).
  */
 const THEME_INIT_SCRIPT = `(function(){try{
 var t=localStorage.getItem('netx.theme');
-var dark=t!=='light';
+var dark=t==='dark';
 var el=document.documentElement;
 el.classList.toggle('dark',dark);
 el.classList.toggle('light',!dark);

@@ -16,6 +16,7 @@ import { useRouter } from 'next/navigation';
 import { useTranslations } from 'next-intl';
 
 import { Button } from '@/components/ui/Button';
+import { NetxLogo } from '@/components/brand/NetxLogo';
 import { ApiError } from '@/lib/api';
 import { AuthI18nProvider } from '@/lib/auth-i18n-provider';
 import { licenseApi, type LicenseStatusResponse } from '@/lib/license-api';
@@ -85,6 +86,9 @@ function LicenseExpired() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-50 p-6 dark:bg-slate-950">
       <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-8 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+        <div className="mb-6">
+          <NetxLogo variant="auto" className="h-6" />
+        </div>
         <div className="mb-4 flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
