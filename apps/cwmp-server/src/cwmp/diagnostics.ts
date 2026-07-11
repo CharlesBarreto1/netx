@@ -121,6 +121,94 @@ function vsolDdmPowerToDbm(raw: string | undefined): number | null {
   return dbm < -30 ? null : dbm;
 }
 
+// ── ZTE F670L (espelha tr069-paths.zte.ts do core-service) ───────────────────
+// Óptico em X_ZTE-COM_WANPONInterfaceConfig. O GET de diagnóstico pede o
+// OBJETO parcial (subárvore inteira), então as folhas são casadas por REGEX
+// case-insensitive dentro do prefixo — tolera variação de grafia entre
+// firmwares (RXPower vs RxPower) sem derrubar a coleta. PPPoE/WAN stats/CPU/
+// memória usam os MESMOS paths padrão da WAN 1 já cobertos pelos keys Zyxel.
+// Wi-Fi segue a convenção 1/5 do Huawei (NÃO a invertida da VSOL) — muda só o
+// índice 5G se ZTE_WLAN_5G_INDEX for sobrescrito. Fallback — demais intocados.
+const ZTE_PON_IFACE =
+  process.env.ZTE_PON_IFACE_PATH ??
+  'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_WANPONInterfaceConfig';
+
+const ZTE_WLAN5_IDX = process.env.ZTE_WLAN_5G_INDEX ?? '5';
+const ZTE_WLAN_50 = `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${ZTE_WLAN5_IDX}`;
+const ZTE_WIFI_PATHS = {
+  clients24: `${WLAN_24}.TotalAssociations`,
+  clients5: `${ZTE_WLAN_50}.TotalAssociations`,
+  channel24: `${WLAN_24}.Channel`,
+  channel5: `${ZTE_WLAN_50}.Channel`,
+};
+const ZTE_BAND_BY_WLAN: Record<string, string> = { '1': '2.4GHz', [ZTE_WLAN5_IDX]: '5GHz' };
+
+/** Valor de uma folha da interface PON ZTE, casada por regex no sufixo. */
+function zteIfaceParam(params: Record<string, string>, leafRe: RegExp): string | undefined {
+  const prefix = `${ZTE_PON_IFACE}.`;
+  for (const [name, value] of Object.entries(params)) {
+    if (name.startsWith(prefix) && leafRe.test(name.slice(prefix.length))) return value;
+  }
+  return undefined;
+}
+
+/**
+ * Potência óptica ZTE → dBm. Firmwares da família F6xx divergem na unidade:
+ * dBm direto ("-19.8"), deci-dBm ("-198"), centi-dBm ("-1980") ou DDM cru em
+ * 0.1µW (sempre positivo). Heurística sign-aware pela faixa física de GPON
+ * (RX -8..-30 dBm, TX 0..+7 dBm — por isso o `kind`); override fixo via
+ * ZTE_OPTICAL_DIVISOR quando o firmware fugir. RX abaixo de -30 dBm com
+ * enlace Up é lixo de sensor → null (mesma guarda da VSOL).
+ */
+function ztePowerToDbm(raw: string | undefined, kind: 'rx' | 'tx'): number | null {
+  const n = numOrNull(raw);
+  if (n === null || n === 0) return null;
+  const forced = process.env.ZTE_OPTICAL_DIVISOR;
+  if (forced) {
+    const d = Number(forced);
+    return d > 0 ? round2(n / d) : round2(n);
+  }
+  if (kind === 'rx') {
+    // RX em dBm é sempre negativo em GPON; positivo só pode ser DDM cru.
+    if (n > 0) {
+      const dbm = round2(10 * Math.log10(n / 10000));
+      return dbm < -30 ? null : dbm;
+    }
+    const abs = Math.abs(n);
+    const dbm = abs <= 60 ? n : abs <= 600 ? n / 10 : n / 100;
+    return dbm < -30 ? null : round2(dbm);
+  }
+  // TX: 0..+7 dBm nas 3 escalas; acima de 700 só sobra DDM cru.
+  const abs = Math.abs(n);
+  if (abs <= 10) return round2(n);
+  if (abs <= 70) return round2(n / 10);
+  if (abs <= 700) return round2(n / 100);
+  return n > 0 ? round2(10 * Math.log10(n / 10000)) : null;
+}
+
+/** Temperatura ZTE → °C (°C direto ou centi-°C — 4880 = 48.8°C). */
+function zteTemperature(raw: string | undefined): number | null {
+  const n = numOrNull(raw);
+  if (n === null) return null;
+  return Math.abs(n) <= 150 ? round2(n) : round2(n / 100);
+}
+
+/** Tensão ZTE → V (V direto, mV ou 100µV — 3300 = 33000 = 3.3V). */
+function zteVoltage(raw: string | undefined): number | null {
+  const n = numOrNull(raw);
+  if (n === null) return null;
+  const round3 = (v: number) => Math.round(v * 1000) / 1000;
+  if (n < 10) return round3(n);
+  return n < 10000 ? round3(n / 1000) : round3(n / 10000);
+}
+
+/** Corrente de bias ZTE → mA (mA direto ou 2µA — 5975 = 11.95mA). */
+function zteBiasCurrent(raw: string | undefined): number | null {
+  const n = numOrNull(raw);
+  if (n === null) return null;
+  return Math.abs(n) <= 100 ? round2(n) : round2(n / 500);
+}
+
 // Paths padrão TR-098 de memória (VSOL/Zyxel) — % calculado de Total/Free.
 const MEMORY_STATUS_PATHS = {
   total: 'InternetGatewayDevice.DeviceInfo.MemoryStatus.Total',
@@ -480,32 +568,53 @@ export function extractDiagnostics(params: Record<string, string>): ExtractedDia
       VSOL_PATHS.voltage,
       VSOL_PATHS.biasCurrent,
     ].some((k) => k in params);
-  // Wi-Fi: na VSOL o mapa índice→banda é invertido (WLAN 1=5G, 5=2.4G).
+  // ZTE: QUALQUER folha sob o prefixo X_ZTE-COM_WANPONInterfaceConfig ativa o
+  // branch (o GET pede o objeto parcial; as folhas são casadas por regex).
+  const zteOptical =
+    !zyxelOptical &&
+    !vsolOptical &&
+    !(OPTICAL_PATHS.rxPower in params) &&
+    Object.keys(params).some((k) => k.startsWith(`${ZTE_PON_IFACE}.`));
+  // Wi-Fi: na VSOL o mapa índice→banda é invertido (WLAN 1=5G, 5=2.4G); a ZTE
+  // segue a convenção 1/5 do Huawei (índice 5G ajustável por env).
   const { clients: wifiClients, worstRssi: wifiWorstRssi, avgRssi: wifiAvgRssi } =
-    extractWifiClients(params, vsolOptical ? VSOL_BAND_BY_WLAN : HUAWEI_BAND_BY_WLAN);
-  const wifiPaths = vsolOptical ? VSOL_WIFI_PATHS : WIFI_PATHS;
+    extractWifiClients(
+      params,
+      vsolOptical ? VSOL_BAND_BY_WLAN : zteOptical ? ZTE_BAND_BY_WLAN : HUAWEI_BAND_BY_WLAN,
+    );
+  const wifiPaths = vsolOptical ? VSOL_WIFI_PATHS : zteOptical ? ZTE_WIFI_PATHS : WIFI_PATHS;
   const hosts = extractLanHosts(params);
   const rxPower = vsolOptical
     ? vsolDdmPowerToDbm(params[VSOL_PATHS.rxPower])
-    : zyxelOptical
-      ? numOrNull(params[ZYXEL_PATHS.rxPower])
-      : normalizePower(params[OPTICAL_PATHS.rxPower]);
+    : zteOptical
+      ? ztePowerToDbm(zteIfaceParam(params, /^rxpower$/i), 'rx')
+      : zyxelOptical
+        ? numOrNull(params[ZYXEL_PATHS.rxPower])
+        : normalizePower(params[OPTICAL_PATHS.rxPower]);
   const txPower = vsolOptical
     ? vsolDdmPowerToDbm(params[VSOL_PATHS.txPower])
-    : zyxelOptical
-      ? numOrNull(params[ZYXEL_PATHS.txPower])
-      : normalizePower(params[OPTICAL_PATHS.txPower]);
+    : zteOptical
+      ? ztePowerToDbm(zteIfaceParam(params, /^txpower$/i), 'tx')
+      : zyxelOptical
+        ? numOrNull(params[ZYXEL_PATHS.txPower])
+        : normalizePower(params[OPTICAL_PATHS.txPower]);
   const temperature = vsolOptical
     ? round2Null(numOrNull(params[VSOL_PATHS.temperature]), 100) // 0.01°C → °C
-    : numOrNull(params[OPTICAL_PATHS.temperature] ?? params[ZYXEL_PATHS.temperature]);
+    : zteOptical
+      ? zteTemperature(zteIfaceParam(params, /^transceivertemperature$/i))
+      : numOrNull(params[OPTICAL_PATHS.temperature] ?? params[ZYXEL_PATHS.temperature]);
   const voltage = vsolOptical
     ? round2Null(numOrNull(params[VSOL_PATHS.voltage]), 10000) // 100µV → V
-    : zyxelOptical
-      ? numOrNull(params[ZYXEL_PATHS.voltage])
-      : normalizeVoltage(params[OPTICAL_PATHS.voltage]);
+    : zteOptical
+      ? zteVoltage(zteIfaceParam(params, /^supply(voltage|vottage)$/i))
+      : zyxelOptical
+        ? numOrNull(params[ZYXEL_PATHS.voltage])
+        : normalizeVoltage(params[OPTICAL_PATHS.voltage]);
   const biasCurrent = vsolOptical
     ? round2Null(numOrNull(params[VSOL_PATHS.biasCurrent]), 500) // 2µA → mA
-    : numOrNull(params[OPTICAL_PATHS.biasCurrent]);
+    : zteOptical
+      ? zteBiasCurrent(zteIfaceParam(params, /^biascurrent$/i))
+      : numOrNull(params[OPTICAL_PATHS.biasCurrent]);
 
   const hasOptical =
     rxPower !== null ||
@@ -521,9 +630,21 @@ export function extractDiagnostics(params: Record<string, string>): ExtractedDia
     voltage,
     biasCurrent,
     opticalHealth: classifyRxPower(rxPower),
-    gponStatus: params[STATS_PATHS.status] || params[VSOL_PATHS.status] || null,
-    fecErrors: intOrNull(params[STATS_PATHS.fecErrors] ?? params[VSOL_PATHS.fecErrors]),
-    hecErrors: intOrNull(params[STATS_PATHS.hecErrors] ?? params[VSOL_PATHS.hecErrors]),
+    gponStatus:
+      params[STATS_PATHS.status] ||
+      params[VSOL_PATHS.status] ||
+      zteIfaceParam(params, /^status$/i) ||
+      null,
+    fecErrors: intOrNull(
+      params[STATS_PATHS.fecErrors] ??
+        params[VSOL_PATHS.fecErrors] ??
+        zteIfaceParam(params, /^stats\.fecerrors?$/i),
+    ),
+    hecErrors: intOrNull(
+      params[STATS_PATHS.hecErrors] ??
+        params[VSOL_PATHS.hecErrors] ??
+        zteIfaceParam(params, /^stats\.hecerrors?$/i),
+    ),
     dropRate: numOrNull(params[STATS_PATHS.dropRate]),
     errorRate: numOrNull(params[STATS_PATHS.errorRate]),
     pppStatus: params[PPP_PATHS.status] ?? params[ZYXEL_PATHS.pppStatus] ?? null,

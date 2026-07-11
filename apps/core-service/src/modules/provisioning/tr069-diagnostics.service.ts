@@ -63,8 +63,9 @@ import {
   TR143_PING,
   TR143_UPLOAD,
 } from './tr069-paths.huawei';
-import { diagnosticParamNamesFor, isVsol, notificationAttributesFor } from './tr069-paths.registry';
+import { diagnosticParamNamesFor, isVsol, isZte, notificationAttributesFor } from './tr069-paths.registry';
 import { VSOL_WIFI_CHANNELS, vsolWlanPaths, vsolWlanSecurityParams } from './tr069-paths.vsol';
+import { ZTE_WIFI_CHANNELS, zteWlanPaths, zteWlanSecurityParams } from './tr069-paths.zte';
 
 /** Intervalo (min) entre coletas proativas por device. */
 const DIAGNOSTIC_INTERVAL_MIN = parseInt(process.env.TR069_DIAGNOSTIC_INTERVAL_MIN ?? '15', 10);
@@ -417,20 +418,28 @@ export class Tr069DiagnosticsService {
     });
     if (!device) throw new NotFoundException('Device TR-069 não encontrado');
 
-    // VSOL/Realtek: canal/potência/criptografia via paths padrão TR-098;
-    // largura de canal é enum vendor não mapeado (X_CT-COM_ChannelWidth) —
-    // rejeita com mensagem clara em vez de dar fault no CPE.
+    // VSOL/Realtek e ZTE: canal/potência/criptografia via paths padrão TR-098;
+    // largura de canal é enum vendor não mapeado (X_CT-COM_ChannelWidth na
+    // VSOL, X_ZTE-COM_BandWidth na ZTE) — rejeita com mensagem clara em vez
+    // de dar fault no CPE.
     const vsol = isVsol(device.manufacturer);
+    const zte = isZte(device.manufacturer);
     const w = huaweiWlanPaths(input.band);
     const wV = vsolWlanPaths(input.band);
+    const wZ = zteWlanPaths(input.band);
     const params: Array<{ name: string; value: string; type: string }> = [];
 
     // Canal: auto vs. manual (auto=0 é obrigatório pra fixar o canal).
     // Paths de canal/potência são padrão TR-098 — só muda a origem por vendor
-    // (na VSOL os índices de WLAN são invertidos: 1=5G, 5=2.4G) e a lista de
-    // canais válidos (PossibleChannels do firmware — 2.4G da VSOL para no 11).
-    const chanPaths = vsol ? wV : w;
-    const validChannels = vsol ? VSOL_WIFI_CHANNELS[input.band] : HUAWEI_WIFI_CHANNELS[input.band];
+    // (na VSOL os índices de WLAN são invertidos: 1=5G, 5=2.4G; a ZTE segue a
+    // convenção 1/5 do Huawei) e a lista de canais válidos (PossibleChannels
+    // do firmware — 2.4G da VSOL para no 11).
+    const chanPaths = vsol ? wV : zte ? wZ : w;
+    const validChannels = vsol
+      ? VSOL_WIFI_CHANNELS[input.band]
+      : zte
+        ? ZTE_WIFI_CHANNELS[input.band]
+        : HUAWEI_WIFI_CHANNELS[input.band];
     if (input.autoChannel === true) {
       params.push({ name: chanPaths.autoChannel, value: '1', type: 'xsd:boolean' });
     } else if (input.channel !== undefined || input.autoChannel === false) {
@@ -448,9 +457,9 @@ export class Tr069DiagnosticsService {
 
     // Largura de canal (enum vendor X_HW_HT20 — Huawei apenas).
     if (input.channelWidth !== undefined) {
-      if (vsol) {
+      if (vsol || zte) {
         throw new BadRequestException(
-          'Largura de canal não é ajustável neste modelo (VSOL) — use canal/potência.',
+          `Largura de canal não é ajustável neste modelo (${vsol ? 'VSOL' : 'ZTE'}) — use canal/potência.`,
         );
       }
       if (!HUAWEI_WIFI_WIDTHS[input.band].includes(input.channelWidth)) {
@@ -480,7 +489,9 @@ export class Tr069DiagnosticsService {
       params.push(
         ...(vsol
           ? vsolWlanSecurityParams(input.band, input.security)
-          : huaweiWlanSecurityParams(input.band, input.security)),
+          : zte
+            ? zteWlanSecurityParams(input.band, input.security)
+            : huaweiWlanSecurityParams(input.band, input.security)),
       );
     }
 
@@ -539,8 +550,10 @@ export class Tr069DiagnosticsService {
     if (!device) throw new NotFoundException('Device TR-069 não encontrado');
 
     // Time.* é padrão TR-098 (vale pra todos); BandSteering é X_HW_ (Huawei).
-    if (input.bandSteering !== undefined && isVsol(device.manufacturer)) {
-      throw new BadRequestException('Band steering não é exposto via TR-069 neste modelo (VSOL).');
+    if (input.bandSteering !== undefined && (isVsol(device.manufacturer) || isZte(device.manufacturer))) {
+      throw new BadRequestException(
+        `Band steering não é exposto via TR-069 neste modelo (${isVsol(device.manufacturer) ? 'VSOL' : 'ZTE'}).`,
+      );
     }
 
     const params: Array<{ name: string; value: string; type: string }> = [];
@@ -615,10 +628,13 @@ export class Tr069DiagnosticsService {
       select: { id: true, manufacturer: true },
     });
     if (!device) throw new NotFoundException('Device TR-069 não encontrado');
-    // NeighboringWiFiDiagnostic não existe no data model VSOL/Realtek —
-    // rejeita com mensagem clara em vez de enfileirar SET que vai dar fault.
-    if (isVsol(device.manufacturer)) {
-      throw new BadRequestException('Scan de canais não é exposto via TR-069 neste modelo (VSOL).');
+    // NeighboringWiFiDiagnostic é objeto vendor Huawei (LANDevice.1.WiFi.*) —
+    // não existe no data model VSOL/Realtek nem ZTE. Rejeita com mensagem
+    // clara em vez de enfileirar SET que vai dar fault.
+    if (isVsol(device.manufacturer) || isZte(device.manufacturer)) {
+      throw new BadRequestException(
+        `Scan de canais não é exposto via TR-069 neste modelo (${isVsol(device.manufacturer) ? 'VSOL' : 'ZTE'}).`,
+      );
     }
     await this.prisma.tr069Task.create({
       data: {
@@ -740,9 +756,14 @@ export class Tr069DiagnosticsService {
   ): Promise<{ runId: string; message: string }> {
     const device = await this.prisma.tr069Device.findFirst({
       where: { id: deviceId, tenantId },
-      select: { id: true },
+      select: { id: true, manufacturer: true },
     });
     if (!device) throw new NotFoundException('Device TR-069 não encontrado');
+    // O DeviceSummary da ZTE F670L não anuncia Download/Upload diagnostics
+    // (só IPPing) — rejeita em vez de enfileirar SET que vai dar fault.
+    if (isZte(device.manufacturer)) {
+      throw new BadRequestException('Speed test (TR-143) não é exposto via TR-069 neste modelo (ZTE).');
+    }
     const target = url ?? process.env.TR069_SPEEDTEST_URL;
     if (!target) {
       throw new BadRequestException('Defina TR069_SPEEDTEST_URL (arquivo de teste) ou informe a URL.');

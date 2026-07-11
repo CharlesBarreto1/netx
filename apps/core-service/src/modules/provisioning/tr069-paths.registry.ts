@@ -29,11 +29,16 @@ import {
   vsolNotificationAttributes,
 } from './tr069-paths.vsol';
 import {
+  ZTE_F670L_PATHS,
+  zteDiagnosticParamNames,
+  zteNotificationAttributes,
+} from './tr069-paths.zte';
+import {
   zyxelDiagnosticParamNames,
   zyxelNotificationAttributes,
 } from './tr069-paths.zyxel';
 
-export type Tr069Vendor = 'HUAWEI' | 'ZYXEL' | 'VSOL';
+export type Tr069Vendor = 'HUAWEI' | 'ZYXEL' | 'VSOL' | 'ZTE';
 
 /** Casa fabricante por substring case-insensitive (device reporta "ZYXEL"). */
 export function isZyxel(manufacturer?: string | null): boolean {
@@ -45,10 +50,16 @@ export function isVsol(manufacturer?: string | null): boolean {
   return /realtek|v-?sol/i.test(manufacturer ?? '');
 }
 
+/** ZTE genuína reporta manufacturer "ZTE" (F670L: confirmado no piloto PY). */
+export function isZte(manufacturer?: string | null): boolean {
+  return /zte/i.test(manufacturer ?? '');
+}
+
 /**
  * Vendor efetivo do device. `manufacturer` (reportado no Inform) tem
  * prioridade; sem ele (placeholder pré-Inform), infere pelo prefixo do SN
- * GPON. Fallback Huawei — comportamento histórico, sem regressão.
+ * GPON ("ZTEG..." = ZTE, "GPON..." = VSOL, "HWTC..." = Huawei). Fallback
+ * Huawei — comportamento histórico, sem regressão.
  */
 export function vendorFor(
   manufacturer?: string | null,
@@ -56,9 +67,11 @@ export function vendorFor(
 ): Tr069Vendor {
   if (isZyxel(manufacturer)) return 'ZYXEL';
   if (isVsol(manufacturer)) return 'VSOL';
+  if (isZte(manufacturer)) return 'ZTE';
   if (manufacturer) return 'HUAWEI';
   const sn = (snGpon ?? '').toUpperCase();
   if (sn.startsWith('GPON')) return 'VSOL';
+  if (sn.startsWith('ZTEG')) return 'ZTE';
   return 'HUAWEI';
 }
 
@@ -66,7 +79,9 @@ export function vendorFor(
  * Identidade do placeholder Tr069Device criado ANTES do primeiro Inform
  * (ativação/troca de Wi-Fi). O deviceId real chega no Inform e o ACS regrava;
  * aqui só precisamos de uma chave estável + manufacturer coerente pro registry
- * escolher os paths certos até lá. OUIs: 00259E=Huawei, 006D61=VSOL/Realtek.
+ * escolher os paths certos até lá. OUIs: 00259E=Huawei, 006D61=VSOL/Realtek,
+ * 6CD2A2=ZTE (a ZTE tem dezenas de OUIs — este é chute estável; o real chega
+ * no Inform e o matching é por SN, que na ZTE é o próprio SN GPON "ZTEG...").
  */
 export function placeholderIdentityFor(
   snGpon: string,
@@ -77,6 +92,14 @@ export function placeholderIdentityFor(
       deviceId: `006D61-${snGpon.toUpperCase()}`,
       manufacturer: 'Realtek',
       oui: '006D61',
+      vendor,
+    };
+  }
+  if (vendor === 'ZTE') {
+    return {
+      deviceId: `6CD2A2-${snGpon.toUpperCase()}`,
+      manufacturer: 'ZTE',
+      oui: '6CD2A2',
       vendor,
     };
   }
@@ -122,6 +145,21 @@ export function provisioningPathsFor(vendor: Tr069Vendor): ProvisioningPaths {
       pppoeVlan: VSOL_PATHS.pppoeVlan,
     };
   }
+  if (vendor === 'ZTE') {
+    return {
+      ssid24: ZTE_F670L_PATHS.ssid24,
+      ssid50: ZTE_F670L_PATHS.ssid50,
+      pwd24: ZTE_F670L_PATHS.pwd24,
+      pwd50: ZTE_F670L_PATHS.pwd50,
+      informInterval: ZTE_F670L_PATHS.informInterval,
+      connReqUsername: ZTE_F670L_PATHS.connReqUsername,
+      connReqPassword: ZTE_F670L_PATHS.connReqPassword,
+      pppoeUsername: ZTE_F670L_PATHS.pppoeUsername,
+      pppoePassword: ZTE_F670L_PATHS.pppoePassword,
+      pppoeEnable: ZTE_F670L_PATHS.pppoeEnable,
+      pppoeVlan: ZTE_F670L_PATHS.pppoeVlan,
+    };
+  }
   return {
     ssid24: HUAWEI_EG8145_PATHS.ssid24,
     ssid50: HUAWEI_EG8145_PATHS.ssid50,
@@ -148,6 +186,7 @@ export function diagnosticParamNamesFor(
 ): string[] {
   if (isZyxel(manufacturer)) return zyxelDiagnosticParamNames();
   if (isVsol(manufacturer)) return vsolDiagnosticParamNames();
+  if (isZte(manufacturer)) return zteDiagnosticParamNames();
   return huaweiDiagnosticParamNames(productClass);
 }
 
@@ -157,5 +196,6 @@ export function notificationAttributesFor(
 ): Array<{ name: string; notification: 0 | 1 | 2 }> {
   if (isZyxel(manufacturer)) return zyxelNotificationAttributes();
   if (isVsol(manufacturer)) return vsolNotificationAttributes();
+  if (isZte(manufacturer)) return zteNotificationAttributes();
   return huaweiNotificationAttributes();
 }
