@@ -109,40 +109,53 @@ describe('extractDiagnostics — ZTE F670L (X_ZTE-COM)', () => {
   const ZTE_IFACE = 'InternetGatewayDevice.WANDevice.1.X_ZTE-COM_WANPONInterfaceConfig';
   const ZTE_PPP = 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1';
 
-  // Fixture no formato esperado do V9.0.10P1N12A (dBm/°C/V direto). O GET pede
-  // o objeto parcial, então a resposta real traz a subárvore toda — aqui só as
-  // folhas que o parser lê.
+  // Fixture com valores do WALK REAL do piloto PY (V9.0.10P1N12A, jul/2026):
+  // dBm/°C/mA direto e SupplyVoltage em mV. Se quebrar, ou o parser regrediu
+  // ou o firmware mudou de unidade.
   const params: Record<string, string> = {
-    [`${ZTE_IFACE}.RXPower`]: '-19.8',
-    [`${ZTE_IFACE}.TXPower`]: '2.5',
-    [`${ZTE_IFACE}.TransceiverTemperature`]: '48.2',
-    [`${ZTE_IFACE}.SupplyVoltage`]: '3.3',
-    [`${ZTE_IFACE}.BiasCurrent`]: '12.1',
+    [`${ZTE_IFACE}.RXPower`]: '-24.2',
+    [`${ZTE_IFACE}.TXPower`]: '2.53',
+    [`${ZTE_IFACE}.TransceiverTemperature`]: '36.35',
+    [`${ZTE_IFACE}.SupplyVoltage`]: '3268', // mV
+    [`${ZTE_IFACE}.BiasCurrent`]: '12.9',
     [`${ZTE_IFACE}.Status`]: 'Up',
+    [`${ZTE_IFACE}.Stats.FECError`]: '0',
+    [`${ZTE_IFACE}.Stats.HECError`]: '0',
     [`${ZTE_PPP}.ConnectionStatus`]: 'Connected',
-    [`${ZTE_PPP}.Uptime`]: '7211',
-    [`${ZTE_PPP}.Stats.EthernetBytesReceived`]: '987654321',
-    [`${ZTE_PPP}.Stats.EthernetBytesSent`]: '123456789',
+    [`${ZTE_PPP}.Uptime`]: '4517',
+    [`${ZTE_PPP}.Stats.EthernetBytesReceived`]: '260556615',
+    [`${ZTE_PPP}.Stats.EthernetBytesSent`]: '161642950',
     // Convenção ZTE (igual Huawei): WLAN 1 = 2.4GHz, WLAN 5 = 5GHz.
-    [`${WLAN}.1.TotalAssociations`]: '3',
-    [`${WLAN}.5.TotalAssociations`]: '2',
-    [`${WLAN}.1.Channel`]: '6',
-    [`${WLAN}.5.Channel`]: '149',
-    // RSSI vendor por cliente — o parser casa "RSSI" por substring no campo.
-    [`${WLAN}.5.AssociatedDevice.1.AssociatedDeviceMACAddress`]: 'aa:bb:cc:dd:ee:ff',
-    [`${WLAN}.5.AssociatedDevice.1.X_ZTE-COM_RSSI`]: '-58',
+    [`${WLAN}.1.TotalAssociations`]: '8',
+    [`${WLAN}.5.TotalAssociations`]: '8',
+    [`${WLAN}.1.Channel`]: '7',
+    [`${WLAN}.5.Channel`]: '44',
+    // Campos reais por cliente — o parser casa MAC/RSSI/taxas por substring.
+    [`${WLAN}.5.AssociatedDevice.1.AssociatedDeviceMACAddress`]: 'c2:e7:a4:42:55:f2',
+    [`${WLAN}.5.AssociatedDevice.1.AssociatedDeviceRssi`]: '-54',
+    [`${WLAN}.5.AssociatedDevice.1.X_ZTE-COM_RXRate`]: '65000',
+    // Recursos vendor: CPU por core com "%", memória com "%".
+    'InternetGatewayDevice.DeviceInfo.X_ZTE-COM_CpuUsed': '4%;1%',
+    'InternetGatewayDevice.DeviceInfo.X_ZTE-COM_MemUsed': '17%',
   };
 
-  it('lê óptico em unidade humana direta (dBm/°C/V/mA) e classifica saúde', () => {
+  it('lê óptico do walk real (dBm/°C/mA direto + SupplyVoltage em mV)', () => {
     const d = extractDiagnostics(params);
-    expect(d.rxPower).toBeCloseTo(-19.8, 2);
-    expect(d.txPower).toBeCloseTo(2.5, 2);
-    expect(d.temperature).toBeCloseTo(48.2, 2);
-    expect(d.voltage).toBeCloseTo(3.3, 3);
-    expect(d.biasCurrent).toBeCloseTo(12.1, 2);
+    expect(d.rxPower).toBeCloseTo(-24.2, 2);
+    expect(d.txPower).toBeCloseTo(2.53, 2);
+    expect(d.temperature).toBeCloseTo(36.35, 2);
+    expect(d.voltage).toBeCloseTo(3.268, 3);
+    expect(d.biasCurrent).toBeCloseTo(12.9, 2);
     expect(d.gponStatus).toBe('Up');
+    expect(d.fecErrors).toBe(0);
     expect(d.opticalHealth).toBe('OK');
     expect(d.hasOptical).toBe(true);
+  });
+
+  it('CPU vem do pior core de "4%;1%" e memória de "17%" (X_ZTE-COM_*)', () => {
+    const d = extractDiagnostics(params);
+    expect(d.cpuUsage).toBe(4);
+    expect(d.memUsage).toBe(17);
   });
 
   it('normaliza deci-dBm e centi-dBm (firmwares que reportam inteiro)', () => {
@@ -186,20 +199,21 @@ describe('extractDiagnostics — ZTE F670L (X_ZTE-COM)', () => {
   it('PPP e contadores WAN vêm da WAN 1 (mesmos paths padrão da Zyxel)', () => {
     const d = extractDiagnostics(params);
     expect(d.pppStatus).toBe('Connected');
-    expect(d.wanUptime).toBe(7211);
-    expect(d.wanRxBytes).toBe(987654321);
-    expect(d.wanTxBytes).toBe(123456789);
+    expect(d.wanUptime).toBe(4517);
+    expect(d.wanRxBytes).toBe(260556615);
+    expect(d.wanTxBytes).toBe(161642950);
   });
 
-  it('mapeia bandas na convenção 1/5 (não invertida) e lê RSSI vendor', () => {
+  it('mapeia bandas na convenção 1/5 (não invertida) e lê RSSI/taxa por cliente', () => {
     const d = extractDiagnostics(params);
-    expect(d.wifiClients24).toBe(3); // WLANConfiguration.1
-    expect(d.wifiClients5).toBe(2); // WLANConfiguration.5
-    expect(d.wifiChannel24).toBe(6);
-    expect(d.wifiChannel5).toBe(149);
+    expect(d.wifiClients24).toBe(8); // WLANConfiguration.1
+    expect(d.wifiClients5).toBe(8); // WLANConfiguration.5
+    expect(d.wifiChannel24).toBe(7);
+    expect(d.wifiChannel5).toBe(44);
     expect(d.wifiClients).toHaveLength(1);
     expect(d.wifiClients[0].band).toBe('5GHz');
-    expect(d.wifiClients[0].rssi).toBe(-58);
+    expect(d.wifiClients[0].rssi).toBe(-54);
+    expect(d.wifiClients[0].rxRate).toBe(65000);
   });
 
   it('keys Huawei presentes têm prioridade sobre o fallback ZTE', () => {

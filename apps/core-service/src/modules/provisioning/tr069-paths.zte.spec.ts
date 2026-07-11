@@ -3,13 +3,16 @@
  * detecção de vendor por manufacturer/SN, placeholder pré-Inform, paths de
  * provisionamento (WAN 1!) e a estratégia anti-fault do GET de diagnóstico.
  *
- * Invariantes travadas aqui (piloto PY 6CD2A2-ZTEGC6A2F09E, jul/2026):
- *   - PPPoE de internet é WANConnectionDevice.1 (Huawei usa .2) — veio no
- *     Inform real; regressão aqui enfileira SET/GET na WAN errada;
- *   - o GET de diagnóstico usa PATHS PARCIAIS (fault 9005 é atômico e o
- *     firmware ainda não tem dump completo) e NUNCA paths Huawei (X_HW_*,
- *     typo "Interafce") — exatamente o bug que deixou a F670L sem telemetria;
- *   - CPU/memória [UNPROVEN] ficam FORA do GET por default (env off).
+ * Invariantes travadas aqui (walk completo ao vivo no piloto PY
+ * 6CD2A2-ZTEGC6A2F09E, jul/2026 — 2198 params):
+ *   - PPPoE de internet é WANConnectionDevice.1 (Huawei usa .2) — regressão
+ *     aqui enfileira SET/GET na WAN errada;
+ *   - senha Wi-Fi é WLANConfiguration.{i}.KeyPassphrase (nível da WLAN — NÃO
+ *     PreSharedKey.1.* como Zyxel/VSOL) e VLAN é X_ZTE-COM_VLANID na própria
+ *     WANPPPConnection — ambos corrigidos pelo walk;
+ *   - o GET de diagnóstico usa PATHS PARCIAIS (fault 9005 é atômico) e NUNCA
+ *     paths Huawei (X_HW_*, typo "Interafce") — o bug que cegou a F670L;
+ *   - CPU/memória são X_ZTE-COM_CpuUsed/MemUsed (padrão TR-098 não existe).
  */
 import {
   diagnosticParamNamesFor,
@@ -61,9 +64,13 @@ describe('provisioningPathsFor(ZTE) — WAN 1 e KeyPassphrase', () => {
     expect(P.pppoeEnable).toBe(`${PPP_WAN1}.Enable`);
   });
 
-  it('senha Wi-Fi é KeyPassphrase (PreSharedKey é o hex derivado)', () => {
-    expect(P.pwd24).toContain('.PreSharedKey.1.KeyPassphrase');
-    expect(P.pwd50).toContain('.PreSharedKey.1.KeyPassphrase');
+  it('senha Wi-Fi é KeyPassphrase no NÍVEL DA WLAN (walk: não existe sob PreSharedKey.1)', () => {
+    expect(P.pwd24).toBe('InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.KeyPassphrase');
+    expect(P.pwd50).toBe('InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.KeyPassphrase');
+  });
+
+  it('VLAN é X_ZTE-COM_VLANID na própria WANPPPConnection (walk: =1010)', () => {
+    expect(P.pppoeVlan).toBe(`${PPP_WAN1}.X_ZTE-COM_VLANID`);
   });
 
   it('WLAN 1 = 2.4GHz e WLAN 5 = 5GHz (convenção 1/5, não a invertida VSOL)', () => {
@@ -91,7 +98,9 @@ describe('diagnosticParamNamesFor(ZTE) — estratégia anti-fault', () => {
     expect(joined).not.toContain('WANConnectionDevice.2');
   });
 
-  it('CPU/memória [UNPROVEN] ficam fora por default (TR069_ZTE_DEVICE_RESOURCES_ENABLED=0)', () => {
+  it('CPU/memória usam as extensões vendor (padrão TR-098 não existe no walk)', () => {
+    expect(names).toContain('InternetGatewayDevice.DeviceInfo.X_ZTE-COM_CpuUsed');
+    expect(names).toContain('InternetGatewayDevice.DeviceInfo.X_ZTE-COM_MemUsed');
     const joined = names.join('\n');
     expect(joined).not.toContain('ProcessStatus.CPUUsage');
     expect(joined).not.toContain('MemoryStatus');

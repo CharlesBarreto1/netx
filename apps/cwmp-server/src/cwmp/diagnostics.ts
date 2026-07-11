@@ -125,9 +125,11 @@ function vsolDdmPowerToDbm(raw: string | undefined): number | null {
 // Óptico em X_ZTE-COM_WANPONInterfaceConfig. O GET de diagnóstico pede o
 // OBJETO parcial (subárvore inteira), então as folhas são casadas por REGEX
 // case-insensitive dentro do prefixo — tolera variação de grafia entre
-// firmwares (RXPower vs RxPower) sem derrubar a coleta. PPPoE/WAN stats/CPU/
-// memória usam os MESMOS paths padrão da WAN 1 já cobertos pelos keys Zyxel.
-// Wi-Fi segue a convenção 1/5 do Huawei (NÃO a invertida da VSOL) — muda só o
+// firmwares (RXPower vs RxPower) sem derrubar a coleta. PPPoE/WAN stats usam
+// os MESMOS paths padrão da WAN 1 já cobertos pelos keys Zyxel. CPU/memória
+// são extensões vendor com "%" no valor (X_ZTE-COM_CpuUsed = "4%;1%" POR
+// CORE; X_ZTE-COM_MemUsed = "17%") — normalizadas em ztePercent(). Wi-Fi
+// segue a convenção 1/5 do Huawei (NÃO a invertida da VSOL) — muda só o
 // índice 5G se ZTE_WLAN_5G_INDEX for sobrescrito. Fallback — demais intocados.
 const ZTE_PON_IFACE =
   process.env.ZTE_PON_IFACE_PATH ??
@@ -207,6 +209,26 @@ function zteBiasCurrent(raw: string | undefined): number | null {
   const n = numOrNull(raw);
   if (n === null) return null;
   return Math.abs(n) <= 100 ? round2(n) : round2(n / 500);
+}
+
+// Recursos do CPE ZTE — X_ZTE-COM_CpuUsed/MemUsed (valores com "%"; CPU vem
+// um valor por core separado por ";"). Confirmado no walk ao vivo (jul/2026).
+const ZTE_RESOURCE_PATHS = {
+  cpuUsed: 'InternetGatewayDevice.DeviceInfo.X_ZTE-COM_CpuUsed',
+  memUsed: 'InternetGatewayDevice.DeviceInfo.X_ZTE-COM_MemUsed',
+};
+
+/**
+ * "4%;1%" → 4 (pior core) / "17%" → 17. Usamos o PIOR core, não a média —
+ * é o que interessa pra alerta (um core saturado já degrada o CPE).
+ */
+function ztePercent(raw: string | undefined): number | null {
+  if (raw == null || raw === '') return null;
+  const values = raw
+    .split(';')
+    .map((part) => Number(part.replace('%', '').trim()))
+    .filter((v) => !Number.isNaN(v));
+  return values.length ? Math.round(Math.max(...values)) : null;
 }
 
 // Paths padrão TR-098 de memória (VSOL/Zyxel) — % calculado de Total/Free.
@@ -658,10 +680,15 @@ export function extractDiagnostics(params: Record<string, string>): ExtractedDia
     wifiClients,
     wifiWorstRssi,
     wifiAvgRssi,
-    cpuUsage: intOrNull(params[RESOURCE_PATHS.cpuUsed] ?? params[ZYXEL_PATHS.cpuUsage]),
-    // X_HW_MemUsed (Huawei) ou % derivado de MemoryStatus.Total/Free (padrão
-    // TR-098 — VSOL/Zyxel reportam os dois escalares, não o percentual).
-    memUsage: intOrNull(params[RESOURCE_PATHS.memUsed]) ?? memUsageFromStatus(params),
+    cpuUsage:
+      intOrNull(params[RESOURCE_PATHS.cpuUsed] ?? params[ZYXEL_PATHS.cpuUsage]) ??
+      ztePercent(params[ZTE_RESOURCE_PATHS.cpuUsed]),
+    // X_HW_MemUsed (Huawei), % derivado de MemoryStatus.Total/Free (padrão
+    // TR-098 — VSOL/Zyxel) ou X_ZTE-COM_MemUsed ("17%" — ZTE).
+    memUsage:
+      intOrNull(params[RESOURCE_PATHS.memUsed]) ??
+      memUsageFromStatus(params) ??
+      ztePercent(params[ZTE_RESOURCE_PATHS.memUsed]),
     deviceTemp: intOrNull(params[RESOURCE_PATHS.deviceTemp]),
     wanRxBytes: intOrNull(params[WAN_STATS_PATHS.rxBytes] ?? params[ZYXEL_PATHS.wanRxBytes]),
     wanTxBytes: intOrNull(params[WAN_STATS_PATHS.txBytes] ?? params[ZYXEL_PATHS.wanTxBytes]),
