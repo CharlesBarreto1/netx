@@ -137,11 +137,18 @@ export function provisioningPathsFor(vendor: Tr069Vendor): ProvisioningPaths {
   };
 }
 
-/** Lista de params do GET_PARAMS de diagnóstico para o fabricante. */
-export function diagnosticParamNamesFor(manufacturer?: string | null): string[] {
+/**
+ * Lista de params do GET_PARAMS de diagnóstico para o fabricante.
+ * `productClass` refina por MODELO dentro do vendor (Huawei: temperatura só
+ * existe no X6/X10 — ver huaweiDiagnosticParamNames).
+ */
+export function diagnosticParamNamesFor(
+  manufacturer?: string | null,
+  productClass?: string | null,
+): string[] {
   if (isZyxel(manufacturer)) return zyxelDiagnosticParamNames();
   if (isVsol(manufacturer)) return vsolDiagnosticParamNames();
-  return huaweiDiagnosticParamNames();
+  return huaweiDiagnosticParamNames(productClass);
 }
 
 /** Atributos de notificação (SetParameterAttributes) para o fabricante. */

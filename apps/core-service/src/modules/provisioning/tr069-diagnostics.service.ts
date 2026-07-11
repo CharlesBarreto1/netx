@@ -145,18 +145,22 @@ export class Tr069DiagnosticsService {
     });
     if (inflight) return { taskId: inflight.id };
 
-    // Lista de params do diagnóstico depende do fabricante (Zyxel ≠ Huawei) —
-    // senão o CPE devolve Fault 9005 no GET inteiro.
+    // Lista de params do diagnóstico depende do fabricante (Zyxel ≠ Huawei) E
+    // do modelo (V5 não tem sensor de temperatura) — senão o CPE devolve
+    // Fault 9005 no GET inteiro.
     const device = await this.prisma.tr069Device.findUnique({
       where: { id: deviceDbId },
-      select: { manufacturer: true },
+      select: { manufacturer: true, productClass: true },
     });
     const task = await this.prisma.tr069Task.create({
       data: {
         tenantId,
         deviceId: deviceDbId,
         action: 'GET_PARAMS',
-        payload: { names: diagnosticParamNamesFor(device?.manufacturer), purpose: 'DIAGNOSTICS' },
+        payload: {
+          names: diagnosticParamNamesFor(device?.manufacturer, device?.productClass),
+          purpose: 'DIAGNOSTICS',
+        },
         status: 'PENDING',
       },
     });
