@@ -6,6 +6,24 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev:web"],
       "port": 3200
+    },
+    {
+      "name": "api-gateway",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:api-gateway"],
+      "port": 3000
+    },
+    {
+      "name": "core-service",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:core"],
+      "port": 3101
+    },
+    {
+      "name": "cwmp-server",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["nx", "run", "cwmp-server:dev"],
+      "port": 7547
     }
   ]
 }

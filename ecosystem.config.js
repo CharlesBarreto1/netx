@@ -63,6 +63,10 @@ function appEnv(extra = {}) {
     'HUAWEI_GPON_IFACE_PATH', 'HUAWEI_OPTICAL_DIVISOR', 'HUAWEI_PPPOE_WAN_INDEX',
     'TR069_DIAGNOSTIC_INTERVAL_MIN', 'TR069_OFFLINE_AFTER_MIN',
     'TR069_DIAGNOSTICS_ENABLED', 'TR069_WIFI_CLIENTS_ENABLED',
+    // WiFi-Opt (pacote de otimização Wi-Fi Huawei) — flags opt-in + janela/tuning.
+    'WIFI_OPT_ENABLED', 'WIFI_OPT_ROLLOUT_ENABLED',
+    'WIFI_OPT_ROLLOUT_WINDOW_START', 'WIFI_OPT_ROLLOUT_WINDOW_END',
+    'WIFI_OPT_SWEEP_BATCH', 'WIFI_OPT_BOOTSTRAP_LOOKBACK_DAYS',
   ];
   const env = {};
   for (const k of keys) {

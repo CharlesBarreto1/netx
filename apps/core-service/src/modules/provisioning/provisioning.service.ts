@@ -71,6 +71,7 @@ import { OltDriverFactory } from './drivers/olt-driver.factory';
 import { OltProvisioningProfilesService } from './olt-provisioning-profiles.service';
 import { buildConnectionContext } from './olt-context.util';
 import { Tr069TasksService } from './tr069-tasks.service';
+import { WifiOptService } from './wifi-opt.service';
 import { EventBusPublisher } from '../events/event-bus.publisher';
 import {
   CPE_ONT_SWAPPED,
@@ -97,6 +98,7 @@ export class ProvisioningService {
     private readonly profiles: OltProvisioningProfilesService,
     private readonly brBilling: BrBillingService,
     private readonly fibermapSubscriber: FibermapSubscriberService,
+    private readonly wifiOpt: WifiOptService,
   ) {}
 
   /**
@@ -608,6 +610,14 @@ export class ProvisioningService {
           : `Wi-Fi enfileirado pro ACS aplicar — task ${taskId.slice(0, 8)}`,
       );
 
+      // WiFi-Opt: pacote de otimização Huawei (duplo opt-in env+tenant; 100%
+      // inerte desligado). DEPOIS do SET de Wi-Fi e ANTES do REBOOT — o FIFO
+      // por device entrega SET wifi → SET pacote → REBOOT na mesma sessão do
+      // Inform. Best-effort integral: NUNCA lança (não derruba a ativação).
+      // Install novo tem device placeholder sem productClass → o sweeper
+      // horário do WifiOptService enfileira após o 1º Inform.
+      await this.wifiOpt.applyOnActivation(tenantId, deviceId, actorUserId);
+
       // IP Acquisition Mode IPv6 (Origin=AutoConfigured) só aplica após reboot.
       // Política: no provisionamento reiniciamos imediatamente (estamos em
       // janela de instalação), mas só quando há PPPoE/IPv6 — que é a config
@@ -762,7 +772,7 @@ export class ProvisioningService {
         ? this.crypto.decrypt(contract.wifiPasswordEnc)
         : null;
       if (contract.ssid && password) {
-        const { taskId } = await this.tr069.enqueueSetWifi(
+        const { taskId, deviceId } = await this.tr069.enqueueSetWifi(
           tenantId,
           contract.ont.id,
           contractId,
@@ -782,6 +792,10 @@ export class ProvisioningService {
           at: at(),
           error: null,
         });
+        // WiFi-Opt: re-aplica o pacote de otimização (idempotente — marcador
+        // por device + dedupe por purpose viram no-op se já aplicado).
+        // Best-effort: nunca lança nem suja a timeline da O.S.
+        await this.wifiOpt.applyOnActivation(tenantId, deviceId, actorUserId);
       }
     } catch (err) {
       timeline.push({
@@ -914,12 +928,23 @@ export class ProvisioningService {
         data: { snGpon: newSn, status: 'PENDING_AUTH' },
       });
       if (effectiveSsid && effectiveWifiPassword) {
-        await this.tr069.enqueueSetWifi(tenantId, ont.id, contractId, newSn, {
-          ssid: effectiveSsid,
-          password: effectiveWifiPassword,
-          bothBands: true,
-          wifiBandMode: input.wifiBandMode ?? 'BAND_STEERING',
-        });
+        const { deviceId: newDeviceId } = await this.tr069.enqueueSetWifi(
+          tenantId,
+          ont.id,
+          contractId,
+          newSn,
+          {
+            ssid: effectiveSsid,
+            password: effectiveWifiPassword,
+            bothBands: true,
+            wifiBandMode: input.wifiBandMode ?? 'BAND_STEERING',
+          },
+        );
+        // WiFi-Opt: a ONT nova re-otimiza do zero (o deleteMany acima apagou o
+        // marcador junto com o device antigo). O placeholder ainda não informou
+        // (sem productClass) → o sweeper horário enfileira após o 1º Inform.
+        // Best-effort: nunca derruba a troca.
+        await this.wifiOpt.applyOnActivation(tenantId, newDeviceId, actorUserId);
       }
       await this.audit.log({
         tenantId,
@@ -962,6 +987,23 @@ export class ProvisioningService {
       wifiBandMode: input.wifiBandMode ?? 'BAND_STEERING',
       pppoeVlan: 1010,
     } as InstallCustomerRequest);
+    // WiFi-Opt: o installCustomer acima já dispara o applyOnActivation no
+    // caminho com Wi-Fi; este reforço cobre o device da ONT NOVA quando ele
+    // existir (idempotente — dedupe por purpose vira no-op) e não faz nada se
+    // o contrato não tem Wi-Fi (sem device ainda). Best-effort integral.
+    try {
+      const newDevice = await this.prisma.tr069Device.findUnique({
+        where: { ontId: res.ontId },
+        select: { id: true },
+      });
+      if (newDevice) {
+        await this.wifiOpt.applyOnActivation(tenantId, newDevice.id, actorUserId);
+      }
+    } catch (err) {
+      this.logger.warn(
+        `[swap] WiFi-Opt pós-swap falhou: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
     await this.audit.log({
       tenantId,
       userId: actorUserId,

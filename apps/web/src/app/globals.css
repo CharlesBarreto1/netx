@@ -459,10 +459,18 @@
 
   /* Glassmorphism — topbar, comand palette, dialogs sutilmente vidro */
   .glass {
-    background: hsl(var(--surface) / 0.72);
-    backdrop-filter: saturate(180%) blur(12px);
-    -webkit-backdrop-filter: saturate(180%) blur(12px);
+    /* Fallback quase-sólido — quando backdrop-filter não renderiza, o conteúdo
+       rolado NÃO vaza pela topbar. */
+    background: hsl(var(--surface) / 0.97);
     border-color: hsl(var(--border) / 0.6);
+  }
+  @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass {
+      /* Frosted de verdade onde há suporte. */
+      background: hsl(var(--surface) / 0.75);
+      backdrop-filter: saturate(180%) blur(12px);
+      -webkit-backdrop-filter: saturate(180%) blur(12px);
+    }
   }
   .glass-strong {
     background: hsl(var(--surface) / 0.85);

@@ -105,6 +105,11 @@ export class Tr069ConfigService {
         input.reconcileWindowEnd !== undefined
           ? input.reconcileWindowEnd
           : (existing?.reconcileWindowEnd ?? null),
+      // WiFi-Opt (pacote de otimização Wi-Fi Huawei — flags per-tenant do
+      // duplo opt-in; a env global fica no WifiOptService).
+      wifiOptEnabled: pick('wifiOptEnabled', input.wifiOptEnabled, false),
+      wifiOptRegDomain: pick('wifiOptRegDomain', input.wifiOptRegDomain, 'PY'),
+      wifiOptRolloutEnabled: pick('wifiOptRolloutEnabled', input.wifiOptRolloutEnabled, false),
     };
 
     const saved = await this.prisma.tr069TenantConfig.upsert({
@@ -146,6 +151,9 @@ export class Tr069ConfigService {
       reconcileIntervalMin: c?.reconcileIntervalMin ?? null,
       reconcileWindowStart: c?.reconcileWindowStart ?? null,
       reconcileWindowEnd: c?.reconcileWindowEnd ?? null,
+      wifiOptEnabled: c?.wifiOptEnabled ?? false,
+      wifiOptRegDomain: c?.wifiOptRegDomain ?? 'PY',
+      wifiOptRolloutEnabled: c?.wifiOptRolloutEnabled ?? false,
       createdAt: c?.createdAt?.toISOString() ?? null,
       updatedAt: c?.updatedAt?.toISOString() ?? null,
     };

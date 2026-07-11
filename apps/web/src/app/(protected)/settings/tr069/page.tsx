@@ -316,14 +316,52 @@ function PolicyForm({
 
       {/* Wi-Fi */}
       <Section title={t('wifi.title')}>
-        <Toggle
-          id="wifi-from-contract"
-          checked={!!v('wifiFromContract')}
-          onChange={(b) => set({ wifiFromContract: b })}
-          disabled={!canWrite}
-          label={t('wifi.fromContract')}
-          help={t('wifi.fromContractHelp')}
-        />
+        <div className="grid gap-4 md:grid-cols-2">
+          <Toggle
+            id="wifi-from-contract"
+            checked={!!v('wifiFromContract')}
+            onChange={(b) => set({ wifiFromContract: b })}
+            disabled={!canWrite}
+            label={t('wifi.fromContract')}
+            help={t('wifi.fromContractHelp')}
+          />
+          <div />
+          {/* Pacote de otimização Wi-Fi (Huawei) — flags por tenant. As flags
+              env do servidor (WIFI_OPT_ENABLED / WIFI_OPT_ROLLOUT_ENABLED)
+              também precisam estar ligadas: as duas camadas são AND. */}
+          <Toggle
+            id="wifi-opt-enabled"
+            checked={!!v('wifiOptEnabled')}
+            onChange={(b) => set({ wifiOptEnabled: b })}
+            disabled={!canWrite}
+            label={t('wifiOpt.enabled')}
+            help={t('wifiOpt.enabledHelp')}
+          />
+          <Toggle
+            id="wifi-opt-rollout"
+            checked={!!v('wifiOptRolloutEnabled')}
+            onChange={(b) => set({ wifiOptRolloutEnabled: b })}
+            disabled={!canWrite}
+            label={t('wifiOpt.rolloutEnabled')}
+            help={t('wifiOpt.rolloutEnabledHelp')}
+          />
+          <div>
+            <Label>{t('wifiOpt.regDomainLabel')}</Label>
+            <Input
+              value={v('wifiOptRegDomain')}
+              onChange={(e) => set({ wifiOptRegDomain: e.target.value.toUpperCase() })}
+              placeholder="PY"
+              maxLength={8}
+              disabled={!canWrite}
+            />
+            <FieldHelp>{t('wifiOpt.regDomainHelp')}</FieldHelp>
+          </div>
+        </div>
+        {/* Regra operacional (v2 vira validação de conflito no update de profile):
+            os params do pacote NUNCA podem entrar como regra STATIC de profile. */}
+        <div className="mt-4 border-t border-border pt-3">
+          <FieldHelp>{t('wifiOpt.operationalRule')}</FieldHelp>
+        </div>
       </Section>
 
       {/* Acesso */}

@@ -7,6 +7,13 @@
  *
  * @provenance Y2hhcmxlc2JhcnJldG86MDg0NzI5Njg5MDE=
  */
+import {
+  widthCodeFor,
+  type HuaweiWifiCapability,
+  type WifiOptMode,
+  type WifiOptProfile,
+} from './wifi-opt.resolver';
+
 /**
  * Índice da WANConnectionDevice que carrega o serviço de INTERNET (PPPoE).
  *
@@ -184,6 +191,134 @@ export function huaweiWlanSecurityParams(
     { name: w.beaconType, value: 'WPAand11i', type: 'xsd:string' },
     { name: w.wpaAndIiAuth, value: 'PSKAuthentication', type: 'xsd:string' },
     { name: w.wpaAndIiEnc, value: 'TKIPandAESEncryption', type: 'xsd:string' },
+  ];
+}
+
+// =============================================================================
+// WIFI-OPT — pacote de otimização Wi-Fi (bootstrap/plan-change/rollout).
+// Decisões de capability/profile/largura em wifi-opt.resolver.ts (puro);
+// aqui só a MONTAGEM dos params TR-069. Enum X_HW_HT20 confirmado ao vivo
+// (jul/2026, persistente pós-reboot): 0=Auto(→negocia só 40MHz na prática),
+// 3=80MHz, 4=160MHz — por isso o pacote fixa '3'/'4' e NUNCA manda '0'.
+// =============================================================================
+
+/**
+ * Potência TX global (%) — variante X6/X10/V5-V2 (um param cobre as 2 bandas).
+ * No V5 plain o nó não existe: usar TransmitPower por WLAN (huaweiWlanTxpower).
+ */
+export const HUAWEI_TXPOWER_GLOBAL =
+  'InternetGatewayDevice.LANDevice.1.WiFi.X_HW_Txpower';
+
+/** TransmitPower (%) por índice de WLAN — variante V5 plain (1=2.4G, 5=5G). */
+export function huaweiWlanTxpower(i: number): string {
+  return `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.TransmitPower`;
+}
+
+/**
+ * Economia de energia do rádio (APM) — o pacote DESLIGA (0) pra potência
+ * plena valer 24/7. Nó de RAIZ do data model (NÃO fica sob LANDevice.1.WiFi):
+ * confirmado por root-walk de 3985 params no EG8145X6 e por SET com Status 0
+ * no EG8145V5 (probe ao vivo, jul/2026).
+ */
+export const HUAWEI_APM_POWER_SAVING =
+  'InternetGatewayDevice.X_HW_APMPolicy.EnablePowerSavingMode';
+
+/**
+ * Domínio regulatório por WLAN (gravável e persistente — confirmado ao vivo,
+ * jul/2026). Aplicar nas DUAS WLANs (1=2.4G, 5=5G).
+ */
+export function huaweiRegDomain(i: number): string {
+  return `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${i}.RegulatoryDomain`;
+}
+
+/**
+ * ⚠️ READ-ONLY (fault 9003 no SET nos dois tipos de ONT — confirmado ao vivo,
+ * jul/2026): indica se o firmware suporta band steering. Entra SÓ no readback,
+ * NUNCA num SetParameterValues (o liga/desliga é o BandSteeringPolicy).
+ */
+export const HUAWEI_BAND_STEERING_CAPABILITY =
+  'InternetGatewayDevice.LANDevice.1.WiFi.X_HW_GlobalConfig.BandSteeringCapability';
+
+export interface HuaweiWifiOptParamsInput {
+  /** Capability do modelo (nunca null aqui — o caller já fez o gate de skip). */
+  cap: HuaweiWifiCapability;
+  profile: WifiOptProfile;
+  /** Domínio regulatório do tenant (Tr069TenantConfig.wifiOptRegDomain). */
+  regDomain: string;
+  /** SSID do contrato — a 5G recebe o MESMO nome (band steering unificado). */
+  ssid: string;
+  /** PSK do contrato — só no FULL (WIDTH_ONLY/rollback nunca carregam senha). */
+  psk: string;
+  mode: WifiOptMode;
+}
+
+/**
+ * Monta o SetParameterValues do pacote de otimização:
+ *   FULL       — txpower=100 (na variante da cap) + APM off + RegDomain nas 2
+ *                WLANs + SSID/PSK da 5G (unificado) + BandSteeringPolicy=1 +
+ *                largura fixa (X_HW_HT20).
+ *   WIDTH_ONLY — só X_HW_HT20 (mudança de plano; não re-escreve SSID/PSK).
+ * Largura sai do widthCodeFor — se null (modelo sem nó HT20), o param é
+ * omitido; em WIDTH_ONLY isso resulta em lista VAZIA e o caller não cria task.
+ */
+export function huaweiWifiOptParams(
+  input: HuaweiWifiOptParamsInput,
+): Array<{ name: string; value: string; type: string }> {
+  const { cap, profile, regDomain, ssid, psk, mode } = input;
+  const w5 = huaweiWlanPaths('5G');
+
+  const width = widthCodeFor(profile, cap);
+  const widthParams =
+    width === null
+      ? []
+      : [{ name: w5.htMode, value: width, type: 'xsd:unsignedInt' }];
+  if (mode === 'WIDTH_ONLY') return widthParams;
+
+  return [
+    // Potência plena — variante por capability (global vs por WLAN).
+    ...(cap.txpower === 'X_HW_TXPOWER'
+      ? [{ name: HUAWEI_TXPOWER_GLOBAL, value: '100', type: 'xsd:unsignedInt' }]
+      : [
+          { name: huaweiWlanTxpower(1), value: '100', type: 'xsd:unsignedInt' },
+          { name: huaweiWlanTxpower(5), value: '100', type: 'xsd:unsignedInt' },
+        ]),
+    // Economia de energia OFF (senão a potência cai sozinha fora de pico).
+    { name: HUAWEI_APM_POWER_SAVING, value: '0', type: 'xsd:boolean' },
+    // Domínio regulatório nas duas WLANs (canais/potências legais corretos).
+    { name: huaweiRegDomain(1), value: regDomain, type: 'xsd:string' },
+    { name: huaweiRegDomain(5), value: regDomain, type: 'xsd:string' },
+    // SSID unificado (5G = mesmo nome da 2.4G) + PSK — pré-requisito do band
+    // steering. O caller flipa Ont.wifiBandMode='BAND_STEERING' junto.
+    { name: HUAWEI_EG8145_PATHS.ssid50, value: ssid, type: 'xsd:string' },
+    { name: HUAWEI_EG8145_PATHS.pwd50, value: psk, type: 'xsd:string' },
+    // Band steering ON (Capability é read-only — NUNCA setar).
+    {
+      name: HUAWEI_ROUTER_PATHS.bandSteeringPolicy,
+      value: '1',
+      type: 'xsd:unsignedInt',
+    },
+    ...widthParams,
+  ];
+}
+
+/**
+ * Nomes pro GET de baseline ("previous", insumo do rollback) e de verificação
+ * pós-push. Espelha o que o SET escreve (MENOS a PSK — write-only) + a
+ * capability de band steering. Variantes seguem a cap pra não pedir path
+ * inexistente (fault 9005 atômico).
+ */
+export function huaweiWifiOptReadbackNames(cap: HuaweiWifiCapability): string[] {
+  return [
+    HUAWEI_EG8145_PATHS.ssid50,
+    HUAWEI_ROUTER_PATHS.bandSteeringPolicy,
+    HUAWEI_BAND_STEERING_CAPABILITY,
+    ...(cap.ht20 ? [huaweiWlanPaths('5G').htMode] : []),
+    huaweiRegDomain(1),
+    huaweiRegDomain(5),
+    HUAWEI_APM_POWER_SAVING,
+    ...(cap.txpower === 'X_HW_TXPOWER'
+      ? [HUAWEI_TXPOWER_GLOBAL]
+      : [huaweiWlanTxpower(1), huaweiWlanTxpower(5)]),
   ];
 }
 

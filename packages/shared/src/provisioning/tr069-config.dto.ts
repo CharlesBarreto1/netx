@@ -55,6 +55,13 @@ export const UpsertTr069ConfigRequestSchema = z
     reconcileIntervalMin: z.coerce.number().int().min(1).max(1440).nullish(),
     reconcileWindowStart: z.coerce.number().int().min(0).max(23).nullish(),
     reconcileWindowEnd: z.coerce.number().int().min(0).max(23).nullish(),
+
+    // WiFi-Opt: pacote de otimização Wi-Fi Huawei (duplo opt-in — só age com a
+    // env global E a flag do tenant ligadas; entra 100% desligado).
+    wifiOptEnabled: z.boolean().optional(),
+    // Domínio regulatório aplicado nas WLANs (ISO 3166-1 alpha-2, ex.: "PY").
+    wifiOptRegDomain: z.string().min(2).max(8).optional(),
+    wifiOptRolloutEnabled: z.boolean().optional(),
   })
   .strict();
 export type UpsertTr069ConfigRequest = z.infer<typeof UpsertTr069ConfigRequestSchema>;
@@ -83,6 +90,10 @@ export interface Tr069ConfigResponse {
   reconcileIntervalMin: number | null;
   reconcileWindowStart: number | null;
   reconcileWindowEnd: number | null;
+  // WiFi-Opt (pacote de otimização Wi-Fi Huawei).
+  wifiOptEnabled: boolean;
+  wifiOptRegDomain: string;
+  wifiOptRolloutEnabled: boolean;
   createdAt: string | null;
   updatedAt: string | null;
 }

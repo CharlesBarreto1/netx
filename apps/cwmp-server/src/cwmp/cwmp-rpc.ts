@@ -80,7 +80,12 @@ export function buildRpcForTask(task: Tr069Task): { xml: string; cwmpId: string 
       return { xml: buildSetParameterAttributes(cwmpId, p.attributes), cwmpId };
     }
     case 'REBOOT': {
-      return { xml: buildReboot(cwmpId, task.id), cwmpId };
+      // ⚠️ TR-069 limita CommandKey a 32 chars — task.id (UUID, 36) estourava
+      // e o Huawei respondia fault 9003 MAS reiniciava mesmo assim (task ia
+      // pra FAILED com o efeito aplicado — confirmado ao vivo, jul/2026).
+      // UUID sem hífens = 32 hex exatos; slice é cinto de segurança.
+      const commandKey = task.id.replace(/-/g, '').slice(0, 32);
+      return { xml: buildReboot(cwmpId, commandKey), cwmpId };
     }
     case 'FACTORY_RESET': {
       return { xml: buildFactoryReset(cwmpId), cwmpId };

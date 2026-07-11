@@ -30,6 +30,9 @@ import { Tr069DiagnosticsService } from './tr069-diagnostics.service';
 import { Tr069ProfilesService } from './tr069-profiles.service';
 import { Tr069ReconcileService } from './tr069-reconcile.service';
 import { Tr069TasksService } from './tr069-tasks.service';
+import { WifiOptController } from './wifi-opt.controller';
+import { WifiOptRolloutService } from './wifi-opt-rollout.service';
+import { WifiOptService } from './wifi-opt.service';
 
 @Module({
   imports: [AlarmsModule, AuditModule, BrBillingModule, CryptoModule, ContractsModule, FibermapModule, StockModule, UfinetModule],
@@ -38,6 +41,7 @@ import { Tr069TasksService } from './tr069-tasks.service';
     OltsController,
     OltProvisioningProfilesController,
     Tr069Controller,
+    WifiOptController,
   ],
   providers: [
     // Drivers
@@ -56,6 +60,8 @@ import { Tr069TasksService } from './tr069-tasks.service';
     Tr069ReconcileService,
     Tr069ProfilesService,
     Tr069ConfigService,
+    WifiOptService,
+    WifiOptRolloutService,
     ProvisioningService,
   ],
   exports: [
@@ -66,6 +72,8 @@ import { Tr069TasksService } from './tr069-tasks.service';
     Tr069DiagnosticsService,
     Tr069ReconcileService,
     Tr069ProfilesService,
+    // WifiOptService: consumido pelo WifiOptEventsHandler (event-bus.module).
+    WifiOptService,
   ],
 })
 export class ProvisioningModule {}

@@ -4,6 +4,7 @@ import { loadConfig } from '@netx/config';
 import { EVENT_PUBLISHER, NoopEventPublisher, type EventPublisher } from '@netx/core-sdk';
 
 import { AlarmsModule } from '../alarms/alarms.module';
+import { ProvisioningModule } from '../provisioning/provisioning.module';
 
 import { AmqpEventPublisher } from './amqp-event-publisher';
 import { EventBusPublisher } from './event-bus.publisher';
@@ -13,6 +14,7 @@ import { EVENT_HANDLERS } from './event-handler';
 import { FeedHandler } from './feed.handler';
 import { FeedStream } from './feed-stream.service';
 import { NmsEventsHandler } from './nms-events.handler';
+import { WifiOptEventsHandler } from './wifi-opt.handler';
 
 /**
  * Bus de eventos do ecossistema (Fase 3). Registra o provider global
@@ -62,12 +64,24 @@ export class EventBusModule {
       multi: true,
     } as Provider;
 
+    // WiFi-Opt: fast-path da mudança de plano (netx-erp.contract.plan-changed
+    // → re-avalia profile BASE/GIGA e ajusta largura). Best-effort — a
+    // garantia é o sweeper horário do WifiOptService.
+    const wifiOptHandler = {
+      provide: EVENT_HANDLERS,
+      useClass: WifiOptEventsHandler,
+      multi: true,
+    } as Provider;
+
     return {
       module: EventBusModule,
       global: true,
       // AlarmsModule: o NmsEventsHandler injeta o AlarmStream pra surfar faults
       // do NMS no NOC real-time.
-      imports: [AlarmsModule],
+      // ProvisioningModule: o WifiOptEventsHandler injeta o WifiOptService
+      // (import direto — nada na cadeia do provisioning importa este módulo,
+      // então não há ciclo e forwardRef é desnecessário).
+      imports: [AlarmsModule, ProvisioningModule],
       // EventsController expõe GET /v1/events/stream (SSE do feed, tenant-scoped).
       controllers: [EventsController],
       providers: [
@@ -77,6 +91,7 @@ export class EventBusModule {
         nmsHandler,
         FeedStream,
         feedHandler,
+        wifiOptHandler,
       ],
       exports: [publisher, EventBusPublisher, FeedStream],
     };

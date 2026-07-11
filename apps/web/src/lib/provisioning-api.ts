@@ -849,6 +849,10 @@ export interface Tr069ConfigView {
   reconcileIntervalMin: number | null;
   reconcileWindowStart: number | null;
   reconcileWindowEnd: number | null;
+  // WiFi-Opt (pacote de otimização Wi-Fi Huawei) — espelha tr069-config.dto.
+  wifiOptEnabled: boolean;
+  wifiOptRegDomain: string;
+  wifiOptRolloutEnabled: boolean;
   createdAt: string | null;
   updatedAt: string | null;
 }
@@ -868,3 +872,103 @@ export interface Tr069PendingDeviceRow {
   firstSeenAt: string;
   lastSeenAt: string;
 }
+
+// =============================================================================
+// /v1/tr069/wifi-opt — rollout em ondas do pacote de otimização Wi-Fi Huawei
+// (espelha WifiOptController / wifi-opt-rollout.service do core)
+// =============================================================================
+export type WifiOptWaveStatus =
+  | 'DRAFT'
+  | 'RUNNING'
+  | 'GATE_PASSED'
+  | 'GATE_FAILED'
+  | 'CANCELLED';
+export type WifiOptWaveDeviceState =
+  | 'QUEUED'
+  | 'BASELINED'
+  | 'PUSHED'
+  | 'VERIFYING'
+  | 'APPLIED'
+  | 'ROLLED_BACK'
+  | 'SKIPPED'
+  | 'FAILED';
+
+/** gateReport gravado quando todos os devices da onda chegam a estado terminal. */
+export interface WifiOptGateReport {
+  pass: boolean;
+  /** Média dos deltas (pós − baseline) de RSSI, dBm. null = nenhum par medível. */
+  avgRssiDelta: number | null;
+  /** deviceIds com queda sustentada de clientes (< 70% do baseline). */
+  sustainedDrops: string[];
+  rolledBack: number;
+}
+
+export interface WifiOptWaveSummary {
+  id: string;
+  name: string;
+  status: WifiOptWaveStatus;
+  startedAt: string | null;
+  completedAt: string | null;
+  gateReport: WifiOptGateReport | null;
+  createdAt: string;
+  /** Contagem de devices por estado (só estados presentes na onda). */
+  deviceCounts: Partial<Record<WifiOptWaveDeviceState, number>>;
+}
+
+export interface WifiOptWaveDeviceRow {
+  id: string;
+  deviceId: string;
+  ontId: string | null;
+  state: WifiOptWaveDeviceState;
+  attempts: number;
+  error: string | null;
+  baseline: Record<string, unknown> | null;
+  pushedAt: string | null;
+  verifiedAt: string | null;
+  rolledBackAt: string | null;
+}
+
+export interface WifiOptWaveDetail {
+  id: string;
+  name: string;
+  status: WifiOptWaveStatus;
+  startedAt: string | null;
+  completedAt: string | null;
+  gateReport: WifiOptGateReport | null;
+  createdAt: string;
+  devices: WifiOptWaveDeviceRow[];
+}
+
+export interface CreateWifiOptWaveResponse {
+  id: string;
+  name: string;
+  status: WifiOptWaveStatus;
+  deviceCount: number;
+  /** deviceIds da textarea que não existem no tenant (pro operador conferir). */
+  unknownDeviceIds: string[];
+}
+
+export const wifiOptApi = {
+  wavesPath: () => '/v1/tr069/wifi-opt/waves',
+  listWaves: () => api.get<WifiOptWaveSummary[]>('/v1/tr069/wifi-opt/waves'),
+  getWave: (id: string) => api.get<WifiOptWaveDetail>(`/v1/tr069/wifi-opt/waves/${id}`),
+  createWave: (body: { name: string; deviceIds: string[] }) =>
+    api.post<CreateWifiOptWaveResponse>('/v1/tr069/wifi-opt/waves', body),
+  /** `force` destrava a regra das 48h/última GATE_PASSED (rota já é admin). */
+  startWave: (id: string, force = false) =>
+    api.post<{ id: string; status: WifiOptWaveStatus }>(
+      `/v1/tr069/wifi-opt/waves/${id}/start`,
+      force ? { force } : {},
+    ),
+  cancelWave: (id: string) =>
+    api.post<{ id: string; status: WifiOptWaveStatus }>(
+      `/v1/tr069/wifi-opt/waves/${id}/cancel`,
+      {},
+    ),
+  /** Rollback manual de um device já empurrado (PUSHED/VERIFYING/APPLIED). */
+  rollbackDevice: (waveDeviceId: string) =>
+    api.post<{ id: string; state: WifiOptWaveDeviceState }>(
+      `/v1/tr069/wifi-opt/devices/${waveDeviceId}/rollback`,
+      {},
+    ),
+};

@@ -165,6 +165,8 @@ model Tenant {
   tr069DeviceNotes     Tr069DeviceNote[]
   provisioningEvents   ProvisioningEvent[]
   ufinetServices       UfinetService[]
+  wifiOptWaves         WifiOptWave[]
+  wifiOptWaveDevices   WifiOptWaveDevice[]
 
   // Mobile
   mobileDevices        MobileDevice[]
@@ -3992,6 +3994,12 @@ model Tr069Device {
   pendingRebootSince       DateTime? @map("pending_reboot_since")
                                     // "0 BOOTSTRAP"|"1 BOOT"|"2 PERIODIC"|...
 
+  // WiFi-Opt — marcador do pacote de otimização aplicado ('BASE'|'GIGA').
+  // Morre junto no deleteMany do swap — desejado: a ONT nova re-otimiza do zero.
+  wifiOptProfile           String?   @map("wifi_opt_profile") @db.VarChar(8)
+  // Quando a task SET do pacote confirmou DONE (insumo do sweeper horário).
+  wifiOptAppliedAt         DateTime? @map("wifi_opt_applied_at")
+
   createdAt                DateTime  @default(now()) @map("created_at")
   updatedAt                DateTime  @updatedAt @map("updated_at")
 
@@ -4422,6 +4430,8 @@ enum ProvisioningEventAction {
   TR069_INFORM_RECEIVED
   RADIUS_ENQUEUE
   CONTRACT_ACTIVATE
+  TR069_WIFI_OPT       // pacote de otimização Wi-Fi (bootstrap/plan-change/rollout)
+  TR069_CHANNEL_SWITCH // troca de canal 5G observada em device GIGA (radar/DFS)
 }
 
 model ProvisioningEvent {
@@ -4452,6 +4462,83 @@ model ProvisioningEvent {
   @@index([tenantId, ontId])
   @@index([tenantId, status, createdAt])
   @@map("provisioning_events")
+}
+
+// =============================================================================
+// WIFI-OPT — rollout em ondas do pacote de otimização Wi-Fi Huawei
+// =============================================================================
+// O baseline mora AQUI (Json da wave) porque `parametersSnapshot` do device é
+// sobrescrito a cada Inform e `tr069_diagnostics` tem retenção de 30d — a onda
+// precisa do retrato do momento da captura pra comparar depois do push.
+// `deviceId` é o OUI-SN (string) SEM FK de propósito: o swap de ONT deleta a
+// row de tr069_devices e o histórico da onda deve sobreviver.
+
+enum WifiOptWaveStatus {
+  DRAFT       // criada, ainda sem start
+  RUNNING     // motor de ondas atuando (cron por minuto)
+  GATE_PASSED // terminou e o gate de qualidade aprovou
+  GATE_FAILED // terminou reprovada (bloqueia a próxima onda sem force)
+  CANCELLED   // operador abortou
+}
+
+enum WifiOptWaveDeviceState {
+  QUEUED      // aguardando janela/baseline
+  BASELINED   // baseline (diagnostics) + GET "previous" capturados
+  PUSHED      // SET do pacote enfileirado/entregue
+  VERIFYING   // task DONE; observando clientes pós-push
+  APPLIED     // 2h com clientes vistos — sucesso
+  ROLLED_BACK // rollback automático disparado (clientes zeraram)
+  SKIPPED     // offline/sem insumo após N tentativas — não é falha
+  FAILED      // task terminal FAILED no ACS
+}
+
+model WifiOptWave {
+  id          String            @id @default(uuid()) @db.Uuid
+  tenantId    String            @map("tenant_id") @db.Uuid
+  name        String            @db.VarChar(120)
+  status      WifiOptWaveStatus @default(DRAFT)
+  startedAt   DateTime?         @map("started_at")
+  completedAt DateTime?         @map("completed_at")
+  // Relatório do gate: { avgRssiDelta, sustainedDrops, rolledBack, pass }.
+  gateReport  Json?             @map("gate_report")
+  createdAt   DateTime          @default(now()) @map("created_at")
+  updatedAt   DateTime          @updatedAt @map("updated_at")
+
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  devices     WifiOptWaveDevice[]
+
+  @@index([tenantId, status])
+  @@map("wifi_opt_waves")
+}
+
+model WifiOptWaveDevice {
+  id           String                 @id @default(uuid()) @db.Uuid
+  waveId       String                 @map("wave_id") @db.Uuid
+  tenantId     String                 @map("tenant_id") @db.Uuid
+  // Tr069Device.deviceId (OUI-SN, string) — SEM FK, ver comentário da seção.
+  deviceId     String                 @map("device_id") @db.VarChar(128)
+  ontId        String?                @map("ont_id") @db.Uuid
+  state        WifiOptWaveDeviceState @default(QUEUED)
+  // { capturedAt, clients24, clients5, rssiByMac, avgRssi, channel5 } —
+  // copiado de tr069_diagnostics no momento da captura.
+  baseline     Json?
+  // { ssid5, bandSteeringPolicy, ht20, wifiBandMode } — GET pré-push, insumo
+  // do rollback automático. NUNCA guarda PSK.
+  previous     Json?
+  attempts     Int                    @default(0)
+  error        String?                @db.Text
+  pushedAt     DateTime?              @map("pushed_at")
+  verifiedAt   DateTime?              @map("verified_at")
+  rolledBackAt DateTime?              @map("rolled_back_at")
+  createdAt    DateTime               @default(now()) @map("created_at")
+  updatedAt    DateTime               @updatedAt @map("updated_at")
+
+  tenant       Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  wave         WifiOptWave @relation(fields: [waveId], references: [id], onDelete: Cascade)
+
+  @@unique([waveId, deviceId])
+  @@index([tenantId, state])
+  @@map("wifi_opt_wave_devices")
 }
 
 // -----------------------------------------------------------------------------
@@ -6199,6 +6286,13 @@ model Tr069TenantConfig {
   reconcileIntervalMin    Int?     @map("reconcile_interval_min")
   reconcileWindowStart    Int?     @map("reconcile_window_start")
   reconcileWindowEnd      Int?     @map("reconcile_window_end")
+
+  // WiFi-Opt: pacote de otimização Wi-Fi Huawei (gatilhos + rollout em ondas).
+  // Duplo opt-in: só age com a env global (WIFI_OPT_ENABLED /
+  // WIFI_OPT_ROLLOUT_ENABLED) E a flag do tenant ligadas.
+  wifiOptEnabled          Boolean  @default(false) @map("wifi_opt_enabled")
+  wifiOptRegDomain        String   @default("PY") @map("wifi_opt_reg_domain") @db.VarChar(8)
+  wifiOptRolloutEnabled   Boolean  @default(false) @map("wifi_opt_rollout_enabled")
 
   createdAt               DateTime @default(now()) @map("created_at")
   updatedAt               DateTime @updatedAt @map("updated_at")

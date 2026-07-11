@@ -670,15 +670,16 @@ export class CwmpSessionService {
 
     const device = await this.prisma.tr069Device.findUnique({
       where: { id: deviceDbId },
-      select: { id: true, tenantId: true, ontId: true, lastDiagnosticAt: true },
+      select: { id: true, tenantId: true, ontId: true, lastDiagnosticAt: true, wifiOptProfile: true },
     });
     if (!device) return;
 
-    // Leitura anterior — pra calcular delta de FEC/HEC (degradação de fibra).
+    // Leitura anterior — pra calcular delta de FEC/HEC (degradação de fibra)
+    // e detectar troca de canal 5G (DFS) em device GIGA (wifi-opt).
     const prev = await this.prisma.tr069Diagnostic.findFirst({
       where: { deviceId: device.id },
       orderBy: { capturedAt: 'desc' },
-      select: { fecErrors: true, hecErrors: true },
+      select: { fecErrors: true, hecErrors: true, wifiChannel5: true },
     });
 
     // THROTTLE da série temporal: com notificações armadas o CPE informa a cada
@@ -751,6 +752,12 @@ export class CwmpSessionService {
     await this.evaluateOpticalAlerts(device.tenantId, device.id, diag);
     await this.evaluateFiberAlert(device.tenantId, device.id, diag, prev);
     await this.evaluateWanAlert(device.tenantId, device.id, diag);
+    // Troca de canal 5G (radar/DFS) em device GIGA — só quando a linha foi
+    // GRAVADA (diff entre linhas CONSECUTIVAS da série; sem gravar, o mesmo
+    // diff repetiria a cada Inform até o throttle liberar). Engole erro.
+    if (writeSeries) {
+      await this.evaluateChannelSwitch(device, deviceLabel, prev, diag).catch(() => undefined);
+    }
     this.logger.log(
       `[CWMP] diagnóstico device=${deviceLabel} rx=${diag.rxPower ?? '∅'}dBm ` +
         `tx=${diag.txPower ?? '∅'}dBm health=${diag.opticalHealth} ` +
@@ -885,6 +892,50 @@ export class CwmpSessionService {
     } else {
       await this.resolveAlert(deviceId, Tr069AlertType.OPTICAL_FIBER_DEGRADED);
     }
+  }
+
+  /**
+   * Troca de canal 5G observada em device GIGA (wifi-opt) — 160 MHz ocupa
+   * bandas DFS e um radar força o CPE a migrar de canal. Detecta por diff do
+   * `wifi_channel_5` entre linhas CONSECUTIVAS de tr069_diagnostics (resolução
+   * = cadência de coleta, 15-20min — limitação documentada; notificação ativa
+   * no Channel fica pra v2) e grava um ProvisioningEvent TR069_CHANNEL_SWITCH
+   * de auditoria. Primeiro escritor de provisioning_events fora do core —
+   * mesmo DB, mesmo padrão engole-erro do OltSyslogCollector.
+   */
+  private async evaluateChannelSwitch(
+    device: { id: string; tenantId: string; ontId: string | null; wifiOptProfile: string | null },
+    deviceLabel: string,
+    prev: { wifiChannel5: number | null } | null,
+    diag: ExtractedDiagnostics,
+  ): Promise<void> {
+    if (device.wifiOptProfile !== 'GIGA') return; // só GIGA (160 MHz) interessa
+    const from = prev?.wifiChannel5 ?? null;
+    const to = diag.wifiChannel5;
+    if (from === null || to === null || from === to) return; // linhas não-nulas + mudança
+    // Canal DFS (radar) = 52..144 (UNII-2/UNII-2e) — espelha o isDfsChannel do
+    // wifi-opt.resolver (core-service); o cwmp-server não importa código de
+    // outro app, então a regra (2 constantes) é replicada aqui.
+    const isDfs = (ch: number): boolean => ch >= 52 && ch <= 144;
+    await this.prisma.provisioningEvent.create({
+      data: {
+        tenantId: device.tenantId,
+        ontId: device.ontId,
+        action: 'TR069_CHANNEL_SWITCH',
+        status: 'SUCCESS',
+        actorKind: 'system',
+        payload: {
+          deviceId: deviceLabel,
+          deviceDbId: device.id,
+          from,
+          to,
+          dfs: isDfs(from) || isDfs(to),
+        },
+      },
+    });
+    this.logger.log(
+      `[CWMP] canal 5G mudou device=${deviceLabel} ${from}→${to} (dfs=${isDfs(from) || isDfs(to)})`,
+    );
   }
 
   /**

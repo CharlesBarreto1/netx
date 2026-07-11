@@ -42,7 +42,7 @@ export function HealthDonut({
             key={i}
             className={cn('absolute inset-0 rounded-full', seg.className)}
             style={{
-              background: `conic-gradient(currentColor ${start}% ${end}%, transparent ${end}%)`,
+              background: `conic-gradient(transparent 0 ${start}%, currentColor ${start}% ${end}%, transparent ${end}% 100%)`,
             }}
           />
         );
