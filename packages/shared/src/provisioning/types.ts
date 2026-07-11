@@ -98,6 +98,10 @@ export const PROVISIONING_EVENT_ACTIONS = [
   'TR069_INFORM_RECEIVED',
   'RADIUS_ENQUEUE',
   'CONTRACT_ACTIVATE',
+  // Pacote de otimizacao Wi-Fi (jul/2026) - espelham o enum Prisma
+  // ProvisioningEventAction (migration wifi_opt_enum).
+  'TR069_WIFI_OPT',
+  'TR069_CHANNEL_SWITCH',
 ] as const;
 export const ProvisioningEventActionSchema = z.enum(PROVISIONING_EVENT_ACTIONS);
 export type ProvisioningEventAction = z.infer<typeof ProvisioningEventActionSchema>;
