@@ -539,7 +539,15 @@ export function tr143ResultParamNames(): string[] {
  * diagnóstico. Ordem estável (óptico → Wi-Fi agregado → clientes) só por
  * legibilidade no log.
  */
-export function huaweiDiagnosticParamNames(): string[] {
+export function huaweiDiagnosticParamNames(productClass?: string | null): string[] {
+  // ⚠️ O sensor de temperatura (TemperatureStatus.TemperatureSensor.1) só
+  // existe nos EG8145X6/X10. Nos V5/V5-V2 o nó não existe e — como o GET
+  // Huawei é ATÔMICO — esse único path derrubava o diagnóstico INTEIRO da
+  // família V5 (fault 9005; telemetria cega de jun→jul/2026, isolado por
+  // probe ao vivo em 2026-07-11). productClass desconhecido → exclui
+  // (fail-safe: perder só a temperatura, nunca a coleta toda).
+  const pc = (productClass ?? '').toUpperCase();
+  const hasTempSensor = pc.includes('X6') || pc.includes('X10');
   return [
     ...Object.values(HUAWEI_OPTICAL_PATHS),
     HUAWEI_GPON_STATUS_PATH,
@@ -549,6 +557,12 @@ export function huaweiDiagnosticParamNames(): string[] {
     ...Object.values(HUAWEI_WIFI_DIAG_PATHS),
     ...(HUAWEI_WIFI_CLIENTS_ENABLED ? Object.values(HUAWEI_WIFI_ASSOC_PATHS) : []),
     ...(HUAWEI_HOSTS_ENABLED ? [HUAWEI_HOSTS_PATH] : []),
-    ...(HUAWEI_DEVICE_RESOURCES_ENABLED ? Object.values(HUAWEI_DEVICE_RESOURCE_PATHS) : []),
+    ...(HUAWEI_DEVICE_RESOURCES_ENABLED
+      ? [
+          HUAWEI_DEVICE_RESOURCE_PATHS.cpuUsed,
+          HUAWEI_DEVICE_RESOURCE_PATHS.memUsed,
+          ...(hasTempSensor ? [HUAWEI_DEVICE_RESOURCE_PATHS.deviceTemp] : []),
+        ]
+      : []),
   ];
 }
