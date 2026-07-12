@@ -26,6 +26,7 @@ import {
 } from './provisioning.controller';
 import { ProvisioningService } from './provisioning.service';
 import { Tr069ConfigService } from './tr069-config.service';
+import { Tr069FirmwareService } from './tr069-firmware.service';
 import { Tr069DiagnosticsService } from './tr069-diagnostics.service';
 import { Tr069ProfilesService } from './tr069-profiles.service';
 import { Tr069ReconcileService } from './tr069-reconcile.service';
@@ -60,6 +61,7 @@ import { WifiOptService } from './wifi-opt.service';
     Tr069ReconcileService,
     Tr069ProfilesService,
     Tr069ConfigService,
+    Tr069FirmwareService,
     WifiOptService,
     WifiOptRolloutService,
     ProvisioningService,

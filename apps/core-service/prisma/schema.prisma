@@ -156,6 +156,7 @@ model Tenant {
   incidents            Incident[]
   alarmPolicy          AlarmPolicy?
   tr069Devices         Tr069Device[]
+  tr069Firmwares       Tr069Firmware[]
   tr069Tasks           Tr069Task[]
   tr069Diagnostics     Tr069Diagnostic[]
   tr069Alerts          Tr069Alert[]
@@ -4385,6 +4386,34 @@ model Tr069Drift {
 // Notas operacionais do atendente (ex.: "cliente trocou de cômodo", "fibra
 // reterminada em 18/06"). Soft-delete pra preservar histórico. Autor é
 // referência solta ao User (sem FK) com email cacheado pra render sem join.
+// -----------------------------------------------------------------------------
+// Catálogo de firmware TR-069 — imagem por fabricante/modelo, armazenada em
+// disco (TR069_FIRMWARE_DIR) e servida ao CPE pelo cwmp-server em /fw/{id}.
+// O rollout cria Tr069Tasks DOWNLOAD com payload.firmwareId — o status da
+// campanha é lido de volta por esse vínculo (sem tabela de rollout própria).
+// -----------------------------------------------------------------------------
+model Tr069Firmware {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  /// Vendor do registry de paths (HUAWEI | ZTE | VSOL | ZYXEL) — informativo.
+  vendor       String   @db.VarChar(16)
+  /// ProductClass EXATO reportado no Inform (F670L, EG8145V5…) — chave do alvo.
+  productClass String   @map("product_class") @db.VarChar(64)
+  version      String   @db.VarChar(64)
+  fileName     String   @map("file_name") @db.VarChar(255)
+  fileSize     Int      @map("file_size")
+  /// SHA-256 do arquivo (hex) — integridade e dedup manual.
+  checksum     String   @db.VarChar(64)
+  notes        String?
+  createdBy    String?  @map("created_by") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, vendor, productClass])
+  @@map("tr069_firmwares")
+}
+
 model Tr069DeviceNote {
   id             String      @id @default(uuid()) @db.Uuid
   tenantId       String      @map("tenant_id") @db.Uuid

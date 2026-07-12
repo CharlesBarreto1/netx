@@ -5,7 +5,7 @@
  * Mirror dos types em @netx/shared/provisioning. Mantido local pra evitar
  * dep no shared em dev (mesmo padrão das outras *-api.ts).
  */
-import { api } from './api';
+import { api, apiUpload } from './api';
 import type { Paginated } from './crm-types';
 
 /** Monta query string filtrando valores null/undefined/'' */
@@ -746,6 +746,48 @@ export const provisioningApi = {
 // =============================================================================
 // /v1/tr069 (Fase 3 entrega lógica real)
 // =============================================================================
+// ── Catálogo de firmware (espelha tr069-firmware.dto do shared) ───────────────
+export type Tr069FirmwareVendor = 'HUAWEI' | 'ZTE' | 'VSOL' | 'ZYXEL';
+
+export interface Tr069FirmwareRow {
+  id: string;
+  vendor: Tr069FirmwareVendor;
+  productClass: string;
+  version: string;
+  fileName: string;
+  fileSize: number;
+  checksum: string;
+  notes: string | null;
+  createdAt: string;
+  deviceTotal: number;
+  deviceOnline: number;
+  deviceOnVersion: number;
+}
+
+export interface Tr069FirmwareDeployResult {
+  enqueued: number;
+  skippedSameVersion: number;
+  skippedInflight: number;
+  skippedOffline: number;
+  total: number;
+}
+
+export interface Tr069FirmwareDeployStatus {
+  firmwareId: string;
+  version: string;
+  counts: { pending: number; running: number; done: number; failed: number };
+  deviceOnVersion: number;
+  devices: Array<{
+    taskId: string;
+    deviceDbId: string;
+    deviceId: string;
+    softwareVersion: string | null;
+    status: string;
+    error: string | null;
+    updatedAt: string;
+  }>;
+}
+
 export const tr069Api = {
   dashboard: () => api.get<Tr069Dashboard>('/v1/tr069/dashboard'),
   listDevices: () => api.get<Tr069DeviceRow[]>('/v1/tr069/devices'),
@@ -761,6 +803,17 @@ export const tr069Api = {
   reboot: (id: string) => api.post<{ taskId: string }>(`/v1/tr069/devices/${id}/reboot`, {}),
   firmwareUpgrade: (id: string, body: { url: string; fileType?: string; targetFileName?: string }) =>
     api.post<{ taskId: string }>(`/v1/tr069/devices/${id}/firmware`, body),
+  // ── Catálogo de firmware + rollout ─────────────────────────────────────────
+  listFirmwares: () => api.get<Tr069FirmwareRow[]>('/v1/tr069/firmwares'),
+  uploadFirmware: (form: FormData) =>
+    apiUpload<Tr069FirmwareRow>('/v1/tr069/firmwares', form, { timeoutMs: 300_000 }),
+  deleteFirmware: (id: string) => api.delete<void>(`/v1/tr069/firmwares/${id}`),
+  deployFirmware: (
+    id: string,
+    body: { target: 'MODEL' | 'DEVICES'; deviceIds?: string[]; onlyOnline?: boolean; skipSameVersion?: boolean },
+  ) => api.post<Tr069FirmwareDeployResult>(`/v1/tr069/firmwares/${id}/deploy`, body),
+  firmwareStatus: (id: string) =>
+    api.get<Tr069FirmwareDeployStatus>(`/v1/tr069/firmwares/${id}/status`),
   speedTest: (id: string, url?: string) =>
     api.post<{ runId: string; message: string }>(`/v1/tr069/devices/${id}/speedtest`, url ? { url } : {}),
   ping: (id: string, host: string) =>

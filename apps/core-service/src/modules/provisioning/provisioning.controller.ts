@@ -28,8 +28,12 @@ import {
   Post,
   Put,
   Query,
+  Body,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   CreateOltRequestSchema,
   CreateProvisioningProfileRequestSchema,
@@ -53,9 +57,12 @@ import {
   Tr069ProbeRequestSchema,
   AdoptPendingDeviceRequestSchema,
   Tr069FirmwareCampaignRequestSchema,
+  DeployTr069FirmwareRequestSchema,
+  UploadTr069FirmwareFieldsSchema,
   UpsertTr069ConfigRequestSchema,
   UpdateOltRequestSchema,
   UpdateTr069ProfileSchema,
+  type DeployTr069FirmwareRequest,
   type AuthenticatedPrincipal,
   type CreateOltRequest,
   type CreateProvisioningProfileRequest,
@@ -99,6 +106,7 @@ import { OltProvisioningProfilesService } from './olt-provisioning-profiles.serv
 import { OltsService } from './olts.service';
 import { ProvisioningService } from './provisioning.service';
 import { Tr069ConfigService } from './tr069-config.service';
+import { Tr069FirmwareService } from './tr069-firmware.service';
 import { Tr069DiagnosticsService } from './tr069-diagnostics.service';
 import { Tr069ProfilesService } from './tr069-profiles.service';
 import { Tr069TasksService } from './tr069-tasks.service';
@@ -348,6 +356,7 @@ export class Tr069Controller {
     private readonly diag: Tr069DiagnosticsService,
     private readonly profiles: Tr069ProfilesService,
     private readonly config: Tr069ConfigService,
+    private readonly fwCatalog: Tr069FirmwareService,
   ) {}
 
   // ── Política TR-069 por instância (config + caixa de adoção) ───────────────
@@ -395,6 +404,60 @@ export class Tr069Controller {
     @ZodBody(Tr069FirmwareCampaignRequestSchema) body: Tr069FirmwareCampaignRequest,
   ) {
     return this.config.runFirmwareCampaign(user.tenantId, user.sub, body);
+  }
+
+  // ── Catálogo de firmware (upload por modelo + rollout) ─────────────────────
+
+  /** Lista o catálogo de firmware do tenant (com contagens do parque). */
+  @Get('firmwares')
+  @RequirePermissions('tr069.admin')
+  listFirmwares(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.fwCatalog.list(user.tenantId);
+  }
+
+  /** Upload de imagem (multipart: file + vendor/productClass/version/notes). */
+  @Post('firmwares')
+  @RequirePermissions('tr069.admin')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 256 * 1024 * 1024 } }))
+  uploadFirmware(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @UploadedFile() file: Express.Multer.File,
+    @Body() body: unknown,
+  ) {
+    const fields = UploadTr069FirmwareFieldsSchema.parse(body);
+    return this.fwCatalog.upload(user.tenantId, user.sub, file, fields);
+  }
+
+  /** Remove imagem do catálogo (arquivo + registro). */
+  @Delete('firmwares/:id')
+  @RequirePermissions('tr069.admin')
+  deleteFirmware(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.fwCatalog.remove(user.tenantId, user.sub, id);
+  }
+
+  /** Dispara o rollout (parque do modelo ou seriais escolhidos). */
+  @Post('firmwares/:id/deploy')
+  @HttpCode(200)
+  @RequirePermissions('tr069.admin')
+  deployFirmware(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(DeployTr069FirmwareRequestSchema) body: DeployTr069FirmwareRequest,
+  ) {
+    return this.fwCatalog.deploy(user.tenantId, user.sub, id, body);
+  }
+
+  /** Status do rollout (tasks por device + convergência de versão). */
+  @Get('firmwares/:id/status')
+  @RequirePermissions('tr069.admin')
+  firmwareStatus(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.fwCatalog.deployStatus(user.tenantId, id);
   }
 
   /** Dashboard "Fila de diagnóstico" — KPIs + fila + sintomas. */

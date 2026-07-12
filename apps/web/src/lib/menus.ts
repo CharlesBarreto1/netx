@@ -230,6 +230,8 @@ export const MENU_GROUPS: MenuGroup[] = [
           { key: 'tr069WifiCoverage', href: '/tr069/wifi-coverage', labelKey: 'tr069WifiCoverage', permission: 'provisioning.read' },
           // Rollout em ondas do pacote de otimização Wi-Fi Huawei.
           { key: 'tr069WifiOpt', href: '/tr069/wifi-opt', labelKey: 'tr069WifiOpt', permission: 'tr069.admin', requiredModules: ['netx-cpe'] },
+          // Catálogo de firmware CPE + rollout (parque do modelo ou seriais).
+          { key: 'tr069Firmware', href: '/tr069/firmware', labelKey: 'tr069Firmware', permission: 'tr069.admin' },
         ],
       },
       // Planta de rede — infraestrutura física (POPs, equipamentos, IPAM).

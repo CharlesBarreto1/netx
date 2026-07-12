@@ -719,6 +719,7 @@ const messages = {
     tr069Alerts: 'Alertas TR-069',
     tr069WifiCoverage: 'Cobertura Wi-Fi',
     tr069WifiOpt: 'Optimización Wi-Fi',
+    tr069Firmware: 'Firmware CPE',
     tr069Profiles: 'Perfiles TR-069',
     tr069Config: 'Políticas TR-069',
     fiscalDocuments: 'Documentos fiscales',
