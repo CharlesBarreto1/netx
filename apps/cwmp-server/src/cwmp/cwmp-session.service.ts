@@ -409,8 +409,9 @@ export class CwmpSessionService {
   }
 
   /**
-   * TransferComplete (CPE→ACS) após um Download. O CommandKey == task.id, então
-   * correlacionamos e fechamos a task de firmware como DONE/FAILED pelo FaultCode.
+   * TransferComplete (CPE→ACS) após um Download. O CommandKey carrega o
+   * task.id, então correlacionamos e fechamos a task de firmware como
+   * DONE/FAILED pelo FaultCode.
    */
   private async handleTransferComplete(parsed: ParsedCwmpMessage): Promise<void> {
     const body = parsed.body;
@@ -422,11 +423,19 @@ export class CwmpSessionService {
       `[CWMP] TransferComplete commandKey=${commandKey ?? '∅'} faultCode=${faultCode}`,
     );
     if (!commandKey) return;
-    // commandKey é o task.id; só atualiza se for um UUID de task DOWNLOAD válido.
-    const task = await this.prisma.tr069Task.findFirst({
-      where: { id: commandKey, action: 'DOWNLOAD' },
-      select: { id: true },
-    });
+    // O dispatch manda o task.id sem hífens (32 hex — limite TR-069 de
+    // CommandKey), mas CPEs antigos na fila podem devolver o UUID inteiro e
+    // a ZTE F670L TRUNCA em 32 chars o que passar disso (visto ao vivo,
+    // jul/2026 — quebrava este lookup com "invalid UUID"). Normalizamos pra
+    // hex puro e casamos por PREFIXO contra o id sem hífens — cobre o formato
+    // novo, o legado e truncamentos.
+    const hexPrefix = commandKey.replace(/-/g, '').toLowerCase();
+    if (!/^[0-9a-f]{16,32}$/.test(hexPrefix)) return;
+    const rows = await this.prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT id::text AS id FROM tr069_tasks
+      WHERE action = 'DOWNLOAD' AND replace(id::text, '-', '') LIKE ${`${hexPrefix}%`}
+      ORDER BY updated_at DESC LIMIT 1`;
+    const task = rows[0];
     if (!task) return;
     await this.prisma.tr069Task.update({
       where: { id: task.id },

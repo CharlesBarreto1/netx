@@ -93,7 +93,13 @@ export function buildRpcForTask(task: Tr069Task): { xml: string; cwmpId: string 
     case 'DOWNLOAD': {
       const p = payload as DownloadParams;
       if (!p?.url) throw new Error(`DOWNLOAD task ${task.id} sem url`);
-      return { xml: buildDownload(cwmpId, { ...p, commandKey: p.commandKey ?? task.id }), cwmpId };
+      // Mesmo problema de CommandKey>32 do REBOOT: a ZTE F670L TRUNCA o
+      // CommandKey em 32 chars no TransferComplete (confirmado ao vivo,
+      // jul/2026), quebrando a correlação com task.id (UUID, 36). UUID sem
+      // hífens = 32 hex exatos; o handleTransferComplete resolve por prefixo
+      // hex, então também tolera CPEs que truncarem ainda mais.
+      const commandKey = p.commandKey ?? task.id.replace(/-/g, '').slice(0, 32);
+      return { xml: buildDownload(cwmpId, { ...p, commandKey }), cwmpId };
     }
     case 'ADD_OBJECT':
     case 'DELETE_OBJECT':
