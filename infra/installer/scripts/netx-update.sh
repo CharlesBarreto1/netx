@@ -15,6 +15,7 @@
 #   5. ownership fix nos artefatos
 #   6. safe-migrate (snapshot pré-migration + prisma migrate deploy)
 #   7. seed (idempotente — aplica perms/roles novas se houver)
+#   7b. ressincroniza systemd units dos templates (hardening/paths novos)
 #   8. restart dos 3 serviços systemd
 #   9. smoke test rápido
 #  11. NMS (módulo Docker): sobe/atualiza a stack do ECOSSISTEMA via apps/nms/infra/up-netx.sh
@@ -32,7 +33,10 @@
 #     (exceção pontual: postgresql-16-postgis-3, pré-requisito de migration —
 #     vide passo 6)
 #   - Não renderiza /etc/netx/.env (preserva customizações manuais)
-#   - Não reconfigura nginx / systemd units (preserva customizações)
+#   - Não reconfigura nginx (preserva customizações)
+#   - Os systemd units SÃO ressincronizados dos templates (passo 7b): correções
+#     de hardening/paths chegam a installs existentes. Customização manual deve
+#     ir em drop-in /etc/systemd/system/<unit>.d/*.conf, que sobrevive ao overwrite.
 #   - Não toca em /etc/netx/.secrets (preserva JWT/KMS/etc)
 #   - Não toca no admin user (preserva senha trocada pela UI)
 #   - Não toca no firewall, chrony, evolution
@@ -290,6 +294,42 @@ as_netx "cd ${NETX_HOME} && npm run -w apps/core-service db:seed"
 # cidades e do codMunicipio da NFCom.
 log "seed IBGE (municípios — idempotente)"
 as_netx "cd ${NETX_HOME} && npm run -w apps/core-service db:seed:ibge:sql"
+
+# -----------------------------------------------------------------------------
+# 7b. Ressincroniza unidades systemd a partir dos templates do repo
+#
+# Historicamente o update NÃO tocava nos .service ("preservar customizações"),
+# mas isso fazia correções de hardening/paths nos templates NUNCA chegarem a
+# installs existentes. Caso real: o template do core ganhou /var/backups/netx no
+# ReadWritePaths (sem ele o backup manual via UI aborta com EROFS sob
+# ProtectSystem=strict), mas boxes atualizados via netx-update seguiam com o unit
+# antigo e o backup continuava quebrado. As unidades são geridas pelo installer;
+# customização manual deve ir em drop-in /etc/systemd/system/<unit>.d/*.conf, que
+# sobrevive a este overwrite. Only-if-changed: daemon-reload só roda se algo mudou;
+# o restart do passo 8 (logo abaixo) aplica a unidade nova.
+# -----------------------------------------------------------------------------
+log "ressincronizando unidades systemd (templates → /etc/systemd/system)"
+SYSTEMD_TEMPLATES="${NETX_HOME}/infra/installer/templates/systemd"
+units_changed=0
+for u in netx-core-service netx-api-gateway netx-web netx-cwmp-server; do
+  src="${SYSTEMD_TEMPLATES}/${u}.service"
+  dst="/etc/systemd/system/${u}.service"
+  if [[ ! -f "${src}" ]]; then
+    dim "  → ${u}: template ausente (${src}) — pulando"
+    continue
+  fi
+  if [[ ! -f "${dst}" ]] || ! cmp -s "${src}" "${dst}"; then
+    install -m 0644 "${src}" "${dst}"
+    units_changed=1
+    ok "  → ${u}.service atualizado do template"
+  else
+    dim "  → ${u}.service já em dia"
+  fi
+done
+if [[ "${units_changed}" == "1" ]]; then
+  systemctl daemon-reload
+  dim "  → systemctl daemon-reload"
+fi
 
 # -----------------------------------------------------------------------------
 # 8. Restart systemd
