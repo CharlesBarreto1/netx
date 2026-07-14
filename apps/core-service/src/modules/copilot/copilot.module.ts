@@ -2,8 +2,8 @@
  * CopilotModule — copiloto agêntico (tool-using). Importa o AiModule (motor) e
  * o RadiusModule (sessão PPPoE). Demais dados vêm via PrismaService (@Global).
  *
- * Ninguém importa este módulo de volta → sem ciclo (AlarmsModule↔AiModule já
- * usa AiModule; manter o copiloto fora do AiModule evita o ciclo).
+ * Exporta o CopilotService pra o WhatsappModule reusar o mesmo cérebro no canal
+ * WhatsApp (Nexus). Sem ciclo: o copiloto não importa o WhatsApp de volta.
  */
 import { Module } from '@nestjs/common';
 
@@ -19,5 +19,6 @@ import { NmsClient } from './nms-client';
   imports: [AiModule, RadiusModule],
   controllers: [CopilotController],
   providers: [CopilotService, NmsClient, InsightsService],
+  exports: [CopilotService],
 })
 export class CopilotModule {}

@@ -67,6 +67,20 @@ export class CopilotService {
   ) {}
 
   async ask(tenantId: string, question: string, authToken: string | null): Promise<AiAskResponse> {
+    return this.askAgent(tenantId, [{ role: 'user', content: question }], authToken);
+  }
+
+  /**
+   * Variante multi-turno: recebe o HISTÓRICO da conversa (roles user/assistant)
+   * em vez de uma única pergunta. Usada pelo canal WhatsApp (Nexus), onde o
+   * operador conversa em várias mensagens. A pergunta reportada no retorno é a
+   * última mensagem do usuário. Mesma engine, tools e system prompt do `ask`.
+   */
+  async askAgent(
+    tenantId: string,
+    messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+    authToken: string | null,
+  ): Promise<AiAskResponse> {
     const engine = await this.ai.getEngine(tenantId);
     if (!engine.supportsTools()) {
       throw new ServiceUnavailableException(
@@ -74,6 +88,8 @@ export class CopilotService {
           'Ative o fallback de nuvem em Configurações › Motor de IA.',
       );
     }
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+    const question = lastUser?.content ?? '';
     const context: { pendingTest?: AiPendingTest } = {};
     const executor = buildCopilotExecutor({
       prisma: this.prisma,
@@ -93,7 +109,7 @@ export class CopilotService {
     }
     const system = situational ? `${SYSTEM}\n\n=== CONTEXTO AO VIVO ===\n${situational}` : SYSTEM;
     const r = await engine.agent(
-      [{ role: 'user', content: question }],
+      messages,
       COPILOT_TOOLS,
       executor,
       // Mais passos p/ raciocínio multi-ferramenta (panorama + incidentes + ...)

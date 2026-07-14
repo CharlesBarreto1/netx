@@ -4,12 +4,16 @@ import { AiModule } from '../ai/ai.module';
 import { AuditModule } from '../audit/audit.module';
 import { BtgModule } from '../btg/btg.module';
 import { ContractsModule } from '../contracts/contracts.module';
+import { CopilotModule } from '../copilot/copilot.module';
 import { EfiModule } from '../efi/efi.module';
 import { RadiusModule } from '../radius/radius.module';
 import { ServiceOrdersModule } from '../service-orders/service-orders.module';
 
 import { WhatsappBotController } from './bot/whatsapp-bot.controller';
 import { WhatsappBotService } from './bot/whatsapp-bot.service';
+import { NexusOperatorsController } from './nexus/nexus-operators.controller';
+import { NexusOperatorsService } from './nexus/nexus-operators.service';
+import { NexusWhatsappService } from './nexus/nexus-whatsapp.service';
 import { WhatsappBillingRemindersService } from './whatsapp-billing-reminders.service';
 import { ChannelProviderFactory } from './providers/channel-provider.factory';
 import { MetaCloudProvider } from './providers/meta-cloud.provider';
@@ -53,6 +57,7 @@ import { WhatsappWebhookMetaController } from './whatsapp-webhook-meta.controlle
   imports: [
     AuditModule,
     AiModule,
+    CopilotModule,
     EfiModule,
     BtgModule,
     ContractsModule,
@@ -68,6 +73,7 @@ import { WhatsappWebhookMetaController } from './whatsapp-webhook-meta.controlle
     WhatsappWebhookMetaController,
     WhatsappAiController,
     WhatsappBotController,
+    NexusOperatorsController,
   ],
   providers: [
     WahaProvider,
@@ -84,6 +90,8 @@ import { WhatsappWebhookMetaController } from './whatsapp-webhook-meta.controlle
     WhatsappTemplatesService,
     WhatsappAiService,
     WhatsappBotService,
+    NexusOperatorsService,
+    NexusWhatsappService,
     WhatsappBillingRemindersService,
     WhatsappTranscriptionService,
   ],

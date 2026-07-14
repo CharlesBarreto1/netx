@@ -13,6 +13,7 @@ import type { Request } from 'express';
 import { Public } from '../../common/decorators';
 
 import { WhatsappBotService } from './bot/whatsapp-bot.service';
+import { NexusWhatsappService } from './nexus/nexus-whatsapp.service';
 import { WahaProvider } from './providers/waha.provider';
 import { WhatsappEventsBus } from './whatsapp-events.bus';
 import { WhatsappInstancesService } from './whatsapp-instances.service';
@@ -42,6 +43,7 @@ export class WhatsappWebhookController {
     private readonly events: WhatsappEventsBus,
     private readonly waha: WahaProvider,
     private readonly bot: WhatsappBotService,
+    private readonly nexus: NexusWhatsappService,
   ) {}
 
   @Public()
@@ -95,9 +97,14 @@ export class WhatsappWebhookController {
             }
           }
           const r = await this.messages.ingestMessage(inst.id, tenantId, m);
-          // Mensagem NOVA do cliente (não eco, não grupo) → aciona o chatbot.
+          // Mensagem NOVA inbound (não eco, não grupo) → aciona o motor certo:
+          // linha NEXUS = copiloto interno; senão = chatbot de atendimento.
           if (r?.created && m.direction === 'IN' && !m.isGroup) {
-            void this.bot.onInbound(tenantId, r.conversationId);
+            if (inst.purpose === 'NEXUS') {
+              void this.nexus.onInbound(tenantId, r.conversationId);
+            } else {
+              void this.bot.onInbound(tenantId, r.conversationId);
+            }
           }
         } else if (ev.kind === 'status') {
           await this.messages.ingestStatus(tenantId, ev.data);

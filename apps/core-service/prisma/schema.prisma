@@ -128,6 +128,7 @@ model Tenant {
   whatsappInstances    WhatsappInstance[]
   whatsappContacts     WhatsappContact[]
   whatsappConversations WhatsappConversation[]
+  nexusOperators       NexusOperator[]
   whatsappTemplates    WhatsappTemplate[]
   whatsappBotConfig    WhatsappBotConfig?
   whatsappQuickReplies WhatsappQuickReply[]
@@ -320,6 +321,7 @@ model User {
   tenant       Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   invitedBy    User?      @relation("UserInvites", fields: [invitedById], references: [id])
   invites      User[]     @relation("UserInvites")
+  nexusOperators NexusOperator[]
   userRoles    UserRole[]
   sessions     Session[]
   auditLogs    AuditLog[]
@@ -2632,6 +2634,16 @@ enum WaChannel {
   META_CLOUD
 }
 
+/// Finalidade de uma instância WhatsApp.
+/// - SUPPORT: atendimento ao cliente (comportamento padrão/histórico — chatbot
+///   voltado ao assinante, inbox humano).
+/// - NEXUS: linha INTERNA. Operadores autorizados (NexusOperator) conversam com
+///   o copiloto Nexus (read-only) via WhatsApp. NÃO passa pelo chatbot de cliente.
+enum WaInstancePurpose {
+  SUPPORT
+  NEXUS
+}
+
 enum WaInstanceStatus {
   DISCONNECTED
   CONNECTING
@@ -2680,6 +2692,7 @@ model WhatsappInstance {
 
   name          String  @db.VarChar(120)                   // "Atendimento Principal"
   channel       WaChannel @default(WAHA)                 // transporte (WAHA | META_CLOUD)
+  purpose       WaInstancePurpose @default(SUPPORT)       // SUPPORT (cliente) | NEXUS (copiloto interno)
   evolutionUrl  String  @map("evolution_url") @db.VarChar(255) @default("http://localhost:8080")
   apiKey        String  @map("api_key") @db.Text           // cifrado (CryptoService). WAHA: X-Api-Key. Meta: ver apiCredentialsEnc
   instanceName  String  @map("instance_name") @db.VarChar(120) // nome no Evolution
@@ -2710,6 +2723,46 @@ model WhatsappInstance {
   @@unique([phoneNumberId])
   @@index([tenantId, status])
   @@map("whatsapp_instances")
+}
+
+/// Status de um operador da Nexus (allowlist da linha interna).
+/// - PENDING: criado pelo admin, aguardando o operador enviar o código de
+///   pareamento no WhatsApp (o telefone ainda não está vinculado/confirmado).
+/// - ACTIVE:  pareado — o número está confirmado e fala com a Nexus.
+/// - REVOKED: acesso revogado pelo admin (mantém o histórico, bloqueia o uso).
+enum NexusOperatorStatus {
+  PENDING
+  ACTIVE
+  REVOKED
+}
+
+/// Operador AUTORIZADO a conversar com o copiloto Nexus via WhatsApp (linha
+/// NEXUS). É a fronteira de segurança: só quem está aqui (ACTIVE) recebe
+/// resposta da Nexus — que expõe dados internos da operação. O vínculo do
+/// número é feito por PAREAMENTO: o admin cria o operador (PENDING) e gera um
+/// `pairCode`; o operador envia esse código para o número da Nexus e o servidor
+/// confirma o telefone real (resolve o problema de formato @lid) e ativa.
+model NexusOperator {
+  id         String  @id @default(uuid()) @db.Uuid
+  tenantId   String  @map("tenant_id") @db.Uuid
+  userId     String  @map("user_id") @db.Uuid            // qual usuário do NetX está do outro lado
+
+  phoneE164  String? @map("phone_e164") @db.VarChar(20)  // número confirmado no pareamento (null enquanto PENDING)
+  status     NexusOperatorStatus @default(PENDING)
+  pairCode   String? @map("pair_code") @db.VarChar(16)   // código que o operador envia p/ parear (limpo após ACTIVE)
+  pairedAt   DateTime? @map("paired_at")
+  lastSeenAt DateTime? @map("last_seen_at")              // última mensagem tratada (telemetria)
+
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  tenant     Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, phoneE164])                        // um número → no máx. um operador (múltiplos NULLs ok no Postgres)
+  @@unique([tenantId, userId])                           // um usuário → no máx. um vínculo
+  @@index([tenantId, status])
+  @@map("nexus_operators")
 }
 
 /// Contato com quem trocamos mensagens. Único por (tenant, número), não cresce

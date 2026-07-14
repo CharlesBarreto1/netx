@@ -33,11 +33,13 @@ export type WaMsgType =
 export type WaMsgStatus = 'PENDING' | 'SENT' | 'DELIVERED' | 'READ' | 'FAILED';
 
 export type WaChannel = 'WAHA' | 'META_CLOUD';
+export type WaInstancePurpose = 'SUPPORT' | 'NEXUS';
 
 export interface WaInstance {
   id: string;
   name: string;
   channel: WaChannel;
+  purpose: WaInstancePurpose;
   instanceName: string;
   evolutionUrl: string;
   phoneE164: string | null;
@@ -538,6 +540,7 @@ export async function getInstance(id: string) {
 export interface CreateInstanceInput {
   name: string;
   channel: WaChannel;
+  purpose?: WaInstancePurpose;
   instanceName: string;
   // WAHA
   evolutionUrl?: string;
@@ -552,6 +555,40 @@ export interface CreateInstanceInput {
 
 export async function createInstance(input: CreateInstanceInput) {
   return api.post<WaInstance>(`/v1/whatsapp/instances`, input);
+}
+
+// ── Operadores da Nexus (linha WhatsApp interna do copiloto) ────────────────
+
+export type NexusOperatorStatus = 'PENDING' | 'ACTIVE' | 'REVOKED';
+
+export interface NexusOperator {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  phoneE164: string | null;
+  status: NexusOperatorStatus;
+  /** Só vem enquanto PENDING — mostrar ao operador p/ ele parear. */
+  pairCode: string | null;
+  pairedAt: string | null;
+  lastSeenAt: string | null;
+  createdAt: string;
+}
+
+export async function listNexusOperators() {
+  return api.get<NexusOperator[]>(`/v1/whatsapp/nexus/operators`);
+}
+
+export async function addNexusOperator(userId: string) {
+  return api.post<NexusOperator>(`/v1/whatsapp/nexus/operators`, { userId });
+}
+
+export async function regenNexusOperatorCode(id: string) {
+  return api.post<NexusOperator>(`/v1/whatsapp/nexus/operators/${id}/regen`, {});
+}
+
+export async function removeNexusOperator(id: string) {
+  return api.delete(`/v1/whatsapp/nexus/operators/${id}`);
 }
 
 export interface UpdateInstanceInput {

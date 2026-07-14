@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
-import { Prisma, type WaChannel } from '@prisma/client';
+import { Prisma, type WaChannel, type WaInstancePurpose } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
 import { CryptoService } from '../crypto/crypto.service';
@@ -17,6 +17,7 @@ import { WhatsappCredentials } from './providers/whatsapp-credentials';
 export interface CreateInstanceInput {
   name: string;
   channel?: WaChannel;
+  purpose?: WaInstancePurpose; // SUPPORT (cliente, default) | NEXUS (copiloto interno)
   instanceName: string; // nome interno (sem espaços)
   // --- WAHA ---
   evolutionUrl?: string; // base URL do WAHA
@@ -57,6 +58,7 @@ const PUBLIC_SELECT = {
   id: true,
   name: true,
   channel: true,
+  purpose: true,
   instanceName: true,
   evolutionUrl: true,
   phoneE164: true,
@@ -157,7 +159,10 @@ export class WhatsappInstancesService {
   }
 
   async create(tenantId: string, actorUserId: string, input: CreateInstanceInput) {
-    const channel: WaChannel = input.channel ?? 'WAHA';
+    const purpose: WaInstancePurpose = input.purpose ?? 'SUPPORT';
+    // A linha NEXUS é sempre WAHA (número pessoal por QR): não faz sentido no
+    // canal oficial Meta (sem sessão/QR e com custo por conversa).
+    const channel: WaChannel = purpose === 'NEXUS' ? 'WAHA' : input.channel ?? 'WAHA';
     const instanceName = input.instanceName.trim().replace(/\s+/g, '-').toLowerCase();
     if (!instanceName) throw new BadRequestException('instanceName inválido');
 
@@ -166,11 +171,22 @@ export class WhatsappInstancesService {
     });
     if (existing) throw new BadRequestException('Instância com esse nome interno já existe');
 
+    // No máximo UMA linha Nexus por provedor.
+    if (purpose === 'NEXUS') {
+      const nexusExists = await this.prisma.whatsappInstance.findFirst({
+        where: { tenantId, purpose: 'NEXUS' },
+        select: { id: true },
+      });
+      if (nexusExists) {
+        throw new BadRequestException('Já existe uma linha Nexus. Remova a atual antes de criar outra.');
+      }
+    }
+
     const webhookSecret = randomBytes(24).toString('base64url');
 
     return channel === 'META_CLOUD'
-      ? this.createMeta(tenantId, actorUserId, input, instanceName, webhookSecret)
-      : this.createWaha(tenantId, actorUserId, input, instanceName, webhookSecret);
+      ? this.createMeta(tenantId, actorUserId, input, instanceName, webhookSecret, purpose)
+      : this.createWaha(tenantId, actorUserId, input, instanceName, webhookSecret, purpose);
   }
 
   private async createWaha(
@@ -179,6 +195,7 @@ export class WhatsappInstancesService {
     input: CreateInstanceInput,
     instanceName: string,
     webhookSecret: string,
+    purpose: WaInstancePurpose,
   ) {
     // URL e X-Api-Key do WAHA são config do SERVIDOR (env), não digitadas por
     // instância. Provisionadas pelo installer (WAHA_URL / WHATSAPP_API_KEY).
@@ -196,6 +213,7 @@ export class WhatsappInstancesService {
       data: {
         tenantId,
         channel: 'WAHA',
+        purpose,
         name: input.name.trim(),
         evolutionUrl,
         apiKey: this.crypto.encrypt(apiKey),
@@ -242,6 +260,7 @@ export class WhatsappInstancesService {
     input: CreateInstanceInput,
     instanceName: string,
     webhookSecret: string,
+    purpose: WaInstancePurpose,
   ) {
     if (!input.phoneNumberId || !input.accessToken || !input.appSecret) {
       throw new BadRequestException('Meta Cloud exige phoneNumberId, accessToken e appSecret');
@@ -252,6 +271,7 @@ export class WhatsappInstancesService {
       data: {
         tenantId,
         channel: 'META_CLOUD',
+        purpose,
         name: input.name.trim(),
         evolutionUrl: 'https://graph.facebook.com',
         apiKey: this.crypto.encrypt(input.accessToken), // espelho do token (coluna NOT NULL)

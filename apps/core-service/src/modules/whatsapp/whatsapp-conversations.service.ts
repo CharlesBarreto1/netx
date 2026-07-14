@@ -98,7 +98,12 @@ export class WhatsappConversationsService {
   }
 
   async list(tenantId: string, userId: string, filter: InboxFilter = 'mine') {
-    const where: Prisma.WhatsappConversationWhereInput = { tenantId };
+    // A linha NEXUS (copiloto interno) NÃO entra no inbox de atendimento — são
+    // conversas operador↔copiloto, não clientes.
+    const where: Prisma.WhatsappConversationWhereInput = {
+      tenantId,
+      instance: { purpose: 'SUPPORT' },
+    };
 
     if (filter === 'groups' || filter === 'groupsMine') {
       // Aba de grupos: só conversas de grupo (qualquer status aberto).
@@ -165,7 +170,11 @@ export class WhatsappConversationsService {
 
   /** Contadores por aba do inbox (Andamento / Espera / Automação / Resolvidos). */
   async counts(tenantId: string) {
-    const base: Prisma.WhatsappConversationWhereInput = { tenantId, contact: { isGroup: false } };
+    const base: Prisma.WhatsappConversationWhereInput = {
+      tenantId,
+      contact: { isGroup: false },
+      instance: { purpose: 'SUPPORT' }, // exclui a linha NEXUS do inbox
+    };
     const [andamento, espera, automacao, resolved] = await this.prisma.$transaction([
       this.prisma.whatsappConversation.count({
         where: { ...base, status: 'OPEN', botActive: false, assignedUserId: { not: null } },

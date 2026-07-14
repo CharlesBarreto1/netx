@@ -1,6 +1,6 @@
 'use client';
 
-import { Plus, RefreshCw, LogOut, Trash2, FileText, Users, Pencil } from 'lucide-react';
+import { Plus, RefreshCw, LogOut, Trash2, FileText, Users, Pencil, Bot, KeyRound, Copy } from 'lucide-react';
 import { useState } from 'react';
 import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
@@ -11,21 +11,28 @@ import { PageLoader } from '@/components/ui/Spinner';
 import { toast } from '@/components/ui/sonner';
 import { ApiError } from '@/lib/api';
 import { hasPermission } from '@/lib/session';
+import { usersApi } from '@/lib/users-api';
 import {
+  addNexusOperator,
   createInstance,
   deleteInstance,
   listInstanceGroups,
   listInstances,
+  listNexusOperators,
   logoutInstance,
   reconnectInstance,
+  regenNexusOperatorCode,
+  removeNexusOperator,
   setCaptureGroups,
   syncTemplates,
   updateInstance,
   type CreateInstanceInput,
+  type NexusOperator,
   type UpdateInstanceInput,
   type WaChannel,
   type WaGroup,
   type WaInstance,
+  type WaInstancePurpose,
 } from '@/lib/whatsapp-api';
 
 /**
@@ -36,7 +43,6 @@ import {
  */
 export default function WhatsappSettingsPage() {
   const t = useTranslations('chat.admin');
-  const tCommon = useTranslations('common');
   const canAdmin = hasPermission('chat.admin');
 
   const [showForm, setShowForm] = useState(false);
@@ -64,7 +70,7 @@ export default function WhatsappSettingsPage() {
           <h1 className="text-2xl font-bold">{t('title')}</h1>
           <p className="mt-1 text-sm text-text-muted">{t('subtitle')}</p>
         </div>
-        {!showForm && instances.length === 0 && (
+        {!showForm && (
           <Button onClick={() => setShowForm(true)}>
             <Plus className="mr-1 h-4 w-4" />
             {t('create')}
@@ -97,6 +103,7 @@ function NewInstanceForm({
 }) {
   const t = useTranslations('chat.admin');
   const tCommon = useTranslations('common');
+  const [purpose, setPurpose] = useState<WaInstancePurpose>('SUPPORT');
   const [channel, setChannel] = useState<WaChannel>('WAHA');
   const [form, setForm] = useState({
     name: 'Atendimento Principal',
@@ -113,8 +120,29 @@ function NewInstanceForm({
   });
   const [busy, setBusy] = useState(false);
 
+  // Nexus é sempre WAHA (número pessoal por QR). Trocar de tipo ajusta canal +
+  // sugestões de nome, sem sobrescrever o que o admin já digitou de propósito.
+  function selectPurpose(p: WaInstancePurpose) {
+    setPurpose(p);
+    if (p === 'NEXUS') {
+      setChannel('WAHA');
+      setForm((s) => ({
+        ...s,
+        name: s.name === 'Atendimento Principal' ? 'Nexus' : s.name,
+        instanceName: s.instanceName === 'atendimento-principal' ? 'nexus' : s.instanceName,
+      }));
+    } else {
+      setForm((s) => ({
+        ...s,
+        name: s.name === 'Nexus' ? 'Atendimento Principal' : s.name,
+        instanceName: s.instanceName === 'nexus' ? 'atendimento-principal' : s.instanceName,
+      }));
+    }
+  }
+
+  const effectiveChannel: WaChannel = purpose === 'NEXUS' ? 'WAHA' : channel;
   const valid =
-    channel === 'WAHA'
+    effectiveChannel === 'WAHA'
       ? Boolean(form.name.trim() && form.instanceName.trim()) // URL/key vêm do servidor
       : Boolean(form.phoneNumberId && form.accessToken && form.appSecret);
 
@@ -124,16 +152,18 @@ function NewInstanceForm({
     setBusy(true);
     try {
       const payload: CreateInstanceInput =
-        channel === 'WAHA'
+        effectiveChannel === 'WAHA'
           ? {
               // URL e X-Api-Key do WAHA são config do servidor — o backend resolve.
               name: form.name,
               channel: 'WAHA',
+              purpose,
               instanceName: form.instanceName,
             }
           : {
               name: form.name,
               channel: 'META_CLOUD',
+              purpose,
               instanceName: form.instanceName,
               wabaId: form.wabaId || undefined,
               phoneNumberId: form.phoneNumberId,
@@ -159,24 +189,48 @@ function NewInstanceForm({
     >
       <h2 className="text-base font-semibold">{t('formTitle')}</h2>
 
-      {/* Seletor de canal */}
+      {/* Seletor de tipo (finalidade da linha) */}
       <div className="flex gap-2">
-        {(['WAHA', 'META_CLOUD'] as WaChannel[]).map((c) => (
+        {(['SUPPORT', 'NEXUS'] as WaInstancePurpose[]).map((p) => (
           <button
-            key={c}
+            key={p}
             type="button"
-            onClick={() => setChannel(c)}
+            onClick={() => selectPurpose(p)}
             className={`flex-1 rounded-lg border p-3 text-left text-sm transition ${
-              channel === c
+              purpose === p
                 ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
                 : 'border-slate-200 dark:border-slate-700'
             }`}
           >
-            <span className="block font-semibold">{t(`channel.${c}.label`)}</span>
-            <span className="block text-xs text-text-muted">{t(`channel.${c}.hint`)}</span>
+            <span className="flex items-center gap-1.5 font-semibold">
+              {p === 'NEXUS' && <Bot className="h-4 w-4" />}
+              {t(`purpose.${p}.label`)}
+            </span>
+            <span className="block text-xs text-text-muted">{t(`purpose.${p}.hint`)}</span>
           </button>
         ))}
       </div>
+
+      {/* Seletor de canal — só p/ atendimento (Nexus é sempre WAHA/QR) */}
+      {purpose === 'SUPPORT' && (
+        <div className="flex gap-2">
+          {(['WAHA', 'META_CLOUD'] as WaChannel[]).map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => setChannel(c)}
+              className={`flex-1 rounded-lg border p-3 text-left text-sm transition ${
+                channel === c
+                  ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20'
+                  : 'border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              <span className="block font-semibold">{t(`channel.${c}.label`)}</span>
+              <span className="block text-xs text-text-muted">{t(`channel.${c}.hint`)}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <div>
@@ -203,9 +257,9 @@ function NewInstanceForm({
           />
         </div>
 
-        {channel === 'WAHA' ? (
+        {effectiveChannel === 'WAHA' ? (
           <div className="md:col-span-2 rounded-lg bg-slate-50 p-3 text-xs text-text-muted dark:bg-slate-700/40">
-            {t('field.wahaAuto')}
+            {purpose === 'NEXUS' ? t('nexus.formHint') : t('field.wahaAuto')}
           </div>
         ) : (
           <>
@@ -266,7 +320,7 @@ function NewInstanceForm({
         )}
       </div>
       <p className="text-xs text-text-muted">
-        {channel === 'WAHA' ? t('formHelp') : t('formHelpMeta')}
+        {effectiveChannel === 'WAHA' ? t('formHelp') : t('formHelpMeta')}
       </p>
       <div className="flex justify-end gap-2 border-t border-slate-200 pt-3 dark:border-slate-700">
         <Button type="button" variant="outline" onClick={onCancel} disabled={busy}>
@@ -319,6 +373,12 @@ function InstanceCard({
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-base font-semibold">{instance.name}</h3>
+            {instance.purpose === 'NEXUS' && (
+              <span className="flex items-center gap-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                <Bot className="h-3 w-3" />
+                {t('purpose.NEXUS.label')}
+              </span>
+            )}
             <span
               className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${
                 instance.channel === 'META_CLOUD'
@@ -427,7 +487,11 @@ function InstanceCard({
         />
       )}
 
-      {instance.channel === 'WAHA' && <GroupsSection instance={instance} onChange={onChange} />}
+      {instance.purpose === 'NEXUS' ? (
+        <NexusOperatorsSection instance={instance} />
+      ) : (
+        instance.channel === 'WAHA' && <GroupsSection instance={instance} onChange={onChange} />
+      )}
     </article>
   );
 }
@@ -701,6 +765,165 @@ function GroupsSection({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Seção de Operadores da Nexus (só na linha NEXUS). Admin cadastra usuários que
+ * poderão falar com o copiloto via WhatsApp; cada um recebe um código de
+ * pareamento pra enviar ao número da Nexus e confirmar o telefone.
+ */
+function NexusOperatorsSection({ instance }: { instance: WaInstance }) {
+  const t = useTranslations('chat.admin');
+  const q = useSWR<NexusOperator[]>('/whatsapp/nexus/operators', () => listNexusOperators(), {
+    refreshInterval: 5000, // pega o momento em que um PENDING vira ACTIVE
+  });
+  const usersQ = useSWR('/users?nexus-picker', () => usersApi.list({ pageSize: 100 }));
+  const [userId, setUserId] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const operators = q.data ?? [];
+  const takenUserIds = new Set(operators.map((o) => o.userId));
+  const users = (usersQ.data?.data ?? []).filter((u) => !takenUserIds.has(u.id));
+  const connected = instance.status === 'CONNECTED' && Boolean(instance.phoneE164);
+
+  async function run(fn: () => Promise<unknown>, success?: string) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await fn();
+      if (success) toast.success(success);
+      await q.mutate();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.friendlyMessage : (err as Error).message;
+      toast.error(msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copy(code: string) {
+    try {
+      await navigator.clipboard.writeText(`NEXUS-${code}`);
+      toast.success(t('nexus.copied'));
+    } catch {
+      /* clipboard indisponível — ignora */
+    }
+  }
+
+  const statusPill: Record<NexusOperator['status'], string> = {
+    ACTIVE: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
+    PENDING: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
+    REVOKED: 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
+  };
+
+  return (
+    <div className="mt-4 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
+      <div className="min-w-0">
+        <p className="flex items-center gap-1.5 text-sm font-medium">
+          <Bot className="h-4 w-4 text-text-muted" />
+          {t('nexus.title')}
+        </p>
+        <p className="text-xs text-text-muted">{t('nexus.hint')}</p>
+      </div>
+
+      {/* Alvo do pareamento: o número da Nexus */}
+      <div className="mt-3 rounded-md bg-slate-50 p-2.5 text-xs dark:bg-slate-700/40">
+        {connected ? (
+          <span>
+            {t('nexus.number')}: <strong className="font-semibold">{instance.phoneE164}</strong>
+          </span>
+        ) : (
+          <span className="text-amber-700 dark:text-amber-300">{t('nexus.needConnected')}</span>
+        )}
+      </div>
+
+      {/* Adicionar operador */}
+      <div className="mt-3 flex flex-wrap items-end gap-2">
+        <div className="min-w-[220px] flex-1">
+          <Label htmlFor={`nexus-user-${instance.id}`}>{t('nexus.pickUser')}</Label>
+          <select
+            id={`nexus-user-${instance.id}`}
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+            className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-slate-600 dark:bg-slate-800"
+          >
+            <option value="">{t('nexus.pickUserPlaceholder')}</option>
+            {users.map((u) => (
+              <option key={u.id} value={u.id}>
+                {`${u.firstName} ${u.lastName}`.trim()} — {u.email}
+              </option>
+            ))}
+          </select>
+        </div>
+        <Button
+          size="sm"
+          onClick={() => userId && run(() => addNexusOperator(userId).then(() => setUserId('')), t('nexus.added'))}
+          disabled={busy || !userId}
+        >
+          <Plus className="mr-1 h-3.5 w-3.5" />
+          {t('nexus.add')}
+        </Button>
+      </div>
+
+      {/* Lista de operadores */}
+      <div className="mt-3 space-y-1.5">
+        {operators.length === 0 ? (
+          <p className="py-2 text-center text-xs text-text-muted">{t('nexus.empty')}</p>
+        ) : (
+          operators.map((op) => (
+            <div
+              key={op.id}
+              className="flex flex-wrap items-center gap-2 rounded border border-slate-100 px-2.5 py-2 text-sm dark:border-slate-700"
+            >
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium">{op.userName}</p>
+                <p className="truncate text-xs text-text-muted">
+                  {op.status === 'ACTIVE' && op.phoneE164 ? op.phoneE164 : op.userEmail}
+                </p>
+              </div>
+
+              {op.status === 'PENDING' && op.pairCode && (
+                <button
+                  type="button"
+                  onClick={() => copy(op.pairCode!)}
+                  title={t('nexus.copyCode')}
+                  className="flex items-center gap-1 rounded bg-slate-100 px-2 py-1 font-mono text-xs font-semibold dark:bg-slate-700"
+                >
+                  NEXUS-{op.pairCode}
+                  <Copy className="h-3 w-3" />
+                </button>
+              )}
+
+              <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase ${statusPill[op.status]}`}>
+                {t(`nexus.status.${op.status}`)}
+              </span>
+
+              {op.status === 'PENDING' && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => run(() => regenNexusOperatorCode(op.id), t('nexus.regenerated'))}
+                  disabled={busy}
+                  title={t('nexus.regen')}
+                >
+                  <KeyRound className="h-3.5 w-3.5" />
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={() => run(() => removeNexusOperator(op.id), t('nexus.removed'))}
+                disabled={busy}
+                title={t('nexus.remove')}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }

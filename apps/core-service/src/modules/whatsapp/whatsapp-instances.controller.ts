@@ -24,6 +24,9 @@ const CreateInstanceBodySchema = z
   .object({
     name: z.string().min(1).max(120),
     channel: z.enum(['WAHA', 'META_CLOUD']).default('WAHA'),
+    // SUPPORT = atendimento ao cliente (default). NEXUS = linha do copiloto
+    // interno (forçada a WAHA no service).
+    purpose: z.enum(['SUPPORT', 'NEXUS']).default('SUPPORT'),
     // Nome interno: alfanumérico + . _ - (safe pra URL path / sessão WAHA).
     instanceName: z
       .string()
