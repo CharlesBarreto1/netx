@@ -19,10 +19,10 @@ export class CopilotService {
   ) {}
 
   /** Responde uma pergunta ancorada nas métricas/eventos/config já coletados do device. */
-  async ask(deviceId: string, question: string, actor: string) {
+  async ask(deviceId: string, question: string, actor: string, authToken?: string) {
     const device = await this.devices.findOne(deviceId);
     const evidence = await this.gatherEvidence(deviceId, device.hostname, device.model);
-    const answer = await this.llm.copilot(evidence, question);
+    const answer = await this.llm.copilot(evidence, question, authToken);
     await this.audit.record({
       actor,
       deviceId,

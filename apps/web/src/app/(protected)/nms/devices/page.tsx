@@ -11,6 +11,7 @@
  * Ver docs/ecosystem/INTEGRATION-RUNBOOK.md §A.
  */
 import { useState } from 'react';
+import Link from 'next/link';
 import { useTranslations } from 'next-intl';
 import useSWR from 'swr';
 import { toast } from 'sonner';
@@ -235,13 +236,26 @@ export default function NmsDevicesPage() {
               )}
               {data.map((d) => (
                 <tr key={d.id} className="border-t border-border">
-                  <td className="px-4 py-2 font-medium text-text">{d.hostname}</td>
+                  <td className="px-4 py-2 font-medium">
+                    <Link
+                      href={`/nms/devices/${d.id}`}
+                      className="text-brand-700 hover:underline dark:text-brand-300"
+                    >
+                      {d.hostname}
+                    </Link>
+                  </td>
                   <td className="px-4 py-2 font-mono text-text-muted">{d.mgmtIp}</td>
                   <td className="px-4 py-2">{vendorLabel(d.vendor)}</td>
                   <td className="px-4 py-2 text-text-muted">{d.model || '—'}</td>
                   <td className="px-4 py-2 text-text-muted">{d.site || '—'}</td>
                   <td className="px-4 py-2">
                     <div className="flex justify-end gap-2">
+                      <Link
+                        href={`/nms/devices/${d.id}`}
+                        className="inline-flex items-center rounded-md px-2 py-1 text-sm font-medium text-brand-700 hover:bg-slate-100 dark:text-brand-300 dark:hover:bg-slate-800"
+                      >
+                        Abrir painel
+                      </Link>
                       <Button
                         variant="secondary"
                         size="sm"

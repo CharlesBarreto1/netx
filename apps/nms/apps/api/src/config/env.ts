@@ -22,6 +22,13 @@ const EnvSchema = z.object({
   CORE_JWT_ISSUER: z.string().default('netx'),
   CORE_JWT_AUDIENCE: z.string().default('netx-api'),
 
+  // ── IA delegada ao motor do NetX (canal 4) ────────────────────────────────
+  // O NMS NÃO tem IA própria: o copiloto delega ao motor de IA do tenant no
+  // core (`POST /api/v1/ai/complete`), que resolve provider/chave/modelo da
+  // config do NetX (Configurações › IA). Base do core via gateway, ex.:
+  // http://host.docker.internal:3000. Sem isso, a IA fica indisponível.
+  CORE_API_URL: z.string().url().optional(),
+
   // ── Bus de eventos do ecossistema (canal 3) ───────────────────────────────
   // Consumidor de `netx.events` (RabbitMQ topic), espelhando o core: OFF por
   // default. Liga só com EVENTBUS_CONSUME=true E RABBITMQ_URL presente.

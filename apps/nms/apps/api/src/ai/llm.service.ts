@@ -1,11 +1,18 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import Anthropic from '@anthropic-ai/sdk';
 import type { Env } from '../config/env.js';
 
-/** Instrução-base: a IA é READ-ONLY. Nunca aplica/comanda ação em equipamento (AGENTS.md §1). */
+/**
+ * Ponte de IA do NMS. O NMS NÃO tem motor/chave própria: delega ao motor de IA
+ * do NetX (canal 4). O copiloto monta as evidências e chama
+ * `POST /api/v1/ai/complete` no core, repassando o JWT do operador — o core
+ * resolve provider/chave/modelo da config do tenant (Configurações › IA) e
+ * devolve o texto. Uma IA só, agnóstica de provider, sem chave à parte.
+ *
+ * Instrução-base: a IA é READ-ONLY. Nunca aplica/comanda ação em equipamento.
+ */
 const SAFETY = [
-  'Você faz parte do NetX NMS, ferramenta de diagnóstico de rede Juniper.',
+  'Você faz parte do NetX NMS, ferramenta de diagnóstico de rede multi-vendor.',
   'Você é ESTRITAMENTE read-only: explica, resume e sugere o que um humano poderia fazer.',
   'Você NUNCA executa, aplica, comanda nem instrui a ferramenta a alterar configuração ou',
   'estado de equipamento. Responda sempre em português (pt-BR).',
@@ -17,62 +24,106 @@ eventos e configuração coletados). Cite a evidência que sustenta cada afirma�
 não permitirem concluir, diga isso claramente em vez de inventar. Seja conciso e técnico.`;
 
 const DIFF_SYSTEM = `${SAFETY}
-Resuma a mudança de configuração (diff no formato git de comandos 'set' do Junos) em 1 a 3
-frases, focando no QUE mudou e no provável IMPACTO operacional. Não proponha comandos.`;
+Resuma a mudança de configuração (diff no formato git) em 1 a 3 frases, focando no QUE mudou
+e no provável IMPACTO operacional. Não proponha comandos.`;
+
+interface CompleteResponse {
+  text?: string;
+  provider?: string;
+  model?: string;
+}
 
 @Injectable()
 export class LlmService {
   private readonly logger = new Logger(LlmService.name);
-  private readonly client: Anthropic | null;
-  private readonly summaryModel: string;
-  private readonly copilotModel: string;
+  /** Base do core (via gateway) p/ delegar a IA — ex.: http://host.docker.internal:3000 */
+  private readonly coreUrl: string | undefined;
 
   constructor(config: ConfigService<Env, true>) {
-    const key = config.get('ANTHROPIC_API_KEY', { infer: true });
-    this.client = key ? new Anthropic({ apiKey: key }) : null;
-    this.summaryModel = config.get('LLM_MODEL_SUMMARY', { infer: true });
-    this.copilotModel = config.get('LLM_MODEL_COPILOT', { infer: true });
-    if (!this.client)
-      this.logger.warn('ANTHROPIC_API_KEY ausente — recursos de IA (4.2/4.3) desativados');
+    this.coreUrl = config.get('CORE_API_URL', { infer: true })?.replace(/\/$/, '');
+    if (!this.coreUrl)
+      this.logger.warn(
+        'CORE_API_URL ausente — IA (copiloto/resumo de diff) indisponível. ' +
+          'A IA do NMS é servida pelo motor do NetX; configure CORE_API_URL.',
+      );
   }
 
-  get available(): boolean {
-    return this.client !== null;
-  }
-
-  /** Resume um diff de config em PT-BR. Retorna null se a IA estiver indisponível. */
-  async summarizeConfigDiff(diff: string): Promise<string | null> {
-    if (!this.client) return null;
+  /**
+   * IA disponível? Consulta o `/ai/status` do motor do NetX com o token do
+   * operador (a disponibilidade é por-tenant). Sem core/token → false.
+   */
+  async available(token?: string): Promise<boolean> {
+    if (!this.coreUrl || !token) return false;
     try {
-      const r = await this.client.messages.create({
-        model: this.summaryModel,
-        max_tokens: 400,
-        system: DIFF_SYSTEM,
-        messages: [{ role: 'user', content: `Diff:\n\n${diff.slice(0, 12000)}` }],
+      const res = await fetch(`${this.coreUrl}/api/v1/ai/status`, {
+        headers: { authorization: token },
+        signal: AbortSignal.timeout(10_000),
       });
-      return textOf(r);
+      if (!res.ok) return false;
+      const data = (await res.json()) as { available?: boolean };
+      return Boolean(data.available);
     } catch (err) {
-      this.logger.warn(`resumo de diff falhou: ${String(err)}`);
+      this.logger.warn(`status da IA (core) falhou: ${String(err)}`);
+      return false;
+    }
+  }
+
+  /** Resume um diff de config em PT-BR via motor do NetX. Null se indisponível. */
+  async summarizeConfigDiff(diff: string, token?: string): Promise<string | null> {
+    if (!this.coreUrl || !token) return null;
+    try {
+      return await this.complete(
+        token,
+        DIFF_SYSTEM,
+        `Diff:\n\n${diff.slice(0, 12000)}`,
+        400,
+        'nms.diff-summary',
+      );
+    } catch (err) {
+      this.logger.warn(`resumo de diff (core) falhou: ${String(err)}`);
       return null;
     }
   }
 
-  /** Responde uma pergunta de diagnóstico ancorada nas evidências fornecidas. */
-  async copilot(evidence: string, question: string): Promise<string> {
-    if (!this.client) {
-      throw new Error('IA indisponível: configure ANTHROPIC_API_KEY');
+  /** Responde uma pergunta de diagnóstico ancorada nas evidências, via motor do NetX. */
+  async copilot(evidence: string, question: string, token?: string): Promise<string> {
+    if (!this.coreUrl || !token) {
+      throw new Error('IA indisponível: o motor de IA do NetX não está acessível (CORE_API_URL).');
     }
-    const r = await this.client.messages.create({
-      model: this.copilotModel,
-      max_tokens: 1200,
-      system: COPILOT_SYSTEM,
-      messages: [{ role: 'user', content: `EVIDÊNCIAS:\n${evidence}\n\nPERGUNTA: ${question}` }],
-    });
-    return textOf(r) ?? '(sem resposta)';
+    const text = await this.complete(
+      token,
+      COPILOT_SYSTEM,
+      `EVIDÊNCIAS:\n${evidence}\n\nPERGUNTA: ${question}`,
+      1200,
+      'nms.copilot',
+    );
+    return text || '(sem resposta)';
   }
-}
 
-function textOf(message: Anthropic.Message): string | null {
-  const parts = message.content.filter((b) => b.type === 'text').map((b) => b.text);
-  return parts.length ? parts.join('\n').trim() : null;
+  /** Chama o completion do motor do NetX repassando o JWT do operador. */
+  private async complete(
+    token: string,
+    system: string,
+    content: string,
+    maxTokens: number,
+    feature: string,
+  ): Promise<string> {
+    const res = await fetch(`${this.coreUrl}/api/v1/ai/complete`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: token },
+      body: JSON.stringify({
+        system,
+        messages: [{ role: 'user', content }],
+        maxTokens,
+        feature,
+      }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) {
+      const detail = (await res.text().catch(() => '')).slice(0, 300);
+      throw new Error(`motor de IA do NetX respondeu ${res.status}: ${detail}`);
+    }
+    const data = (await res.json()) as CompleteResponse;
+    return data.text?.trim() ?? '';
+  }
 }

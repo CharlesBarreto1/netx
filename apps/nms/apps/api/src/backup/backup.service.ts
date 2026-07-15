@@ -26,8 +26,12 @@ export class BackupService {
     this.git = new BackupGit(resolve(config.get('BACKUP_REPO_DIR', { infer: true })));
   }
 
-  /** Puxa a config via gateway, versiona no git e registra ConfigSnapshot. Alerta em mudança. */
-  async backup(deviceId: string, actor: string) {
+  /**
+   * Puxa a config via gateway, versiona no git e registra ConfigSnapshot. Alerta em mudança.
+   * `authToken` (JWT do operador) habilita o resumo de diff pela IA do NetX; ausente
+   * (backup agendado) → sem resumo, cai no shortstat.
+   */
+  async backup(deviceId: string, actor: string, authToken?: string) {
     const device = await this.devices.findOne(deviceId);
     const cred = await this.prisma.deviceCredential.findUnique({ where: { deviceId } });
     if (!cred?.passwordEnc) {
@@ -88,7 +92,7 @@ export class BackupService {
     // A IA (4.2) explica o diff em PT-BR quando disponível; senão, cai no shortstat.
     if (!firstCommit) {
       const diffText = await this.git.diff(deviceId, prev?.gitHash ?? null, hash);
-      const aiSummary = await this.llm.summarizeConfigDiff(diffText);
+      const aiSummary = await this.llm.summarizeConfigDiff(diffText, authToken);
       await this.prisma.event.create({
         data: {
           deviceId,

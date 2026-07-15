@@ -51,6 +51,17 @@ else
     echo "[nms] AVISO: RABBITMQ_URL do Core não encontrado — usando default $RABBIT_CT (ajuste se preciso)."
   fi
 
+  # Canal 4 (IA): URL pública do NetX (nginx/gateway) — o copiloto do NMS delega
+  # a IA ao motor do NetX por aqui. Deriva da 1ª origem de API_GATEWAY_CORS_ORIGINS
+  # (a :3000 direta exigiria abrir o firewall; a 443 pública já está no ar).
+  CORE_API="$(getval API_GATEWAY_CORS_ORIGINS "$ENVFILE" | cut -d, -f1)"
+  [ -z "$CORE_API" ] && CORE_API="$(getval EFI_PUBLIC_WEBHOOK_BASE "$ENVFILE" | sed -E 's#/api/v1/?$##')"
+  if [ -z "$CORE_API" ]; then
+    CORE_API="https://CHANGE-ME"
+    echo "[nms] AVISO: URL pública do NetX não encontrada — a IA (canal 4) fica INDISPONÍVEL"
+    echo "       até você preencher CORE_API_URL em $OUT (ex.: https://seu-netx.exemplo.br)."
+  fi
+
   umask 077
   cat > "$OUT" <<EOF
 # Gerado por up-netx.sh — NÃO commitar. Segredos do NMS gerados; integração puxada do NetX.
@@ -80,7 +91,10 @@ NMS_API_PORT=3300
 WEB_PORT=8088
 TRAP_PORT=162
 
-ANTHROPIC_API_KEY=
+# Canal 4 (IA) — delegada ao motor de IA do NetX (URL pública, nginx→gateway). O
+# copiloto do NMS NÃO tem chave própria: a IA sai da config do tenant no NetX
+# (Configurações › IA), agnóstica de provider. Sem chave à parte pra manter.
+CORE_API_URL=${CORE_API}
 EOF
   chmod 600 "$OUT"
   echo "[nms] $OUT criado (chmod 600)."

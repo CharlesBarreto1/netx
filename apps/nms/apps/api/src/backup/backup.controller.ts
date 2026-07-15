@@ -1,4 +1,4 @@
-import { Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Controller, Get, Headers, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { BackupService } from './backup.service.js';
 import { CurrentUser, Roles } from '../auth/auth.decorators.js';
 import type { AuthUser } from '../auth/auth.types.js';
@@ -7,11 +7,15 @@ import type { AuthUser } from '../auth/auth.types.js';
 export class BackupController {
   constructor(private readonly backup: BackupService) {}
 
-  /** Dispara um backup manual da config. */
+  /** Dispara um backup manual da config. Repassa o token p/ o resumo de diff via IA do NetX. */
   @Roles('admin', 'operator')
   @Post('backup')
-  run(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: AuthUser) {
-    return this.backup.backup(id, user.username);
+  run(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthUser,
+    @Headers('authorization') authz?: string,
+  ) {
+    return this.backup.backup(id, user.username, authz);
   }
 
   /** Histórico de snapshots. */

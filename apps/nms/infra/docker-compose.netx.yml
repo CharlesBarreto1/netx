@@ -128,6 +128,11 @@ services:
       CORE_JWT_SECRET: ${CORE_JWT_SECRET}
       CORE_JWT_ISSUER: ${CORE_JWT_ISSUER:-netx}
       CORE_JWT_AUDIENCE: ${CORE_JWT_AUDIENCE:-netx-api}
+      # ── Canal 4: IA — delegar ao motor de IA do NetX (por-tenant) ──────────
+      # O copiloto do NMS NÃO tem chave própria: chama /api/v1/ai/complete no
+      # NetX (URL pública, nginx→gateway) repassando o JWT do operador. Setado
+      # pelo up-netx.sh (derivado da config do NetX). Vazio → IA indisponível.
+      CORE_API_URL: ${CORE_API_URL:-}
       # ── Canal 3: eventos — consumir netx.events do RabbitMQ do NetX ─────────
       RABBITMQ_URL: ${RABBITMQ_URL}
       EVENTBUS_CONSUME: ${EVENTBUS_CONSUME:-true}

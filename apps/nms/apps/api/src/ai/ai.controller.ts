@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, ParseUUIDPipe, Post } from '@nestjs/common';
 import { CopilotService } from './copilot.service.js';
 import { AnomalyService } from './anomaly.service.js';
 import { LlmService } from './llm.service.js';
@@ -15,10 +15,10 @@ export class AiController {
     private readonly llm: LlmService,
   ) {}
 
-  /** Status da IA (se a chave está configurada). */
+  /** Status da IA — delega ao motor do NetX (por-tenant), com o token do operador. */
   @Get('ai/status')
-  status() {
-    return { available: this.llm.available };
+  async status(@Headers('authorization') authz?: string) {
+    return { available: await this.llm.available(authz) };
   }
 
   /** Copiloto de diagnóstico (grounded nas evidências do device). Read-only: qualquer autenticado. */
@@ -27,8 +27,9 @@ export class AiController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body(new ZodValidationPipe(CopilotSchema)) dto: CopilotDto,
     @CurrentUser() user: AuthUser,
+    @Headers('authorization') authz?: string,
   ) {
-    return this.copilot.ask(id, dto.question, user.username);
+    return this.copilot.ask(id, dto.question, user.username, authz);
   }
 
   /** Dispara a varredura de anomalias estatísticas para o device. */
