@@ -112,6 +112,7 @@ packages_apt_install() {
     logrotate \
     fail2ban \
     ffmpeg \
+    age \
     ufw
 
   log_ok "Pacotes instalados"

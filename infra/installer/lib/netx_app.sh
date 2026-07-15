@@ -31,6 +31,7 @@ netx_app_setup() {
   netx_app_seed_admin
   netx_app_install_update_command
   netx_app_install_radius_check_command
+  netx_app_install_dr_commands
 }
 
 # Cria symlink global /usr/local/bin/netx-update apontando pro script no repo.
@@ -62,6 +63,23 @@ netx_app_install_radius_check_command() {
   ln -sf "${target}" "${link}"
   chmod +x "${target}"
   log_dim "Comando 'sudo netx-radius-check' disponível (auditoria RADIUS)"
+}
+
+# Symlinks pros comandos de Disaster Recovery: netx-dr-backup (gera bundle
+# cifrado com age — core + NMS + segredos curados) e netx-restore (consome o
+# bundle). Ambos rodam como root. Ver docs/dr.md.
+netx_app_install_dr_commands() {
+  local s target
+  for s in netx-dr-backup netx-restore; do
+    target="${NETX_HOME}/infra/installer/scripts/${s}.sh"
+    if [[ ! -f "${target}" ]]; then
+      log_warn "Script ${s}.sh ausente em ${target} — pulando symlink"
+      continue
+    fi
+    ln -sf "${target}" "/usr/local/bin/${s}"
+    chmod +x "${target}"
+  done
+  log_dim "Comandos 'sudo netx-dr-backup' e 'sudo netx-restore' disponíveis (DR)"
 }
 
 netx_app_user() {
