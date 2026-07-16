@@ -42,14 +42,22 @@ else
   RABBIT_CT="amqp://guest:guest@host.docker.internal:5672"
 fi
 
-# Canal 4 (IA): URL pública do NetX (nginx/gateway). Deriva da 1ª origem de
-# API_GATEWAY_CORS_ORIGINS (a :3000 direta exigiria abrir o firewall; a 443 já está no ar).
-CORE_API="$(getval API_GATEWAY_CORS_ORIGINS "$ENVFILE" | cut -d, -f1)"
+# Canal 4 (IA): URL pública do NetX (nginx→gateway; a 443 já está no ar). Deriva
+# do API_GATEWAY_CORS_ORIGINS PREFERINDO uma origem https:// (domínio público). A
+# 1ª origem pode ser um IP/http cru que o nginx não serve (→ 404 na chamada ao
+# core). awk (não grep|head) pra evitar SIGPIPE sob pipefail.
+CORE_API="$(getval API_GATEWAY_CORS_ORIGINS "$ENVFILE" | awk -F, '{for(i=1;i<=NF;i++) if($i ~ /^https:\/\//){print $i; exit}}')"
 [ -z "$CORE_API" ] && CORE_API="$(getval EFI_PUBLIC_WEBHOOK_BASE "$ENVFILE" | sed -E 's#/api/v1/?$##')"
+[ -z "$CORE_API" ] && CORE_API="$(getval API_GATEWAY_CORS_ORIGINS "$ENVFILE" | cut -d, -f1)"
 [ -z "$CORE_API" ] && CORE_API="https://CHANGE-ME"
 
-# Adiciona KEY=VALUE ao $OUT só se a KEY ainda não existir (não clobbera manual).
+# Adiciona KEY=VALUE ao $OUT só se a KEY ainda não existir (não clobbera manual/segredo).
 ensure_kv() { grep -qE "^$1=" "$OUT" 2>/dev/null || printf '%s=%s\n' "$1" "$2" >> "$OUT"; }
+# Seta/ATUALIZA a KEY pro valor derivado (upsert) — pra valores não-secretos que
+# devem rastrear o NetX (ex.: CORE_API_URL), auto-corrigindo valor stale/errado.
+upsert_kv() {
+  if grep -qE "^$1=" "$OUT" 2>/dev/null; then sed -i -E "s#^$1=.*#$1=$2#" "$OUT"; else printf '%s=%s\n' "$1" "$2" >> "$OUT"; fi
+}
 
 if [ -f "$OUT" ]; then
   # IDEMPOTENTE: preserva segredos/customizações e só INJETA chaves novas que
@@ -62,7 +70,9 @@ if [ -f "$OUT" ]; then
   ensure_kv RABBITMQ_URL "$RABBIT_CT"
   ensure_kv EVENTBUS_CONSUME true
   ensure_kv EVENTBUS_EXCHANGE netx.events
-  ensure_kv CORE_API_URL "$CORE_API"
+  # upsert (não ensure): CORE_API_URL é derivado e não-secreto — auto-corrige um
+  # valor stale/errado (ex.: IP http de uma derivação antiga) rumo à origem https.
+  upsert_kv CORE_API_URL "$CORE_API"
 else
   echo "[nms] gerando $OUT a partir dos segredos do NetX…"
   [ -z "$CORE_JWT_SECRET" ] && echo "[nms] AVISO: JWT_ACCESS_SECRET do Core não encontrado — SSO inativo até preencher CORE_JWT_SECRET em $OUT."
