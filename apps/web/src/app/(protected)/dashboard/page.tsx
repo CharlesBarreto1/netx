@@ -127,7 +127,7 @@ function fmtBps(v: number): string {
   return `${n.toFixed(n < 10 && u > 0 ? 1 : 0)} ${units[u]}`;
 }
 
-/** Idade legível a partir de um ISO (uptime aproximado = tempo desde a 1ª leitura). */
+/** Idade legível a partir de um ISO (freshness = tempo desde a última leitura). */
 function sinceLabel(iso: string | null): string {
   if (!iso) return '—';
   const secs = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
@@ -135,6 +135,39 @@ function sinceLabel(iso: string | null): string {
   const h = Math.floor((secs % 86400) / 3600);
   const m = Math.floor((secs % 3600) / 60);
   return d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+/** % em pt-BR com 1 casa (ex.: 99.9 → "99,9"). */
+function pct1(n: number): string {
+  return n.toFixed(1).replace('.', ',');
+}
+
+/**
+ * Saúde da rede a partir da telemetria real do NMS: % de devices alcançáveis,
+ * quebra ok/warn(CPU>85%)/down pro donut, e linhas por SITE (ou por device se
+ * nenhum site cadastrado). Null → sem NMS/frota vazia (página cai no mock).
+ */
+function nmsHealth(nms: DashboardLive['nms']) {
+  if (!nms || nms.deviceCount === 0) return null;
+  const warn = nms.devices.filter((d) => d.online && (d.cpuPct ?? 0) > 85).length;
+  const down = nms.offline;
+  const ok = Math.max(0, nms.online - warn);
+  const total = nms.deviceCount;
+  const pct = (nms.online / total) * 100;
+  const hasSites = nms.devices.some((d) => d.site);
+  const groups = new Map<string, { online: number; total: number }>();
+  for (const d of nms.devices) {
+    const key = hasSites ? d.site ?? 'Sem site' : d.hostname;
+    const g = groups.get(key) ?? { online: 0, total: 0 };
+    g.total += 1;
+    if (d.online) g.online += 1;
+    groups.set(key, g);
+  }
+  const rows = [...groups.entries()].map(([name, g]) => {
+    const p = (g.online / g.total) * 100;
+    return { name, pct: p, tone: p >= 99 ? 'text-success' : p >= 95 ? 'text-warning' : 'text-danger' };
+  });
+  return { pct, ok, warn, down, total, rows };
 }
 
 export default function DashboardPage() {
@@ -235,6 +268,7 @@ interface Fmt {
 function buildKpis(lens: Lens, live: DashboardLive, f: Fmt): Kpi[] {
   if (lens === 'operador') {
     const overdueAmount = live.finance?.overdue.amount;
+    const h = nmsHealth(live.nms);
     return [
       {
         label: 'Assinantes ativos',
@@ -248,7 +282,13 @@ function buildKpis(lens: Lens, live: DashboardLive, f: Fmt): Kpi[] {
         deltaTone: 'warning', sub: 'faturas vencidas', dot: 'text-warning',
       },
       {
-        label: 'Saúde da rede', value: '99,2%', delta: 'estável', deltaTone: 'success', sub: '2.341 nós', dot: 'text-success', example: true,
+        label: 'Saúde da rede',
+        value: h ? `${pct1(h.pct)}%` : '99,2%',
+        delta: h ? (h.down > 0 ? `${h.down} offline` : 'estável') : 'estável',
+        deltaTone: h && h.down > 0 ? 'danger' : 'success',
+        sub: h ? `${h.total} devices` : '2.341 nós',
+        dot: 'text-success',
+        example: h == null,
       },
       {
         label: 'Incidentes',
@@ -355,26 +395,36 @@ function Panel({
 
 // ── OPERADOR ──────────────────────────────────────────────────────────────
 function OperadorPanels({ live, moneyShort, nf }: { live: DashboardLive; moneyShort: (v?: number) => string; nf: (n?: number) => string }) {
+  const h = nmsHealth(live.nms);
+  const healthSegments = h
+    ? [
+        { value: (h.ok / h.total) * 100, className: 'text-success' },
+        { value: (h.warn / h.total) * 100, className: 'text-warning' },
+        { value: (h.down / h.total) * 100, className: 'text-danger' },
+      ]
+    : [
+        { value: 95.1, className: 'text-success' },
+        { value: 3.3, className: 'text-warning' },
+        { value: 1.6, className: 'text-danger' },
+      ];
+  const healthRows = h ? h.rows : REGIONS;
+
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-4 lg:grid-cols-[1.45fr_1fr]">
-        <Panel title="Saúde da rede" link="Ver topologia" badge={<MockBadge />}>
+        <Panel title="Saúde da rede" link="Ver topologia" badge={h ? undefined : <MockBadge />}>
           <div className="flex items-center gap-5">
             <HealthDonut
-              segments={[
-                { value: 95.1, className: 'text-success' },
-                { value: 3.3, className: 'text-warning' },
-                { value: 1.6, className: 'text-danger' },
-              ]}
-              centerValue="99,2%"
-              centerSub="2.341 nós"
+              segments={healthSegments}
+              centerValue={h ? `${pct1(h.pct)}%` : '99,2%'}
+              centerSub={h ? `${h.total} devices` : '2.341 nós'}
             />
             <div className="flex-1 space-y-2.5">
-              {REGIONS.map((r) => (
+              {healthRows.map((r) => (
                 <div key={r.name}>
                   <div className="mb-1 flex items-center justify-between text-xs">
                     <span className="text-text-muted">{r.name}</span>
-                    <span className={cn('font-mono', r.tone)}>{r.pct}%</span>
+                    <span className={cn('font-mono', r.tone)}>{pct1(r.pct)}%</span>
                   </div>
                   <Progress value={r.pct} className={r.tone} />
                 </div>
