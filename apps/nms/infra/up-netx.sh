@@ -30,37 +30,43 @@ getval() {
   printf '%s' "$val"
 }
 
+# ── Valores DERIVADOS do NetX (recalculados SEMPRE — base da reconciliação) ──
+CORE_JWT_SECRET="$(getval JWT_ACCESS_SECRET "$SECRETS")"
+[ -z "$CORE_JWT_SECRET" ] && CORE_JWT_SECRET="$(getval JWT_ACCESS_SECRET "$ENVFILE")"
+
+# RabbitMQ do NetX (host bare-metal): o container alcança via host.docker.internal.
+RABBIT="$(getval RABBITMQ_URL "$ENVFILE")"
+if [ -n "$RABBIT" ]; then
+  RABBIT_CT="$(printf '%s' "$RABBIT" | sed -E 's#@(localhost|127\.0\.0\.1)([:/])#@host.docker.internal\2#')"
+else
+  RABBIT_CT="amqp://guest:guest@host.docker.internal:5672"
+fi
+
+# Canal 4 (IA): URL pública do NetX (nginx/gateway). Deriva da 1ª origem de
+# API_GATEWAY_CORS_ORIGINS (a :3000 direta exigiria abrir o firewall; a 443 já está no ar).
+CORE_API="$(getval API_GATEWAY_CORS_ORIGINS "$ENVFILE" | cut -d, -f1)"
+[ -z "$CORE_API" ] && CORE_API="$(getval EFI_PUBLIC_WEBHOOK_BASE "$ENVFILE" | sed -E 's#/api/v1/?$##')"
+[ -z "$CORE_API" ] && CORE_API="https://CHANGE-ME"
+
+# Adiciona KEY=VALUE ao $OUT só se a KEY ainda não existir (não clobbera manual).
+ensure_kv() { grep -qE "^$1=" "$OUT" 2>/dev/null || printf '%s=%s\n' "$1" "$2" >> "$OUT"; }
+
 if [ -f "$OUT" ]; then
-  echo "[nms] $OUT já existe — mantendo (apague pra regenerar segredos)."
+  # IDEMPOTENTE: preserva segredos/customizações e só INJETA chaves novas que
+  # faltarem (ex.: CORE_API_URL num install anterior à IA delegada). É o que faz
+  # `netx-update` (passo 11) convergir installs antigos SEM regenerar segredo.
+  echo "[nms] $OUT já existe — reconciliando chaves derivadas do NetX (segredos preservados)."
+  ensure_kv CORE_JWT_SECRET "$CORE_JWT_SECRET"
+  ensure_kv CORE_JWT_ISSUER netx
+  ensure_kv CORE_JWT_AUDIENCE netx-api
+  ensure_kv RABBITMQ_URL "$RABBIT_CT"
+  ensure_kv EVENTBUS_CONSUME true
+  ensure_kv EVENTBUS_EXCHANGE netx.events
+  ensure_kv CORE_API_URL "$CORE_API"
 else
   echo "[nms] gerando $OUT a partir dos segredos do NetX…"
-
-  CORE_JWT_SECRET="$(getval JWT_ACCESS_SECRET "$SECRETS")"
-  [ -z "$CORE_JWT_SECRET" ] && CORE_JWT_SECRET="$(getval JWT_ACCESS_SECRET "$ENVFILE")"
-  if [ -z "$CORE_JWT_SECRET" ]; then
-    echo "[nms] AVISO: JWT_ACCESS_SECRET do Core não encontrado em $SECRETS/$ENVFILE."
-    echo "       O SSO (canal 1) ficará INATIVO até você preencher CORE_JWT_SECRET em $OUT."
-  fi
-
-  # RabbitMQ do NetX (host bare-metal): o container alcança via host.docker.internal.
-  RABBIT="$(getval RABBITMQ_URL "$ENVFILE")"
-  if [ -n "$RABBIT" ]; then
-    RABBIT_CT="$(printf '%s' "$RABBIT" | sed -E 's#@(localhost|127\.0\.0\.1)([:/])#@host.docker.internal\2#')"
-  else
-    RABBIT_CT="amqp://guest:guest@host.docker.internal:5672"
-    echo "[nms] AVISO: RABBITMQ_URL do Core não encontrado — usando default $RABBIT_CT (ajuste se preciso)."
-  fi
-
-  # Canal 4 (IA): URL pública do NetX (nginx/gateway) — o copiloto do NMS delega
-  # a IA ao motor do NetX por aqui. Deriva da 1ª origem de API_GATEWAY_CORS_ORIGINS
-  # (a :3000 direta exigiria abrir o firewall; a 443 pública já está no ar).
-  CORE_API="$(getval API_GATEWAY_CORS_ORIGINS "$ENVFILE" | cut -d, -f1)"
-  [ -z "$CORE_API" ] && CORE_API="$(getval EFI_PUBLIC_WEBHOOK_BASE "$ENVFILE" | sed -E 's#/api/v1/?$##')"
-  if [ -z "$CORE_API" ]; then
-    CORE_API="https://CHANGE-ME"
-    echo "[nms] AVISO: URL pública do NetX não encontrada — a IA (canal 4) fica INDISPONÍVEL"
-    echo "       até você preencher CORE_API_URL em $OUT (ex.: https://seu-netx.exemplo.br)."
-  fi
+  [ -z "$CORE_JWT_SECRET" ] && echo "[nms] AVISO: JWT_ACCESS_SECRET do Core não encontrado — SSO inativo até preencher CORE_JWT_SECRET em $OUT."
+  [ "$CORE_API" = "https://CHANGE-ME" ] && echo "[nms] AVISO: URL pública do NetX não encontrada — IA indisponível até preencher CORE_API_URL em $OUT."
 
   umask 077
   cat > "$OUT" <<EOF
