@@ -115,6 +115,28 @@ const INVOICE_STATUS: Record<string, { label: string; tone: keyof typeof STATUS_
   CANCELLED: { label: 'Cancelada', tone: 'muted' },
 };
 
+/** Formata bits/s em b/k/M/G/T (telemetria real do NMS). */
+function fmtBps(v: number): string {
+  const units = ['bps', 'Kbps', 'Mbps', 'Gbps', 'Tbps'];
+  let n = v;
+  let u = 0;
+  while (n >= 1000 && u < units.length - 1) {
+    n /= 1000;
+    u++;
+  }
+  return `${n.toFixed(n < 10 && u > 0 ? 1 : 0)} ${units[u]}`;
+}
+
+/** Idade legível a partir de um ISO (uptime aproximado = tempo desde a 1ª leitura). */
+function sinceLabel(iso: string | null): string {
+  if (!iso) return '—';
+  const secs = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  const d = Math.floor(secs / 86400);
+  const h = Math.floor((secs % 86400) / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  return d > 0 ? `${d}d ${h}h` : h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
 export default function DashboardPage() {
   const t = useTranslations('dashboardCockpit');
   const [lens, setLens] = useState<Lens>('operador');
@@ -261,10 +283,27 @@ function buildKpis(lens: Lens, live: DashboardLive, f: Fmt): Kpi[] {
       { label: 'Churn', value: live.churnPct != null ? `${live.churnPct.toLocaleString('pt-BR')}%` : '—', delta: 'média 12m', deltaTone: 'success', sub: 'cancelamentos', dot: 'text-success', example: live.churnPct == null },
     ];
   }
-  // NOC — só Alarmes e OLTs têm fonte; o resto é telemetria sem coleta ainda.
+  // NOC — Alarmes/OLTs e agora a telemetria da frota (NMS) têm fonte real;
+  // latência/uptime seguem sem coleta (mock marcado).
   return [
-    { label: 'Tráfego pico', value: '428,6 Gbps', delta: '+6,1%', deltaTone: 'warning', sub: 'agregado', dot: 'text-accent', example: true },
-    { label: 'Elementos online', value: '2.338', delta: '3 down', deltaTone: 'danger', sub: 'de 2.341', dot: 'text-success', example: true },
+    {
+      label: 'Tráfego agregado',
+      value: live.nms ? fmtBps(live.nms.totalInBps + live.nms.totalOutBps) : '428,6 Gbps',
+      delta: live.nms ? `↓ ${fmtBps(live.nms.totalInBps)}` : '+6,1%',
+      deltaTone: 'warning',
+      sub: live.nms ? `↑ ${fmtBps(live.nms.totalOutBps)}` : 'agregado',
+      dot: 'text-accent',
+      example: live.nms == null,
+    },
+    {
+      label: 'Elementos online',
+      value: live.nms ? f.nf(live.nms.online) : '2.338',
+      delta: live.nms ? `${live.nms.offline} offline` : '3 down',
+      deltaTone: 'danger',
+      sub: live.nms ? `de ${live.nms.deviceCount}` : 'de 2.341',
+      dot: 'text-success',
+      example: live.nms == null,
+    },
     {
       label: 'Alarmes ativos',
       value: live.incidents != null ? f.nf(live.incidents.pagination?.total ?? live.incidents.data.length) : '—',
@@ -425,19 +464,51 @@ function IncidentsTable({ incidents }: { incidents?: IncidentItem[] }) {
 
 // ── NOC ───────────────────────────────────────────────────────────────────
 function NocPanels({ live }: { live: DashboardLive }) {
+  // Série de tráfego real (NMS) em Mbps; cai no mock se ainda não há ≥2 buckets.
+  const nmsSeries = live.nms?.series ?? [];
+  const hasSeries = nmsSeries.length > 1;
+  const inSeries = hasSeries ? nmsSeries.map((p) => Math.round(p.inBps / 1e6)) : [180, 220, 260, 320, 300, 380, 428];
+  const outSeries = hasSeries ? nmsSeries.map((p) => Math.round(p.outBps / 1e6)) : [120, 150, 170, 210, 200, 250, 280];
+  const trafficMock = !hasSeries;
+  const peakLabel = live.nms
+    ? `${fmtBps(live.nms.totalInBps + live.nms.totalOutBps)} agora`
+    : '428,6 Gbps pico';
+
+  // Tabela de elementos: devices reais do NMS; fallback pro mock marcado.
+  const elementsReal = live.nms?.devices != null;
+  const rows = live.nms?.devices
+    ? live.nms.devices.map((d) => ({
+        key: d.id,
+        name: d.hostname,
+        vendor: d.vendor,
+        type: d.model ?? d.vendor,
+        status: !d.online ? 'down' : d.cpuPct != null && d.cpuPct > 85 ? 'warn' : 'ok',
+        load: Math.round(d.cpuPct ?? 0),
+        last: sinceLabel(d.lastSeen),
+      }))
+    : ELEMENTS.map((e) => ({
+        key: e.name,
+        name: e.name,
+        vendor: e.vendor,
+        type: e.type,
+        status: e.status,
+        load: e.load,
+        last: e.uptime,
+      }));
+
   return (
     <div className="flex flex-col gap-4">
       <div className="grid gap-4 lg:grid-cols-[1.45fr_1fr]">
-        <Panel title="Tráfego agregado" badge={<MockBadge />}>
+        <Panel title="Tráfego agregado" badge={trafficMock ? <MockBadge /> : undefined}>
           <div className="mb-2 flex items-center gap-4 text-2xs text-text-subtle">
             <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-accent" /> Ingress</span>
             <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-sm bg-ai" /> Egress</span>
-            <span className="ml-auto font-mono text-text-muted">428,6 Gbps pico</span>
+            <span className="ml-auto font-mono text-text-muted">{peakLabel}</span>
           </div>
           <LineChart
             series={[
-              { data: [180, 220, 260, 320, 300, 380, 428], className: 'text-accent' },
-              { data: [120, 150, 170, 210, 200, 250, 280], className: 'text-ai' },
+              { data: inSeries, className: 'text-accent' },
+              { data: outSeries, className: 'text-ai' },
             ]}
             height={140}
           />
@@ -446,13 +517,20 @@ function NocPanels({ live }: { live: DashboardLive }) {
           <AlarmsList incidents={live.incidents?.data} />
         </Panel>
       </div>
-      <Panel title="Elementos de rede" link={live.oltCount != null ? `${live.oltCount} OLTs` : 'Ver todos'} badge={<MockBadge />}>
+      <Panel
+        title="Elementos de rede"
+        link={elementsReal ? `${live.nms?.deviceCount} devices` : live.oltCount != null ? `${live.oltCount} OLTs` : 'Ver todos'}
+        badge={elementsReal ? undefined : <MockBadge />}
+      >
         <div className="text-xs">
           <div className="grid grid-cols-[1.4fr_84px_72px_1fr_72px] gap-2 border-b border-border pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-text-disabled">
-            <span>Elemento</span><span>Tipo</span><span>Status</span><span>Carga</span><span>Uptime</span>
+            <span>Elemento</span><span>Tipo</span><span>Status</span><span>Carga</span><span>{elementsReal ? 'Visto' : 'Uptime'}</span>
           </div>
-          {ELEMENTS.map((e) => (
-            <div key={e.name} className="grid grid-cols-[1.4fr_84px_72px_1fr_72px] items-center gap-2 border-b border-border/60 py-2">
+          {rows.length === 0 && (
+            <div className="py-6 text-center text-text-subtle">Nenhum equipamento no NMS ainda.</div>
+          )}
+          {rows.map((e) => (
+            <div key={e.key} className="grid grid-cols-[1.4fr_84px_72px_1fr_72px] items-center gap-2 border-b border-border/60 py-2">
               <div className="flex min-w-0 items-center gap-2">
                 <span className={cn('h-2 w-2 shrink-0 rounded-full', DOT_STATUS[e.status])} />
                 <span className="truncate font-mono text-text">{e.name}</span>
@@ -466,7 +544,7 @@ function NocPanels({ live }: { live: DashboardLive }) {
                 <Progress value={e.load} className={e.load > 80 ? 'text-warning' : 'text-accent'} />
                 <span className="font-mono text-[10px] text-text-subtle">{e.load}%</span>
               </div>
-              <span className="font-mono text-text-muted">{e.uptime}</span>
+              <span className="font-mono text-text-muted">{e.last}</span>
             </div>
           ))}
         </div>

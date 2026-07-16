@@ -153,6 +153,37 @@ export interface ConfigChange {
 }
 
 // ── IA (copiloto + anomalia) ─────────────────────────────────────────────────
+// ── Telemetria agregada da frota (cockpit/dashboard NOC) ─────────────────────
+export interface NmsFleetDevice {
+  id: string;
+  hostname: string;
+  mgmtIp: string;
+  vendor: NmsVendor;
+  model: string | null;
+  site: string | null;
+  inBps: number;
+  outBps: number;
+  cpuPct: number | null;
+  tempC: number | null;
+  ifCount: number;
+  online: boolean;
+  lastSeen: string | null;
+}
+export interface NmsTrafficPoint {
+  t: string;
+  inBps: number;
+  outBps: number;
+}
+export interface NmsFleetSummary {
+  deviceCount: number;
+  online: number;
+  offline: number;
+  totalInBps: number;
+  totalOutBps: number;
+  series: NmsTrafficPoint[];
+  devices: NmsFleetDevice[];
+}
+
 export interface AiStatus {
   available: boolean;
 }
@@ -169,6 +200,9 @@ export interface AnomalyScanResult {
 const BASE = '/v1/nms';
 
 export const nmsApi = {
+  // Telemetria agregada da frota (dashboard NOC)
+  summary: () => api.get<NmsFleetSummary>(`${BASE}/summary`),
+
   // Inventário
   listDevices: () => api.get<NmsDevice[]>(`${BASE}/devices`),
   getDevice: (id: string) => api.get<NmsDevice>(`${BASE}/devices/${id}`),

@@ -18,6 +18,7 @@
 import useSWR from 'swr';
 
 import { hasPermission } from '@/lib/session';
+import type { NmsFleetSummary } from '@/lib/nms-api';
 
 // ── Formas de resposta (subset do que consumimos) ─────────────────────────
 interface Paginated {
@@ -124,6 +125,8 @@ export interface DashboardLive {
   aging?: AgingReport;
   mrrSeries?: MrrPoint[];
   churnPct?: number;
+  /** Telemetria real da frota (módulo netx-nms). Undefined → página cai no mock marcado. */
+  nms?: NmsFleetSummary;
 }
 
 /**
@@ -181,6 +184,12 @@ export function useDashboardData(lens: 'operador' | 'noc' | 'financeiro'): Dashb
   const olts = useSWR<Paginated>(
     wantsNoc ? gate('olts.admin', '/v1/olts?pageSize=1') : null,
   );
+  // Telemetria real da frota (NMS) — tráfego/saúde/devices. Sem o módulo netx-nms
+  // a chamada erra no gateway (403) e o campo fica undefined → mock marcado.
+  const nms = useSWR<NmsFleetSummary>(wantsNoc ? '/v1/nms/summary' : null, {
+    shouldRetryOnError: false,
+    refreshInterval: 60_000,
+  });
 
   // O.S abertas / vencidas (lente operador).
   const soOpen = useSWR<Paginated>(
@@ -220,5 +229,6 @@ export function useDashboardData(lens: 'operador' | 'noc' | 'financeiro'): Dashb
     aging: aging.data,
     mrrSeries: mrrSeries.data?.byMonth,
     churnPct: churn.data?.avgChurnPct,
+    nms: nms.data,
   };
 }
