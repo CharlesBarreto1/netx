@@ -1,5 +1,14 @@
 import { z } from 'zod';
 
+/**
+ * Trata string vazia como ausente (undefined). O docker-compose expande
+ * `${VAR:-}` / `${VAR}` para "" quando a var não está no .env — e "" quebra os
+ * validadores (`.url()`, `.min()`) mesmo em campos `.optional()`, derrubando a
+ * API no boot. Envolver os opcionais com isto os torna resilientes a "".
+ */
+const emptyAsUndefined = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess((v) => (v === '' ? undefined : v), schema);
+
 /** Config validada no boot (AGENTS.md: env por Zod, falha cedo se faltar). */
 const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -18,7 +27,7 @@ const EnvSchema = z.object({
   // Core (mesmo HS256), além do login nativo. OPCIONAL: sem CORE_JWT_SECRET, só
   // o login próprio do NMS funciona (modo standalone). O segredo é o
   // JWT_ACCESS_SECRET do Core; issuer/audience espelham os defaults do Core.
-  CORE_JWT_SECRET: z.string().min(32).optional(),
+  CORE_JWT_SECRET: emptyAsUndefined(z.string().min(32).optional()),
   CORE_JWT_ISSUER: z.string().default('netx'),
   CORE_JWT_AUDIENCE: z.string().default('netx-api'),
 
@@ -27,12 +36,12 @@ const EnvSchema = z.object({
   // core (`POST /api/v1/ai/complete`), que resolve provider/chave/modelo da
   // config do NetX (Configurações › IA). Base do core via gateway, ex.:
   // http://host.docker.internal:3000. Sem isso, a IA fica indisponível.
-  CORE_API_URL: z.string().url().optional(),
+  CORE_API_URL: emptyAsUndefined(z.string().url().optional()),
 
   // ── Bus de eventos do ecossistema (canal 3) ───────────────────────────────
   // Consumidor de `netx.events` (RabbitMQ topic), espelhando o core: OFF por
   // default. Liga só com EVENTBUS_CONSUME=true E RABBITMQ_URL presente.
-  RABBITMQ_URL: z.string().url().optional(),
+  RABBITMQ_URL: emptyAsUndefined(z.string().url().optional()),
   EVENTBUS_CONSUME: z
     .enum(['true', 'false', '1', '0'])
     .default('false')
