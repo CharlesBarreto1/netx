@@ -62,6 +62,7 @@ import {
 } from './billing-period.util';
 import { recalcCustomerStatus } from './customer-status';
 import { InvoiceGeneratorService } from './invoice-generator.service';
+import { resolveMapsUrlCoords, type MapsCoords } from './maps-url.util';
 import { BrBillingService } from '../br-billing/br-billing.service';
 import { RadacctService } from '../radius/radacct.service';
 import { RadiusSyncService } from './radius-sync.service';
@@ -183,6 +184,27 @@ export class ContractsService {
    *
    * Retorna só os campos que devem ir pro `data` do Prisma.
    */
+  /**
+   * Coordenada do contrato pro mapa comercial (/mapping/customers).
+   *
+   * O pino do LocationPicker é opcional e quase ninguém marca — o atendente
+   * cola o link do Maps e pronto. Sem isto o contrato salva com lat/lng nulos
+   * e simplesmente não aparece no mapa (na PROD PY eram 55 de 56 contratos
+   * com link e sem coordenada). Quando o operador marcou o pino, ele manda:
+   * a coordenada explícita SEMPRE ganha do link.
+   *
+   * Best-effort e fora de qualquer transação (faz rede): falha de rede, link
+   * privado ou formato novo devolvem null e o contrato salva sem coordenada.
+   */
+  private async geoFromMapsUrl(mapsUrl: string | null | undefined): Promise<MapsCoords | null> {
+    if (!mapsUrl) return null;
+    const coords = await resolveMapsUrlCoords(mapsUrl);
+    if (!coords) {
+      this.logger.warn(`Não foi possível extrair coordenada do link de localização: ${mapsUrl}`);
+    }
+    return coords;
+  }
+
   private async resolveStructuredAddress(
     tenantId: string,
     input: {
@@ -276,6 +298,13 @@ export class ContractsService {
     // Endereço estruturado (BR): se veio streetId, denormaliza o
     // installationAddress a partir do logradouro do cadastro-mestre.
     const structuredAddr = await this.resolveStructuredAddress(tenantId, input);
+
+    // Coordenada: pino explícito ganha; senão tenta derivar do link do Maps.
+    const geo =
+      input.latitude != null && input.longitude != null
+        ? { latitude: input.latitude, longitude: input.longitude }
+        : await this.geoFromMapsUrl(input.installationMapsUrl);
+
     // Capturado dentro da tx pra emitir a cobrança no gateway PÓS-commit
     // (emitir HTTP dentro da transação seguraria a tx e o charges service usa
     // outra conexão Prisma — não veria a fatura não-commitada).
@@ -369,8 +398,8 @@ export class ContractsService {
             // Override de dias até bloqueio (null = usa plan.blockAfterDays).
             blockAfterDays: input.blockAfterDays ?? null,
             // Geolocalização (módulo Mapeamento).
-            latitude: input.latitude ?? null,
-            longitude: input.longitude ?? null,
+            latitude: geo?.latitude ?? null,
+            longitude: geo?.longitude ?? null,
             // Wi-Fi capturado no cadastro. O provisionamento aplica via TR-069
             // lendo daqui (técnico não digita mais). Senha cifrada at-rest.
             ssid: input.ssid ?? null,
@@ -625,6 +654,28 @@ export class ContractsService {
     // null explícito limpa o pino do mapa.
     if (input.latitude !== undefined) data.latitude = input.latitude ?? null;
     if (input.longitude !== undefined) data.longitude = input.longitude ?? null;
+    // Sem pino explícito, deriva a coordenada do link do Maps (vide
+    // geoFromMapsUrl). Dois gatilhos:
+    //  - link MUDOU: o pino antigo virou lixo, reposiciona pelo link novo;
+    //  - contrato ainda sem coordenada: autocorreção do legado ao editar.
+    // Se o operador mandou lat/lng no mesmo PATCH, não mexe — pino manual manda.
+    const mapsUrlChanged =
+      input.installationMapsUrl !== undefined &&
+      (input.installationMapsUrl ?? null) !== existing.installationMapsUrl;
+    const noExplicitPin = input.latitude === undefined && input.longitude === undefined;
+    if (noExplicitPin && (mapsUrlChanged || existing.latitude == null)) {
+      const mapsUrl = input.installationMapsUrl ?? existing.installationMapsUrl;
+      const geo = await this.geoFromMapsUrl(mapsUrl);
+      if (geo) {
+        data.latitude = geo.latitude;
+        data.longitude = geo.longitude;
+      } else if (mapsUrlChanged && existing.latitude != null) {
+        // Link novo ilegível: melhor sem pino do que com o pino do endereço
+        // antigo, que apareceria no mapa como se fosse a casa nova.
+        data.latitude = null;
+        data.longitude = null;
+      }
+    }
     if (input.notes !== undefined) data.notes = input.notes ?? null;
 
     // Coerência: se trocar pra PPPOE, exige user+pass (existente ou novo).
