@@ -81,3 +81,67 @@ jobs:
         # quando estiver verde.
         continue-on-error: true
         run: npx nx run-many -t lint
+
+  test:
+    name: Testes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      # postgis/postgis em vez de postgres puro: o schema declara a extensão
+      # postgis e as migrations falham sem ela. POSTGRES_USER vira superuser do
+      # container, então CREATE EXTENSION funciona sem passo extra de permissão.
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: netx
+          POSTGRES_PASSWORD: netx
+          POSTGRES_DB: netx_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+
+      # Os scripts de teste carregam .env via dotenv-cli (padrão do repo). Criar
+      # o arquivo aqui faz o comando ser LITERALMENTE o mesmo em CI e na máquina
+      # do dev — sem caminho especial que só quebra em um dos dois.
+      - name: Preparar .env
+        run: |
+          cat > .env <<'EOF'
+          DATABASE_URL=postgresql://netx:netx@localhost:5432/netx_test
+          DATABASE_URL_TEST=postgresql://netx:netx@localhost:5432/netx_test
+          EOF
+
+      - name: Extensões do Postgres
+        env:
+          PGPASSWORD: netx
+        run: |
+          for ext in uuid-ossp pgcrypto citext pg_trgm postgis; do
+            psql -h localhost -U netx -d netx_test -c "CREATE EXTENSION IF NOT EXISTS \"$ext\";"
+          done
+
+      - name: Prisma generate
+        run: npx prisma generate --schema apps/core-service/prisma/schema.prisma
+
+      - name: Testes unitários
+        run: npx nx run-many -t test --exclude=nms
+
+      # O globalSetup aplica as migrations no banco de teste antes de rodar.
+      - name: Testes de integração
+        run: npm run test:e2e
