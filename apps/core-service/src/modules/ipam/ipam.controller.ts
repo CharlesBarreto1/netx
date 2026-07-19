@@ -19,6 +19,8 @@ import {
   CreateIpamPoolRequestSchema,
   CreateIpamPrefixRequestSchema,
   CreateIpamVrfRequestSchema,
+  ImportIpamFindingsRequestSchema,
+  ReconcileScanRequestSchema,
   SplitIpamPrefixRequestSchema,
   UpdateIpamAddressRequestSchema,
   UpdateIpamCgnatPlanRequestSchema,
@@ -33,6 +35,8 @@ import {
   type CreateIpamPoolRequest,
   type CreateIpamPrefixRequest,
   type CreateIpamVrfRequest,
+  type ImportIpamFindingsRequest,
+  type ReconcileScanRequest,
   type SplitIpamPrefixRequest,
   type UpdateIpamAddressRequest,
   type UpdateIpamCgnatPlanRequest,
@@ -48,6 +52,7 @@ import { IpamCgnatService } from './cgnat.service';
 import { IpamLookupService } from './lookup.service';
 import { IpamPoolsService } from './pools.service';
 import { IpamPrefixesService } from './prefixes.service';
+import { IpamReconcileService } from './reconcile.service';
 import { IpamSyncService } from './ipam-sync.service';
 import { IpamVrfsService } from './vrfs.service';
 
@@ -62,6 +67,7 @@ export class IpamController {
     private readonly pools: IpamPoolsService,
     private readonly cgnat: IpamCgnatService,
     private readonly lookupSvc: IpamLookupService,
+    private readonly reconcile: IpamReconcileService,
     private readonly sync: IpamSyncService,
   ) {}
 
@@ -415,6 +421,39 @@ export class IpamController {
   ) {
     const fmt: CgnatExportFormat = CgnatExportFormatEnum.catch('csv').parse(format);
     return this.cgnat.export(u.tenantId, id, fmt);
+  }
+
+  // ── Reconciliação IPAM ↔ rede real ────────────────────────────────────────
+  /** Equipamentos elegíveis pra coleta ao vivo (ARP/DHCP via RouterOS). */
+  @Get('reconcile/targets')
+  @RequirePermissions('ipam.read')
+  reconcileTargets(@CurrentUser() u: AuthenticatedPrincipal) {
+    return this.reconcile.liveTargets(u.tenantId);
+  }
+
+  /**
+   * Varre as fontes e devolve as divergências. Somente leitura — nada é escrito
+   * no IPAM aqui, nem mesmo pros achados óbvios.
+   */
+  @Post('reconcile/scan')
+  @HttpCode(200)
+  @RequirePermissions('ipam.read')
+  reconcileScan(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @ZodBody(ReconcileScanRequestSchema) body: ReconcileScanRequest,
+  ) {
+    return this.reconcile.scan(u.tenantId, body);
+  }
+
+  /** Importa pro IPAM os achados escolhidos pelo operador. */
+  @Post('reconcile/import')
+  @HttpCode(200)
+  @RequirePermissions('ipam.write')
+  reconcileImport(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @ZodBody(ImportIpamFindingsRequestSchema) body: ImportIpamFindingsRequest,
+  ) {
+    return this.reconcile.importFindings(u.tenantId, u.sub, body);
   }
 
   // ── Busca reversa (Marco Civil) ──────────────────────────────────────────────

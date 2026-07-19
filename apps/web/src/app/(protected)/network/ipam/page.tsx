@@ -7,6 +7,7 @@ import {
   Download,
   Network,
   Plus,
+  RefreshCw,
   Scissors,
   Search,
   Trash2,
@@ -35,10 +36,12 @@ import {
   type IpamPrefix,
   type IpamPrefixNode,
   type IpamPrefixRole,
+  type FindingKind,
+  type ReconcileResult,
 } from '@/lib/ipam-api';
 import { hasPermission } from '@/lib/session';
 
-type TabKey = 'prefixes' | 'cgnat' | 'lookup';
+type TabKey = 'prefixes' | 'cgnat' | 'reconcile' | 'lookup';
 
 const ROLE_LABELS: Record<string, string> = {
   SUPERNET: 'Supernet',
@@ -84,12 +87,14 @@ export default function IpamPage() {
         items={[
           { value: 'prefixes', label: 'Prefixos & IPs' },
           { value: 'cgnat', label: 'CGNAT' },
+          { value: 'reconcile', label: 'Reconciliação' },
           { value: 'lookup', label: 'Busca reversa' },
         ]}
       />
 
       {tab === 'prefixes' && <PrefixesTab canWrite={canWrite} canDelete={canDelete} />}
       {tab === 'cgnat' && <CgnatTab canWrite={canWrite} canDelete={canDelete} />}
+      {tab === 'reconcile' && <ReconcileTab canWrite={canWrite} />}
       {tab === 'lookup' && <LookupTab />}
     </div>
   );
@@ -1010,6 +1015,307 @@ function NewPrefixModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+// =============================================================================
+// RECONCILIAÇÃO IPAM ↔ REDE REAL
+// =============================================================================
+const KIND_LABEL: Record<FindingKind, string> = {
+  UNDOCUMENTED: 'Não documentado',
+  NO_PREFIX: 'Sem prefixo',
+  OWNER_MISMATCH: 'Dono divergente',
+  ORPHANED: 'Órfão',
+};
+const KIND_TONE: Record<FindingKind, 'warning' | 'danger' | 'info' | 'neutral'> = {
+  UNDOCUMENTED: 'warning',
+  NO_PREFIX: 'info',
+  OWNER_MISMATCH: 'danger',
+  ORPHANED: 'neutral',
+};
+const KIND_HELP: Record<FindingKind, string> = {
+  UNDOCUMENTED: 'Em uso na rede e ausente do IPAM. Importe para documentar.',
+  NO_PREFIX: 'Em uso, mas nenhum prefixo cadastrado cobre esse IP. Crie o prefixo primeiro.',
+  OWNER_MISMATCH: 'O IPAM e a rede discordam de quem é o dono. Confira antes de mexer.',
+  ORPHANED: 'Documentado para um contrato cancelado ou removido.',
+};
+const SOURCE_LABEL: Record<string, string> = {
+  RADIUS: 'RADIUS',
+  CONTRACT: 'Contrato',
+  EQUIPMENT: 'Equipamento',
+  MIKROTIK_ARP: 'ARP',
+  MIKROTIK_DHCP: 'DHCP',
+};
+
+function ReconcileTab({ canWrite }: { canWrite: boolean }) {
+  const { data: targets } = useSWR('ipam-reconcile-targets', ipamApi.reconcileTargets);
+  const [live, setLive] = useState<Set<string>>(new Set());
+  const [result, setResult] = useState<ReconcileResult | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [kindFilter, setKindFilter] = useState<FindingKind | ''>('');
+
+  const scan = async () => {
+    setScanning(true);
+    setPicked(new Set());
+    try {
+      const r = await ipamApi.reconcileScan(live.size ? [...live] : undefined);
+      setResult(r);
+      toast.success(
+        r.findings.length
+          ? `${r.findings.length} divergência(s) em ${r.observedCount} IPs observados`
+          : `Nenhuma divergência — ${r.observedCount} IPs conferem com o IPAM`,
+      );
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.problem.detail ?? e.problem.title : 'Falha na varredura');
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const importable = (result?.findings ?? []).filter((f) => f.kind === 'UNDOCUMENTED');
+  const shown = (result?.findings ?? []).filter((f) => !kindFilter || f.kind === kindFilter);
+
+  const doImport = async () => {
+    const items = importable
+      .filter((f) => picked.has(f.ip))
+      .map((f) => ({
+        ip: f.ip,
+        prefixId: f.prefixId,
+        contractId: f.observedContractId,
+        customerId: f.observedCustomerId,
+        equipmentId: f.observedEquipmentId,
+        macAddress: f.macAddress,
+        hostname: f.hostname,
+        description: `Reconciliação · ${f.sources.map((s) => SOURCE_LABEL[s] ?? s).join(', ')}`,
+      }));
+    if (!items.length) return;
+
+    setImporting(true);
+    try {
+      const r = await ipamApi.reconcileImport(items);
+      toast.success(
+        r.skipped.length
+          ? `${r.imported} importado(s), ${r.skipped.length} pulado(s)`
+          : `${r.imported} IP(s) importado(s)`,
+      );
+      if (r.skipped.length) console.warn('[reconcile] pulados:', r.skipped);
+      await scan(); // re-varre pra refletir o que entrou
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.problem.detail ?? e.problem.title : 'Falha ao importar');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const toggleLive = (id: string) =>
+    setLive((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const togglePick = (ip: string) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(ip)) next.delete(ip);
+      else next.add(ip);
+      return next;
+    });
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-border p-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="max-w-2xl">
+            <h2 className="text-sm font-medium text-foreground">Reconciliação com a rede</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Compara o que está documentado no IPAM com o que a rede mostra em uso. Sessões RADIUS
+              ativas, IPs fixos de contrato e IPs de gerência saem do próprio banco. Ler ARP e leases
+              DHCP de um MikroTik exige alcançar o equipamento — por isso é opcional, marcado abaixo.
+              A varredura não escreve nada; importar é decisão sua, item a item.
+            </p>
+          </div>
+          <Button onClick={scan} disabled={scanning}>
+            <RefreshCw className={`mr-1 h-4 w-4 ${scanning ? 'animate-spin' : ''}`} />
+            {scanning ? 'Varrendo…' : 'Varrer'}
+          </Button>
+        </div>
+
+        {!!targets?.length && (
+          <div className="mt-3 border-t border-border pt-3">
+            <div className="mb-1.5 text-xs font-medium text-muted-foreground">
+              Também ler ao vivo (ARP + DHCP):
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {targets.map((t) => (
+                <label
+                  key={t.id}
+                  title={t.ready ? t.ipAddress : 'Sem credencial de API cadastrada'}
+                  className={`flex items-center gap-1.5 rounded border px-2 py-1 text-xs ${
+                    t.ready
+                      ? 'cursor-pointer border-border hover:bg-surface-muted'
+                      : 'cursor-not-allowed border-dashed border-border opacity-50'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    disabled={!t.ready}
+                    checked={live.has(t.id)}
+                    onChange={() => toggleLive(t.id)}
+                    className="h-3 w-3"
+                  />
+                  {t.name}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {result && (
+        <>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-muted-foreground">
+              {result.observedCount} IPs observados · {result.documentedCount} documentados ·{' '}
+              {result.durationMs} ms
+            </span>
+            {Object.entries(result.bySource).map(([s, n]) => (
+              <Badge key={s} tone="neutral">
+                {SOURCE_LABEL[s] ?? s}: {n}
+              </Badge>
+            ))}
+          </div>
+
+          {!!result.warnings.length && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-900/50 dark:bg-amber-900/20">
+              <div className="mb-1 font-medium text-amber-900 dark:text-amber-200">
+                Fontes que não responderam — o resultado está incompleto:
+              </div>
+              <ul className="list-inside list-disc space-y-0.5 text-amber-800 dark:text-amber-300">
+                {result.warnings.map((w, i) => (
+                  <li key={i}>
+                    {w.equipmentName}: {w.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {result.findings.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+              Nenhuma divergência. O IPAM bate com o que a rede mostra.
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => setKindFilter('')}
+                  className={`rounded border px-2 py-1 text-xs ${
+                    !kindFilter ? 'border-brand-500 font-medium' : 'border-border text-muted-foreground'
+                  }`}
+                >
+                  Todos ({result.findings.length})
+                </button>
+                {(Object.keys(KIND_LABEL) as FindingKind[])
+                  .filter((k) => result.byKind[k])
+                  .map((k) => (
+                    <button
+                      key={k}
+                      onClick={() => setKindFilter(kindFilter === k ? '' : k)}
+                      title={KIND_HELP[k]}
+                      className={`rounded border px-2 py-1 text-xs ${
+                        kindFilter === k
+                          ? 'border-brand-500 font-medium'
+                          : 'border-border text-muted-foreground'
+                      }`}
+                    >
+                      {KIND_LABEL[k]} ({result.byKind[k]})
+                    </button>
+                  ))}
+
+                {canWrite && !!importable.length && (
+                  <div className="ml-auto flex items-center gap-2">
+                    <button
+                      onClick={() =>
+                        setPicked((p) =>
+                          p.size === importable.length
+                            ? new Set()
+                            : new Set(importable.map((f) => f.ip)),
+                        )
+                      }
+                      className="text-xs text-brand-600 hover:underline dark:text-brand-300"
+                    >
+                      {picked.size === importable.length ? 'Limpar seleção' : 'Selecionar importáveis'}
+                    </button>
+                    <Button size="sm" onClick={doImport} disabled={importing || !picked.size}>
+                      <Download className="mr-1 h-3.5 w-3.5" />
+                      Importar {picked.size ? `(${picked.size})` : ''}
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              <div className="overflow-hidden rounded-lg border border-border">
+                <table className="w-full text-sm">
+                  <thead className="bg-surface-muted text-left text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="w-8 px-3 py-2" />
+                      <th className="px-3 py-2">IP</th>
+                      <th className="px-3 py-2">Tipo</th>
+                      <th className="px-3 py-2">Visto por</th>
+                      <th className="px-3 py-2">Prefixo</th>
+                      <th className="px-3 py-2">Detalhe</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shown.map((f) => {
+                      const canPick = canWrite && f.kind === 'UNDOCUMENTED';
+                      return (
+                        <tr key={`${f.kind}-${f.ip}`} className="border-t border-border align-top">
+                          <td className="px-3 py-2">
+                            {canPick && (
+                              <input
+                                type="checkbox"
+                                checked={picked.has(f.ip)}
+                                onChange={() => togglePick(f.ip)}
+                                className="h-3.5 w-3.5"
+                              />
+                            )}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-xs">
+                            {f.ip}
+                            {f.macAddress && (
+                              <div className="text-[11px] text-muted-foreground">{f.macAddress}</div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            <Badge tone={KIND_TONE[f.kind]}>{KIND_LABEL[f.kind]}</Badge>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground">
+                            {f.sources.map((s) => SOURCE_LABEL[s] ?? s).join(', ') || '—'}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
+                            {f.prefixCidr ?? '—'}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground">
+                            {f.hostname ? `${f.hostname} · ` : ''}
+                            {f.detail ?? ''}
+                            <div className="mt-0.5 opacity-75">{f.suggestion}</div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 

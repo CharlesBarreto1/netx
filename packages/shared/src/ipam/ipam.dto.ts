@@ -184,3 +184,36 @@ export type IpamLookupRequest = z.infer<typeof IpamLookupRequestSchema>;
 
 export const CgnatExportFormatEnum = z.enum(['csv', 'mikrotik']);
 export type CgnatExportFormat = z.infer<typeof CgnatExportFormatEnum>;
+
+// -----------------------------------------------------------------------------
+// RECONCILIAÇÃO IPAM ↔ REDE REAL
+// -----------------------------------------------------------------------------
+/**
+ * Varredura. As fontes locais (RADIUS/contrato/equipamento) rodam sempre — saem
+ * do banco. `equipmentIds` é opt-in: só aí o servidor alcança o RouterOS pra ler
+ * ARP e leases, então nada de rede acontece sem o operador pedir.
+ */
+export const ReconcileScanRequestSchema = z.object({
+  equipmentIds: z.array(z.string().uuid()).max(50).optional(),
+});
+export type ReconcileScanRequest = z.infer<typeof ReconcileScanRequestSchema>;
+
+/** Importa achados UNDOCUMENTED escolhidos, um a um. */
+export const ImportIpamFindingsRequestSchema = z.object({
+  items: z
+    .array(
+      z.object({
+        ip: ipString,
+        prefixId: z.string().uuid().nullish(),
+        contractId: z.string().uuid().nullish(),
+        customerId: z.string().uuid().nullish(),
+        equipmentId: z.string().uuid().nullish(),
+        macAddress: optionalNullableString(17),
+        hostname: optionalNullableString(255),
+        description: optionalNullableString(255),
+      }),
+    )
+    .min(1)
+    .max(500),
+});
+export type ImportIpamFindingsRequest = z.infer<typeof ImportIpamFindingsRequestSchema>;

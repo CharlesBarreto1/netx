@@ -114,6 +114,78 @@ export interface SplitPrefixResult {
   cidrs: string[];
 }
 
+// ── Reconciliação IPAM ↔ rede real ──────────────────────────────────────────
+export type ObservationSource =
+  | 'RADIUS'
+  | 'CONTRACT'
+  | 'EQUIPMENT'
+  | 'MIKROTIK_ARP'
+  | 'MIKROTIK_DHCP';
+
+export type FindingKind = 'UNDOCUMENTED' | 'NO_PREFIX' | 'OWNER_MISMATCH' | 'ORPHANED';
+
+export interface ReconcileFinding {
+  kind: FindingKind;
+  ip: string;
+  version: 4 | 6;
+  sources: ObservationSource[];
+  prefixId: string | null;
+  prefixCidr: string | null;
+  addressId: string | null;
+  observedContractId: string | null;
+  observedEquipmentId: string | null;
+  observedCustomerId: string | null;
+  macAddress: string | null;
+  hostname: string | null;
+  detail: string | null;
+  suggestion: string;
+}
+
+export interface ReconcileWarning {
+  equipmentId: string;
+  equipmentName: string;
+  message: string;
+}
+
+export interface ReconcileResult {
+  scannedAt: string;
+  durationMs: number;
+  liveEquipmentIds: string[];
+  observedCount: number;
+  documentedCount: number;
+  bySource: Record<string, number>;
+  byKind: Record<string, number>;
+  warnings: ReconcileWarning[];
+  findings: ReconcileFinding[];
+}
+
+/** Equipamento que pode ser lido ao vivo (ARP/DHCP via RouterOS). */
+export interface ReconcileTarget {
+  id: string;
+  name: string;
+  ipAddress: string;
+  /** Sem credencial de API cadastrada não dá pra consultar. */
+  ready: boolean;
+  lastReachableAt: string | null;
+}
+
+export interface ImportFindingInput {
+  ip: string;
+  prefixId?: string | null;
+  contractId?: string | null;
+  customerId?: string | null;
+  equipmentId?: string | null;
+  macAddress?: string | null;
+  hostname?: string | null;
+  description?: string | null;
+}
+
+export interface ImportFindingsResult {
+  imported: number;
+  skipped: { ip: string; reason: string }[];
+  addresses: string[];
+}
+
 export interface IpamAddress {
   id: string;
   prefixId: string;
@@ -289,6 +361,13 @@ export const ipamApi = {
     api.get<IpamNextSubnet>(`/v1/ipam/prefixes/${id}/next?len=${len}`),
   splitPrefix: (id: string, body: SplitPrefixInput) =>
     api.post<SplitPrefixResult>(`/v1/ipam/prefixes/${id}/split`, body),
+
+  // Reconciliação
+  reconcileTargets: () => api.get<ReconcileTarget[]>('/v1/ipam/reconcile/targets'),
+  reconcileScan: (equipmentIds?: string[]) =>
+    api.post<ReconcileResult>('/v1/ipam/reconcile/scan', { equipmentIds }),
+  reconcileImport: (items: ImportFindingInput[]) =>
+    api.post<ImportFindingsResult>('/v1/ipam/reconcile/import', { items }),
   createPrefix: (body: CreatePrefixInput) => api.post<IpamPrefix>('/v1/ipam/prefixes', body),
   updatePrefix: (id: string, body: Partial<CreatePrefixInput>) =>
     api.patch<IpamPrefix>(`/v1/ipam/prefixes/${id}`, body),
