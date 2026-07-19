@@ -108,6 +108,12 @@ const messages = {
         coordsHelp: 'Paste "lat, lng" straight from Google Maps',
         product: 'Catalog product',
         productPlaceholder: 'Pick a model…',
+        netxPop: 'Network plant POP',
+        netxPopNone: 'Not linked',
+        netxPopHelp:
+          'Link to the POP already registered under Technical > Network plant so the same site is not kept as two records. Picking one pulls its coordinates.',
+        netxPopEmpty:
+          'No free POP under Technical > Network plant — all are already on the map, or none has been registered yet.',
         address: 'Address/reference',
         description: 'Description',
         errorNameRequired: 'Name is required',
@@ -2255,10 +2261,13 @@ const messages = {
       title: 'Assets',
       subtitle:
         'All serialized equipment. Search by serial and adjust status — defective, written-off, sold or discarded remove it from stock but keep the record for reporting.',
-      searchLabel: 'Search by serial',
-      searchPlaceholder: 'e.g. HWTC12AB34CD',
+      searchLabel: 'Search by asset tag or serial',
+      searchPlaceholder: 'e.g. ZUXPAT-000123 or HWTC12AB34CD',
       filterStatus: 'Status',
       allStatuses: 'All statuses',
+      colAssetTag: 'Asset tag',
+      noAssetTagHint:
+        'Acquired before asset tags were adopted — label it on the next visit.',
       colSerial: 'Serial',
       colProduct: 'Product',
       colStatus: 'Status',

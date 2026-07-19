@@ -161,6 +161,12 @@ export interface SerialHistoryResponse {
 export interface SerialItemResponse {
   id: string;
   serial: string;
+  /**
+   * Código de patrimônio da operação ("ZUXPAT-000123"). Null no acervo
+   * anterior à adoção do patrimônio. Distinto do `serial`, que é do
+   * fabricante — ver asset-tag.ts no core.
+   */
+  assetTag: string | null;
   status: SerialStatus;
   product: { id: string; sku: string; name: string; brand: string | null; model: string | null };
   location: { id: string; name: string } | null;

@@ -119,6 +119,7 @@ export default function StockAssetsPage() {
           <table className="min-w-full text-sm">
             <thead className="bg-surface-muted text-left text-[11px] font-semibold uppercase tracking-wider text-text-muted">
               <tr>
+                <th className="px-3 py-2">{t('colAssetTag')}</th>
                 <th className="px-3 py-2">{t('colSerial')}</th>
                 <th className="px-3 py-2">{t('colProduct')}</th>
                 <th className="px-3 py-2">{t('colStatus')}</th>
@@ -130,13 +131,30 @@ export default function StockAssetsPage() {
             <tbody className="divide-y divide-border">
               {(data?.data ?? []).length === 0 ? (
                 <tr>
-                  <td colSpan={canAdjust ? 6 : 5} className="px-3 py-6 text-center text-text-muted">
+                  <td colSpan={canAdjust ? 7 : 6} className="px-3 py-6 text-center text-text-muted">
                     {tc('nothingHere')}
                   </td>
                 </tr>
               ) : (
                 (data?.data ?? []).map((it) => (
                   <tr key={it.id}>
+                    <td className="px-3 py-2 font-mono">
+                      {it.assetTag ? (
+                        <button
+                          type="button"
+                          onClick={() => setHistoryId(it.id)}
+                          className="font-medium text-primary hover:underline"
+                          title={t('viewHistory')}
+                        >
+                          {it.assetTag}
+                        </button>
+                      ) : (
+                        // Acervo anterior à adoção do patrimônio: sem etiqueta.
+                        <span className="text-text-muted" title={t('noAssetTagHint')}>
+                          —
+                        </span>
+                      )}
+                    </td>
                     <td className="px-3 py-2 font-mono">
                       <button
                         type="button"
@@ -255,8 +273,11 @@ function ChangeStatusModal({
     <Modal open onClose={onClose} title={t('modalTitle')}>
       <form onSubmit={handleSubmit} className="space-y-3">
         <div className="rounded-md border border-border bg-surface-muted p-3 text-sm">
-          <div className="font-mono font-medium">{item.serial}</div>
+          <div className="font-mono font-medium">
+            {item.assetTag ?? item.serial}
+          </div>
           <div className="text-xs text-text-muted">
+            {item.assetTag ? `${item.serial} · ` : ''}
             {item.product.name} · {t(`status.${item.status}`)}
           </div>
         </div>

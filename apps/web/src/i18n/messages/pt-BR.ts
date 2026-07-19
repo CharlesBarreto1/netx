@@ -118,6 +118,12 @@ const messages = {
         coordsHelp: 'Cole "lat, lng" direto do Google Maps',
         product: 'Produto do catálogo',
         productPlaceholder: 'Selecione o modelo…',
+        netxPop: 'POP da planta de rede',
+        netxPopNone: 'Sem vínculo',
+        netxPopHelp:
+          'Vincule ao POP já cadastrado em Técnico > Planta de rede para não manter dois cadastros do mesmo lugar. Ao escolher, a coordenada vem do cadastro.',
+        netxPopEmpty:
+          'Nenhum POP livre em Técnico > Planta de rede — todos já estão no mapa, ou ainda não há POP cadastrado.',
         address: 'Endereço/referência',
         description: 'Descrição',
         errorNameRequired: 'Informe o nome',
@@ -2285,10 +2291,13 @@ const messages = {
       title: 'Patrimônios',
       subtitle:
         'Todos os equipamentos com serial. Busque por serial e ajuste o status — defeito, baixa, venda ou inutilização descontabilizam do estoque mas mantêm o registro pra relatório.',
-      searchLabel: 'Buscar por serial',
-      searchPlaceholder: 'ex.: HWTC12AB34CD',
+      searchLabel: 'Buscar por patrimônio ou serial',
+      searchPlaceholder: 'ex.: ZUXPAT-000123 ou HWTC12AB34CD',
       filterStatus: 'Status',
       allStatuses: 'Todos os status',
+      colAssetTag: 'Patrimônio',
+      noAssetTagHint:
+        'Bem anterior à adoção do código de patrimônio — etiquete na próxima visita.',
       colSerial: 'Serial',
       colProduct: 'Produto',
       colStatus: 'Status',

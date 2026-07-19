@@ -175,6 +175,13 @@ export interface FibermapElement {
     manufacturer: string;
     specs: Record<string, unknown>;
   } | null;
+  netxPopId: string | null;
+  netxPop: {
+    id: string;
+    name: string;
+    code: string | null;
+    city: string | null;
+  } | null;
   name: string;
   latitude: number;
   longitude: number;
@@ -191,6 +198,8 @@ export interface CreateFibermapElementDto {
   folderId: string;
   type: FibermapElementType;
   productId?: string | null;
+  /** POP da planta de rede que este elemento representa (só type=POP). */
+  netxPopId?: string | null;
   name: string;
   latitude: number;
   longitude: number;
@@ -424,6 +433,22 @@ export interface FibermapApDevice {
   /** OLT: dados resolvidos do inventário quando vinculada (spec §11). */
   netxOlt: { id: string; name: string; status: string } | null;
   ports: FibermapApPort[];
+}
+
+/** POP da planta de rede (/network/pops) + onde já está na planta óptica. */
+export interface FibermapInventoryPop {
+  id: string;
+  name: string;
+  code: string | null;
+  city: string | null;
+  state: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  placement: {
+    elementId: string;
+    elementName: string;
+    folderId: string;
+  } | null;
 }
 
 /** OLT do inventário (/olts) + onde já está colocada na planta. */
@@ -939,6 +964,8 @@ export const fibermapApi = {
   /** OLTs do inventário (/olts) + onde já estão na planta (vínculo §11). */
   listInventoryOltsPath: '/v1/fibermap/olts',
   listInventoryOlts: () => api.get<FibermapInventoryOlt[]>('/v1/fibermap/olts'),
+  listInventoryPopsPath: '/v1/fibermap/pops',
+  listInventoryPops: () => api.get<FibermapInventoryPop[]>('/v1/fibermap/pops'),
 
   // Trace (FM-4)
   traceFiber: (

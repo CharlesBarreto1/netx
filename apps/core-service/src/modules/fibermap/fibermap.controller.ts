@@ -394,6 +394,16 @@ export class FibermapController {
     return this.conns.listInventoryOlts(u.tenantId);
   }
 
+  /**
+   * POPs da planta de rede (/network/pops) + onde já estão na planta óptica.
+   * Mesmo contrato do /olts, pro seletor de vínculo do elemento type=POP.
+   */
+  @Get('pops')
+  @RequirePermissions('fibermap.read')
+  listInventoryPops(@CurrentUser() u: AuthenticatedPrincipal) {
+    return this.elements.listInventoryPops(u.tenantId);
+  }
+
   /** Splitter/DIO/OLT dentro do elemento (portas geradas, §3.5). */
   @Post('elements/:id/devices')
   @RequirePermissions('fibermap.write')

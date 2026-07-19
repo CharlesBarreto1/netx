@@ -34,6 +34,12 @@ export const CreateFibermapElementRequestSchema = z.object({
   type: FibermapElementTypeSchema,
   /** Produto do catálogo — a UI obriga pra CEO/CTO/CABINET (spec §3.3). */
   productId: z.string().uuid().nullish(),
+  /**
+   * POP da planta de rede (Técnico > Planta de rede) que este elemento
+   * representa. Só aceito em type=POP — o service rejeita nos demais. Um POP
+   * do inventário só pode estar em um elemento vivo.
+   */
+  netxPopId: z.string().uuid().nullish(),
   name: z.string().min(1).max(120),
   latitude: LatitudeSchema,
   longitude: LongitudeSchema,
@@ -48,6 +54,8 @@ export type CreateFibermapElementRequest = z.infer<
 export const UpdateFibermapElementRequestSchema = z.object({
   folderId: z.string().uuid().optional(),
   productId: z.string().uuid().nullish(),
+  /** null explícito desvincula o POP; undefined mantém como está. */
+  netxPopId: z.string().uuid().nullish(),
   name: z.string().min(1).max(120).optional(),
   latitude: LatitudeSchema.optional(),
   longitude: LongitudeSchema.optional(),
@@ -175,6 +183,14 @@ export interface FibermapElementResponse {
     manufacturer: string;
     specs: Record<string, unknown>;
   } | null;
+  /** POP da planta de rede que este elemento representa (só type=POP). */
+  netxPopId: string | null;
+  netxPop: {
+    id: string;
+    name: string;
+    code: string | null;
+    city: string | null;
+  } | null;
   name: string;
   latitude: number;
   longitude: number;
@@ -185,6 +201,28 @@ export interface FibermapElementResponse {
   devicesCount: number;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * GET /fibermap/pops — POPs da planta de rede com onde já estão na planta
+ * óptica. Exposto sob fibermap.read (a listagem /v1/network/pops exige
+ * network.read, que o operador de planta pode não ter).
+ */
+export interface FibermapInventoryPop {
+  id: string;
+  name: string;
+  code: string | null;
+  city: string | null;
+  state: string | null;
+  /** Coordenada do POP no inventário — sugestão pra posicionar no mapa. */
+  latitude: number | null;
+  longitude: number | null;
+  /** null = livre pra colocar no mapa. */
+  placement: {
+    elementId: string;
+    elementName: string;
+    folderId: string;
+  } | null;
 }
 
 // =============================================================================

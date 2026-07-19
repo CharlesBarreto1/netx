@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 
+import { allocateAssetTags, withAssetTagRetry } from './asset-tag';
 import { ProductsService } from './products.service';
 import { StockLocationsService } from './stock-locations.service';
 
@@ -134,7 +135,10 @@ export class StockMovementsService {
 
     const movementType = input.direction === 'IN' ? 'ADJUSTMENT_IN' : 'ADJUSTMENT_OUT';
 
-    return this.prisma.$transaction(async (tx) => {
+    // Retry por corrida no sequencial de patrimônio (só o ramo IN/PATRIMONIAL
+    // aloca tag; o rollback desfaz tudo antes da re-tentativa).
+    return withAssetTagRetry(() =>
+      this.prisma.$transaction(async (tx) => {
       if (input.direction === 'IN') {
         // Recalcula custo médio
         await this.products.recalcAverageCost(
@@ -160,11 +164,17 @@ export class StockMovementsService {
             );
           }
 
+          // Bem que entra por ajuste (achado em inventário, doação, migração)
+          // também recebe patrimônio — a etiqueta não depende de ter havido
+          // compra, só de o bem existir.
+          const tags = await allocateAssetTags(tx, tenantId, input.serials.length);
           await tx.serialItem.createMany({
-            data: input.serials.map((serial) => ({
+            data: input.serials.map((serial, i) => ({
               tenantId,
               productId: product.id,
               serial: serial.trim(),
+              assetTag: tags[i].assetTag,
+              assetSeq: tags[i].assetSeq,
               status: 'IN_STOCK' as const,
               locationId: input.locationId,
               acquisitionCost: unitCost,
@@ -327,7 +337,8 @@ export class StockMovementsService {
       });
 
       return { ok: true };
-    });
+      }),
+    );
   }
 
   /**

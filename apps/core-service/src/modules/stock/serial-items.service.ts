@@ -52,8 +52,15 @@ export class SerialItemsService {
       ...(q.status ? { status: q.status as PrismaSerialStatus } : {}),
       ...(q.productId ? { productId: q.productId } : {}),
       ...(q.locationId ? { locationId: q.locationId } : {}),
+      // Busca casa serial do fabricante OU código de patrimônio — quem lê a
+      // etiqueta no campo digita/escaneia o patrimônio, não o serial.
       ...(q.search?.trim()
-        ? { serial: { contains: q.search.trim(), mode: 'insensitive' } }
+        ? {
+            OR: [
+              { serial: { contains: q.search.trim(), mode: 'insensitive' as const } },
+              { assetTag: { contains: q.search.trim(), mode: 'insensitive' as const } },
+            ],
+          }
         : {}),
     };
     const [rows, total] = await Promise.all([
@@ -86,8 +93,15 @@ export class SerialItemsService {
       ...(q.productId ? { productId: q.productId } : {}),
       ...(q.onlyComodato ? { status: 'ALLOCATED' as PrismaSerialStatus } : {}),
       ...(q.status ? { status: q.status as PrismaSerialStatus } : {}),
+      // Busca casa serial do fabricante OU código de patrimônio — quem lê a
+      // etiqueta no campo digita/escaneia o patrimônio, não o serial.
       ...(q.search?.trim()
-        ? { serial: { contains: q.search.trim(), mode: 'insensitive' } }
+        ? {
+            OR: [
+              { serial: { contains: q.search.trim(), mode: 'insensitive' as const } },
+              { assetTag: { contains: q.search.trim(), mode: 'insensitive' as const } },
+            ],
+          }
         : {}),
       ...(q.city?.trim()
         ? {
@@ -500,6 +514,7 @@ function toResponse(r: SerialRow): SerialItemResponse {
   return {
     id: r.id,
     serial: r.serial,
+    assetTag: r.assetTag,
     status: r.status,
     product: {
       id: r.product.id,

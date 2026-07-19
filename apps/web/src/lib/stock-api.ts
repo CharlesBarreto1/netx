@@ -560,6 +560,8 @@ export type SerialStatusTarget =
 export interface SerialItem {
   id: string;
   serial: string;
+  /** Código de patrimônio da operação ("ZUXPAT-000123"). Null no acervo antigo. */
+  assetTag: string | null;
   status: SerialStatus;
   product: { id: string; sku: string; name: string; brand: string | null; model: string | null };
   location: { id: string; name: string } | null;

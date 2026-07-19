@@ -60,6 +60,11 @@ model Tenant {
   // Prefixo de 3 letras pro código sequencial de contrato ({prefix}-{seq},
   // ex.: ZUX-1). Configurável pela operação. Null = derivado do slug.
   contractPrefix String?   @map("contract_prefix") @db.VarChar(3)
+  // Prefixo do código de patrimônio ({prefix}-{seq}, ex.: PAT-000123).
+  // Null = derivado do slug, mesmo helper do contractPrefix. Mais folga que o
+  // contractPrefix porque etiqueta de patrimônio costuma carregar o setor
+  // ("ZUXPAT"), não só a sigla do tenant.
+  assetPrefix String?   @map("asset_prefix") @db.VarChar(8)
   status      TenantStatus @default(TRIAL)
   domains     String[]     @default([]) // custom domains
   logoUrl     String?      @map("logo_url")
@@ -2284,6 +2289,9 @@ model NetworkPop {
   equipment   NetworkEquipment[]
   olts        Olt[]
   ipamPrefixes IpamPrefix[]
+  // Presença deste POP na planta óptica (FiberMap). Lista por causa do SetNull
+  // + soft delete: o único parcial garante no máximo um elemento VIVO.
+  fibermapElements FibermapElement[]
 
   @@unique([tenantId, name])
   @@unique([tenantId, code])
@@ -3442,6 +3450,18 @@ model SerialItem {
   tenantId        String       @map("tenant_id") @db.Uuid
   productId       String       @map("product_id") @db.Uuid
   serial          String       @db.VarChar(120)
+
+  // ── Patrimônio ────────────────────────────────────────────────────────────
+  // Identidade INTERNA do bem: "{Tenant.assetPrefix}-{assetSeq}" com padding
+  // ("PAT-000123"). Distinta do `serial`, que é do fabricante, só é único por
+  // produto e é editável (renameSerial). O assetTag é único no tenant, gerado
+  // na entrada (compra ou ajuste) e NUNCA reusado nem reeditado — é o que vai
+  // na etiqueta física. Nullable pro acervo anterior à migration; o backfill é
+  // decisão da operação (etiquetar bem já instalado exige visita).
+  // `assetSeq` guarda o sequencial cru pro MAX+1, mesmo padrão de Contract.seq.
+  assetTag        String?      @map("asset_tag") @db.VarChar(32)
+  assetSeq        Int?         @map("asset_seq")
+
   status          SerialStatus @default(IN_STOCK)
   locationId      String?      @map("location_id") @db.Uuid // null se status != IN_STOCK e != IN_TRANSIT
 
@@ -3473,6 +3493,11 @@ model SerialItem {
   movements StockMovement[]
 
   @@unique([tenantId, productId, serial])
+  // Identidade patrimonial — únicos por tenant (não por produto, ao contrário
+  // do serial). Protegem a corrida do MAX+1: colisão vira P2002 e o service
+  // re-tenta, mesmo contrato de Contract.seq/code.
+  @@unique([tenantId, assetTag])
+  @@unique([tenantId, assetSeq])
   @@index([tenantId, status])
   @@index([tenantId, contractId])
   @@index([tenantId, locationId, status])
@@ -6807,6 +6832,12 @@ model FibermapElement {
   // Modelo do catálogo — obrigatório na UI pra CEO/CTO/CABINET; null permitido
   // pra POLE, import KML e legado (spec §3.3).
   productId   String?                   @map("product_id") @db.Uuid
+  // POP: vínculo com a planta de rede (Técnico > Planta de rede). Mesmo
+  // contrato do FibermapDevice.netxOltId — coluna real (não metadata) pra FK +
+  // índice único parcial (WHERE deleted_at IS NULL, no SQL da migration)
+  // travarem "um POP do inventário = UM lugar na planta". Só faz sentido em
+  // type=POP; a validação mora no service, não no banco.
+  netxPopId   String?                   @map("netx_pop_id") @db.Uuid
   name        String                    @db.VarChar(120)
   latitude    Decimal                   @db.Decimal(9, 6)
   longitude   Decimal                   @db.Decimal(9, 6)
@@ -6827,6 +6858,10 @@ model FibermapElement {
   tenant      Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   folder      FibermapFolder            @relation(fields: [folderId], references: [id], onDelete: Restrict)
   product     FibermapProduct?          @relation(fields: [productId], references: [id], onDelete: SetNull)
+  // SetNull: apagar o POP do inventário não some com o elemento da planta —
+  // vira POP "sem vínculo" e o operador re-vincula (mesma filosofia do R8.2 e
+  // do netxOltId).
+  netxPop     NetworkPop?               @relation(fields: [netxPopId], references: [id], onDelete: SetNull)
   createdBy   User?                     @relation("FibermapElementCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
   updatedBy   User?                     @relation("FibermapElementUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
   photos      FibermapElementPhoto[]
@@ -6841,6 +6876,9 @@ model FibermapElement {
   @@index([tenantId, type])
   @@index([tenantId, folderId])
   @@index([tenantId, productId])
+  // O único parcial (um POP do inventário em um só lugar da planta) é criado
+  // no SQL da migration — Prisma não expressa índice parcial.
+  @@index([netxPopId])
   @@map("fibermap_elements")
 }
 

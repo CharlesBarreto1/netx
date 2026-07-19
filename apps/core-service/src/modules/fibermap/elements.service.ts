@@ -22,6 +22,7 @@ import type {
   FibermapElementSearchHit,
   FibermapElementsFeatureCollection,
   FibermapElementType,
+  FibermapInventoryPop,
   FibermapProductType,
   ListFibermapElementsQuery,
   SearchFibermapElementsQuery,
@@ -55,6 +56,9 @@ const DETAIL_INCLUDE = {
   product: {
     select: { id: true, name: true, manufacturer: true, specs: true },
   },
+  // POP da planta de rede vinculado (só type=POP tem). O detalhe carrega o
+  // nome/código pro drawer mostrar "vinculado a POP-Centro" sem outro request.
+  netxPop: { select: { id: true, name: true, code: true, city: true } },
   photos: { orderBy: { createdAt: 'desc' as const } },
   _count: { select: { devices: { where: { deletedAt: null } } } },
 } satisfies Prisma.FibermapElementInclude;
@@ -75,6 +79,15 @@ function toResponse(e: ElementDetailRow): FibermapElementResponse {
           name: e.product.name,
           manufacturer: e.product.manufacturer,
           specs: (e.product.specs ?? {}) as Record<string, unknown>,
+        }
+      : null,
+    netxPopId: e.netxPopId,
+    netxPop: e.netxPop
+      ? {
+          id: e.netxPop.id,
+          name: e.netxPop.name,
+          code: e.netxPop.code,
+          city: e.netxPop.city,
         }
       : null,
     name: e.name,
@@ -227,6 +240,93 @@ export class FibermapElementsService {
     }
   }
 
+  /**
+   * POPs da planta de rede + onde já estão na planta óptica (pro seletor de
+   * vínculo). Espelha ConnectionsService.listInventoryOlts.
+   */
+  async listInventoryPops(tenantId: string): Promise<FibermapInventoryPop[]> {
+    const pops = await this.prisma.networkPop.findMany({
+      where: { tenantId, deletedAt: null, isActive: true },
+      select: {
+        id: true,
+        name: true,
+        code: true,
+        city: true,
+        state: true,
+        latitude: true,
+        longitude: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+    if (!pops.length) return [];
+    const placements = await this.prisma.fibermapElement.findMany({
+      where: { tenantId, netxPopId: { in: pops.map((p) => p.id) }, deletedAt: null },
+      select: { id: true, netxPopId: true, name: true, folderId: true },
+    });
+    const byPop = new Map(placements.map((p) => [p.netxPopId!, p]));
+    return pops.map((p) => {
+      const placed = byPop.get(p.id);
+      return {
+        id: p.id,
+        name: p.name,
+        code: p.code,
+        city: p.city,
+        state: p.state,
+        // O POP da planta pode não ter coordenada (campo opcional); quem
+        // consome usa como sugestão pra posicionar o elemento no mapa.
+        latitude: p.latitude === null ? null : Number(p.latitude),
+        longitude: p.longitude === null ? null : Number(p.longitude),
+        placement: placed
+          ? {
+              elementId: placed.id,
+              elementName: placed.name,
+              folderId: placed.folderId,
+            }
+          : null,
+      };
+    });
+  }
+
+  /**
+   * POP do inventário livre pra vincular? (trava "um POP = um lugar na planta")
+   * Espelha ConnectionsService.assertOltBindingFree.
+   * ignoreElementId: no update, o próprio elemento não conta como conflito.
+   */
+  private async assertPopBindingFree(
+    tenantId: string,
+    elementType: FibermapElementType,
+    netxPopId: string,
+    ignoreElementId: string | null,
+  ): Promise<void> {
+    // Só elemento POP representa um POP da planta de rede. Vincular um CTO a
+    // um POP do inventário não significaria nada — e o único parcial no banco
+    // não sabe distinguir tipo, então a regra mora aqui.
+    if (elementType !== 'POP') {
+      throw new BadRequestException(
+        'Só elemento do tipo POP pode ser vinculado a um POP da planta de rede',
+      );
+    }
+    const pop = await this.prisma.networkPop.findFirst({
+      where: { id: netxPopId, tenantId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!pop) throw new BadRequestException('POP da planta de rede não encontrado');
+    const taken = await this.prisma.fibermapElement.findFirst({
+      where: {
+        tenantId,
+        netxPopId,
+        deletedAt: null,
+        ...(ignoreElementId ? { id: { not: ignoreElementId } } : {}),
+      },
+      select: { name: true },
+    });
+    if (taken) {
+      throw new ConflictException(
+        `Este POP já está colocado em "${taken.name}" — remova de lá antes`,
+      );
+    }
+  }
+
   async create(
     tenantId: string,
     actorUserId: string,
@@ -236,6 +336,9 @@ export class FibermapElementsService {
     if (input.productId) {
       await this.validateProduct(tenantId, input.type, input.productId);
     }
+    if (input.netxPopId) {
+      await this.assertPopBindingFree(tenantId, input.type, input.netxPopId, null);
+    }
     try {
       const created = await this.prisma.fibermapElement.create({
         data: {
@@ -243,6 +346,7 @@ export class FibermapElementsService {
           folderId: input.folderId,
           type: input.type,
           productId: input.productId ?? null,
+          netxPopId: input.netxPopId ?? null,
           name: input.name.trim(),
           latitude: new Prisma.Decimal(input.latitude),
           longitude: new Prisma.Decimal(input.longitude),
@@ -281,6 +385,9 @@ export class FibermapElementsService {
     if (input.productId) {
       await this.validateProduct(tenantId, existing.type, input.productId);
     }
+    if (input.netxPopId) {
+      await this.assertPopBindingFree(tenantId, existing.type, input.netxPopId, id);
+    }
     try {
       const updated = await this.prisma.fibermapElement.update({
         where: { id },
@@ -288,6 +395,9 @@ export class FibermapElementsService {
           folderId: input.folderId,
           productId:
             input.productId === undefined ? undefined : input.productId ?? null,
+          // null explícito desvincula (operador "solta" o POP pra recolocar).
+          netxPopId:
+            input.netxPopId === undefined ? undefined : input.netxPopId ?? null,
           name: input.name?.trim(),
           latitude:
             input.latitude === undefined

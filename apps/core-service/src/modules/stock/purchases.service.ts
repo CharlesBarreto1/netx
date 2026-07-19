@@ -8,6 +8,7 @@ import { AuditService } from '../audit/audit.service';
 import { SupplierPayablesService } from '../finance/supplier-payables.service';
 import { PrismaService } from '../prisma/prisma.service';
 
+import { allocateAssetTags, withAssetTagRetry } from './asset-tag';
 import { ProductsService } from './products.service';
 import { StockLocationsService } from './stock-locations.service';
 
@@ -354,12 +355,17 @@ export class PurchasesService {
       if (product.type === 'PATRIMONIAL') {
         // Cria N SerialItems vinculados à linha (purchaseItemId). N pode ser
         // 0 (lançamento parcial) — nesse caso nada é criado aqui.
+        // Cada um nasce com código de patrimônio: é a compra que dá identidade
+        // ao bem, não o cadastro manual depois.
+        const tags = await allocateAssetTags(tx, tenantId, item.serials.length);
         await tx.serialItem.createMany({
-          data: item.serials.map((serial) => ({
+          data: item.serials.map((serial, i) => ({
             tenantId,
             productId: product.id,
             purchaseItemId: purchaseItem.id,
             serial: serial.trim(),
+            assetTag: tags[i].assetTag,
+            assetSeq: tags[i].assetSeq,
             status: 'IN_STOCK' as const,
             locationId: item.locationId,
             acquisitionCost: item.unitCost,
@@ -463,7 +469,10 @@ export class PurchasesService {
     // ──────────────────────────────────────────────────────────────────────
     // TRANSAÇÃO ATÔMICA
     // ──────────────────────────────────────────────────────────────────────
-    const purchase = await this.prisma.$transaction(async (tx) => {
+    // Retry envolve só a transação: sob corrida no sequencial de patrimônio
+    // o rollback desfez tudo, e as validações acima não precisam repetir.
+    const purchase = await withAssetTagRetry(() =>
+      this.prisma.$transaction(async (tx) => {
       const created = await tx.purchase.create({
         data: {
           tenantId,
@@ -503,7 +512,8 @@ export class PurchasesService {
       }
 
       return created;
-    });
+      }),
+    );
 
     await this.audit.log({
       tenantId,
@@ -909,7 +919,8 @@ export class PurchasesService {
       );
     }
 
-    await this.prisma.$transaction(async (tx) => {
+    await withAssetTagRetry(() =>
+      this.prisma.$transaction(async (tx) => {
       // Recalcula o custo médio ANTES de criar os seriais — o recalc incremental
       // usa a contagem ANTERIOR ao incremento (mesma ordem do caminho de criação).
       await this.products.recalcAverageCost(
@@ -919,12 +930,15 @@ export class PurchasesService {
         Number(item.unitCost),
       );
 
+      const tags = await allocateAssetTags(tx, tenantId, serials.length);
       await tx.serialItem.createMany({
-        data: serials.map((serial) => ({
+        data: serials.map((serial, i) => ({
           tenantId,
           productId: item.productId,
           purchaseItemId: item.id,
           serial,
+          assetTag: tags[i].assetTag,
+          assetSeq: tags[i].assetSeq,
           status: 'IN_STOCK' as const,
           locationId: item.locationId,
           acquisitionCost: item.unitCost,
@@ -956,7 +970,8 @@ export class PurchasesService {
         where: { id: item.id },
         data: { serials: { push: serials } },
       });
-    });
+      }),
+    );
 
     await this.audit.log({
       tenantId,

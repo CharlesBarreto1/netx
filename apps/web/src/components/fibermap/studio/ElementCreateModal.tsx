@@ -11,9 +11,13 @@
  *   - Pasta obrigatória (elemento sempre vive numa pasta).
  *   - Produto do catálogo obrigatório pra CEO/CTO/CABINET (§3.3) —
  *     Combobox com busca server-side em /catalog/products.
+ *   - POP: vínculo opcional com o POP da planta de rede, pra o mesmo POP não
+ *     virar dois cadastros. Opcional de propósito — quem desenha o mapa antes
+ *     de cadastrar a planta não pode ficar bloqueado; o hint avisa.
  */
 import { useCallback, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import useSWR from 'swr';
 
 import { Button } from '@/components/ui/Button';
 import { Combobox, type ComboboxOption } from '@/components/ui/Combobox';
@@ -83,10 +87,21 @@ export function ElementCreateModal({
   const [productOption, setProductOption] = useState<ComboboxOption | null>(null);
   const [address, setAddress] = useState('');
   const [description, setDescription] = useState('');
+  const [netxPopId, setNetxPopId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const coordsValid = parseLatLng(coords) !== null;
+
+  // POPs da planta de rede só interessam quando o elemento É um POP.
+  const isPop = draft.type === 'POP';
+  const { data: inventoryPops } = useSWR(
+    isPop ? fibermapApi.listInventoryPopsPath : null,
+    () => fibermapApi.listInventoryPops(),
+  );
+  // POP já colocado em outro elemento não pode ser escolhido de novo — o
+  // backend recusaria, então nem oferecemos.
+  const availablePops = (inventoryPops ?? []).filter((p) => !p.placement);
 
   const loadProductOptions = useCallback(
     async (query: string): Promise<ComboboxOption[]> => {
@@ -125,6 +140,7 @@ export function ElementCreateModal({
         latitude: parsed.latitude,
         longitude: parsed.longitude,
         productId: productId || undefined,
+        netxPopId: isPop && netxPopId ? netxPopId : undefined,
         address: address.trim() || undefined,
         description: description.trim() || undefined,
       });
@@ -206,6 +222,41 @@ export function ElementCreateModal({
               placeholder={t('studio.form.productPlaceholder')}
               resetKey={productType}
             />
+          </div>
+        )}
+        {isPop && (
+          <div>
+            <Label>{t('studio.form.netxPop')}</Label>
+            <Select
+              value={netxPopId}
+              onChange={(e) => {
+                const id = e.target.value;
+                setNetxPopId(id);
+                // Coordenada do inventário como sugestão — o POP cadastrado na
+                // planta já tem lat/lng, e repetir o clique no mapa só
+                // introduziria divergência entre os dois cadastros.
+                const chosen = availablePops.find((p) => p.id === id);
+                if (chosen?.latitude != null && chosen.longitude != null) {
+                  setCoords(
+                    `${chosen.latitude.toFixed(6)}, ${chosen.longitude.toFixed(6)}`,
+                  );
+                }
+                if (chosen && !name.trim()) setName(chosen.name);
+              }}
+            >
+              <option value="">{t('studio.form.netxPopNone')}</option>
+              {availablePops.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.code ? `${p.code} · ${p.name}` : p.name}
+                  {p.city ? ` — ${p.city}` : ''}
+                </option>
+              ))}
+            </Select>
+            <FieldHelp>
+              {availablePops.length === 0
+                ? t('studio.form.netxPopEmpty')
+                : t('studio.form.netxPopHelp')}
+            </FieldHelp>
           </div>
         )}
         <div>
