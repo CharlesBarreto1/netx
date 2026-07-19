@@ -28,10 +28,7 @@ function readEnvDatabaseUrl() {
     const eq = line.indexOf('=');
     if (eq === -1) continue;
     let val = line.slice(eq + 1).trim();
-    if (
-      (val.startsWith('"') && val.endsWith('"')) ||
-      (val.startsWith("'") && val.endsWith("'"))
-    ) {
+    if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
       val = val.slice(1, -1);
     }
     return val;

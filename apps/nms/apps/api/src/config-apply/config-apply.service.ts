@@ -48,7 +48,14 @@ export class ConfigApplyService {
         kind: 'apply-config',
         accessMode: 'write',
         approvedBy: actor,
-        params: { mgmtIp: device.mgmtIp, username, passwordEnc, vendor: device.vendor, config, dryRun: true },
+        params: {
+          mgmtIp: device.mgmtIp,
+          username,
+          passwordEnc,
+          vendor: device.vendor,
+          config,
+          dryRun: true,
+        },
       },
       { waitMs: 60_000, removeOnComplete: true },
     );
@@ -100,7 +107,11 @@ export class ConfigApplyService {
       deviceId,
       action: 'device.config.apply',
       diff: data?.diff,
-      result: result.ok ? (data?.committed ? 'aplicado (pendente confirm)' : 'ok') : (result.error ?? 'falha'),
+      result: result.ok
+        ? data?.committed
+          ? 'aplicado (pendente confirm)'
+          : 'ok'
+        : (result.error ?? 'falha'),
     });
 
     if (!result.ok || !data) {
@@ -126,7 +137,13 @@ export class ConfigApplyService {
     }
 
     // Verify automático: o equipamento ainda responde SSH após a mudança? (best-effort)
-    const verify = await this.verify(device.id, device.mgmtIp, username, passwordEnc, device.vendor);
+    const verify = await this.verify(
+      device.id,
+      device.mgmtIp,
+      username,
+      passwordEnc,
+      device.vendor,
+    );
 
     const change = await this.prisma.configChange.create({
       data: {

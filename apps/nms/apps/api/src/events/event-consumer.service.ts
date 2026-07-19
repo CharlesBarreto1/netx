@@ -62,7 +62,9 @@ export class EventConsumerService implements OnApplicationBootstrap, OnApplicati
     const enabled = this.config.get('EVENTBUS_CONSUME', { infer: true });
     const url = this.config.get('RABBITMQ_URL', { infer: true });
     if (!enabled || !url) {
-      this.logger.log('consumo de eventos DESLIGADO (EVENTBUS_CONSUME != true ou RABBITMQ_URL ausente)');
+      this.logger.log(
+        'consumo de eventos DESLIGADO (EVENTBUS_CONSUME != true ou RABBITMQ_URL ausente)',
+      );
       return;
     }
     void this.connect(url);

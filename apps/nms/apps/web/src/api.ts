@@ -249,7 +249,8 @@ export const api = {
     body: { username: string; password?: string; sshKey?: string; snmpCommunity?: string },
   ) => postJson<CredentialStatus>(`/devices/${id}/credentials`, body),
   testConnectivity: (id: string) => post<ConnectivityResult>(`/devices/${id}/connectivity-test`),
-  syncSnmp: (id: string) => post<{ deviceId: string; action?: string }>(`/devices/${id}/snmp-config/sync`),
+  syncSnmp: (id: string) =>
+    post<{ deviceId: string; action?: string }>(`/devices/${id}/snmp-config/sync`),
   discoverInterfaces: (id: string) =>
     post<{ deviceId: string; discovered?: number }>(`/devices/${id}/discover-interfaces`),
   interfaces: (id: string) => get<DeviceInterface[]>(`/devices/${id}/interfaces`),

@@ -1,9 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import {
-  Injectable,
-  Logger,
-  type OnApplicationShutdown,
-} from '@nestjs/common';
+import { Injectable, Logger, type OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as amqp from 'amqplib';
 

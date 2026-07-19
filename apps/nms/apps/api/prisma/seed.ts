@@ -9,7 +9,13 @@ const prisma = new PrismaClient();
 async function main() {
   // Dois devices de exemplo (multi-vendor), em IPs da faixa de documentação (TEST-NET-1).
   const samples = [
-    { hostname: 'lab-mx-01', mgmtIp: '192.0.2.1', vendor: 'juniper' as const, model: 'vMX', site: 'lab' },
+    {
+      hostname: 'lab-mx-01',
+      mgmtIp: '192.0.2.1',
+      vendor: 'juniper' as const,
+      model: 'vMX',
+      site: 'lab',
+    },
     {
       hostname: 'lab-ccr-01',
       mgmtIp: '192.0.2.2',

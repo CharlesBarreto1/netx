@@ -169,10 +169,12 @@ export class MetricsService {
     const r = rows[0];
     if (!r) return [];
     const out: SystemReading[] = [];
-    if (r.boardTempC != null) out.push({ component: 'Placa', tempC: r.boardTempC, cpuPct: r.cpuPct });
+    if (r.boardTempC != null)
+      out.push({ component: 'Placa', tempC: r.boardTempC, cpuPct: r.cpuPct });
     if (r.cpuTempC != null) out.push({ component: 'CPU', tempC: r.cpuTempC, cpuPct: r.cpuPct });
     // Sem sensor de temp (alguns RB): ainda mostra a CPU.
-    if (out.length === 0 && r.cpuPct != null) out.push({ component: 'CPU', tempC: null, cpuPct: r.cpuPct });
+    if (out.length === 0 && r.cpuPct != null)
+      out.push({ component: 'CPU', tempC: null, cpuPct: r.cpuPct });
     return out;
   }
 

@@ -98,8 +98,8 @@ function Console({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
         </div>
       </div>
       <p className="sub">
-        Gestão técnica de rede multi-vendor (Juniper + Mikrotik + Cisco IOS-XE) — observar, documentar,
-        diagnosticar e aplicar.
+        Gestão técnica de rede multi-vendor (Juniper + Mikrotik + Cisco IOS-XE) — observar,
+        documentar, diagnosticar e aplicar.
       </p>
       {error && <p className="err">{error}</p>}
       {devices.length > 0 ? (
@@ -122,9 +122,7 @@ function Console({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
       {device && <Dashboard device={device} canWrite={canWrite} />}
       {device && terminal && <Terminal deviceId={device.id} onClose={() => setTerminal(false)} />}
       {usersPanel && <Users me={user.username} onClose={() => setUsersPanel(false)} />}
-      {manage && (
-        <DeviceManager onClose={() => setManage(false)} onChanged={loadDevices} />
-      )}
+      {manage && <DeviceManager onClose={() => setManage(false)} onChanged={loadDevices} />}
     </div>
   );
 }
@@ -562,7 +560,11 @@ function ConfigApplyPanel({ deviceId, vendor }: { deviceId: string; vendor: stri
   };
 
   const apply = async () => {
-    if (!window.confirm(`Aplicar config no equipamento? Rollback automático em ${confirmMinutes}min se não confirmar.`))
+    if (
+      !window.confirm(
+        `Aplicar config no equipamento? Rollback automático em ${confirmMinutes}min se não confirmar.`,
+      )
+    )
       return;
     setBusy('apply');
     setMsg('aplicando…');
@@ -602,8 +604,8 @@ function ConfigApplyPanel({ deviceId, vendor }: { deviceId: string; vendor: stri
     <div className="panel full">
       <h2>Aplicar configuração ({vendor}) — escrita</h2>
       <p className="label">
-        Padrão seguro: planejar → revisar o diff → aplicar (rollback automático armado) →
-        verificar acesso → confirmar. Sem confirmar, o equipamento reverte sozinho.
+        Padrão seguro: planejar → revisar o diff → aplicar (rollback automático armado) → verificar
+        acesso → confirmar. Sem confirmar, o equipamento reverte sozinho.
       </p>
       <textarea
         className="config-editor"

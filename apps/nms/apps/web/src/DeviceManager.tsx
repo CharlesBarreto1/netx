@@ -208,8 +208,8 @@ export function DeviceManager({
         <div className="panel">
           <h2>Credenciais (cofre)</h2>
           <p className="label">
-            Selecione um device abaixo (“cred”) para gravar. Os segredos vão cifrados ao cofre —
-            a API nunca os guarda em claro.
+            Selecione um device abaixo (“cred”) para gravar. Os segredos vão cifrados ao cofre — a
+            API nunca os guarda em claro.
           </p>
           <div className="btns" style={{ flexWrap: 'wrap' }}>
             <input
