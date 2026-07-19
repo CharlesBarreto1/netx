@@ -2325,6 +2325,7 @@ const messages = {
       status: {
         IN_STOCK: 'En stock',
         ALLOCATED: 'En comodato',
+        IN_USE: 'En uso en la red',
         IN_TRANSIT: 'En tránsito',
         DEFECTIVE: 'Defecto',
         WRITTEN_OFF: 'Dada de baja',
@@ -3264,6 +3265,12 @@ const messages = {
       mgmtIp: 'IP de management',
       mgmtIpHelp: 'Mismo IP que el equipo usa para mandar Access-Request al RADIUS.',
       noPop: '— Sin POP —',
+      assetFromStock: 'Patrimonio del stock',
+      assetNone: '— No vincular —',
+      assetHelp:
+        'Elegí el equipo físico que salió del depósito. Pasa a "En uso en la red" y deja de contar en el saldo disponible — sin volver a cargar el serial.',
+      assetNeedsPop: 'Elegí el POP primero — el patrimonio necesita saber dónde fue instalado.',
+      assetEmpty: 'Ningún patrimonio disponible en stock. Cargá la compra en Stock > Compras.',
       sharedSecret: 'Shared secret',
       sharedSecretPlaceholder: 'el mismo configurado en el BNG',
       sharedSecretHelp: 'Idéntico al secret del NAS. Cambio invalida sesiones existentes.',

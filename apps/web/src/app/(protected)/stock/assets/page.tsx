@@ -34,6 +34,9 @@ import {
 const STATUS_TONE: Record<SerialStatus, 'neutral' | 'success' | 'warning' | 'danger' | 'info' | 'brand' | 'purple'> = {
   IN_STOCK: 'success',
   ALLOCATED: 'info',
+  // Ativo da operação em produção — tom próprio pra não se confundir com
+  // comodato (que é do cliente).
+  IN_USE: 'brand',
   IN_TRANSIT: 'warning',
   DEFECTIVE: 'warning',
   WRITTEN_OFF: 'neutral',

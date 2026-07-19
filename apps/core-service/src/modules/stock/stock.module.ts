@@ -4,6 +4,7 @@ import { AuditModule } from '../audit/audit.module';
 import { FinanceModule } from '../finance/finance.module';
 
 import { ComodatoService } from './comodato.service';
+import { DeploymentService } from './deployment.service';
 import { OsConsumptionService } from './os-consumption.service';
 import { ProductsService } from './products.service';
 import { PurchasesService } from './purchases.service';
@@ -13,6 +14,7 @@ import { SerialItemsService } from './serial-items.service';
 import { SuppliersService } from './suppliers.service';
 import {
   ComodatoController,
+  DeploymentController,
   OsConsumptionController,
   ProductsController,
   PurchasesController,
@@ -34,6 +36,7 @@ import {
     StockMovementsController,
     SerialItemsController,
     ComodatoController,
+    DeploymentController,
     OsConsumptionController,
   ],
   providers: [
@@ -44,6 +47,7 @@ import {
     StockMovementsService,
     SerialItemsService,
     ComodatoService,
+    DeploymentService,
     OsConsumptionService,
   ],
   exports: [
@@ -53,6 +57,9 @@ import {
     StockLocationsService,
     StockMovementsService,
     ComodatoService,
+    // DeploymentService é exportado pro NetworkModule: criar equipamento da
+    // planta consome o bem do estoque na MESMA transação.
+    DeploymentService,
     OsConsumptionService,
   ],
 })

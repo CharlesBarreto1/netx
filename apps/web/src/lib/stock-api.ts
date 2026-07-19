@@ -431,6 +431,20 @@ export const stockApi = {
   returnComodato: (input: ReturnComodatoInput) =>
     api.post('/v1/stock/comodato/return', input),
 
+  // Deploy — bem instalado na rede própria (Fase 3) ---------------------------
+  deployAvailablePath: (productId?: string) =>
+    `/v1/stock/deploy/available${productId ? `?productId=${productId}` : ''}`,
+  listDeployAvailable: (productId?: string) =>
+    api.get<AvailableAsset[]>(
+      `/v1/stock/deploy/available${productId ? `?productId=${productId}` : ''}`,
+    ),
+  deployByPopPath: (popId: string) => `/v1/stock/deploy/pops/${popId}`,
+  listDeployedByPop: (popId: string) =>
+    api.get<DeployedAsset[]>(`/v1/stock/deploy/pops/${popId}`),
+  deployAsset: (input: DeployAssetInput) => api.post('/v1/stock/deploy', input),
+  returnDeployedAsset: (input: ReturnDeployedAssetInput) =>
+    api.post('/v1/stock/deploy/return', input),
+
   // OS Consumption (Fase 2) --------------------------------------------------
   osConsumptionPath: (serviceOrderId: string) =>
     `/v1/service-orders/${serviceOrderId}/consumption`,
@@ -543,6 +557,8 @@ export interface PaginatedData<T> {
 export type SerialStatus =
   | 'IN_STOCK'
   | 'ALLOCATED'
+  /** Instalado na rede própria (POP/equipamento) — ativo da operação. */
+  | 'IN_USE'
   | 'IN_TRANSIT'
   | 'DEFECTIVE'
   | 'WRITTEN_OFF'
@@ -556,6 +572,56 @@ export type SerialStatusTarget =
   | 'WRITTEN_OFF'
   | 'SOLD'
   | 'DISCARDED';
+
+/** Bem livre no estoque, pronto pra instalar na rede própria. */
+export interface AvailableAsset {
+  id: string;
+  serial: string;
+  assetTag: string | null;
+  product: {
+    id: string;
+    sku: string;
+    name: string;
+    brand: string | null;
+    model: string | null;
+  };
+  location: { id: string; name: string } | null;
+}
+
+/** Bem instalado num POP — inventário de campo. */
+export interface DeployedAsset {
+  id: string;
+  serial: string;
+  assetTag: string | null;
+  status: SerialStatus;
+  deployedAt: string | null;
+  product: {
+    id: string;
+    sku: string;
+    name: string;
+    brand: string | null;
+    model: string | null;
+  };
+  networkEquipment: {
+    id: string;
+    name: string;
+    type: string;
+    ipAddress: string;
+  } | null;
+}
+
+export interface DeployAssetInput {
+  serialItemId: string;
+  popId: string;
+  networkEquipmentId?: string | null;
+  notes?: string | null;
+}
+
+export interface ReturnDeployedAssetInput {
+  serialItemId: string;
+  toLocationId: string;
+  notes?: string | null;
+}
 
 export interface SerialItem {
   id: string;

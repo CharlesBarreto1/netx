@@ -120,7 +120,7 @@ export interface PurchaseItemSerialResponse {
   /** id do SerialItem (pra rename/remoção). */
   id: string;
   serial: string;
-  status: 'IN_STOCK' | 'ALLOCATED' | 'IN_TRANSIT' | 'DEFECTIVE' | 'WRITTEN_OFF' | 'SOLD' | 'DISCARDED';
+  status: 'IN_STOCK' | 'ALLOCATED' | 'IN_USE' | 'IN_TRANSIT' | 'DEFECTIVE' | 'WRITTEN_OFF' | 'SOLD' | 'DISCARDED';
   locationName: string | null;
   /** Código do contrato se em comodato (pra avisar que não dá pra remover). */
   contractCode: string | null;

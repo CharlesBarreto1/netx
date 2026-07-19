@@ -2292,6 +2292,11 @@ model NetworkPop {
   // Presença deste POP na planta óptica (FiberMap). Lista por causa do SetNull
   // + soft delete: o único parcial garante no máximo um elemento VIVO.
   fibermapElements FibermapElement[]
+  // Fase 3 — bens do patrimônio instalados neste POP, depósitos que ficam
+  // dentro dele, e o rastro de movimentos de instalação/recolhimento.
+  serialItems      SerialItem[]
+  stockLocations   StockLocation[]
+  stockMovements   StockMovement[]
 
   @@unique([tenantId, name])
   @@unique([tenantId, code])
@@ -2406,6 +2411,10 @@ model NetworkEquipment {
   // IPAM — IPs documentados deste equipamento (gerência, loopback, etc.)
   ipamPrefixes  IpamPrefix[]
   ipamAddresses IpamAddress[]
+  // Fase 3 — o bem físico do patrimônio que ESTE equipamento é. Lista no
+  // Prisma por limitação da relação opcional; o @@unique em SerialItem
+  // .networkEquipmentId garante no máximo um.
+  serialItems   SerialItem[]
 
   @@unique([tenantId, name])
   @@unique([tenantId, ipAddress])
@@ -3296,6 +3305,9 @@ enum ProductType {
 enum SerialStatus {
   IN_STOCK     // disponível em algum local
   ALLOCATED    // em comodato com cliente (Fase 2: contract_id setado)
+  IN_USE       // instalado na rede PRÓPRIA (pop_id / network_equipment_id).
+               // Distinto de ALLOCATED: não é do cliente, é ativo da operação —
+               // continua no patrimônio, mas fora do saldo disponível.
   IN_TRANSIT   // entre locais
   DEFECTIVE    // com defeito, aguardando RMA/descarte
   WRITTEN_OFF  // baixado contábil
@@ -3310,6 +3322,8 @@ enum MovementType {
   SALE_RETURN       // entrada — devolução do cliente
   COMODATO_OUT      // saída — equipamento ao cliente (Fase 2)
   COMODATO_RETURN   // entrada — retorno de equipamento (Fase 2)
+  DEPLOY_OUT        // saída — bem instalado na rede própria (POP/equipamento)
+  DEPLOY_RETURN     // entrada — bem recolhido da rede própria pro estoque
   OS_CONSUMPTION    // saída — consumo em OS (Fase 2)
   ADJUSTMENT_IN     // entrada — ajuste de inventário (achado)
   ADJUSTMENT_OUT    // saída — ajuste de inventário (perda, dano)
@@ -3388,6 +3402,9 @@ model StockLocation {
   code        String   @db.VarChar(40)  // "DEP-MATRIZ", "VAN-JOAO"
   name        String   @db.VarChar(120) // "Depósito Matriz", "Caminhão João"
   address     String?  @db.VarChar(500)
+  // Depósito que fica DENTRO de um POP (almoxarifado do site). Permite
+  // responder "o que tem de estoque neste POP" sem convenção de nomenclatura.
+  popId       String?  @map("pop_id") @db.Uuid
   // Trava: não pode deletar local com saldo > 0 ou seriais alocados.
   isActive    Boolean  @default(true) @map("is_active")
 
@@ -3396,6 +3413,7 @@ model StockLocation {
   deletedAt   DateTime? @map("deleted_at")
 
   tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  pop          NetworkPop?         @relation(fields: [popId], references: [id], onDelete: SetNull)
   userAccess   StockLocationUser[]
   stockLevels  StockLevel[]
   serialItems  SerialItem[]
@@ -3469,6 +3487,19 @@ model SerialItem {
   // FK em migration 20260520000000_stock_phase2_comodato_consumption.
   contractId      String?      @map("contract_id") @db.Uuid
 
+  // ── Uso na rede própria (status IN_USE) ───────────────────────────────────
+  // Até aqui o estoque só sabia entregar bem ao CLIENTE (ALLOCATED + contractId).
+  // Bem próprio instalado num POP não tinha representação: ficava eternamente
+  // IN_STOCK (mentira contábil) ou saía por ADJUSTMENT_OUT (sumia do
+  // patrimônio). Estes dois campos são o destino "rede própria".
+  //
+  // popId sozinho cobre o bem que não é equipamento gerenciável (rack, nobreak,
+  // gerador). networkEquipmentId é o vínculo 1:1 com a Planta de rede — é ele
+  // que faz "Técnico > Equipamentos" e "Estoque" pararem de ser dois cadastros.
+  popId              String?   @map("pop_id") @db.Uuid
+  networkEquipmentId String?   @map("network_equipment_id") @db.Uuid
+  deployedAt         DateTime? @map("deployed_at")
+
   // Linha de compra que originou este patrimônio (null = veio de ajuste de
   // entrada ou de backfill sem correspondência). Permite entrada incremental de
   // seriais e reversão por FK (sem casar string). SetNull ao excluir a compra.
@@ -3490,9 +3521,18 @@ model SerialItem {
   // muda automaticamente — operador deve devolver via UI/comodato.return.
   contract     Contract?      @relation(fields: [contractId], references: [id], onDelete: SetNull)
   purchaseItem PurchaseItem?  @relation(fields: [purchaseItemId], references: [id], onDelete: SetNull)
+  // SetNull nos dois: apagar POP ou equipamento não some com o bem — ele fica
+  // IN_USE "órfão" e o operador devolve ao estoque ou re-vincula. Mesma
+  // filosofia do netxOltId/netxPopId.
+  pop              NetworkPop?       @relation(fields: [popId], references: [id], onDelete: SetNull)
+  networkEquipment NetworkEquipment? @relation(fields: [networkEquipmentId], references: [id], onDelete: SetNull)
   movements StockMovement[]
 
   @@unique([tenantId, productId, serial])
+  // 1:1 com a planta — um equipamento é UM bem físico. Sem isso dois seriais
+  // poderiam reivindicar o mesmo equipamento e o patrimônio ficaria ambíguo.
+  // (NULLs não conflitam entre si no Postgres, então o acervo sem vínculo passa.)
+  @@unique([networkEquipmentId])
   // Identidade patrimonial — únicos por tenant (não por produto, ao contrário
   // do serial). Protegem a corrida do MAX+1: colisão vira P2002 e o service
   // re-tenta, mesmo contrato de Contract.seq/code.
@@ -3502,6 +3542,8 @@ model SerialItem {
   @@index([tenantId, contractId])
   @@index([tenantId, locationId, status])
   @@index([purchaseItemId])
+  // "Que bens estão neste POP?" — pergunta de inventário de campo.
+  @@index([tenantId, popId])
   @@map("serial_items")
 }
 
@@ -3529,12 +3571,14 @@ model StockMovement {
   // Referências polimórficas — só uma é populada conforme o type:
   //   PURCHASE / PURCHASE_RETURN   → purchaseId
   //   COMODATO_OUT / COMODATO_RETURN → contractId (Fase 2)
+  //   DEPLOY_OUT / DEPLOY_RETURN    → popId (Fase 3 — rede própria)
   //   OS_CONSUMPTION                → serviceOrderId (Fase 2)
   //   ADJUSTMENT_IN/OUT, TRANSFER_* → todas null
   //   SALE / SALE_RETURN            → dormente (não usado; operação só faz comodato)
   purchaseId     String?        @map("purchase_id") @db.Uuid
   contractId     String?        @map("contract_id") @db.Uuid
   serviceOrderId String?        @map("service_order_id") @db.Uuid
+  popId          String?        @map("pop_id") @db.Uuid
 
   notes          String?        @db.Text
   createdById    String         @map("created_by_id") @db.Uuid
@@ -3547,6 +3591,7 @@ model StockMovement {
   purchase     Purchase?      @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
   contract     Contract?      @relation(fields: [contractId], references: [id], onDelete: SetNull)
   serviceOrder ServiceOrder?  @relation(fields: [serviceOrderId], references: [id], onDelete: SetNull)
+  pop          NetworkPop?    @relation(fields: [popId], references: [id], onDelete: SetNull)
   createdBy    User           @relation("StockMovementCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
 
   @@index([tenantId, createdAt(sort: Desc)])

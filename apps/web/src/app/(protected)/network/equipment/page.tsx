@@ -25,6 +25,7 @@ import {
   type TestConnectionStrategyResult,
 } from '@/lib/network-api';
 import { hasPermission } from '@/lib/session';
+import { stockApi } from '@/lib/stock-api';
 
 const LocationPicker = dynamic(
   () =>
@@ -268,7 +269,16 @@ function EquipmentFormDialog({
     sshDisconnectCmd: initial?.sshDisconnectCmd ?? '',
     notes: initial?.notes ?? '',
     isActive: initial?.isActive ?? true,
+    serialItemId: null,
   });
+  // Bens patrimoniais livres no estoque. Só no cadastro novo: o vínculo é
+  // criado junto com o equipamento (mesma transação no backend), e mover o bem
+  // depois é operação de estoque, não edição de cadastro.
+  const { data: availableAssetsData } = useSWR(
+    isNew ? stockApi.deployAvailablePath() : null,
+    () => stockApi.listDeployAvailable(),
+  );
+  const availableAssets = availableAssetsData ?? [];
   // Geolocalização do equipamento (módulo Rede). Independente do POP — admin
   // pode marcar coord exata mesmo que o POP-pai tenha outra.
   const [location, setLocation] = useState<LatLng | null>(
@@ -419,9 +429,16 @@ function EquipmentFormDialog({
             <Label>{t('pop')}</Label>
             <Select
               value={form.popId ?? ''}
-              onChange={(e) =>
-                setForm({ ...form, popId: e.target.value || null })
-              }
+              onChange={(e) => {
+                const popId = e.target.value || null;
+                // Sem POP não dá pra instalar bem do estoque (o backend
+                // recusa) — solta a seleção em vez de deixar estado inválido.
+                setForm({
+                  ...form,
+                  popId,
+                  serialItemId: popId ? form.serialItemId : null,
+                });
+              }}
             >
               <option value="">{t('noPop')}</option>
               {pops.map((p) => (
@@ -432,6 +449,38 @@ function EquipmentFormDialog({
             </Select>
           </div>
         </div>
+
+        {/* Patrimônio do estoque — só na criação. Depois de criado, mover o bem
+            é operação de estoque (instalar/recolher), não edição de cadastro. */}
+        {!initial && (
+          <div>
+            <Label>{t('assetFromStock')}</Label>
+            <Select
+              value={form.serialItemId ?? ''}
+              onChange={(e) =>
+                setForm({ ...form, serialItemId: e.target.value || null })
+              }
+              disabled={!form.popId}
+            >
+              <option value="">{t('assetNone')}</option>
+              {availableAssets.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.assetTag ? `${s.assetTag} · ` : ''}
+                  {s.product.name}
+                  {s.product.model ? ` ${s.product.model}` : ''} — {s.serial}
+                  {s.location ? ` (${s.location.name})` : ''}
+                </option>
+              ))}
+            </Select>
+            <FieldHelp>
+              {!form.popId
+                ? t('assetNeedsPop')
+                : availableAssets.length === 0
+                  ? t('assetEmpty')
+                  : t('assetHelp')}
+            </FieldHelp>
+          </div>
+        )}
 
         {/* Bloco RADIUS — só pra BNG */}
         {form.type === 'BNG' && (

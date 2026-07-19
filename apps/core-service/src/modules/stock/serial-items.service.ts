@@ -405,6 +405,14 @@ export class SerialItemsService {
         'Item em comodato com cliente — devolva o comodato antes de mudar o status.',
       );
     }
+    // Instalado na rede própria: recolher primeiro. Sem isso o bem sairia pra
+    // DEFECTIVE/WRITTEN_OFF mantendo popId e networkEquipmentId apontando pra
+    // uma instalação que não existe mais, e o kardex perderia o DEPLOY_RETURN.
+    if (item.status === 'IN_USE') {
+      throw new BadRequestException(
+        'Item instalado na rede — recolha pro estoque antes de mudar o status.',
+      );
+    }
 
     const reasonNote = input.reason?.trim() || null;
     const unitCost = Number(item.acquisitionCost ?? item.product.cost ?? 0);

@@ -13,6 +13,10 @@ import { PaginationQuerySchema } from '../pagination';
 export const SerialStatusSchema = z.enum([
   'IN_STOCK',
   'ALLOCATED',
+  // Instalado na rede PRÓPRIA (POP/equipamento da planta). Como ALLOCATED e
+  // IN_TRANSIT, é estado de operação: não entra em SerialStatusTargetSchema,
+  // só se alcança via /stock/deploy.
+  'IN_USE',
   'IN_TRANSIT',
   'DEFECTIVE',
   'WRITTEN_OFF',

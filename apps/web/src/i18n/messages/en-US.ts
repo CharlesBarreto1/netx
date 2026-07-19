@@ -2303,6 +2303,7 @@ const messages = {
       status: {
         IN_STOCK: 'In stock',
         ALLOCATED: 'On loan',
+        IN_USE: 'In use on network',
         IN_TRANSIT: 'In transit',
         DEFECTIVE: 'Defective',
         WRITTEN_OFF: 'Written off',
@@ -3242,6 +3243,12 @@ const messages = {
       mgmtIp: 'Management IP',
       mgmtIpHelp: 'Same IP the equipment uses to send Access-Request to RADIUS.',
       noPop: '— No POP —',
+      assetFromStock: 'Asset from stock',
+      assetNone: '— Do not link —',
+      assetHelp:
+        'Pick the physical unit that left the warehouse. It becomes "In use on network" and stops counting towards available stock — no need to retype the serial.',
+      assetNeedsPop: 'Pick the POP first — the asset needs to know where it was installed.',
+      assetEmpty: 'No asset available in stock. Register the purchase under Stock > Purchases.',
       sharedSecret: 'Shared secret',
       sharedSecretPlaceholder: 'the same one configured on the BNG',
       sharedSecretHelp: 'Identical to the NAS secret. Changing it invalidates existing sessions.',

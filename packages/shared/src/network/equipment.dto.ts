@@ -75,6 +75,12 @@ const optionalNullableString = (max = 255) =>
 // =============================================================================
 export const CreateNetworkEquipmentRequestSchema = z.object({
   popId: z.string().uuid().nullish(),
+  /**
+   * Bem do estoque que este equipamento é. Informado, o cadastro consome o
+   * patrimônio (IN_STOCK → IN_USE) na mesma transação em vez de o operador
+   * redigitar serial/marca/modelo. Exige popId.
+   */
+  serialItemId: z.string().uuid().nullish(),
   type: NetworkEquipmentTypeSchema,
   vendor: NetworkEquipmentVendorSchema.default('OTHER'),
   name: z.string().min(1).max(120),

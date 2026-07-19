@@ -27,6 +27,8 @@ import {
   RenameSerialRequestSchema,
   StockReportQuerySchema,
   ReturnComodatoRequestSchema,
+  DeployAssetRequestSchema,
+  ReturnDeployedAssetRequestSchema,
   SetLocationAccessRequestSchema,
   UpdateProductRequestSchema,
   UpdatePurchaseRequestSchema,
@@ -48,6 +50,8 @@ import {
   type RenameSerialRequest,
   type StockReportQuery,
   type ReturnComodatoRequest,
+  type DeployAssetRequest,
+  type ReturnDeployedAssetRequest,
   type SetLocationAccessRequest,
   type UpdateProductRequest,
   type UpdatePurchaseRequest,
@@ -59,6 +63,7 @@ import { CurrentUser, RequirePermissions } from '../../common/decorators';
 import { ZodBody } from '../../common/zod.pipe';
 
 import { ComodatoService } from './comodato.service';
+import { DeploymentService } from './deployment.service';
 import { OsConsumptionService } from './os-consumption.service';
 import { ProductsService } from './products.service';
 import { PurchasesService } from './purchases.service';
@@ -552,6 +557,58 @@ export class ComodatoController {
     @ZodBody(ReturnComodatoRequestSchema) body: ReturnComodatoRequest,
   ) {
     return this.comodato.returnItem(u.tenantId, u.sub, body, {
+      isAdmin: u.permissions.includes('stock.admin'),
+    });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DEPLOY — bem instalado na rede PRÓPRIA (irmão do comodato, destino diferente)
+//   GET    /v1/stock/deploy/pops/:popId  → bens instalados neste POP
+//   GET    /v1/stock/deploy/available    → bens IN_STOCK prontos pra instalar
+//   POST   /v1/stock/deploy              → instala bem no POP/equipamento
+//   POST   /v1/stock/deploy/return       → recolhe bem de volta pro estoque
+@ApiTags('stock')
+@ApiBearerAuth()
+@Controller('stock/deploy')
+export class DeploymentController {
+  constructor(private readonly deployment: DeploymentService) {}
+
+  @Get('pops/:popId')
+  @RequirePermissions('network.read', 'stock.read')
+  listByPop(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('popId', new ParseUUIDPipe()) popId: string,
+  ) {
+    return this.deployment.listByPop(u.tenantId, popId);
+  }
+
+  @Get('available')
+  @RequirePermissions('stock.read')
+  listAvailable(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Query('productId') productId?: string,
+    @Query('locationId') locationId?: string,
+  ) {
+    return this.deployment.listAvailable(u.tenantId, { productId, locationId });
+  }
+
+  @Post()
+  @RequirePermissions('network.write', 'stock.write')
+  deploy(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @ZodBody(DeployAssetRequestSchema) body: DeployAssetRequest,
+  ) {
+    return this.deployment.deploy(u.tenantId, u.sub, body);
+  }
+
+  @Post('return')
+  @RequirePermissions('network.write', 'stock.write')
+  returnAsset(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @ZodBody(ReturnDeployedAssetRequestSchema) body: ReturnDeployedAssetRequest,
+  ) {
+    return this.deployment.returnToStock(u.tenantId, u.sub, body, {
       isAdmin: u.permissions.includes('stock.admin'),
     });
   }

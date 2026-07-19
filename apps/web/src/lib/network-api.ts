@@ -99,6 +99,8 @@ export type UpdatePopInput = Partial<CreatePopInput>;
 
 export interface CreateEquipmentInput {
   popId?: string | null;
+  /** Bem do estoque que este equipamento é — consome o patrimônio no cadastro. */
+  serialItemId?: string | null;
   type: EquipmentType;
   vendor?: EquipmentVendor;
   name: string;

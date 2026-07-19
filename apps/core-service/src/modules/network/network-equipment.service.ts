@@ -18,6 +18,7 @@ import { CryptoService } from '../crypto/crypto.service';
 import { IpamSyncService } from '../ipam/ipam-sync.service';
 import { DisconnectService } from '../disconnect/disconnect.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { DeploymentService } from '../stock/deployment.service';
 import { RadiusNasSyncService } from './radius-nas-sync.service';
 
 /**
@@ -70,6 +71,13 @@ export interface CreateEquipmentInput {
   longitude?: number | null;
   notes?: string | null;
   isActive?: boolean;
+  /**
+   * Bem do estoque que ESTE equipamento é. Quando informado, o cadastro
+   * consome o patrimônio na mesma transação (IN_STOCK → IN_USE) em vez de o
+   * operador redigitar serial/marca/modelo numa segunda tela. Exige popId —
+   * instalar um bem sem dizer onde não é rastreável.
+   */
+  serialItemId?: string | null;
 }
 
 export type UpdateEquipmentInput = Partial<CreateEquipmentInput>;
@@ -90,6 +98,7 @@ export class NetworkEquipmentService {
     private readonly crypto: CryptoService,
     private readonly disconnect: DisconnectService,
     private readonly ipamSync: IpamSyncService,
+    private readonly deployment: DeploymentService,
   ) {}
 
   /** Espelho best-effort do IP de gerência no IPAM — nunca quebra a operação. */
@@ -218,8 +227,16 @@ export class NetworkEquipmentService {
     input: CreateEquipmentInput,
   ) {
     this.validateBngFields(input);
+    // Consumir do estoque exige saber ONDE o bem foi parar. Sem POP o
+    // patrimônio ficaria IN_USE sem localização — pior que não vincular.
+    if (input.serialItemId && !input.popId) {
+      throw new BadRequestException(
+        'Informe o POP para vincular um patrimônio do estoque a este equipamento',
+      );
+    }
     try {
-      const eq = await this.prisma.networkEquipment.create({
+      const eq = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.networkEquipment.create({
         data: {
           tenantId,
           popId: input.popId ?? null,
@@ -240,6 +257,27 @@ export class NetworkEquipmentService {
           updatedById: actorUserId,
         },
         include: { pop: true },
+      });
+
+      // Consome o bem do estoque na MESMA transação: se a instalação falhar
+      // (bem já em uso, em comodato, inexistente), o equipamento não é criado.
+      // É o oposto do que acontecia antes, quando o cadastro de equipamento
+      // ignorava o estoque e os dois viravam registros paralelos.
+      if (input.serialItemId) {
+        await this.deployment.deploy(
+          tenantId,
+          actorUserId,
+          {
+            serialItemId: input.serialItemId,
+            popId: input.popId!,
+            networkEquipmentId: created.id,
+            notes: `Instalado como equipamento "${created.name}"`,
+          },
+          tx,
+        );
+      }
+
+      return created;
       });
 
       // Sync RADIUS — só BNG ativo.
@@ -402,6 +440,16 @@ export class NetworkEquipmentService {
         name: `${before.name}${suffix}`.slice(0, 120),
         ipAddress: `${before.ipAddress}${suffix}`.slice(0, 45),
       },
+    });
+
+    // Solta o patrimônio: o equipamento sumiu do cadastro, mas o BEM continua
+    // fisicamente no POP (vira "IN_USE sem equipamento", estado legítimo — é o
+    // mesmo de um rack ou nobreak). Recolher pro estoque é decisão do operador,
+    // que exige escolher o local de destino. O onDelete SET NULL da FK não
+    // cobre isto porque aqui é soft delete.
+    await this.prisma.serialItem.updateMany({
+      where: { tenantId, networkEquipmentId: before.id },
+      data: { networkEquipmentId: null },
     });
 
     if (before.type === 'BNG') {

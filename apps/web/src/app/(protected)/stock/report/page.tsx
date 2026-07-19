@@ -29,6 +29,7 @@ import {
 const STATUS_TONE: Record<SerialStatus, 'neutral' | 'success' | 'warning' | 'danger' | 'info' | 'brand' | 'purple'> = {
   IN_STOCK: 'success',
   ALLOCATED: 'info',
+  IN_USE: 'brand',
   IN_TRANSIT: 'warning',
   DEFECTIVE: 'warning',
   WRITTEN_OFF: 'neutral',

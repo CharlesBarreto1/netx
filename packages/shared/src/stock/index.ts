@@ -4,5 +4,6 @@ export * from './stock-location.dto';
 export * from './purchase.dto';
 export * from './stock-movement.dto';
 export * from './comodato.dto';
+export * from './deployment.dto';
 export * from './os-consumption.dto';
 export * from './serial-item.dto';
