@@ -11,7 +11,19 @@ module.exports = {
   rootDir: '..',
   testRegex: 'test/.*\\.e2e-spec\\.ts$',
   moduleFileExtensions: ['ts', 'js', 'json'],
-  transform: { '^.+\\.(t|j)s$': 'ts-jest' },
+
+  // allowJs porque precisamos transformar JS de node_modules (ver abaixo).
+  transform: {
+    '^.+\\.(t|j)s$': ['ts-jest', { tsconfig: { allowJs: true } }],
+  },
+
+  // O oidc-provider (e 4 dependências suas) são ESM puro. O Node 24 carrega
+  // ESM por require() nativamente — foi verificado —, mas o jest-runtime
+  // intercepta o require() com registry próprio e NÃO implementa esse suporte.
+  // Então em teste, e só em teste, transpilamos esses pacotes para CJS.
+  // Em produção o import é direto, sem transformação.
+  transformIgnorePatterns: ['/node_modules/(?!(oidc-provider|jose|eta|nanoid|quick-lru)/)'],
+
   globalSetup: '<rootDir>/test/setup/global-setup.ts',
   setupFilesAfterEnv: ['<rootDir>/test/setup/after-env.ts'],
   testTimeout: 30000,

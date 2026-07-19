@@ -14,7 +14,12 @@
  * vazasse por qualquer caminho.
  */
 import { Injectable, Logger } from '@nestjs/common';
-import { createHash, createPublicKey, generateKeyPairSync } from 'node:crypto';
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+} from 'node:crypto';
 
 import type { OidcSigningKey } from '@prisma/client';
 
@@ -155,6 +160,34 @@ export class OidcKeyService {
     });
 
     return { keys: keys.map((k) => k.publicJwk as unknown as PublicJwk) };
+  }
+
+  /**
+   * JWKs PRIVADOS para alimentar a config `jwks` do oidc-provider.
+   *
+   * A lib precisa da privada para assinar. Devolvemos a ACTIVE mais as RETIRED
+   * ainda no prazo — ela assina com a primeira compatível e consegue verificar
+   * token emitido com qualquer uma do conjunto.
+   *
+   * A privada sai cifrada do banco e só existe em memória a partir daqui. Nunca
+   * exponha o retorno disto em endpoint — o público é getJwks().
+   */
+  async getSigningJwks(tenantId: string): Promise<Record<string, unknown>[]> {
+    const now = new Date();
+    const keys = await this.prisma.oidcSigningKey.findMany({
+      where: {
+        tenantId,
+        OR: [{ status: 'ACTIVE' }, { status: 'RETIRED', expiresAt: { gt: now } }],
+      },
+      // ACTIVE antes de RETIRED: a lib assina com a primeira que servir.
+      orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+    });
+
+    return keys.map((k) => {
+      const pem = this.crypto.decrypt(k.privateKeyEnc);
+      const jwk = createPrivateKey(pem).export({ format: 'jwk' }) as Record<string, unknown>;
+      return { ...jwk, kid: k.kid, alg: k.alg, use: 'sig' };
+    });
   }
 
   /** Material de assinatura por kid — usado ao verificar token já emitido. */

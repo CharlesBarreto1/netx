@@ -21,6 +21,13 @@ const booleanFromString = z
 const emptyAsUndefined = <T extends z.ZodTypeAny>(schema: T) =>
   z.preprocess((v) => (v === '' ? undefined : v), schema);
 
+/** Lista separada por vírgula em array, descartando entradas vazias. */
+const splitList = (raw: string): string[] =>
+  raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
 const baseSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'staging', 'production']).default('development'),
   LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).default('info'),
@@ -120,6 +127,21 @@ const baseSchema = z.object({
   // Credencial Anthropic (fallback de nuvem default). Reutilizada pelos
   // consumidores legados (alarmes, NMS) até migrarem pro @netx/ai.
   ANTHROPIC_API_KEY: emptyAsUndefined(z.string().optional()),
+
+  // --- OIDC Provider (o Core como emissor de identidade) ---
+  // Base pública onde esta instalação é alcançável. O issuer é derivado dela:
+  // <base>/api/v1/oidc/<tenant-slug>. Cada instalação tem a sua.
+  OIDC_PUBLIC_BASE_URL: z.string().url().optional(),
+  OIDC_ACCESS_TOKEN_TTL: z.coerce.number().int().positive().default(600),
+  OIDC_REFRESH_TOKEN_TTL: z.coerce.number().int().positive().default(1209600),
+  OIDC_SESSION_TTL: z.coerce.number().int().positive().default(86400),
+  // Assina os cookies de sessão do provider. Distinto do JWT_ACCESS_SECRET de
+  // propósito: comprometer um não deve comprometer o outro.
+  OIDC_COOKIE_SECRET: z.string().min(32).optional(),
+  OIDC_NEXTCLOUD_CLIENT_ID: z.string().default('nextcloud'),
+  OIDC_NEXTCLOUD_CLIENT_SECRET: z.string().min(32).optional(),
+  OIDC_NEXTCLOUD_REDIRECT_URIS: z.string().default(''),
+  OIDC_NEXTCLOUD_POST_LOGOUT_REDIRECT_URIS: z.string().default(''),
 });
 
 export type RawEnv = z.infer<typeof baseSchema>;
@@ -160,6 +182,17 @@ export interface Config {
     strategy: 'subdomain' | 'header' | 'jwt';
     headerName: string;
     defaultTenantSlug: string;
+  };
+  oidc: {
+    publicBaseUrl: string;
+    accessTokenTtlSeconds: number;
+    refreshTokenTtlSeconds: number;
+    sessionTtlSeconds: number;
+    cookieSecret: string;
+    nextcloudClientId: string;
+    nextcloudClientSecret: string;
+    nextcloudRedirectUris: string[];
+    nextcloudPostLogoutRedirectUris: string[];
   };
   kms: {
     masterKey: string;
@@ -241,6 +274,17 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): Config {
       strategy: e.TENANT_RESOLUTION_STRATEGY,
       headerName: e.TENANT_HEADER_NAME,
       defaultTenantSlug: e.DEFAULT_TENANT_SLUG,
+    },
+    oidc: {
+      publicBaseUrl: e.OIDC_PUBLIC_BASE_URL ?? '',
+      accessTokenTtlSeconds: e.OIDC_ACCESS_TOKEN_TTL,
+      refreshTokenTtlSeconds: e.OIDC_REFRESH_TOKEN_TTL,
+      sessionTtlSeconds: e.OIDC_SESSION_TTL,
+      cookieSecret: e.OIDC_COOKIE_SECRET ?? '',
+      nextcloudClientId: e.OIDC_NEXTCLOUD_CLIENT_ID,
+      nextcloudClientSecret: e.OIDC_NEXTCLOUD_CLIENT_SECRET ?? '',
+      nextcloudRedirectUris: splitList(e.OIDC_NEXTCLOUD_REDIRECT_URIS),
+      nextcloudPostLogoutRedirectUris: splitList(e.OIDC_NEXTCLOUD_POST_LOGOUT_REDIRECT_URIS),
     },
     kms: {
       masterKey: e.KMS_MASTER_KEY,
