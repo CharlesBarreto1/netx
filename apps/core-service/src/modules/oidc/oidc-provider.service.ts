@@ -98,6 +98,116 @@ export class OidcProviderService {
     await provider.callback()(req, res);
   }
 
+  /** Resolve slug -> id, recusando tenant inexistente, apagado ou encerrado. */
+  async tenantIdFor(tenantSlug: string): Promise<string> {
+    const tenant = await this.prisma.tenant.findFirst({
+      where: { slug: tenantSlug, deletedAt: null },
+      select: { id: true, status: true },
+    });
+    if (!tenant || tenant.status === 'CHURNED') {
+      throw new NotFoundException(`Tenant "${tenantSlug}" não existe ou está inativo.`);
+    }
+    return tenant.id;
+  }
+
+  /**
+   * Dados da interaction em curso, para a tela saber o que pedir.
+   *
+   * Lê o cookie `_interaction`, que o provider escreveu com path restrito a
+   * esta interaction — por isso a tela precisa chamar um endpoint SOB o mesmo
+   * caminho público, senão o navegador não envia o cookie.
+   */
+  async interactionDetails(
+    tenantSlug: string,
+    req: IncomingMessage,
+    res: ServerResponse,
+  ): Promise<{
+    uid: string;
+    prompt: string;
+    clientId: string;
+    clientName?: string;
+    scopes: string[];
+    tenantName: string;
+  }> {
+    const provider = await this.forTenant(tenantSlug);
+    const details = await provider.interactionDetails(req, res);
+
+    const clientId = String(details.params.client_id ?? '');
+    const client = clientId ? await provider.Client.find(clientId) : undefined;
+    const tenant = await this.prisma.tenant.findFirstOrThrow({
+      where: { slug: tenantSlug },
+      select: { name: true },
+    });
+
+    return {
+      uid: details.uid,
+      prompt: details.prompt.name,
+      clientId,
+      clientName: (client?.clientName as string | undefined) ?? clientId,
+      scopes: String(details.params.scope ?? '').split(' ').filter(Boolean),
+      tenantName: tenant.name,
+    };
+  }
+
+  /**
+   * Conclui a interaction e devolve para onde o navegador deve ir.
+   *
+   * Usa `interactionResult`, que RETORNA a URL em vez de escrever o redirect
+   * na resposta — assim a tela pode tratar erro sem perder a navegação e só
+   * redireciona quando de fato deu certo.
+   */
+  async finishInteraction(
+    tenantSlug: string,
+    req: IncomingMessage,
+    res: ServerResponse,
+    accountId: string,
+    remember: boolean,
+  ): Promise<string> {
+    const provider = await this.forTenant(tenantSlug);
+    const details = await provider.interactionDetails(req, res);
+
+    const clientId = String(details.params.client_id ?? '');
+    const scope = String(details.params.scope ?? 'openid');
+
+    // O consentimento precisa de um Grant persistido, nao de um objeto vazio:
+    // e ele que carrega quais escopos foram concedidos, e e por grantId que a
+    // revogacao do desligamento derruba tudo de uma vez.
+    //
+    // Consentimento implicito: o Nextcloud e client de primeira parte,
+    // registrado por nos. Perguntar "autoriza este app?" para o proprio
+    // workspace da empresa seria ruido sem ganho de seguranca.
+    const grant = details.grantId
+      ? await provider.Grant.find(details.grantId)
+      : new provider.Grant({ accountId, clientId });
+
+    if (!grant) {
+      throw new Error(`Grant ${details.grantId} da interaction nao foi encontrado.`);
+    }
+
+    grant.addOIDCScope(scope);
+    const grantId = await grant.save();
+
+    return provider.interactionResult(
+      req,
+      res,
+      { login: { accountId, remember }, consent: { grantId } },
+      { mergeWithLastSubmission: false },
+    );
+  }
+
+  /** Cancela a interaction; o provider devolve o erro ao cliente. */
+  async abortInteraction(
+    tenantSlug: string,
+    req: IncomingMessage,
+    res: ServerResponse,
+  ): Promise<string> {
+    const provider = await this.forTenant(tenantSlug);
+    return provider.interactionResult(req, res, {
+      error: 'access_denied',
+      error_description: 'Autenticação cancelada pelo usuário.',
+    });
+  }
+
   /** Instância do tenant, criando na primeira vez. */
   async forTenant(tenantSlug: string): Promise<Provider> {
     const tenant = await this.prisma.tenant.findFirst({
@@ -177,6 +287,14 @@ export class OidcProviderService {
         rpInitiatedLogout: { enabled: true },
         resourceIndicators: { enabled: false },
       },
+
+      // Coloca os claims dos escopos concedidos DENTRO do id_token.
+      //
+      // O padrao da lib e o modo estrito do OIDC: so `sub` no id_token, e o
+      // cliente busca o resto em /userinfo. O user_oidc do Nextcloud le do
+      // id_token; deixar no estrito faria a conta nascer sem nome nem e-mail,
+      // e o mapeamento de grupos nao funcionaria.
+      conformIdTokenClaims: false,
 
       // Refresh rotativo. A lib detecta reuso e derruba o grant inteiro.
       rotateRefreshToken: true,
