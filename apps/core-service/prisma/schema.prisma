@@ -76,6 +76,7 @@ model Tenant {
   sessions    Session[]
   apiKeys     ApiKey[]
   oidcSigningKeys OidcSigningKey[]
+  oidcPayloads    OidcPayload[]
   auditLogs   AuditLog[]
   customers   Customer[]
   customerTags CustomerTag[]
@@ -584,6 +585,45 @@ model OidcSigningKey {
   @@index([tenantId, status])
   @@map("oidc_signing_keys")
 }
+
+/// Persistência dos artefatos efêmeros do oidc-provider (panva).
+///
+/// Uma tabela genérica em vez de uma por tipo: são ~13 tipos (AuthorizationCode,
+/// RefreshToken, Grant, Session, Interaction, DeviceCode...) cujo payload é
+/// opaco para nós, dura de minutos a dias, e nunca é consultado à mão. Modelar
+/// 13 tabelas para dado descartável é custo sem retorno — e acompanhar mudança
+/// de schema da lib viraria migration a cada upgrade.
+///
+/// A PK é composta porque o id do oidc-provider só é único DENTRO do tipo:
+/// existe Session "abc" e Interaction "abc" ao mesmo tempo.
+///
+/// `sub` é desnormalizado do payload de propósito: a revogação no desligamento
+/// precisa apagar tudo de um usuário sem varrer JSON de todas as linhas.
+model OidcPayload {
+  type       String    @db.VarChar(64)
+  id         String    @db.VarChar(255)
+  tenantId   String    @map("tenant_id") @db.Uuid
+  payload    Json
+  grantId    String?   @map("grant_id") @db.VarChar(255)
+  userCode   String?   @map("user_code") @db.VarChar(64)
+  uid        String?   @db.VarChar(255)
+  /// User.id dono do artefato. Null em artefato que ainda não tem usuário.
+  sub        String?   @db.VarChar(255)
+  expiresAt  DateTime? @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@id([type, id])
+  @@index([grantId])
+  @@index([uid])
+  @@index([userCode])
+  @@index([tenantId, sub])
+  @@index([expiresAt])
+  @@map("oidc_payloads")
+}
+
 
 
 // -----------------------------------------------------------------------------
