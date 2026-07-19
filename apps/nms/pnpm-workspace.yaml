@@ -7,10 +7,18 @@ packages:
 # isto, `nms:prisma-deploy`/`build` disparam install e quebram em máquina limpa.
 # (Config canônica do pnpm 11 fica aqui; o .npmrc não é honrado em sub-pacote.)
 verifyDepsBeforeRun: false
-onlyBuiltDependencies:
-  - '@nestjs/core'
-  - '@prisma/client'
-  - '@prisma/engines'
-  - esbuild
-  - msgpackr-extract
-  - prisma
+# pnpm 11 trocou `onlyBuiltDependencies` (lista de nomes) por `allowBuilds`
+# (mapa nome -> booleano) — é substituição, não complemento: o bundle do
+# pnpm 11.8.0 não tem nenhum leitor de `onlyBuiltDependencies` (a chave só
+# sobrevive na lista de migração de campos do package.json). Com a lista antiga
+# TODO build era pulado, o @prisma/engines não baixava os engines e
+# `prisma generate` quebrava em máquina limpa. Se faltar um pacote aqui, o
+# install falha com ERR_PNPM_IGNORED_BUILDS e o pnpm reescreve este bloco com
+# placeholders `set this to true or false` — troque por true/false explícito.
+allowBuilds:
+  '@nestjs/core': true
+  '@prisma/client': true
+  '@prisma/engines': true
+  esbuild: true
+  msgpackr-extract: true
+  prisma: true
