@@ -101,7 +101,7 @@ export interface ConfigChange {
   createdAt: string;
 }
 
-export type Vendor = 'juniper' | 'mikrotik';
+export type Vendor = 'juniper' | 'mikrotik' | 'cisco_iosxe';
 export interface DeviceInput {
   hostname: string;
   mgmtIp: string;

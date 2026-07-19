@@ -2,8 +2,11 @@ import type { DeviceVendor } from '../devices/device.dto.js';
 
 /**
  * Catálogo de playbooks read-only, multi-vendor. Cada playbook mapeia o comando
- * equivalente por vendor (Junos `show ...` vs RouterOS `/... print`). Um playbook
- * só aparece para um vendor se tiver comando definido para ele.
+ * equivalente por vendor (Junos `show ...`, RouterOS `/... print`, IOS-XE `show ip ...`).
+ * Um playbook só aparece para um vendor se tiver comando definido para ele.
+ *
+ * Todo comando IOS-XE precisa começar com `show` — o driver recusa o resto (o exec do
+ * IOS aceitaria `reload`/`copy` na mesma sessão).
  */
 export interface Playbook {
   id: string;
@@ -15,37 +18,66 @@ export const PLAYBOOKS: Playbook[] = [
   {
     id: 'route-summary',
     name: 'Resumo de rotas',
-    commands: { juniper: 'show route summary', mikrotik: '/ip route print count-only' },
+    commands: {
+      juniper: 'show route summary',
+      mikrotik: '/ip route print count-only',
+      cisco_iosxe: 'show ip route summary',
+    },
   },
   {
     id: 'ospf-neighbors',
     name: 'Vizinhos OSPF',
-    commands: { juniper: 'show ospf neighbor', mikrotik: '/routing ospf neighbor print' },
+    commands: {
+      juniper: 'show ospf neighbor',
+      mikrotik: '/routing ospf neighbor print',
+      cisco_iosxe: 'show ip ospf neighbor',
+    },
   },
   {
     id: 'bgp-summary',
     name: 'Resumo BGP',
-    commands: { juniper: 'show bgp summary', mikrotik: '/routing bgp session print' },
+    commands: {
+      juniper: 'show bgp summary',
+      mikrotik: '/routing bgp session print',
+      cisco_iosxe: 'show ip bgp summary',
+    },
   },
   {
     id: 'interfaces-terse',
     name: 'Interfaces',
-    commands: { juniper: 'show interfaces terse', mikrotik: '/interface print' },
+    commands: {
+      juniper: 'show interfaces terse',
+      mikrotik: '/interface print',
+      cisco_iosxe: 'show ip interface brief',
+    },
   },
   {
     id: 'system-uptime',
     name: 'Uptime do sistema',
-    commands: { juniper: 'show system uptime', mikrotik: '/system resource print' },
+    commands: {
+      juniper: 'show system uptime',
+      mikrotik: '/system resource print',
+      // No IOS o uptime só existe dentro do `show version` — filtra para não voltar a saída inteira.
+      cisco_iosxe: 'show version | include uptime',
+    },
   },
   {
     id: 'chassis-hardware',
     name: 'Hardware',
-    commands: { juniper: 'show chassis hardware', mikrotik: '/system routerboard print' },
+    commands: {
+      juniper: 'show chassis hardware',
+      mikrotik: '/system routerboard print',
+      cisco_iosxe: 'show inventory',
+    },
   },
   {
     id: 'chassis-environment',
     name: 'Ambiente (temp/fans)',
-    commands: { juniper: 'show chassis environment', mikrotik: '/system health print' },
+    commands: {
+      juniper: 'show chassis environment',
+      mikrotik: '/system health print',
+      cisco_iosxe: 'show environment all',
+    },
   },
 ];
 

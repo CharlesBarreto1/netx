@@ -2,8 +2,9 @@
 
 SSH e SNMP são genéricos (valem para qualquer vendor). O 2º canal de gerência é
 delegado ao driver do vendor (`drivers/`): NETCONF/830 no Juniper, não-aplicável no
-Mikrotik (RouterOS não fala NETCONF). As libs de equipamento vêm do extra `devices`
-e são importadas LAZY. Cada check é best-effort e nunca levanta para fora.
+Mikrotik (RouterOS não fala NETCONF) nem no Cisco IOS-XE (gerenciado por SSH). As libs
+de equipamento vêm do extra `devices` e são importadas LAZY. Cada check é best-effort e
+nunca levanta para fora.
 """
 
 from __future__ import annotations
@@ -94,10 +95,13 @@ async def run_connectivity_checks(
         )
     else:
         ssh = ChannelCheck(False, "sem senha cadastrada")
+        # Vendor sem 2º canal devolve um check estático (não abre socket), então dá para
+        # perguntar ao próprio driver mesmo sem credencial — assim o motivo é o do vendor
+        # certo (RouterOS/IOS-XE) em vez de um texto fixo.
         secondary = (
             ChannelCheck(False, "sem senha cadastrada")
             if driver.has_secondary
-            else ChannelCheck(False, "RouterOS não usa NETCONF — gerência via SSH", applicable=False)
+            else driver.check_secondary(host=host, username=username, password="")
         )
 
     snmp = (

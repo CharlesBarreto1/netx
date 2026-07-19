@@ -18,19 +18,23 @@ _RAW_MAX = 4000
 
 
 def _ping_summary(out: str) -> dict[str, Any]:
-    """Parseia ping de Linux/iputils, BSD/Junos e RouterOS (Mikrotik)."""
+    """Parseia ping de Linux/iputils, BSD/Junos, RouterOS (Mikrotik) e IOS-XE (Cisco)."""
     # RouterOS: "sent=4 received=4 packet-loss=0% ... avg-rtt=11ms"
     # Linux/Junos: "4 packets transmitted, 4 received, 0% packet loss ... = min/avg/.."
+    # IOS-XE: "Success rate is 100 percent (4/4), round-trip min/avg/max = 1/2/4 ms"
+    #   — não diz "transmitted"/"received"/"packet loss" em lugar nenhum, daí o padrão à parte.
+    ios = re.search(r"Success rate is (\d+) percent \((\d+)/(\d+)\)", out)
     sent = re.search(r"(\d+) packets transmitted", out) or re.search(r"sent=(\d+)", out)
     recv = re.search(r"(\d+) (?:packets )?received", out) or re.search(r"received=(\d+)", out)
     loss = re.search(r"([\d.]+)% packet loss", out) or re.search(r"packet-loss=([\d.]+)%", out)
+    # O "round-trip min/avg/max =" do IOS já casa com este padrão.
     rtt = re.search(r"(?:rtt|round-trip)[^=]*=\s*[\d.]+/([\d.]+)/", out) or re.search(
         r"avg-rtt=([\d.]+)", out
     )
 
-    n_sent = int(sent.group(1)) if sent else None
-    n_recv = int(recv.group(1)) if recv else None
-    loss_pct = float(loss.group(1)) if loss else None
+    n_sent = int(sent.group(1)) if sent else (int(ios.group(3)) if ios else None)
+    n_recv = int(recv.group(1)) if recv else (int(ios.group(2)) if ios else None)
+    loss_pct = float(loss.group(1)) if loss else (100.0 - float(ios.group(1)) if ios else None)
     avg_ms = float(rtt.group(1)) if rtt else None
     reachable = bool(n_recv and n_recv > 0)
 
@@ -90,6 +94,11 @@ def _device_cmd(vendor: str, test_type: str, target: str) -> str:
         if test_type == "traceroute":
             return f"traceroute {target} wait 2"
         return f"ping {target} count 4"
+    if v == "cisco_iosxe":
+        # IOS: sem `repeat`/`ttl` explícitos o default é lento (5 probes de 2s por hop, 30 hops).
+        if test_type == "traceroute":
+            return f"traceroute {target} probe 1 timeout 2 ttl 1 20"
+        return f"ping {target} repeat 4"
     # genérico (Linux): fallback
     if test_type == "traceroute":
         return f"traceroute -w 2 -q 1 -m 20 {target}"

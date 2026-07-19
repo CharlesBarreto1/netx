@@ -4,7 +4,7 @@
  * Aba "Aplicar config" — escrita em equipamento (porta o `ConfigApplyPanel`).
  * Fluxo seguro: planejar (dry-run diff) → aplicar (rollback automático armado)
  * → verificar acesso → confirmar. Sem confirmar, o equipamento reverte sozinho
- * (Junos `commit confirmed`; Mikrotik backup + auto-revert). Só operator+.
+ * (Junos `commit confirmed`; Mikrotik backup + auto-revert; IOS-XE `revert timer`). Só operator+.
  */
 import { useState } from 'react';
 import { TriangleAlert } from 'lucide-react';
@@ -34,7 +34,9 @@ export function ConfigApplyTab({ deviceId, vendor }: { deviceId: string; vendor:
   const placeholder =
     vendor === 'mikrotik'
       ? '/ip address add address=10.0.0.2/24 interface=ether1'
-      : 'set interfaces ge-0/0/0 description "uplink-core"';
+      : vendor === 'cisco_iosxe'
+        ? 'interface TenGigabitEthernet0/0/1\n description uplink-core'
+        : 'set interfaces ge-0/0/0 description "uplink-core"';
 
   function reloadState() {
     void pending.mutate();

@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from .base import ApplyResult, ChannelCheck, DeviceDriver
+from .cisco_iosxe import CiscoIosXeDriver
 from .juniper import JuniperDriver
 from .mikrotik import MikrotikDriver
 
 _DRIVERS: dict[str, DeviceDriver] = {
     "juniper": JuniperDriver(),
     "mikrotik": MikrotikDriver(),
+    "cisco_iosxe": CiscoIosXeDriver(),
 }
 
 # Default histórico do MVP: vendor ausente/desconhecido cai em Juniper (compat).

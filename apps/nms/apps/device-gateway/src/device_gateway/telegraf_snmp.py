@@ -8,6 +8,9 @@ Saúde (temp/CPU) e óptica são por vendor:
 - Juniper: jnxOperating (2636.*) + jnxDom óptico → `snmp_juniper_operating` / `snmp_optical`.
 - Mikrotik: MIKROTIK-MIB (14988.*) + HOST-RESOURCES (CPU) → `snmp_mikrotik_health` /
   `snmp_host_resources` / `snmp_mikrotik_optical`.
+- Cisco IOS-XE: CISCO-PROCESS-MIB (CPU) + CISCO-ENTITY-SENSOR-MIB (temperatura E óptica na
+  MESMA tabela de sensores, separadas por `entSensorType`) → `snmp_cisco_cpu` /
+  `snmp_cisco_sensor`.
 
 O `metrics.service.ts` lê a tabela certa conforme o vendor do device.
 """
@@ -183,12 +186,61 @@ def _render_mikrotik(*, device_id: str, mgmt_ip: str, community: str, version: i
 """
 
 
+def _render_cisco_iosxe(*, device_id: str, mgmt_ip: str, community: str, version: int) -> str:
+    block = _agent_block(
+        device_id=device_id, mgmt_ip=mgmt_ip, community=community, version=version, name="snmp"
+    )
+    return f"""{_HEADER}
+{block}{_IF_MIB_TABLE}
+  # CISCO-PROCESS-MIB — carga de CPU (média de 5 min) por entidade de CPU.
+  # O `metrics.service.ts` tira a média das entidades.
+  [[inputs.snmp.table]]
+    name = "snmp_cisco_cpu"
+    inherit_tags = ["device_id", "sysName"]
+    [[inputs.snmp.table.field]]
+      oid = "1.3.6.1.4.1.9.9.109.1.1.1.1.8"
+      name = "cpmCPUTotal5minRev"
+
+  # CISCO-ENTITY-SENSOR-MIB + ENTITY-MIB — uma linha por SENSOR (temperatura de placa,
+  # dBm de SFP, tensão…), não por interface: o IOS-XE não indexa DOM por ifIndex como o
+  # Juniper/Mikrotik. As duas tabelas são indexadas por entPhysicalIndex, então o Telegraf
+  # junta `entPhysicalName` ("Te0/0/2 Transceiver Receive Power Sensor") com o valor.
+  # Valores BRUTOS: o real é entSensorValue / 10^entSensorPrecision — a escala fica no
+  # `metrics.service.ts`, que também separa óptica (entSensorType 14 = dBm) de saúde
+  # (entSensorType 8 = celsius).
+  [[inputs.snmp.table]]
+    name = "snmp_cisco_sensor"
+    inherit_tags = ["device_id", "sysName"]
+    [[inputs.snmp.table.field]]
+      oid = "1.3.6.1.2.1.47.1.1.1.1.7"
+      name = "entPhysicalName"
+      is_tag = true
+    [[inputs.snmp.table.field]]
+      oid = "1.3.6.1.4.1.9.9.91.1.1.1.1.1"
+      name = "entSensorType"
+    [[inputs.snmp.table.field]]
+      oid = "1.3.6.1.4.1.9.9.91.1.1.1.1.3"
+      name = "entSensorPrecision"
+    [[inputs.snmp.table.field]]
+      oid = "1.3.6.1.4.1.9.9.91.1.1.1.1.4"
+      name = "entSensorValue"
+    [[inputs.snmp.table.field]]
+      oid = "1.3.6.1.4.1.9.9.91.1.1.1.1.5"
+      name = "entSensorStatus"
+"""
+
+
 def render_snmp_config(
     *, device_id: str, mgmt_ip: str, community: str, version: int = 2, vendor: str | None = None
 ) -> str:
     """Renderiza a config SNMP do Telegraf para o device, conforme o vendor."""
-    if (vendor or "").strip().lower() == "mikrotik":
+    key = (vendor or "").strip().lower()
+    if key == "mikrotik":
         return _render_mikrotik(
+            device_id=device_id, mgmt_ip=mgmt_ip, community=community, version=version
+        )
+    if key == "cisco_iosxe":
+        return _render_cisco_iosxe(
             device_id=device_id, mgmt_ip=mgmt_ip, community=community, version=version
         )
     return _render_juniper(

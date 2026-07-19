@@ -6,13 +6,14 @@
 ## Visão geral
 
 NetX NMS é uma ferramenta **web** de gestão técnica de rede multi-vendor (estilo "Winbox web"), parte da
-suíte NetX. **Vendors suportados: Juniper (Junos) e Mikrotik (RouterOS).** Objetivos:
+suíte NetX. **Vendors suportados: Juniper (Junos), Mikrotik (RouterOS) e Cisco IOS-XE (ASR 920/1000).** Objetivos:
 **observar, documentar, diagnosticar** e **aplicar configuração** sob controle humano estrito.
 
 Pilares: coleta **SNMP**, coleta/execução **SSH** (blocos de comando), **backup** de config versionado,
 **IA** de diagnóstico (somente leitura) e **aplicação de config** no padrão plan → revisão humana → apply →
 verify → rollback. A escrita é por driver de vendor (`apps/device-gateway/src/device_gateway/drivers/`):
-Juniper via PyEZ/NETCONF com `commit confirmed`; Mikrotik via Netmiko/SSH com backup + auto-revert agendado.
+Juniper via PyEZ/NETCONF com `commit confirmed`; Mikrotik via Netmiko/SSH com backup + auto-revert agendado;
+Cisco IOS-XE via Netmiko/SSH com `configure terminal revert timer` (exige config archive no equipamento).
 O fluxo "desenhar enlace no mapa e aplicar" segue como fase futura.
 
 ## Arquitetura — a fronteira Node ↔ Python (regra estrutural)
@@ -65,9 +66,10 @@ Estas regras valem mesmo que o usuário peça o contrário. Se um pedido conflit
 5. **Auditoria obrigatória.** Toda ação contra um equipamento gera registro imutável: quem, quando, device,
    comando/RPC, diff (se houver), resultado.
 6. **Em Junos, qualquer alteração usa `commit confirmed`** (rollback automático se a sessão cair).
-7. **Vendors suportados: Juniper e Mikrotik.** Adicionar um terceiro vendor é mudança de escopo — pergunte
-   antes. A escrita de config é permitida APENAS pelo pipeline auditado plan → revisão humana → apply → verify
-   → rollback (regras 1, 2, 5, 6). O fluxo mapa-aplica segue fora do escopo até confirmação.
+7. **Vendors suportados: Juniper, Mikrotik e Cisco IOS-XE.** Adicionar um quarto vendor é mudança de escopo —
+   pergunte antes (IOS-XR/ASR 9000 é outro vendor, não é o mesmo driver do IOS-XE). A escrita de config é
+   permitida APENAS pelo pipeline auditado plan → revisão humana → apply → verify → rollback (regras 1, 2, 5,
+   6). O fluxo mapa-aplica segue fora do escopo até confirmação.
 8. **Todo endpoint exige autenticação** (JWT) e respeita o RBAC `admin/operator/viewer` (ADR 0007). Só
    `@Public()` (login, health) fica aberto. Ações de escrita/equipamento são operator+; gestão de usuários e
    inventário são admin. O `actor` da auditoria vem do JWT — nunca volte a confiar em header `x-actor`.

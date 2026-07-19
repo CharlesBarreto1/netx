@@ -39,6 +39,31 @@ def test_render_mikrotik_usa_mtxr_e_iftable_comum():
     assert "2636" not in cfg  # nenhum OID Juniper
 
 
+def test_render_cisco_iosxe_usa_process_e_entity_sensor():
+    cfg = render_snmp_config(device_id=DEV, mgmt_ip="10.0.0.1", community="c", vendor="cisco_iosxe")
+    # IF-MIB compartilhada (mesma measurement dos outros vendors → tela de interfaces igual)
+    assert 'name = "snmp_interface"' in cfg
+    assert "1.3.6.1.2.1.31.1.1.1.6" in cfg  # ifHCInOctets
+    # CPU via CISCO-PROCESS-MIB
+    assert "1.3.6.1.4.1.9.9.109.1.1.1.1.8" in cfg  # cpmCPUTotal5minRev
+    assert 'name = "snmp_cisco_cpu"' in cfg
+    # Temperatura E óptica saem da mesma tabela de sensores (separadas por entSensorType)
+    assert 'name = "snmp_cisco_sensor"' in cfg
+    assert "1.3.6.1.4.1.9.9.91.1.1.1.1.4" in cfg  # entSensorValue
+    assert "1.3.6.1.4.1.9.9.91.1.1.1.1.3" in cfg  # entSensorPrecision (escala)
+    assert "1.3.6.1.2.1.47.1.1.1.1.7" in cfg  # entPhysicalName (tag)
+    # Nenhum OID de outro vendor
+    assert "2636" not in cfg
+    assert "14988" not in cfg
+
+
+def test_render_vendor_desconhecido_cai_em_juniper():
+    # `cisco` sozinho não é vendor do NMS — cai no default, nunca gera OID Cisco.
+    cfg = render_snmp_config(device_id=DEV, mgmt_ip="10.0.0.1", community="c", vendor="cisco")
+    assert "snmp_juniper_operating" in cfg
+    assert "9.9.91" not in cfg
+
+
 def test_write_mikrotik_vendor(tmp_path):
     path = write_snmp_config(
         config_dir=str(tmp_path), device_id=DEV, mgmt_ip="10.0.0.1", community="c", vendor="mikrotik"

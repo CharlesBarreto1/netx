@@ -11,7 +11,7 @@
  */
 import { api } from './api';
 
-export type NmsVendor = 'juniper' | 'mikrotik';
+export type NmsVendor = 'juniper' | 'mikrotik' | 'cisco_iosxe';
 
 export interface NmsDevice {
   id: string;
@@ -264,6 +264,7 @@ export const nmsApi = {
 export const NMS_VENDORS: { value: NmsVendor; label: string }[] = [
   { value: 'mikrotik', label: 'Mikrotik (RouterOS)' },
   { value: 'juniper', label: 'Juniper (Junos)' },
+  { value: 'cisco_iosxe', label: 'Cisco IOS-XE (ASR)' },
 ];
 
 /** URL do WebSocket do terminal SSH, via gateway/nginx → NMS (SSO por token na query). */
