@@ -90,3 +90,7 @@ apps/.DS_Store
 apps/nms/.DS_Store
 infra/.DS_Store
 packages/.DS_Store
+
+# Caches criados por npm/npx quando roda fora do HOME do usuário.
+.config/
+.npm/
