@@ -21,6 +21,26 @@ export default tseslint.config(
     },
   },
   {
+    // `.cjs` é CommonJS de propósito — ex.: scripts/assert-nms-schema.cjs, guard
+    // de pré-migration invocado direto pelo `node`, sem passar por build. Aqui
+    // `require`/`module` são a forma correta, não um resquício a migrar: declara
+    // os globais do CJS e desliga a regra que empurra ESM. Preferido a ignorar o
+    // arquivo, que também apagaria os erros reais.
+    files: ['**/*.cjs'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: {
+        require: 'readonly',
+        module: 'writable',
+        exports: 'writable',
+        __filename: 'readonly',
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
+  {
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
