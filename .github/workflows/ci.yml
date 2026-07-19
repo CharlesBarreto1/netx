@@ -126,6 +126,9 @@ jobs:
           cat > .env <<'EOF'
           DATABASE_URL=postgresql://netx:netx@localhost:5432/netx_test
           DATABASE_URL_TEST=postgresql://netx:netx@localhost:5432/netx_test
+          # Chave DESCARTÁVEL, só para o CryptoService inicializar nos testes.
+          # Não protege nada: o banco do CI morre junto com o job.
+          KMS_MASTER_KEY=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff
           EOF
 
       - name: Extensões do Postgres

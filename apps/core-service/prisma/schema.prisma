@@ -75,6 +75,7 @@ model Tenant {
   roles       Role[]
   sessions    Session[]
   apiKeys     ApiKey[]
+  oidcSigningKeys OidcSigningKey[]
   auditLogs   AuditLog[]
   customers   Customer[]
   customerTags CustomerTag[]
@@ -543,6 +544,47 @@ model ApiKey {
   @@index([tenantId])
   @@map("api_keys")
 }
+
+// -----------------------------------------------------------------------------
+// OIDC — CHAVES DE ASSINATURA
+// -----------------------------------------------------------------------------
+
+enum OidcKeyStatus {
+  ACTIVE // assina tokens novos e é publicada no JWKS
+  RETIRED // não assina mais, mas segue no JWKS até expiresAt (tokens em voo)
+}
+
+/// Par de chaves que assina os tokens OIDC de um tenant.
+///
+/// Uma chave por tenant assinando por vez — o índice parcial
+/// `oidc_signing_keys_one_active_per_tenant` garante isso no banco, não só na
+/// aplicação. Rotação: a chave nova entra como ACTIVE, a antiga vira RETIRED e
+/// continua publicada no JWKS até `expiresAt`, senão os tokens já emitidos
+/// deixariam de verificar no meio da vida útil.
+///
+/// A privada é PKCS#8 PEM cifrada pelo CryptoService (AES-256-GCM com
+/// KMS_MASTER_KEY) — nunca em claro no banco nem em variável de ambiente.
+model OidcSigningKey {
+  id            String        @id @default(uuid()) @db.Uuid
+  tenantId      String        @map("tenant_id") @db.Uuid
+  /// JWK Thumbprint (RFC 7638) da chave pública. Vai no header dos JWT.
+  kid           String        @unique @db.VarChar(64)
+  alg           String        @default("RS256") @db.VarChar(10)
+  /// Chave pública em JWK, servida direto no endpoint /jwks.
+  publicJwk     Json          @map("public_jwk")
+  privateKeyEnc String        @map("private_key_enc")
+  status        OidcKeyStatus @default(ACTIVE)
+  createdAt     DateTime      @default(now()) @map("created_at")
+  retiredAt     DateTime?     @map("retired_at")
+  /// Quando some do JWKS. Só faz sentido em chave RETIRED.
+  expiresAt     DateTime?     @map("expires_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, status])
+  @@map("oidc_signing_keys")
+}
+
 
 // -----------------------------------------------------------------------------
 // AUDIT LOG (append-only)

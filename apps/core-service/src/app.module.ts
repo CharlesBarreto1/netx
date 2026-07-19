@@ -47,6 +47,7 @@ import { TenantsModule } from './modules/tenants/tenants.module';
 import { UsersModule } from './modules/users/users.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { OidcModule } from './modules/oidc/oidc.module';
 import { FieldModule } from './modules/field/field.module';
 
 @Module({
@@ -125,6 +126,7 @@ import { FieldModule } from './modules/field/field.module';
     FleetModule,
     StorageModule,
     HrModule,
+    OidcModule,
     UfinetModule,
     ProvisioningModule,
     AlarmsModule,
