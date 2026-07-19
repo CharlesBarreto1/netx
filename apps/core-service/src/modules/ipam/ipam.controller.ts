@@ -19,6 +19,7 @@ import {
   CreateIpamPoolRequestSchema,
   CreateIpamPrefixRequestSchema,
   CreateIpamVrfRequestSchema,
+  SplitIpamPrefixRequestSchema,
   UpdateIpamAddressRequestSchema,
   UpdateIpamCgnatPlanRequestSchema,
   UpdateIpamPoolRequestSchema,
@@ -32,6 +33,7 @@ import {
   type CreateIpamPoolRequest,
   type CreateIpamPrefixRequest,
   type CreateIpamVrfRequest,
+  type SplitIpamPrefixRequest,
   type UpdateIpamAddressRequest,
   type UpdateIpamCgnatPlanRequest,
   type UpdateIpamPoolRequest,
@@ -111,6 +113,18 @@ export class IpamController {
     return this.prefixes.list(u.tenantId, { vrfId, role, q });
   }
 
+  /** Mesma listagem, aninhada por parentId — a visão de árvore do IPAM. */
+  @Get('prefixes/tree')
+  @RequirePermissions('ipam.read')
+  treePrefixes(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Query('vrfId') vrfId?: string,
+    @Query('role') role?: string,
+    @Query('q') q?: string,
+  ) {
+    return this.prefixes.tree(u.tenantId, { vrfId, role, q });
+  }
+
   @Get('prefixes/:id')
   @RequirePermissions('ipam.read')
   getPrefix(
@@ -118,6 +132,39 @@ export class IpamController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     return this.prefixes.findById(u.tenantId, id);
+  }
+
+  /** Blocos CIDR ainda não alocados dentro do prefixo. */
+  @Get('prefixes/:id/free')
+  @RequirePermissions('ipam.read')
+  freePrefix(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.prefixes.freeOf(u.tenantId, id, limit ? Number(limit) : 256);
+  }
+
+  /** Próxima subrede /len livre (first-fit). */
+  @Get('prefixes/:id/next')
+  @RequirePermissions('ipam.read')
+  nextPrefix(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Query('len') len: string,
+  ) {
+    return this.prefixes.nextAvailable(u.tenantId, id, Number(len));
+  }
+
+  /** Fatia o prefixo em subredes de tamanho fixo, pulando o já alocado. */
+  @Post('prefixes/:id/split')
+  @RequirePermissions('ipam.write')
+  splitPrefix(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(SplitIpamPrefixRequestSchema) body: SplitIpamPrefixRequest,
+  ) {
+    return this.prefixes.split(u.tenantId, u.sub, id, body);
   }
 
   @Post('prefixes')

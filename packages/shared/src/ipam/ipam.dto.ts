@@ -83,6 +83,19 @@ export const UpdateIpamPrefixRequestSchema = CreateIpamPrefixRequestSchema.parti
 });
 export type UpdateIpamPrefixRequest = z.infer<typeof UpdateIpamPrefixRequestSchema>;
 
+/**
+ * Divide um prefixo em subredes de tamanho fixo (ex.: um /22 em quatro /24).
+ * O `maxCount` é uma trava: dividir um /8 em /30 daria 4 milhões de linhas.
+ */
+export const SplitIpamPrefixRequestSchema = z.object({
+  prefixLen: z.coerce.number().int().min(0).max(128),
+  role: IpamPrefixRoleEnum.default('OTHER'),
+  status: IpamPrefixStatusEnum.default('ACTIVE'),
+  description: optionalNullableString(255),
+  maxCount: z.coerce.number().int().min(1).max(1024).default(256),
+});
+export type SplitIpamPrefixRequest = z.infer<typeof SplitIpamPrefixRequestSchema>;
+
 // -----------------------------------------------------------------------------
 // ADDRESS
 // -----------------------------------------------------------------------------
