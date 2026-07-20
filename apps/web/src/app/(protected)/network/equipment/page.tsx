@@ -270,7 +270,11 @@ function EquipmentFormDialog({
     notes: initial?.notes ?? '',
     isActive: initial?.isActive ?? true,
     serialItemId: null,
+    nmsMonitored: initial?.nmsMonitored ?? false,
   });
+  // O NMS só tem driver pra estes vendors — marcar outro geraria device que
+  // ele não consegue coletar, então o checkbox fica travado.
+  const nmsSupported = ['MIKROTIK', 'JUNIPER', 'CISCO'].includes(form.vendor ?? '');
   // Bens patrimoniais livres no estoque. Só no cadastro novo: o vínculo é
   // criado junto com o equipamento (mesma transação no backend), e mover o bem
   // depois é operação de estoque, não edição de cadastro.
@@ -860,6 +864,28 @@ function EquipmentFormDialog({
             />
             {t('active')}
           </label>
+        </div>
+        <div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={form.nmsMonitored ?? false}
+              onChange={(e) => setForm({ ...form, nmsMonitored: e.target.checked })}
+              disabled={!nmsSupported}
+            />
+            {t('nmsMonitored')}
+          </label>
+          <FieldHelp>
+            {nmsSupported ? t('nmsMonitoredHelp') : t('nmsUnsupportedVendor')}
+          </FieldHelp>
+          {/* Falha de sync não bloqueia o cadastro, então é aqui que ela
+              aparece — sem isto o operador só descobriria pela ausência
+              do device no NMS. */}
+          {initial?.nmsSyncError && (
+            <p className="mt-1 text-xs text-red-600">
+              {t('nmsSyncFailed', { error: initial.nmsSyncError })}
+            </p>
+          )}
         </div>
         {error && <p className="text-xs text-red-600">{error}</p>}
       </form>

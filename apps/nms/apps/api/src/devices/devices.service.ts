@@ -3,7 +3,7 @@ import type { Device } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { EventPublisherService } from '../events/event-publisher.service.js';
-import type { CreateDeviceDto, UpdateDeviceDto } from './device.dto.js';
+import type { CreateDeviceDto, UpdateDeviceDto, UpsertFromCoreDto } from './device.dto.js';
 
 @Injectable()
 export class DevicesService {
@@ -54,6 +54,76 @@ export class DevicesService {
       site: device.site ?? null,
     });
     return device;
+  }
+
+  /**
+   * Upsert vindo do NetX Core. Idempotente por `coreEquipmentId`.
+   *
+   * Ordem de resolução, e o porquê de cada passo:
+   *   1. já existe device com este coreEquipmentId → atualiza (caminho normal)
+   *   2. existe device com o mesmo mgmtIp mas sem dono → ADOTA, gravando o
+   *      coreEquipmentId. É o que evita conflito no parque atual, cadastrado à
+   *      mão antes deste sync existir: sem isso o upsert bateria no
+   *      `@@unique([mgmtIp])` e falharia pra sempre.
+   *   3. nada casa → cria.
+   *
+   * Se o IP conflitar com device de OUTRO equipamento, deixamos o erro subir —
+   * é dado inconsistente que o operador precisa resolver, não algo pra
+   * sobrescrever silenciosamente.
+   */
+  async upsertFromCore(dto: UpsertFromCoreDto, actor: string): Promise<Device> {
+    const byCore = await this.prisma.device.findUnique({
+      where: { coreEquipmentId: dto.coreEquipmentId },
+    });
+    if (byCore) {
+      const device = await this.prisma.device.update({
+        where: { id: byCore.id },
+        data: dto,
+      });
+      await this.audit.record({
+        actor,
+        deviceId: device.id,
+        action: 'device.sync_from_core',
+        diff: JSON.stringify(dto),
+        result: 'ok',
+      });
+      return device;
+    }
+
+    const byIp = await this.prisma.device.findUnique({ where: { mgmtIp: dto.mgmtIp } });
+    if (byIp && !byIp.coreEquipmentId) {
+      const device = await this.prisma.device.update({
+        where: { id: byIp.id },
+        data: dto,
+      });
+      await this.audit.record({
+        actor,
+        deviceId: device.id,
+        action: 'device.adopted_by_core',
+        diff: JSON.stringify({ coreEquipmentId: dto.coreEquipmentId, mgmtIp: dto.mgmtIp }),
+        result: 'ok',
+      });
+      return device;
+    }
+
+    return this.create(dto, actor);
+  }
+
+  /** Desvincula o device do equipamento do Core (não apaga: histórico e
+   *  séries temporais continuam valendo). */
+  async detachFromCore(coreEquipmentId: string, actor: string): Promise<void> {
+    const device = await this.prisma.device.findUnique({ where: { coreEquipmentId } });
+    if (!device) return; // idempotente
+    await this.prisma.device.update({
+      where: { id: device.id },
+      data: { coreEquipmentId: null },
+    });
+    await this.audit.record({
+      actor,
+      deviceId: device.id,
+      action: 'device.detached_from_core',
+      result: 'ok',
+    });
   }
 
   async update(id: string, dto: UpdateDeviceDto, actor: string): Promise<Device> {

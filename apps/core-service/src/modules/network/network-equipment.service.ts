@@ -19,6 +19,8 @@ import { IpamSyncService } from '../ipam/ipam-sync.service';
 import { DisconnectService } from '../disconnect/disconnect.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { DeploymentService } from '../stock/deployment.service';
+
+import { NmsSyncService } from './nms-sync.service';
 import { RadiusNasSyncService } from './radius-nas-sync.service';
 
 /**
@@ -78,6 +80,12 @@ export interface CreateEquipmentInput {
    * instalar um bem sem dizer onde não é rastreável.
    */
   serialItemId?: string | null;
+  /**
+   * Espelhar este equipamento como device no NMS. Opt-in por equipamento: o
+   * NMS só tem driver pra juniper/mikrotik/cisco_iosxe, e propagar o resto
+   * criaria device que ele não consegue coletar.
+   */
+  nmsMonitored?: boolean;
 }
 
 export type UpdateEquipmentInput = Partial<CreateEquipmentInput>;
@@ -99,6 +107,7 @@ export class NetworkEquipmentService {
     private readonly disconnect: DisconnectService,
     private readonly ipamSync: IpamSyncService,
     private readonly deployment: DeploymentService,
+    private readonly nmsSync: NmsSyncService,
   ) {}
 
   /** Espelho best-effort do IP de gerência no IPAM — nunca quebra a operação. */
@@ -253,6 +262,7 @@ export class NetworkEquipmentService {
           longitude: input.longitude ?? null,
           notes: input.notes ?? null,
           isActive: input.isActive ?? true,
+          nmsMonitored: input.nmsMonitored ?? false,
           createdById: actorUserId,
           updatedById: actorUserId,
         },
@@ -300,6 +310,9 @@ export class NetworkEquipmentService {
       });
       // IPAM: documenta o IP de gerência do equipamento.
       await this.syncIpamEquipment(tenantId, actorUserId, eq.id, eq.ipAddress);
+      // NMS: cria o device lá quando marcado pra monitorar. Fora do caminho
+      // crítico e sem bloquear — a falha fica em nmsSyncError, visível na UI.
+      this.nmsSync.fireAndForget(tenantId, eq.id);
       // Background — atualiza UFW e NTP allowlist, não bloqueia o request
       void this.syncInfra();
       return this.maskCredentials(eq);
@@ -381,6 +394,7 @@ export class NetworkEquipmentService {
             input.longitude === undefined ? undefined : input.longitude ?? null,
           notes: input.notes === undefined ? undefined : input.notes ?? null,
           isActive: input.isActive,
+          nmsMonitored: input.nmsMonitored,
           updatedById: actorUserId,
         },
         include: { pop: true },
@@ -413,6 +427,9 @@ export class NetworkEquipmentService {
       });
       // IPAM: reconcilia o IP de gerência (troca de IP libera o antigo).
       await this.syncIpamEquipment(tenantId, actorUserId, eq.id, eq.ipAddress);
+      // NMS: reflete a edição (inclusive desligar o monitoramento, que
+      // desvincula o device lá em vez de deixá-lo órfão).
+      this.nmsSync.fireAndForget(tenantId, eq.id);
       // Background — atualiza UFW e NTP allowlist, não bloqueia o request
       void this.syncInfra();
       return this.maskCredentials(eq);
@@ -451,6 +468,11 @@ export class NetworkEquipmentService {
       where: { tenantId, networkEquipmentId: before.id },
       data: { networkEquipmentId: null },
     });
+
+    // NMS: solta o vínculo. Não apagamos o device — histórico de config e
+    // séries temporais continuam valendo mesmo com o equipamento fora do
+    // cadastro; quem decide remover de lá é o operador do NMS.
+    if (before.nmsDeviceId) await this.nmsSync.detach(tenantId, before.id);
 
     if (before.type === 'BNG') {
       await this.nasSync.remove(before.ipAddress).catch((e) =>

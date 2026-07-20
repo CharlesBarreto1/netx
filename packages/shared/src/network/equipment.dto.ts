@@ -81,6 +81,12 @@ export const CreateNetworkEquipmentRequestSchema = z.object({
    * redigitar serial/marca/modelo. Exige popId.
    */
   serialItemId: z.string().uuid().nullish(),
+  /**
+   * Espelhar como device no NMS. Opt-in por equipamento — o NMS só tem driver
+   * pra MIKROTIK/JUNIPER/CISCO; marcar outro vendor gera aviso em nmsSyncError
+   * em vez de criar device que não pode ser coletado.
+   */
+  nmsMonitored: z.coerce.boolean().optional(),
   type: NetworkEquipmentTypeSchema,
   vendor: NetworkEquipmentVendorSchema.default('OTHER'),
   name: z.string().min(1).max(120),
@@ -165,6 +171,14 @@ export const NetworkEquipmentResponseSchema = z.object({
   name: z.string(),
   hostname: z.string().nullable(),
   ipAddress: z.string(),
+
+  // Monitoramento no NMS. `nmsSyncError` é o que torna visível uma
+  // propagação falha — o sync não bloqueia o cadastro, então sem este campo
+  // a falha seria silenciosa.
+  nmsMonitored: z.boolean(),
+  nmsDeviceId: z.string().uuid().nullable(),
+  nmsSyncedAt: z.string().nullable(),
+  nmsSyncError: z.string().nullable(),
 
   radiusSecret: z.string().nullable(),
   radiusNasType: z.string().nullable(),

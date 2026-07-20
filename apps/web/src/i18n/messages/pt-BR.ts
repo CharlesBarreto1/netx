@@ -3216,6 +3216,12 @@ const messages = {
       subtitle: 'BNGs, OLTs, routers e switches do datacenter. BNGs são registrados automaticamente no RADIUS.',
       resyncRadius: 'Resync RADIUS',
       resyncTooltip: 'Forçar resync de BNGs com radius.nas',
+      nmsMonitored: 'Monitorar no NMS',
+      nmsMonitoredHelp:
+        'Cria o device no NMS automaticamente, com hostname, IP e POP deste cadastro. Editar aqui atualiza lá; desmarcar desvincula (o histórico e as métricas no NMS são preservados).',
+      nmsUnsupportedVendor:
+        'O NMS ainda não tem driver para este fabricante — só Mikrotik, Juniper e Cisco.',
+      nmsSyncFailed: 'Falha ao enviar para o NMS: {error}',
       resyncDone: 'Resync completo: {synced}/{total} BNGs',
       newEquipment: 'Novo equipamento',
       allTypes: 'Todos os tipos',

@@ -20,3 +20,16 @@ export type CreateDeviceDto = z.infer<typeof CreateDeviceSchema>;
 
 export const UpdateDeviceSchema = CreateDeviceSchema.partial();
 export type UpdateDeviceDto = z.infer<typeof UpdateDeviceSchema>;
+
+/**
+ * Upsert vindo do NetX Core (Planta de rede → NMS). Idempotente por
+ * `coreEquipmentId`: o Core pode reenviar quantas vezes quiser — em retry,
+ * reconciliação ou edição do equipamento — sem criar device duplicado.
+ *
+ * Separado do CreateDeviceSchema de propósito: este é um contrato entre
+ * serviços, não um formulário de operador.
+ */
+export const UpsertFromCoreSchema = CreateDeviceSchema.extend({
+  coreEquipmentId: z.string().uuid(),
+});
+export type UpsertFromCoreDto = z.infer<typeof UpsertFromCoreSchema>;

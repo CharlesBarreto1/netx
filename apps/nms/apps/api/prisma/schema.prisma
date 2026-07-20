@@ -75,6 +75,12 @@ model Device {
   model          String?
   osVersion      String?  @map("os_version")
   site           String?
+  // Equipamento da Planta de rede do NetX Core que originou este device
+  // (network_equipment.id). Não é FK — os bancos são separados por decisão de
+  // arquitetura (o NMS roda Timescale próprio pras séries em metrics.*).
+  // É a chave de correlação estável do sync: mgmtIp muda, o id não.
+  // Único pra que o upsert do Core nunca crie device duplicado.
+  coreEquipmentId String? @unique @map("core_equipment_id") @db.Uuid
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 

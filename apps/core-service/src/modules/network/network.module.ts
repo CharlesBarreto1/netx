@@ -8,6 +8,7 @@ import { StockModule } from '../stock/stock.module';
 import { NetworkController } from './network.controller';
 import { NetworkEquipmentService } from './network-equipment.service';
 import { NetworkPopsService } from './network-pops.service';
+import { NmsSyncService } from './nms-sync.service';
 import { RadiusNasSyncService } from './radius-nas-sync.service';
 
 @Module({
@@ -17,7 +18,12 @@ import { RadiusNasSyncService } from './radius-nas-sync.service';
   // passo — ver NetworkPopsService.create.
   imports: [AuditModule, DisconnectModule, IpamModule, StockModule, FibermapModule],
   controllers: [NetworkController],
-  providers: [NetworkPopsService, NetworkEquipmentService, RadiusNasSyncService],
-  exports: [NetworkPopsService, NetworkEquipmentService],
+  providers: [
+    NetworkPopsService,
+    NetworkEquipmentService,
+    RadiusNasSyncService,
+    NmsSyncService,
+  ],
+  exports: [NetworkPopsService, NetworkEquipmentService, NmsSyncService],
 })
 export class NetworkModule {}

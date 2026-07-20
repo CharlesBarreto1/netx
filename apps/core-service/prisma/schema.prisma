@@ -2390,6 +2390,21 @@ model NetworkEquipment {
   lastReachableAt    DateTime?          @map("last_reachable_at")
   lastReachError     String?            @map("last_reach_error")      @db.Text
 
+  // ── Monitoramento no NMS (netx-nms) ──────────────────────────────────────
+  // Opt-in por equipamento: o NMS só tem driver pra juniper/mikrotik/
+  // cisco_iosxe, e propagar o resto criaria device que ele não consegue
+  // coletar. Ligado, o cadastro/edição faz upsert do device no NMS.
+  //
+  // Bancos separados (o NMS roda Timescale próprio pras séries em metrics.*),
+  // então não há FK: nmsDeviceId é só o id espelhado, e a chave de correlação
+  // do lado de lá é device.core_equipment_id.
+  nmsMonitored       Boolean            @default(false) @map("nms_monitored")
+  nmsDeviceId        String?            @map("nms_device_id") @db.Uuid
+  nmsSyncedAt        DateTime?          @map("nms_synced_at")
+  // Último erro de propagação. Sync falho NÃO bloqueia o cadastro (mesma
+  // política do RADIUS), então este campo é o que torna a falha visível.
+  nmsSyncError       String?            @map("nms_sync_error") @db.Text
+
   // Geolocalização (módulo Rede/Mapeamento). Pode diferir da lat/lng do POP
   // — equipamento dentro de rack específico tem coord ligeiramente distinta.
   latitude    Decimal? @db.Decimal(9, 6)

@@ -34,6 +34,7 @@ import {
   type UpdateEquipmentInput,
 } from './network-equipment.service';
 import { NetworkPopsService } from './network-pops.service';
+import { NmsSyncService } from './nms-sync.service';
 
 @ApiTags('network')
 @ApiBearerAuth()
@@ -42,6 +43,7 @@ export class NetworkController {
   constructor(
     private readonly pops: NetworkPopsService,
     private readonly equipment: NetworkEquipmentService,
+    private readonly nmsSync: NmsSyncService,
   ) {}
 
   // ───────────────────────────────────────────────────────────────────────
@@ -173,6 +175,30 @@ export class NetworkController {
   @RequirePermissions('network.write')
   resyncBngs(@CurrentUser() u: AuthenticatedPrincipal) {
     return this.equipment.resyncAllBngs(u.tenantId, u.sub);
+  }
+
+  /**
+   * Reenvia ao NMS todos os equipamentos marcados pra monitorar. É a rede de
+   * segurança do sync HTTP: cura o que falhou enquanto o NMS estava fora do ar
+   * (a propagação não bloqueia o cadastro, então uma falha fica só registrada
+   * em nmsSyncError até alguém reenviar).
+   */
+  @Post('equipment/_resync-nms')
+  @HttpCode(200)
+  @RequirePermissions('network.write')
+  resyncNms(@CurrentUser() u: AuthenticatedPrincipal) {
+    return this.nmsSync.reconcile(u.tenantId);
+  }
+
+  /** Reenvia um equipamento específico — botão "tentar de novo" na UI. */
+  @Post('equipment/:id/sync-nms')
+  @HttpCode(200)
+  @RequirePermissions('network.write')
+  syncOneToNms(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id') id: string,
+  ) {
+    return this.nmsSync.sync(u.tenantId, id);
   }
 
   /**

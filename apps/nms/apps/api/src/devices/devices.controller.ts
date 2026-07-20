@@ -20,8 +20,10 @@ import type { AuthUser } from '../auth/auth.types.js';
 import {
   CreateDeviceSchema,
   UpdateDeviceSchema,
+  UpsertFromCoreSchema,
   type CreateDeviceDto,
   type UpdateDeviceDto,
+  type UpsertFromCoreDto,
 } from './device.dto.js';
 import { SetCredentialSchema, type SetCredentialDto } from './credential.dto.js';
 
@@ -57,6 +59,34 @@ export class DevicesController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.devices.create(dto, user.username);
+  }
+
+  /**
+   * Sync vindo do NetX Core (Planta de rede → NMS). Idempotente por
+   * coreEquipmentId. Chamado pelo NmsSyncService do Core com um token de
+   * serviço; `admin` porque cria/edita device.
+   *
+   * Fica ANTES de `:id` de propósito — o Nest casa rotas na ordem de
+   * declaração, e `from-core` seria capturado por `@Put(':id')`.
+   */
+  @Roles('admin')
+  @Put('from-core')
+  upsertFromCore(
+    @Body(new ZodValidationPipe(UpsertFromCoreSchema)) dto: UpsertFromCoreDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.devices.upsertFromCore(dto, user.username);
+  }
+
+  /** Desvincula (não apaga) o device quando o equipamento sai do Core. */
+  @Roles('admin')
+  @Delete('from-core/:coreEquipmentId')
+  @HttpCode(204)
+  async detachFromCore(
+    @Param('coreEquipmentId', ParseUUIDPipe) coreEquipmentId: string,
+    @CurrentUser() user: AuthUser,
+  ) {
+    await this.devices.detachFromCore(coreEquipmentId, user.username);
   }
 
   @Roles('admin')

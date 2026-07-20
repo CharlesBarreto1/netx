@@ -54,6 +54,11 @@ export interface NetworkEquipment {
   name: string;
   hostname: string | null;
   ipAddress: string;
+  /** Monitoramento no NMS. nmsSyncError é o que revela propagação falha. */
+  nmsMonitored: boolean;
+  nmsDeviceId: string | null;
+  nmsSyncedAt: string | null;
+  nmsSyncError: string | null;
   radiusSecret: string | null;
   radiusNasType: string | null;
   snmpCommunity: string | null;
@@ -101,6 +106,8 @@ export interface CreateEquipmentInput {
   popId?: string | null;
   /** Bem do estoque que este equipamento é — consome o patrimônio no cadastro. */
   serialItemId?: string | null;
+  /** Espelhar como device no NMS (só MIKROTIK/JUNIPER/CISCO têm driver lá). */
+  nmsMonitored?: boolean;
   type: EquipmentType;
   vendor?: EquipmentVendor;
   name: string;
