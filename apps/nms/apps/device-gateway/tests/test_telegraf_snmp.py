@@ -79,3 +79,22 @@ def test_write_e_remove(tmp_path):
     assert config_path(d, DEV).exists()
     assert remove_snmp_config(config_dir=d, device_id=DEV) is True
     assert remove_snmp_config(config_dir=d, device_id=DEV) is False  # já removido
+
+
+def test_render_parks_usa_oids_proprios_e_iftable_comum():
+    cfg = render_snmp_config(device_id=DEV, mgmt_ip="10.0.0.1", community="c", vendor="parks")
+    assert 'name = "snmp_interface"' in cfg  # IF-MIB compartilhada
+    # Óptica: coluna única com índice composto <ifIndex>.<param> → index_as_tag é obrigatório
+    assert "1.3.6.1.4.1.3893.60.18.1.2.2.1.1.2" in cfg
+    assert 'name = "snmp_parks_optical"' in cfg
+    assert "index_as_tag = true" in cfg
+    assert 'name = "snmp_parks_ifname"' in cfg  # mapa ifIndex→ifName p/ o pivô
+    # Saúde: temperatura do chip, memória e as 4 séries de CPU
+    assert "1.3.6.1.4.1.3893.15.4.1.1.1.1.1.22.3.1.1.0" in cfg
+    assert 'name = "chipTempC"' in cfg
+    assert 'name = "memTotalKb"' in cfg
+    assert 'name = "cpu4Pct"' in cfg
+    # Nenhum OID de outro vendor
+    assert "2636" not in cfg
+    assert "14988" not in cfg
+    assert "9.9.91" not in cfg

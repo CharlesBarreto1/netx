@@ -22,6 +22,7 @@ export const PLAYBOOKS: Playbook[] = [
       juniper: 'show route summary',
       mikrotik: '/ip route print count-only',
       cisco_iosxe: 'show ip route summary',
+      parks: 'show ip route summary',
     },
   },
   {
@@ -31,6 +32,7 @@ export const PLAYBOOKS: Playbook[] = [
       juniper: 'show ospf neighbor',
       mikrotik: '/routing ospf neighbor print',
       cisco_iosxe: 'show ip ospf neighbor',
+      parks: 'show ip ospf neighbor',
     },
   },
   {
@@ -40,6 +42,7 @@ export const PLAYBOOKS: Playbook[] = [
       juniper: 'show bgp summary',
       mikrotik: '/routing bgp session print',
       cisco_iosxe: 'show ip bgp summary',
+      parks: 'show ip bgp summary',
     },
   },
   {
@@ -49,6 +52,7 @@ export const PLAYBOOKS: Playbook[] = [
       juniper: 'show interfaces terse',
       mikrotik: '/interface print',
       cisco_iosxe: 'show ip interface brief',
+      parks: 'show interface brief',
     },
   },
   {
@@ -59,6 +63,7 @@ export const PLAYBOOKS: Playbook[] = [
       mikrotik: '/system resource print',
       // No IOS o uptime só existe dentro do `show version` — filtra para não voltar a saída inteira.
       cisco_iosxe: 'show version | include uptime',
+      parks: 'show version',
     },
   },
   {
@@ -68,6 +73,7 @@ export const PLAYBOOKS: Playbook[] = [
       juniper: 'show chassis hardware',
       mikrotik: '/system routerboard print',
       cisco_iosxe: 'show inventory',
+      parks: 'show version',
     },
   },
   {
@@ -77,6 +83,7 @@ export const PLAYBOOKS: Playbook[] = [
       juniper: 'show chassis environment',
       mikrotik: '/system health print',
       cisco_iosxe: 'show environment all',
+      parks: 'show temperature',
     },
   },
 ];

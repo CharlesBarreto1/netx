@@ -1,4 +1,4 @@
-# NetX NMS — Multi-vendor (Juniper + Mikrotik + Cisco IOS-XE)
+# NetX NMS — Multi-vendor (Juniper + Mikrotik + Cisco IOS-XE + Parks)
 
 O NMS gerencia **Juniper (Junos)**, **Mikrotik (RouterOS)** e **Cisco IOS-XE** (ASR 920/903/1000,
 ISR, Catalyst) pelos mesmos fluxos. A diferença de cada vendor fica isolada nos drivers do
@@ -10,16 +10,16 @@ Telegraf.
 
 ## O que funciona por vendor
 
-| Recurso | Juniper (Junos) | Mikrotik (RouterOS) | Cisco IOS-XE |
-|---|---|---|---|
-| Conectividade | SSH + NETCONF(830) + SNMP | SSH + SNMP (NETCONF = **N/A**) | SSH + SNMP (NETCONF = **N/A**) |
-| Interfaces / tráfego / erros | IF-MIB | IF-MIB (igual) | IF-MIB (igual) |
-| Temperatura / CPU | jnxOperating | mtxrHealth + HOST-RESOURCES | CISCO-ENTITY-SENSOR + CISCO-PROCESS |
-| Óptica (DOM SFP) | jnxDom | mtxrOptical | CISCO-ENTITY-SENSOR (sensores dBm) |
-| Backup de config | `get-config set` | `/export` | `show running-config` |
-| Playbooks (read-only) | `show ...` | `/... print` | `show ip ...` |
-| Terminal SSH | sim | sim | sim |
-| **Aplicar config** | `commit confirmed` (rollback auto) | backup + auto-revert agendado | `configure terminal revert timer` |
+| Recurso | Juniper (Junos) | Mikrotik (RouterOS) | Cisco IOS-XE | Parks (PK900) |
+|---|---|---|---|---|
+| Conectividade | SSH + NETCONF(830) + SNMP | SSH + SNMP (NETCONF = **N/A**) | SSH + SNMP (NETCONF = **N/A**) | SSH + SNMP (NETCONF = **N/A**) |
+| Interfaces / tráfego / erros | IF-MIB | IF-MIB (igual) | IF-MIB (igual) | IF-MIB (igual) |
+| Temperatura / CPU | jnxOperating | mtxrHealth + HOST-RESOURCES | CISCO-ENTITY-SENSOR + CISCO-PROCESS | PARKS-MIB (chip + séries de CPU) |
+| Óptica (DOM SFP) | jnxDom | mtxrOptical | CISCO-ENTITY-SENSOR (sensores dBm) | PARKS-MIB (índice `ifIndex.param`) |
+| Backup de config | `get-config set` | `/export` | `show running-config` | `show running-config` |
+| Playbooks (read-only) | `show ...` | `/... print` | `show ip ...` | `show ...` |
+| Terminal SSH | sim | sim | sim | sim |
+| **Aplicar config** | `commit confirmed` (rollback auto) | backup + auto-revert agendado | `configure terminal revert timer` | `write` confirma (**sem auto-revert**) |
 
 ## Pré-requisitos no equipamento
 
@@ -61,6 +61,29 @@ Telegraf.
 - **NETCONF**: o IOS-XE 16.x+ até fala NETCONF, mas o NMS gerencia por SSH — o canal aparece
   como N/A no teste de conectividade (não é falha).
 
+### Parks (PK900, Parks OS)
+- **SSH** habilitado; usuário com acesso privilegiado (o prompt já cai em `#`).
+- **SNMP v2c** com community read-only e o IP do coletor liberado. ⚠️ Se houver ACL amarrando o
+  SNMP a um poller antigo (ex.: `snmp-server community <x> RO ACL-SNMP`), o NetX precisa entrar na
+  ACL **e** na de control-plane — SSH liberado não implica SNMP liberado, e o sintoma é timeout
+  puro, sem nenhuma mensagem de erro.
+- **NETCONF não existe** — o teste de conectividade marca o canal como N/A (não é falha).
+- O host key SSH é oferecido só em `ssh-rsa`/`ssh-dss` (legado). O Paramiko/Netmiko negocia normal,
+  mas para entrar pelo terminal comum é preciso `ssh -o HostKeyAlgorithms=+ssh-rsa`.
+
+#### Três armadilhas do Parks OS (todas verificadas em campo)
+1. **O pager não é `terminal length 0`, e sim `terminal page-break disable`.** Nenhum `device_type`
+   do Netmiko manda esse comando. Sem ele, `show running-config` volta com ~25 linhas em vez de
+   ~490 — um **backup truncado que parece íntegro**. O driver desliga o pager em toda sessão.
+2. **O agente SNMP tem bug de ordenação**: a tabela `.1.3.6.1.4.1.3893.60.13.1.18.1.4` devolve OIDs
+   fora de ordem e aborta qualquer walk padrão (`Error: OID not increasing`), escondendo ~88% da
+   MIB. Por isso o perfil do Telegraf coleta **OIDs específicos**, nunca a árvore enterprise inteira.
+   Para diagnosticar à mão, use `snmpwalk -Cc`.
+3. **A óptica vem numa coluna só, com índice composto** `<ifIndex>.<param>` (1=temperatura, 2=bias,
+   3=Tx, 4=Rx, 5=Vcc) e valores ×1000. Como o `param` é o último componente do índice, o Telegraf
+   não consegue separar as grandezas — ele coleta com `index_as_tag` e o `metrics.service.ts` pivota.
+   O `ifIndex` é o mesmo da IF-MIB, então casa com o nome da porta.
+
 ## Aplicar configuração (escrita) — modelo de segurança
 
 Fluxo: **planejar → revisar o diff → aplicar → verificar → confirmar** (AGENTS.md §1, 2, 5, 6).
@@ -81,6 +104,16 @@ Só `operator`/`admin`; toda ação é auditada (`audit_log`) e registrada com c
   Como o IOS não devolve diff pronto, o driver captura a running-config antes e depois e monta um
   diff unificado. O `plan` (dry-run) **não toca o equipamento** — o IOS-XE não tem candidate
   config, então o plan é a lista de comandos que seria aplicada.
+- **Parks**: ⚠️ **é o único vendor sem rede de segurança automática.** O equipamento não tem
+  `commit`/`rollback` e não tem agendador, então não dá para armar auto-revert nem no device (como
+  no RouterOS) nem de fora (um revert disparado pelo gateway não ajuda justamente no caso que
+  importa — a mudança que derruba a gerência). O que existe é uma propriedade do próprio Parks: a
+  config entra **a quente** mas só persiste no `write`. Então o `apply_config` aplica e **não grava**,
+  deixando a running divergente da startup; o **Confirmar** é o `write`. Sem confirmação a mudança
+  segue valendo até o próximo boot, quando o equipamento volta à startup-config. Antes de aplicar, o
+  driver salva um ponto de restauração no device (`write backup-config`) — restaurá-lo, porém, é
+  manual. **Aplicar config em Parks exige atenção redobrada do operador**; a decisão de habilitar
+  escrita mesmo assim foi tomada explicitamente (AGENTS.md §7).
 
 Após o apply, o NMS roda um **verify automático** (connectivity-test) e mostra se o SSH continua
 acessível antes de o operador confirmar.
@@ -98,3 +131,9 @@ acessível antes de o operador confirmar.
   (o NMS só lê sensores com `entSensorStatus = ok`). Confirme com `show interfaces transceiver`.
 - **Mudança Cisco sumiu depois de um reload**: o `write memory` só roda no **Confirmar**. Se a
   janela expirou e o IOS reverteu, ou se ninguém confirmou, a config nunca foi para o startup.
+- **Backup do Parks veio curto (~25 linhas)**: é o pager. Confirme que o driver está mandando
+  `terminal page-break disable` — sem isso o `show running-config` é cortado sem avisar.
+- **Parks sem óptica/CPU/temperatura nas telas**: quase sempre é ACL de SNMP no equipamento
+  (SSH funciona, SNMP não). Cheque `show snmp` e `show access-lists` no switch.
+- **Mudança no Parks sumiu depois de um reboot**: é o comportamento esperado de quem não clicou
+  em **Confirmar** — no Parks confirmar é o `write`.

@@ -36,7 +36,9 @@ export function ConfigApplyTab({ deviceId, vendor }: { deviceId: string; vendor:
       ? '/ip address add address=10.0.0.2/24 interface=ether1'
       : vendor === 'cisco_iosxe'
         ? 'interface TenGigabitEthernet0/0/1\n description uplink-core'
-        : 'set interfaces ge-0/0/0 description "uplink-core"';
+        : vendor === 'parks'
+          ? 'interface tengigabitethernet1/3/1\n description uplink-core'
+          : 'set interfaces ge-0/0/0 description "uplink-core"';
 
   function reloadState() {
     void pending.mutate();

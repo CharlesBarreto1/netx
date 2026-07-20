@@ -98,7 +98,7 @@ function Console({ user, onLogout }: { user: AuthUser; onLogout: () => void }) {
         </div>
       </div>
       <p className="sub">
-        Gestão técnica de rede multi-vendor (Juniper + Mikrotik + Cisco IOS-XE) — observar,
+        Gestão técnica de rede multi-vendor (Juniper + Mikrotik + Cisco IOS-XE + Parks) — observar,
         documentar, diagnosticar e aplicar.
       </p>
       {error && <p className="err">{error}</p>}
@@ -518,7 +518,9 @@ function ConfigApplyPanel({ deviceId, vendor }: { deviceId: string; vendor: stri
       ? '/ip address add address=10.0.0.2/24 interface=ether1'
       : vendor === 'cisco_iosxe'
         ? 'interface TenGigabitEthernet0/0/1\n description uplink-core'
-        : 'set interfaces ge-0/0/0 description "uplink-core"';
+        : vendor === 'parks'
+          ? 'interface tengigabitethernet1/3/1\n description uplink-core'
+          : 'set interfaces ge-0/0/0 description "uplink-core"';
 
   // Estado persistido: mudança pendente (rollback armado) + histórico — sobrevive a reload.
   const loadState = useCallback(() => {

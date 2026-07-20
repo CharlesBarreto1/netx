@@ -6,6 +6,7 @@ from device_gateway.drivers import get_driver, supported_vendors
 from device_gateway.drivers.base import ApplyResult, ChannelCheck
 from device_gateway.drivers.cisco_iosxe import _strip_config_noise, _unified_diff
 from device_gateway.drivers.mikrotik import _strip_export_noise
+from device_gateway.drivers.parks import _strip_config_noise as _strip_parks_noise
 
 
 def test_registry_resolves_known_vendors():
@@ -14,6 +15,8 @@ def test_registry_resolves_known_vendors():
     assert get_driver("MikroTik").vendor == "mikrotik"  # case-insensitive
     assert get_driver("cisco_iosxe").vendor == "cisco_iosxe"
     assert get_driver("Cisco_IOSXE").vendor == "cisco_iosxe"
+    assert get_driver("parks").vendor == "parks"
+    assert get_driver("PARKS").vendor == "parks"
 
 
 def test_registry_defaults_to_juniper():
@@ -25,7 +28,7 @@ def test_registry_defaults_to_juniper():
 
 
 def test_supported_vendors():
-    assert supported_vendors() == ["cisco_iosxe", "juniper", "mikrotik"]
+    assert supported_vendors() == ["cisco_iosxe", "juniper", "mikrotik", "parks"]
 
 
 def test_juniper_has_secondary_netconf():
@@ -158,3 +161,47 @@ def test_mikrotik_apply_dry_run_does_not_touch_device():
     assert result.ok is True
     assert result.committed is False
     assert "ip address add" in result.diff
+
+
+def test_parks_secondary_not_applicable():
+    drv = get_driver("parks")
+    assert drv.has_secondary is False  # mantém a porta SSH (22) no worker
+    check = drv.check_secondary(host="10.0.0.1", username="admin", password="x")
+    assert check.applicable is False
+    assert check.reachable is False
+
+
+def test_parks_run_command_rejects_non_show():
+    drv = get_driver("parks")
+    with pytest.raises(ValueError, match="somente show"):
+        drv.run_command(host="10.0.0.1", username="a", password="x", port=22, command="reboot")
+
+
+def test_parks_apply_dry_run_does_not_touch_device():
+    drv = get_driver("parks")
+    r = drv.apply_config(
+        host="10.0.0.1",
+        username="a",
+        password="x",
+        port=22,
+        config="! comentario\ninterface tengigabitethernet1/3/1\n description uplink\n",
+        dry_run=True,
+    )
+    assert r.ok is True
+    assert r.committed is False
+    assert "interface tengigabitethernet1/3/1" in r.diff
+    assert "comentario" not in r.diff
+
+
+def test_parks_strip_config_noise():
+    # O Parks prefixa a saída com um aviso de processamento + cabeçalho; ambos sujariam o diff.
+    raw = (
+        "\n Being processed.This may take a few minutes,please wait......\n"
+        "\n System current configuration:\n"
+        "!command in view_mode\n"
+        "hostname SW_CORE-CPM1\n"
+    )
+    out = _strip_parks_noise(raw)
+    assert "Being processed" not in out
+    assert "System current configuration" not in out
+    assert "hostname SW_CORE-CPM1" in out

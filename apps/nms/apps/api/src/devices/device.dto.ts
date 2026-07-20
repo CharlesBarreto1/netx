@@ -5,7 +5,7 @@ import { z } from 'zod';
  * `mikrotik` ou `cisco_iosxe` (default juniper p/ compat). Credenciais NÃO entram
  * aqui — fluxo separado pelo cofre (ADR 0002).
  */
-export const DeviceVendorSchema = z.enum(['juniper', 'mikrotik', 'cisco_iosxe']);
+export const DeviceVendorSchema = z.enum(['juniper', 'mikrotik', 'cisco_iosxe', 'parks']);
 export type DeviceVendor = z.infer<typeof DeviceVendorSchema>;
 
 export const CreateDeviceSchema = z.object({

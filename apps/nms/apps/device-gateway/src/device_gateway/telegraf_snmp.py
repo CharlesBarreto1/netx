@@ -230,6 +230,77 @@ def _render_cisco_iosxe(*, device_id: str, mgmt_ip: str, community: str, version
 """
 
 
+def _render_parks(*, device_id: str, mgmt_ip: str, community: str, version: int) -> str:
+    block = _agent_block(
+        device_id=device_id, mgmt_ip=mgmt_ip, community=community, version=version, name="snmp"
+    )
+    # Escalares de saúde num bloco próprio (measurement `snmp_parks_health`).
+    block2 = _agent_block(
+        device_id=device_id,
+        mgmt_ip=mgmt_ip,
+        community=community,
+        version=version,
+        name="snmp_parks_health",
+    )
+    return f"""{_HEADER}
+{block}{_IF_MIB_TABLE}
+  # DOM óptico (PARKS-MIB). O índice é COMPOSTO: <ifIndex>.<param>, com param 1=temperatura,
+  # 2=bias Tx, 3=Tx power, 4=Rx power, 5=Vcc — e todos os valores vêm ×1000 (-36989 =
+  # -36,989 dBm). Como o param é o ÚLTIMO componente do índice, não dá para fixá-lo no OID:
+  # coletamos a coluna inteira com `index_as_tag` e o `metrics.service.ts` pivota.
+  # O ifIndex é o MESMO da IF-MIB (verificado no equipamento), então casa com ifName.
+  [[inputs.snmp.table]]
+    name = "snmp_parks_optical"
+    index_as_tag = true
+    inherit_tags = ["device_id", "sysName"]
+    [[inputs.snmp.table.field]]
+      oid = "1.3.6.1.4.1.3893.60.18.1.2.2.1.1.2"
+      name = "ddm"
+
+  # Mapa ifIndex → ifName. Necessário porque a tabela óptica só traz o índice, e o
+  # `snmp_interface` (compartilhado com os outros vendors) não guarda o ifIndex.
+  [[inputs.snmp.table]]
+    name = "snmp_parks_ifname"
+    index_as_tag = true
+    inherit_tags = ["device_id"]
+    [[inputs.snmp.table.field]]
+      oid = "1.3.6.1.2.1.31.1.1.1.1"
+      name = "ifName"
+
+{block2}
+  # Temperatura do switch chip (°C). Confirmado com leitura pareada contra
+  # `show temperature` no equipamento. Os demais sensores do CLI não existem no SNMP.
+  [[inputs.snmp.field]]
+    oid = "1.3.6.1.4.1.3893.15.4.1.1.1.1.1.22.3.1.1.0"
+    name = "chipTempC"
+
+  # Memória em kB. A utilização também existe na MIB, mas como Hex-STRING ("20.65") —
+  # inútil para série temporal; o percentual sai de total/livre no metrics.service.
+  [[inputs.snmp.field]]
+    oid = "1.3.6.1.4.1.3893.60.1.3.1.1.1.0"
+    name = "memTotalKb"
+  [[inputs.snmp.field]]
+    oid = "1.3.6.1.4.1.3893.60.1.3.1.1.2.0"
+    name = "memFreeKb"
+
+  # CPU: a MIB só expõe SÉRIES de histórico (5 séries × 60 amostras); a amostra 1 é a mais
+  # recente. Pegamos as séries 1-4 (o equipamento tem 4 núcleos) e o metrics.service tira a
+  # média. Qual série é qual núcleo não foi confirmado — a média não depende disso.
+  [[inputs.snmp.field]]
+    oid = "1.3.6.1.4.1.3893.60.1.1.1.2.1.4.1.3.1.1"
+    name = "cpu1Pct"
+  [[inputs.snmp.field]]
+    oid = "1.3.6.1.4.1.3893.60.1.1.1.2.1.4.1.3.2.1"
+    name = "cpu2Pct"
+  [[inputs.snmp.field]]
+    oid = "1.3.6.1.4.1.3893.60.1.1.1.2.1.4.1.3.3.1"
+    name = "cpu3Pct"
+  [[inputs.snmp.field]]
+    oid = "1.3.6.1.4.1.3893.60.1.1.1.2.1.4.1.3.4.1"
+    name = "cpu4Pct"
+"""
+
+
 def render_snmp_config(
     *, device_id: str, mgmt_ip: str, community: str, version: int = 2, vendor: str | None = None
 ) -> str:
@@ -241,6 +312,10 @@ def render_snmp_config(
         )
     if key == "cisco_iosxe":
         return _render_cisco_iosxe(
+            device_id=device_id, mgmt_ip=mgmt_ip, community=community, version=version
+        )
+    if key == "parks":
+        return _render_parks(
             device_id=device_id, mgmt_ip=mgmt_ip, community=community, version=version
         )
     return _render_juniper(

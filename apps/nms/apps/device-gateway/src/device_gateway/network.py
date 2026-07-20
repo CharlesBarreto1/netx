@@ -94,6 +94,11 @@ def _device_cmd(vendor: str, test_type: str, target: str) -> str:
         if test_type == "traceroute":
             return f"traceroute {target} wait 2"
         return f"ping {target} count 4"
+    if v == "parks":
+        # Parks OS: `ping <ip>` já manda 5 pacotes e termina sozinho — não aceita `repeat`
+        # nem `count`. A saída é Cisco-style ("Success rate is ..."), então o parser do IOS
+        # em `_ping_summary` já cobre.
+        return f"traceroute {target}" if test_type == "traceroute" else f"ping {target}"
     if v == "cisco_iosxe":
         # IOS: sem `repeat`/`ttl` explícitos o default é lento (5 probes de 2s por hop, 30 hops).
         if test_type == "traceroute":

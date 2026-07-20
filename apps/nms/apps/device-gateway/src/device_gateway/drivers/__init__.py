@@ -6,11 +6,13 @@ from .base import ApplyResult, ChannelCheck, DeviceDriver
 from .cisco_iosxe import CiscoIosXeDriver
 from .juniper import JuniperDriver
 from .mikrotik import MikrotikDriver
+from .parks import ParksDriver
 
 _DRIVERS: dict[str, DeviceDriver] = {
     "juniper": JuniperDriver(),
     "mikrotik": MikrotikDriver(),
     "cisco_iosxe": CiscoIosXeDriver(),
+    "parks": ParksDriver(),
 }
 
 # Default histórico do MVP: vendor ausente/desconhecido cai em Juniper (compat).

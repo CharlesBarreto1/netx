@@ -15,6 +15,7 @@ enum Vendor {
   juniper // MVP inicial. Read-only via NAPALM/PyEZ.
   mikrotik // RouterOS — gestão de rede no NMS (SNMP/health/backup/terminal), em paralelo ao papel de BNG no NetX.
   cisco_iosxe // IOS-XE (ASR 920/903/1000, ISR, Catalyst) — SSH/Netmiko; apply com `configure terminal revert timer`.
+  parks // Parks OS (switches PK900) — SSH/Netmiko; sem rollback nativo, o `write` é a confirmação.
 }
 
 /// Papéis de acesso (ADR 0007). viewer = só leitura; operator = roda playbooks/backup/terminal;

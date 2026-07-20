@@ -72,3 +72,6 @@ def test_device_cmd_por_vendor_sempre_termina():
     assert _device_cmd("mikrotik", "ping", "8.8.8.8") == "/ping 8.8.8.8 count=4"
     assert _device_cmd("juniper", "ping", "8.8.8.8") == "ping 8.8.8.8 count 4"
     assert "-c 4" in _device_cmd("", "ping", "8.8.8.8")  # fallback genérico (Linux)
+    # Parks nao aceita repeat/count: `ping <ip>` ja manda 5 pacotes e termina.
+    assert _device_cmd("parks", "ping", "8.8.8.8") == "ping 8.8.8.8"
+    assert _device_cmd("parks", "traceroute", "8.8.8.8") == "traceroute 8.8.8.8"

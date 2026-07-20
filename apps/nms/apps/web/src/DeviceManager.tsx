@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { api, type ConnectivityResult, type Device, type DeviceInput, type Vendor } from './api.js';
 
-const VENDORS: Vendor[] = ['juniper', 'mikrotik', 'cisco_iosxe'];
+const VENDORS: Vendor[] = ['juniper', 'mikrotik', 'cisco_iosxe', 'parks'];
 
 /** O valor do enum é chave técnica (`cisco_iosxe`) — na tela mostra o nome do vendor. */
 const VENDOR_LABEL: Record<Vendor, string> = {
   juniper: 'Juniper (Junos)',
   mikrotik: 'Mikrotik (RouterOS)',
   cisco_iosxe: 'Cisco IOS-XE (ASR)',
+  parks: 'Parks (PK900)',
 };
 
 const EMPTY: DeviceInput = { hostname: '', mgmtIp: '', vendor: 'juniper' };
