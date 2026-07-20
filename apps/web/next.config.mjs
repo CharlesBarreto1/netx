@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+
 /** @type {import('next').NextConfig} */
 //
 // Dois env vars distintos por design:
@@ -34,7 +36,13 @@ const nextConfig = {
   typedRoutes: false,
   // Em monorepo, o Next 16 procura por múltiplos package-lock.json e fica em
   // dúvida sobre qual diretório é o root. Apontamos explicitamente pro repo.
-  outputFileTracingRoot: new URL('../../', import.meta.url).pathname,
+  //
+  // fileURLToPath, NÃO `.pathname`: pathname devolve a URL percent-encoded, então
+  // um checkout em caminho com espaço ou acento (ex.: "~/Área de trabalho/NetX")
+  // vira "/home/user/%C3%81rea%20de%20trabalho/NetX" — diretório que não existe.
+  // O Turbopack então falha no boot com "Invalid distDirRoot: '.next'". Em
+  // /opt/netx passava por acaso, por ser ASCII puro e sem espaços.
+  outputFileTracingRoot: fileURLToPath(new URL('../../', import.meta.url)),
   async rewrites() {
     return [
       {
