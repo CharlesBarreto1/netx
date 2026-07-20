@@ -28,7 +28,12 @@ volumes:
 
 services:
   postgres:
-    image: postgres:16-alpine
+    # PostGIS, não o postgres puro: a migration 20260705130000_fibermap_foundation
+    # roda `CREATE EXTENSION postgis` e o schema declara extensions=[..., postgis].
+    # Com postgres:16-alpine o extension control file nem existe, então o
+    # `IF NOT EXISTS` não salva — a migration falha e o próximo deploy trava com
+    # P3009. Drop-in: mesmas envs, mesmo entrypoint, mesma major (16).
+    image: postgis/postgis:16-3.5-alpine
     container_name: netx-postgres
     restart: unless-stopped
     environment:
