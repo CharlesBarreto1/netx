@@ -1,6 +1,18 @@
 'use client';
 
-import { Network, Plus, Search, Trash2, Wand2, Download, ArrowRight } from 'lucide-react';
+import {
+  ArrowRight,
+  ChevronDown,
+  ChevronRight,
+  Download,
+  Network,
+  Plus,
+  RefreshCw,
+  Scissors,
+  Search,
+  Trash2,
+  Wand2,
+} from 'lucide-react';
 import { useState } from 'react';
 import useSWR, { mutate } from 'swr';
 
@@ -20,11 +32,16 @@ import {
   type IpamAddress,
   type IpamCgnatPlan,
   type IpamLookupResult,
+  type IpamNextSubnet,
   type IpamPrefix,
+  type IpamPrefixNode,
+  type IpamPrefixRole,
+  type FindingKind,
+  type ReconcileResult,
 } from '@/lib/ipam-api';
 import { hasPermission } from '@/lib/session';
 
-type TabKey = 'prefixes' | 'cgnat' | 'lookup';
+type TabKey = 'prefixes' | 'cgnat' | 'reconcile' | 'lookup';
 
 const ROLE_LABELS: Record<string, string> = {
   SUPERNET: 'Supernet',
@@ -70,12 +87,14 @@ export default function IpamPage() {
         items={[
           { value: 'prefixes', label: 'Prefixos & IPs' },
           { value: 'cgnat', label: 'CGNAT' },
+          { value: 'reconcile', label: 'Reconciliação' },
           { value: 'lookup', label: 'Busca reversa' },
         ]}
       />
 
       {tab === 'prefixes' && <PrefixesTab canWrite={canWrite} canDelete={canDelete} />}
       {tab === 'cgnat' && <CgnatTab canWrite={canWrite} canDelete={canDelete} />}
+      {tab === 'reconcile' && <ReconcileTab canWrite={canWrite} />}
       {tab === 'lookup' && <LookupTab />}
     </div>
   );
@@ -84,13 +103,212 @@ export default function IpamPage() {
 // =============================================================================
 // PREFIXOS & ENDEREÇOS
 // =============================================================================
+/**
+ * Formata contagens de endereços. Faixas IPv6 são potências de 2 grandes demais
+ * pra ler em decimal ("18446744073709551616"), então viram "2^64".
+ */
+function fmtSize(s: string): string {
+  const n = BigInt(s);
+  if (n < 1_000_000_000_000n) return n.toLocaleString('pt-BR');
+  const bits = n.toString(2).length - 1;
+  return (1n << BigInt(bits)) === n ? `2^${bits}` : `~2^${bits}`;
+}
+
+/** Percentual pequeno mas não-nulo não pode virar "0%" — isso esconde uso real. */
+function fmtPct(p: number): string {
+  if (p > 0 && p < 0.01) return '<0,01%';
+  return `${p.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}%`;
+}
+
+function UtilBar({ p }: { p: IpamPrefix }) {
+  const bySubnets = p.utilizationBasis === 'SUBNETS';
+  const detail = bySubnets
+    ? `${p.childCount} ${p.childCount === 1 ? 'subrede' : 'subredes'} · ${fmtSize(p.freeSize)} livres`
+    : `${p.usedCount} de ${fmtSize(p.usableHosts)} IPs`;
+
+  if (p.utilization == null) {
+    return <span className="text-xs text-muted-foreground">{detail}</span>;
+  }
+  const pct = Math.min(100, p.utilization);
+  const tone =
+    pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-amber-500' : bySubnets ? 'bg-sky-500' : 'bg-brand-500';
+
+  return (
+    <div className="flex items-center gap-2" title={detail}>
+      <div className="h-1.5 w-16 shrink-0 overflow-hidden rounded bg-surface-muted">
+        <div className={`h-full ${tone}`} style={{ width: `${Math.max(pct, pct > 0 ? 2 : 0)}%` }} />
+      </div>
+      <span className="whitespace-nowrap text-xs text-muted-foreground">
+        {fmtPct(p.utilization)}
+        <span className="ml-1 opacity-60">{bySubnets ? 'alocado' : 'usado'}</span>
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Uma linha da árvore. Renderiza recursivamente os filhos e, ao final, as
+ * aberturas de espaço livre — que é o que responde "onde ainda cabe subrede?"
+ * sem obrigar o operador a fazer a conta de cabeça.
+ */
+function PrefixTreeRow({
+  node,
+  depth,
+  collapsed,
+  toggle,
+  selectedId,
+  onSelect,
+  onUseFree,
+  canWrite,
+}: {
+  node: IpamPrefixNode;
+  depth: number;
+  collapsed: Set<string>;
+  toggle: (id: string) => void;
+  selectedId: string | null;
+  onSelect: (n: IpamPrefixNode) => void;
+  onUseFree: (parent: IpamPrefixNode, cidr: string) => void;
+  canWrite: boolean;
+}) {
+  const isOpen = !collapsed.has(node.id);
+  const hasKids = node.children.length > 0;
+  const showFree = isOpen && node.freeBlocks.length > 0;
+  const pad = 8 + depth * 18;
+
+  return (
+    <>
+      <tr
+        onClick={() => onSelect(node)}
+        className={`cursor-pointer border-t border-border hover:bg-surface-muted ${
+          selectedId === node.id ? 'bg-brand-50 dark:bg-brand-500/10' : ''
+        }`}
+      >
+        <td className="py-2 pr-3" style={{ paddingLeft: pad }}>
+          <div className="flex items-center gap-1.5">
+            {hasKids ? (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggle(node.id);
+                }}
+                className="rounded p-0.5 text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+                aria-label={isOpen ? 'Recolher' : 'Expandir'}
+              >
+                {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+              </button>
+            ) : (
+              <span className="inline-block w-[18px]" />
+            )}
+            <span className="font-mono text-sm">{node.cidr}</span>
+            {node.version === 'V6' && <Badge tone="purple">v6</Badge>}
+            {node.status !== 'ACTIVE' && (
+              <Badge tone={node.status === 'RESERVED' ? 'warning' : 'danger'}>
+                {node.status === 'RESERVED' ? 'Reservado' : 'Obsoleto'}
+              </Badge>
+            )}
+          </div>
+        </td>
+        <td className="px-3 py-2 text-xs text-muted-foreground">{ROLE_LABELS[node.role] ?? node.role}</td>
+        <td className="px-3 py-2 text-xs text-muted-foreground">{node.vlanId ?? '—'}</td>
+        <td className="px-3 py-2">
+          <UtilBar p={node} />
+        </td>
+      </tr>
+
+      {isOpen &&
+        node.children.map((c) => (
+          <PrefixTreeRow
+            key={c.id}
+            node={c}
+            depth={depth + 1}
+            collapsed={collapsed}
+            toggle={toggle}
+            selectedId={selectedId}
+            onSelect={onSelect}
+            onUseFree={onUseFree}
+            canWrite={canWrite}
+          />
+        ))}
+
+      {showFree &&
+        node.freeBlocks.map((b) => (
+          <tr key={`${node.id}-free-${b.cidr}`} className="border-t border-dashed border-border/70">
+            <td className="py-1.5 pr-3" style={{ paddingLeft: pad + 18 }}>
+              <div className="flex items-center gap-1.5 text-muted-foreground">
+                <span className="inline-block h-2 w-2 rounded-sm border border-dashed border-current opacity-60" />
+                <span className="font-mono text-xs opacity-75">{b.cidr}</span>
+              </div>
+            </td>
+            <td className="px-3 py-1.5 text-xs italic text-muted-foreground opacity-75">livre</td>
+            <td className="px-3 py-1.5" />
+            <td className="px-3 py-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground opacity-75">
+                  {fmtSize(b.size)} endereços
+                </span>
+                {canWrite && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onUseFree(node, b.cidr);
+                    }}
+                    className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-300"
+                  >
+                    usar
+                  </button>
+                )}
+              </div>
+            </td>
+          </tr>
+        ))}
+
+      {showFree && node.freeTruncated && (
+        <tr className="border-t border-dashed border-border/70">
+          <td colSpan={4} className="py-1 text-xs italic text-muted-foreground" style={{ paddingLeft: pad + 18 }}>
+            … mais aberturas livres (veja a aba Livre no painel)
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
 function PrefixesTab({ canWrite, canDelete }: { canWrite: boolean; canDelete: boolean }) {
   const [q, setQ] = useState('');
-  const [selected, setSelected] = useState<IpamPrefix | null>(null);
-  const [showNew, setShowNew] = useState(false);
-  const { data: prefixes, isLoading } = useSWR(['ipam-prefixes', q], () =>
-    ipamApi.listPrefixes({ q: q || undefined }),
+  const [role, setRole] = useState('');
+  const [selected, setSelected] = useState<IpamPrefixNode | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [newPrefix, setNewPrefix] = useState<{ cidr: string } | null>(null);
+
+  const key = ['ipam-tree', q, role];
+  const { data: tree, isLoading } = useSWR(key, () =>
+    ipamApi.treePrefixes({ q: q || undefined, role: role || undefined }),
   );
+
+  const refresh = () => {
+    mutate(key);
+    mutate('ipam-prefixes-all');
+  };
+
+  const toggle = (id: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  // Reflete no painel a versão recém-carregada do prefixo seleccionado, senão os
+  // números do cabeçalho congelam depois de alocar/dividir.
+  const findNode = (nodes: IpamPrefixNode[], id: string): IpamPrefixNode | null => {
+    for (const n of nodes) {
+      if (n.id === id) return n;
+      const hit = findNode(n.children, id);
+      if (hit) return hit;
+    }
+    return null;
+  };
+  const current = selected && tree ? findNode(tree, selected.id) ?? selected : selected;
 
   if (isLoading) return <PageLoader />;
 
@@ -107,8 +325,16 @@ function PrefixesTab({ canWrite, canDelete }: { canWrite: boolean; canDelete: bo
               className="pl-8"
             />
           </div>
+          <Select value={role} onChange={(e) => setRole(e.target.value)} className="w-44">
+            <option value="">Todos os papéis</option>
+            {Object.entries(ROLE_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
+            ))}
+          </Select>
           {canWrite && (
-            <Button onClick={() => setShowNew(true)}>
+            <Button onClick={() => setNewPrefix({ cidr: '' })}>
               <Plus className="mr-1 h-4 w-4" /> Prefixo
             </Button>
           )}
@@ -118,48 +344,30 @@ function PrefixesTab({ canWrite, canDelete }: { canWrite: boolean; canDelete: bo
           <table className="w-full text-sm">
             <thead className="bg-surface-muted text-left text-xs uppercase text-muted-foreground">
               <tr>
-                <th className="px-3 py-2">CIDR</th>
+                <th className="px-3 py-2">Prefixo</th>
                 <th className="px-3 py-2">Papel</th>
                 <th className="px-3 py-2">VLAN</th>
-                <th className="px-3 py-2">Uso</th>
+                <th className="px-3 py-2">Ocupação</th>
               </tr>
             </thead>
             <tbody>
-              {(prefixes ?? []).map((p) => (
-                <tr
-                  key={p.id}
-                  onClick={() => setSelected(p)}
-                  className={`cursor-pointer border-t border-border hover:bg-surface-muted ${
-                    selected?.id === p.id ? 'bg-brand-50 dark:bg-brand-500/10' : ''
-                  }`}
-                >
-                  <td className="px-3 py-2 font-mono">
-                    {p.cidr}{' '}
-                    <Badge tone={p.version === 'V6' ? 'purple' : 'info'}>{p.version}</Badge>
-                  </td>
-                  <td className="px-3 py-2">{ROLE_LABELS[p.role] ?? p.role}</td>
-                  <td className="px-3 py-2">{p.vlanId ?? '—'}</td>
-                  <td className="px-3 py-2">
-                    {p.utilization != null ? (
-                      <div className="flex items-center gap-2">
-                        <div className="h-1.5 w-16 overflow-hidden rounded bg-surface-muted">
-                          <div
-                            className="h-full bg-brand-500"
-                            style={{ width: `${Math.min(100, p.utilization)}%` }}
-                          />
-                        </div>
-                        <span className="text-xs text-muted-foreground">{p.utilization}%</span>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">{p.usedCount} usados</span>
-                    )}
-                  </td>
-                </tr>
+              {(tree ?? []).map((n) => (
+                <PrefixTreeRow
+                  key={n.id}
+                  node={n}
+                  depth={0}
+                  collapsed={collapsed}
+                  toggle={toggle}
+                  selectedId={current?.id ?? null}
+                  onSelect={setSelected}
+                  onUseFree={(_parent, cidr) => setNewPrefix({ cidr })}
+                  canWrite={canWrite}
+                />
               ))}
-              {!prefixes?.length && (
+              {!tree?.length && (
                 <tr>
                   <td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">
-                    Nenhum prefixo cadastrado.
+                    {q || role ? 'Nenhum prefixo encontrado.' : 'Nenhum prefixo cadastrado.'}
                   </td>
                 </tr>
               )}
@@ -169,21 +377,28 @@ function PrefixesTab({ canWrite, canDelete }: { canWrite: boolean; canDelete: bo
       </section>
 
       <section>
-        {selected ? (
-          <AddressesPanel prefix={selected} canWrite={canWrite} canDelete={canDelete} />
+        {current ? (
+          <PrefixDetailPanel
+            prefix={current}
+            canWrite={canWrite}
+            canDelete={canDelete}
+            onChanged={refresh}
+            onPrefill={(cidr) => setNewPrefix({ cidr })}
+          />
         ) : (
-          <div className="grid h-full min-h-40 place-items-center rounded-lg border border-dashed border-border text-sm text-muted-foreground">
-            Selecione um prefixo para ver os IPs.
+          <div className="grid h-full min-h-40 place-items-center rounded-lg border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+            Selecione um prefixo para ver IPs, mapa e espaço livre.
           </div>
         )}
       </section>
 
-      {showNew && (
+      {newPrefix && (
         <NewPrefixModal
-          onClose={() => setShowNew(false)}
+          initialCidr={newPrefix.cidr}
+          onClose={() => setNewPrefix(null)}
           onCreated={() => {
-            setShowNew(false);
-            mutate(['ipam-prefixes', q]);
+            setNewPrefix(null);
+            refresh();
           }}
         />
       )}
@@ -191,14 +406,427 @@ function PrefixesTab({ canWrite, canDelete }: { canWrite: boolean; canDelete: bo
   );
 }
 
+// -----------------------------------------------------------------------------
+// PAINEL DE DETALHE
+// -----------------------------------------------------------------------------
+type DetailTab = 'addresses' | 'map' | 'free';
+
+function PrefixDetailPanel({
+  prefix,
+  canWrite,
+  canDelete,
+  onChanged,
+  onPrefill,
+}: {
+  prefix: IpamPrefixNode;
+  canWrite: boolean;
+  canDelete: boolean;
+  onChanged: () => void;
+  onPrefill: (cidr: string) => void;
+}) {
+  const [tab, setTab] = useState<DetailTab>('addresses');
+  const [splitting, setSplitting] = useState(false);
+
+  return (
+    <div className="rounded-lg border border-border">
+      <div className="flex items-start justify-between gap-3 border-b border-border px-3 py-2">
+        <div className="min-w-0">
+          <div className="font-mono text-sm font-medium">{prefix.cidr}</div>
+          <div className="truncate text-xs text-muted-foreground">
+            {ROLE_LABELS[prefix.role] ?? prefix.role}
+            {prefix.description ? ` · ${prefix.description}` : ''}
+          </div>
+        </div>
+        {canWrite && (
+          <Button variant="secondary" size="sm" onClick={() => setSplitting(true)}>
+            <Scissors className="mr-1 h-3.5 w-3.5" /> Dividir
+          </Button>
+        )}
+      </div>
+
+      <NextSubnetBar prefix={prefix} canWrite={canWrite} onPrefill={onPrefill} />
+
+      <div className="border-b border-border px-3 pt-2">
+        <div className="flex gap-4 text-xs">
+          {(
+            [
+              ['addresses', 'Endereços'],
+              ['map', 'Mapa'],
+              ['free', 'Livre'],
+            ] as [DetailTab, string][]
+          ).map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => setTab(k)}
+              className={`border-b-2 pb-1.5 transition-colors ${
+                tab === k
+                  ? 'border-brand-500 font-medium text-foreground'
+                  : 'border-transparent text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {tab === 'addresses' && (
+        <AddressesPanel prefix={prefix} canWrite={canWrite} canDelete={canDelete} onChanged={onChanged} />
+      )}
+      {tab === 'map' && <SubnetMap prefix={prefix} />}
+      {tab === 'free' && <FreePanel prefix={prefix} canWrite={canWrite} onPrefill={onPrefill} />}
+
+      {splitting && (
+        <SplitModal
+          prefix={prefix}
+          onClose={() => setSplitting(false)}
+          onDone={() => {
+            setSplitting(false);
+            onChanged();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+/** "Qual a próxima /N livre aqui dentro?" — a pergunta que o IPAM não respondia. */
+function NextSubnetBar({
+  prefix,
+  canWrite,
+  onPrefill,
+}: {
+  prefix: IpamPrefixNode;
+  canWrite: boolean;
+  onPrefill: (cidr: string) => void;
+}) {
+  const maxLen = prefix.version === 'V4' ? 32 : 128;
+  const [len, setLen] = useState(() => String(Math.min(prefix.prefixLen + 1, maxLen)));
+  const [result, setResult] = useState<IpamNextSubnet | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // Sugestões plausíveis: nada menor que o próprio prefixo.
+  const options = (prefix.version === 'V4' ? [22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32] : [48, 52, 56, 60, 64, 112, 126, 128]).filter(
+    (l) => l > prefix.prefixLen,
+  );
+
+  const find = async () => {
+    setBusy(true);
+    setResult(null);
+    try {
+      setResult(await ipamApi.nextSubnet(prefix.id, Number(len)));
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.problem.detail ?? e.problem.title : 'Falha ao buscar');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!options.length) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface-muted/40 px-3 py-2">
+      <span className="text-xs text-muted-foreground">Próxima subrede livre:</span>
+      <Select
+        value={len}
+        onChange={(e) => {
+          setLen(e.target.value);
+          setResult(null);
+        }}
+        className="h-8 w-24 text-xs"
+      >
+        {options.map((l) => (
+          <option key={l} value={l}>
+            /{l}
+          </option>
+        ))}
+      </Select>
+      <Button variant="secondary" size="sm" onClick={find} disabled={busy}>
+        <Wand2 className="mr-1 h-3.5 w-3.5" /> Buscar
+      </Button>
+
+      {result &&
+        (result.available && result.cidr ? (
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-xs font-medium text-foreground">{result.cidr}</span>
+            {canWrite && (
+              <Button size="sm" onClick={() => onPrefill(result.cidr!)}>
+                <ArrowRight className="mr-1 h-3.5 w-3.5" /> Criar
+              </Button>
+            )}
+          </div>
+        ) : (
+          <span className="text-xs text-danger">
+            Sem /{result.prefixLen} livre — o espaço restante não tem bloco alinhado desse tamanho.
+          </span>
+        ))}
+    </div>
+  );
+}
+
+/**
+ * Mapa visual da subrede, à la phpIPAM: cada célula é um endereço, colorida pelo
+ * estado. Só faz sentido em faixas pequenas — um /16 são 65 mil células.
+ */
+const MAP_MAX_CELLS = 4096;
+
+function SubnetMap({ prefix }: { prefix: IpamPrefixNode }) {
+  const size = BigInt(prefix.size);
+  const tooBig = size > BigInt(MAP_MAX_CELLS);
+
+  const { data: addresses, isLoading } = useSWR(
+    tooBig ? null : ['ipam-map', prefix.id],
+    () => ipamApi.listAddresses({ prefixId: prefix.id }),
+  );
+
+  if (tooBig) {
+    return (
+      <div className="p-6 text-center text-sm text-muted-foreground">
+        {prefix.cidr} tem {fmtSize(prefix.size)} endereços — grande demais para o mapa.
+        <div className="mt-1 text-xs">Selecione uma subrede menor na árvore.</div>
+      </div>
+    );
+  }
+  if (isLoading) return <div className="p-4"><PageLoader /></div>;
+
+  const first = BigInt(prefix.firstAddr);
+  const count = Number(size);
+  const v4 = prefix.version === 'V4';
+  // Em IPv4 até /30, o primeiro e o último endereço são rede e broadcast.
+  const hasEdges = v4 && prefix.prefixLen <= 30;
+
+  const byOffset = new Map<number, IpamAddress>();
+  for (const a of addresses ?? []) byOffset.set(Number(BigInt(a.addrNum) - first), a);
+
+  const cellFor = (i: number) => {
+    if (hasEdges && i === 0) return { cls: 'bg-slate-300 dark:bg-slate-600', label: 'rede' };
+    if (hasEdges && i === count - 1)
+      return { cls: 'bg-slate-300 dark:bg-slate-600', label: 'broadcast' };
+    const a = byOffset.get(i);
+    if (!a) return { cls: 'bg-surface-muted', label: 'livre' };
+    if (a.isGateway) return { cls: 'bg-brand-500', label: 'gateway' };
+    switch (a.status) {
+      case 'USED':
+        return { cls: 'bg-emerald-500', label: 'usado' };
+      case 'RESERVED':
+        return { cls: 'bg-amber-500', label: 'reservado' };
+      case 'DHCP':
+        return { cls: 'bg-sky-500', label: 'DHCP' };
+      case 'DEPRECATED':
+        return { cls: 'bg-red-500', label: 'obsoleto' };
+      default:
+        return { cls: 'bg-surface-muted', label: 'livre' };
+    }
+  };
+
+  const ipAt = (i: number) => {
+    const a = byOffset.get(i);
+    if (a) return a.address;
+    // Só IPv4 tem forma curta o bastante pra caber no tooltip sem consulta.
+    if (!v4) return `offset +${i}`;
+    const n = first + BigInt(i);
+    return [(n >> 24n) & 255n, (n >> 16n) & 255n, (n >> 8n) & 255n, n & 255n].join('.');
+  };
+
+  const legend: [string, string][] = [
+    ['bg-surface-muted', 'livre'],
+    ['bg-emerald-500', 'usado'],
+    ['bg-brand-500', 'gateway'],
+    ['bg-amber-500', 'reservado'],
+    ['bg-sky-500', 'DHCP'],
+    ['bg-slate-300 dark:bg-slate-600', 'rede/broadcast'],
+  ];
+
+  return (
+    <div className="space-y-3 p-3">
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+        {legend.map(([cls, label]) => (
+          <span key={label} className="flex items-center gap-1">
+            <span className={`inline-block h-2.5 w-2.5 rounded-sm ${cls}`} />
+            {label}
+          </span>
+        ))}
+      </div>
+      <div className="flex max-h-[420px] flex-wrap gap-[3px] overflow-auto">
+        {Array.from({ length: count }, (_, i) => {
+          const c = cellFor(i);
+          const a = byOffset.get(i);
+          const detail = a?.contract?.code
+            ? ` — contrato ${a.contract.code}`
+            : a?.customer?.displayName
+              ? ` — ${a.customer.displayName}`
+              : a?.hostname
+                ? ` — ${a.hostname}`
+                : '';
+          return (
+            <span
+              key={i}
+              title={`${ipAt(i)} · ${c.label}${detail}`}
+              className={`h-3.5 w-3.5 shrink-0 rounded-[2px] ${c.cls}`}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Lista completa das aberturas livres, com atalho pra criar já preenchido. */
+function FreePanel({
+  prefix,
+  canWrite,
+  onPrefill,
+}: {
+  prefix: IpamPrefixNode;
+  canWrite: boolean;
+  onPrefill: (cidr: string) => void;
+}) {
+  const { data, isLoading } = useSWR(['ipam-free', prefix.id], () => ipamApi.freeSpace(prefix.id));
+
+  if (isLoading) return <div className="p-4"><PageLoader /></div>;
+  if (!data) return null;
+
+  return (
+    <div>
+      <div className="border-b border-border px-3 py-2 text-xs text-muted-foreground">
+        {fmtSize(data.totalFree)} endereços livres em {data.blocks.length}{' '}
+        {data.blocks.length === 1 ? 'abertura' : 'aberturas'}
+        {data.truncated && ' (lista truncada)'}
+      </div>
+      {data.blocks.length === 0 ? (
+        <div className="p-6 text-center text-sm text-muted-foreground">
+          Prefixo totalmente alocado.
+        </div>
+      ) : (
+        <div className="max-h-[420px] overflow-auto">
+          <table className="w-full text-sm">
+            <tbody>
+              {data.blocks.map((b) => (
+                <tr key={b.cidr} className="border-t border-border">
+                  <td className="px-3 py-1.5 font-mono text-xs">{b.cidr}</td>
+                  <td className="px-3 py-1.5 text-right text-xs text-muted-foreground">
+                    {fmtSize(b.size)} endereços
+                  </td>
+                  <td className="w-16 px-3 py-1.5 text-right">
+                    {canWrite && (
+                      <button
+                        onClick={() => onPrefill(b.cidr)}
+                        className="text-xs font-medium text-brand-600 hover:underline dark:text-brand-300"
+                      >
+                        usar
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SplitModal({
+  prefix,
+  onClose,
+  onDone,
+}: {
+  prefix: IpamPrefixNode;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const maxLen = prefix.version === 'V4' ? 32 : 128;
+  const options = (
+    prefix.version === 'V4' ? [24, 25, 26, 27, 28, 29, 30, 31, 32] : [56, 60, 64, 112, 126, 128]
+  ).filter((l) => l > prefix.prefixLen && l <= maxLen);
+
+  const [len, setLen] = useState(String(options[0] ?? prefix.prefixLen + 1));
+  const [role, setRole] = useState<IpamPrefixRole>('OTHER');
+  const [maxCount, setMaxCount] = useState('256');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
+    setBusy(true);
+    try {
+      const r = await ipamApi.splitPrefix(prefix.id, {
+        prefixLen: Number(len),
+        role,
+        maxCount: Number(maxCount),
+      });
+      toast.success(
+        `${r.created} subrede(s) criada(s)${r.truncated ? ' — limite atingido, rode de novo para continuar' : ''}`,
+      );
+      onDone();
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.problem.detail ?? e.problem.title : 'Falha ao dividir');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open onClose={onClose} title={`Dividir ${prefix.cidr}`}>
+      <div className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          Cria as subredes do tamanho escolhido dentro de {prefix.cidr}, pulando o que já estiver
+          alocado. Rodar de novo só preenche o que faltar.
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Label>Tamanho</Label>
+            <Select value={len} onChange={(e) => setLen(e.target.value)}>
+              {options.map((l) => (
+                <option key={l} value={l}>
+                  /{l}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label>Máximo a criar</Label>
+            <Input
+              type="number"
+              min={1}
+              max={1024}
+              value={maxCount}
+              onChange={(e) => setMaxCount(e.target.value)}
+            />
+          </div>
+        </div>
+        <div>
+          <Label>Papel das subredes</Label>
+          <Select value={role} onChange={(e) => setRole(e.target.value as IpamPrefixRole)}>
+            {Object.entries(ROLE_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="secondary" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button onClick={submit} disabled={busy || !options.length}>
+            Dividir
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function AddressesPanel({
   prefix,
   canWrite,
   canDelete,
+  onChanged,
 }: {
   prefix: IpamPrefix;
   canWrite: boolean;
   canDelete: boolean;
+  onChanged: () => void;
 }) {
   const key = ['ipam-addresses', prefix.id];
   const { data: addresses, isLoading } = useSWR(key, () =>
@@ -213,7 +841,8 @@ function AddressesPanel({
       const a = await ipamApi.allocate({ prefixId: prefix.id, description: 'Alocado via IPAM' });
       toast.success(`IP alocado: ${a.address}`);
       mutate(key);
-      mutate(['ipam-prefixes', '']);
+      mutate(['ipam-map', prefix.id]);
+      onChanged();
     } catch (e) {
       toast.error(e instanceof ApiError ? e.problem.detail ?? e.problem.title : 'Falha ao alocar');
     } finally {
@@ -222,17 +851,14 @@ function AddressesPanel({
   };
 
   return (
-    <div className="rounded-lg border border-border">
+    <div>
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
-        <div>
-          <div className="font-mono text-sm font-medium">{prefix.cidr}</div>
-          <div className="text-xs text-muted-foreground">
-            {prefix.usedCount} usados de {prefix.usableHosts} úteis
-          </div>
+        <div className="text-xs text-muted-foreground">
+          {prefix.usedCount} usados de {fmtSize(prefix.usableHosts)} úteis
         </div>
         {canWrite && (
           <Button variant="secondary" size="sm" onClick={allocate} disabled={busy}>
-            <Plus className="mr-1 h-3.5 w-3.5" /> Próximo livre
+            <Plus className="mr-1 h-3.5 w-3.5" /> Próximo IP livre
           </Button>
         )}
       </div>
@@ -241,7 +867,7 @@ function AddressesPanel({
           <PageLoader />
         </div>
       ) : (
-        <div className="max-h-[460px] overflow-auto">
+        <div className="max-h-[420px] overflow-auto">
           <table className="w-full text-sm">
             <tbody>
               {(addresses ?? []).map((a) => (
@@ -274,7 +900,9 @@ function AddressesPanel({
               ))}
               {!addresses?.length && (
                 <tr>
-                  <td className="px-3 py-6 text-center text-muted-foreground">Nenhum IP documentado.</td>
+                  <td colSpan={4} className="px-3 py-6 text-center text-muted-foreground">
+                    Nenhum IP documentado.
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -292,6 +920,8 @@ function AddressesPanel({
             await ipamApi.releaseAddress(releasing.id);
             setReleasing(null);
             mutate(key);
+            mutate(['ipam-map', prefix.id]);
+            onChanged();
             toast.success('IP liberado');
           }}
         />
@@ -300,8 +930,20 @@ function AddressesPanel({
   );
 }
 
-function NewPrefixModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
-  const [form, setForm] = useState<CreatePrefixInput>({ cidr: '', role: 'OTHER' });
+
+function NewPrefixModal({
+  initialCidr,
+  onClose,
+  onCreated,
+}: {
+  initialCidr?: string;
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const [form, setForm] = useState<CreatePrefixInput>({
+    cidr: initialCidr ?? '',
+    role: 'OTHER',
+  });
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
@@ -373,6 +1015,307 @@ function NewPrefixModal({ onClose, onCreated }: { onClose: () => void; onCreated
         </div>
       </div>
     </Modal>
+  );
+}
+
+// =============================================================================
+// RECONCILIAÇÃO IPAM ↔ REDE REAL
+// =============================================================================
+const KIND_LABEL: Record<FindingKind, string> = {
+  UNDOCUMENTED: 'Não documentado',
+  NO_PREFIX: 'Sem prefixo',
+  OWNER_MISMATCH: 'Dono divergente',
+  ORPHANED: 'Órfão',
+};
+const KIND_TONE: Record<FindingKind, 'warning' | 'danger' | 'info' | 'neutral'> = {
+  UNDOCUMENTED: 'warning',
+  NO_PREFIX: 'info',
+  OWNER_MISMATCH: 'danger',
+  ORPHANED: 'neutral',
+};
+const KIND_HELP: Record<FindingKind, string> = {
+  UNDOCUMENTED: 'Em uso na rede e ausente do IPAM. Importe para documentar.',
+  NO_PREFIX: 'Em uso, mas nenhum prefixo cadastrado cobre esse IP. Crie o prefixo primeiro.',
+  OWNER_MISMATCH: 'O IPAM e a rede discordam de quem é o dono. Confira antes de mexer.',
+  ORPHANED: 'Documentado para um contrato cancelado ou removido.',
+};
+const SOURCE_LABEL: Record<string, string> = {
+  RADIUS: 'RADIUS',
+  CONTRACT: 'Contrato',
+  EQUIPMENT: 'Equipamento',
+  MIKROTIK_ARP: 'ARP',
+  MIKROTIK_DHCP: 'DHCP',
+};
+
+function ReconcileTab({ canWrite }: { canWrite: boolean }) {
+  const { data: targets } = useSWR('ipam-reconcile-targets', ipamApi.reconcileTargets);
+  const [live, setLive] = useState<Set<string>>(new Set());
+  const [result, setResult] = useState<ReconcileResult | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [kindFilter, setKindFilter] = useState<FindingKind | ''>('');
+
+  const scan = async () => {
+    setScanning(true);
+    setPicked(new Set());
+    try {
+      const r = await ipamApi.reconcileScan(live.size ? [...live] : undefined);
+      setResult(r);
+      toast.success(
+        r.findings.length
+          ? `${r.findings.length} divergência(s) em ${r.observedCount} IPs observados`
+          : `Nenhuma divergência — ${r.observedCount} IPs conferem com o IPAM`,
+      );
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.problem.detail ?? e.problem.title : 'Falha na varredura');
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const importable = (result?.findings ?? []).filter((f) => f.kind === 'UNDOCUMENTED');
+  const shown = (result?.findings ?? []).filter((f) => !kindFilter || f.kind === kindFilter);
+
+  const doImport = async () => {
+    const items = importable
+      .filter((f) => picked.has(f.ip))
+      .map((f) => ({
+        ip: f.ip,
+        prefixId: f.prefixId,
+        contractId: f.observedContractId,
+        customerId: f.observedCustomerId,
+        equipmentId: f.observedEquipmentId,
+        macAddress: f.macAddress,
+        hostname: f.hostname,
+        description: `Reconciliação · ${f.sources.map((s) => SOURCE_LABEL[s] ?? s).join(', ')}`,
+      }));
+    if (!items.length) return;
+
+    setImporting(true);
+    try {
+      const r = await ipamApi.reconcileImport(items);
+      toast.success(
+        r.skipped.length
+          ? `${r.imported} importado(s), ${r.skipped.length} pulado(s)`
+          : `${r.imported} IP(s) importado(s)`,
+      );
+      if (r.skipped.length) console.warn('[reconcile] pulados:', r.skipped);
+      await scan(); // re-varre pra refletir o que entrou
+    } catch (e) {
+      toast.error(e instanceof ApiError ? e.problem.detail ?? e.problem.title : 'Falha ao importar');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const toggleLive = (id: string) =>
+    setLive((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const togglePick = (ip: string) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(ip)) next.delete(ip);
+      else next.add(ip);
+      return next;
+    });
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-lg border border-border p-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="max-w-2xl">
+            <h2 className="text-sm font-medium text-foreground">Reconciliação com a rede</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Compara o que está documentado no IPAM com o que a rede mostra em uso. Sessões RADIUS
+              ativas, IPs fixos de contrato e IPs de gerência saem do próprio banco. Ler ARP e leases
+              DHCP de um MikroTik exige alcançar o equipamento — por isso é opcional, marcado abaixo.
+              A varredura não escreve nada; importar é decisão sua, item a item.
+            </p>
+          </div>
+          <Button onClick={scan} disabled={scanning}>
+            <RefreshCw className={`mr-1 h-4 w-4 ${scanning ? 'animate-spin' : ''}`} />
+            {scanning ? 'Varrendo…' : 'Varrer'}
+          </Button>
+        </div>
+
+        {!!targets?.length && (
+          <div className="mt-3 border-t border-border pt-3">
+            <div className="mb-1.5 text-xs font-medium text-muted-foreground">
+              Também ler ao vivo (ARP + DHCP):
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {targets.map((t) => (
+                <label
+                  key={t.id}
+                  title={t.ready ? t.ipAddress : 'Sem credencial de API cadastrada'}
+                  className={`flex items-center gap-1.5 rounded border px-2 py-1 text-xs ${
+                    t.ready
+                      ? 'cursor-pointer border-border hover:bg-surface-muted'
+                      : 'cursor-not-allowed border-dashed border-border opacity-50'
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    disabled={!t.ready}
+                    checked={live.has(t.id)}
+                    onChange={() => toggleLive(t.id)}
+                    className="h-3 w-3"
+                  />
+                  {t.name}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {result && (
+        <>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            <span className="text-muted-foreground">
+              {result.observedCount} IPs observados · {result.documentedCount} documentados ·{' '}
+              {result.durationMs} ms
+            </span>
+            {Object.entries(result.bySource).map(([s, n]) => (
+              <Badge key={s} tone="neutral">
+                {SOURCE_LABEL[s] ?? s}: {n}
+              </Badge>
+            ))}
+          </div>
+
+          {!!result.warnings.length && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-900/50 dark:bg-amber-900/20">
+              <div className="mb-1 font-medium text-amber-900 dark:text-amber-200">
+                Fontes que não responderam — o resultado está incompleto:
+              </div>
+              <ul className="list-inside list-disc space-y-0.5 text-amber-800 dark:text-amber-300">
+                {result.warnings.map((w, i) => (
+                  <li key={i}>
+                    {w.equipmentName}: {w.message}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {result.findings.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+              Nenhuma divergência. O IPAM bate com o que a rede mostra.
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => setKindFilter('')}
+                  className={`rounded border px-2 py-1 text-xs ${
+                    !kindFilter ? 'border-brand-500 font-medium' : 'border-border text-muted-foreground'
+                  }`}
+                >
+                  Todos ({result.findings.length})
+                </button>
+                {(Object.keys(KIND_LABEL) as FindingKind[])
+                  .filter((k) => result.byKind[k])
+                  .map((k) => (
+                    <button
+                      key={k}
+                      onClick={() => setKindFilter(kindFilter === k ? '' : k)}
+                      title={KIND_HELP[k]}
+                      className={`rounded border px-2 py-1 text-xs ${
+                        kindFilter === k
+                          ? 'border-brand-500 font-medium'
+                          : 'border-border text-muted-foreground'
+                      }`}
+                    >
+                      {KIND_LABEL[k]} ({result.byKind[k]})
+                    </button>
+                  ))}
+
+                {canWrite && !!importable.length && (
+                  <div className="ml-auto flex items-center gap-2">
+                    <button
+                      onClick={() =>
+                        setPicked((p) =>
+                          p.size === importable.length
+                            ? new Set()
+                            : new Set(importable.map((f) => f.ip)),
+                        )
+                      }
+                      className="text-xs text-brand-600 hover:underline dark:text-brand-300"
+                    >
+                      {picked.size === importable.length ? 'Limpar seleção' : 'Selecionar importáveis'}
+                    </button>
+                    <Button size="sm" onClick={doImport} disabled={importing || !picked.size}>
+                      <Download className="mr-1 h-3.5 w-3.5" />
+                      Importar {picked.size ? `(${picked.size})` : ''}
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              <div className="overflow-hidden rounded-lg border border-border">
+                <table className="w-full text-sm">
+                  <thead className="bg-surface-muted text-left text-xs uppercase text-muted-foreground">
+                    <tr>
+                      <th className="w-8 px-3 py-2" />
+                      <th className="px-3 py-2">IP</th>
+                      <th className="px-3 py-2">Tipo</th>
+                      <th className="px-3 py-2">Visto por</th>
+                      <th className="px-3 py-2">Prefixo</th>
+                      <th className="px-3 py-2">Detalhe</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shown.map((f) => {
+                      const canPick = canWrite && f.kind === 'UNDOCUMENTED';
+                      return (
+                        <tr key={`${f.kind}-${f.ip}`} className="border-t border-border align-top">
+                          <td className="px-3 py-2">
+                            {canPick && (
+                              <input
+                                type="checkbox"
+                                checked={picked.has(f.ip)}
+                                onChange={() => togglePick(f.ip)}
+                                className="h-3.5 w-3.5"
+                              />
+                            )}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-xs">
+                            {f.ip}
+                            {f.macAddress && (
+                              <div className="text-[11px] text-muted-foreground">{f.macAddress}</div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            <Badge tone={KIND_TONE[f.kind]}>{KIND_LABEL[f.kind]}</Badge>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground">
+                            {f.sources.map((s) => SOURCE_LABEL[s] ?? s).join(', ') || '—'}
+                          </td>
+                          <td className="px-3 py-2 font-mono text-xs text-muted-foreground">
+                            {f.prefixCidr ?? '—'}
+                          </td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground">
+                            {f.hostname ? `${f.hostname} · ` : ''}
+                            {f.detail ?? ''}
+                            <div className="mt-0.5 opacity-75">{f.suggestion}</div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 

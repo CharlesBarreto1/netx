@@ -41,9 +41,19 @@ export interface IpamPrefix {
   vlanId: number | null;
   gateway: string | null;
   description: string | null;
+  size: string;
   usableHosts: string;
   usedCount: number;
+  childCount: number;
+  allocatedSize: string;
+  freeSize: string;
   utilization: number | null;
+  /**
+   * O que a `utilization` mede. Container é medido pelo espaço que as subredes
+   * filhas consomem; folha, pelos IPs documentados. Misturar os dois faria um
+   * /16 todo fatiado aparecer como 0% usado.
+   */
+  utilizationBasis: 'SUBNETS' | 'ADDRESSES';
   popId: string | null;
   equipmentId: string | null;
   customerId: string | null;
@@ -51,6 +61,129 @@ export interface IpamPrefix {
   customer?: Ref | null;
   equipment?: Ref | null;
   createdAt: string;
+}
+
+/**
+ * Nó da árvore: o prefixo, os filhos aninhados e as aberturas de espaço livre
+ * (já calculadas no servidor — a árvore mostra as maiores, o painel abre todas).
+ */
+export interface IpamPrefixNode extends IpamPrefix {
+  children: IpamPrefixNode[];
+  freeBlocks: IpamFreeBlock[];
+  freeTruncated: boolean;
+}
+
+export interface IpamFreeBlock {
+  cidr: string;
+  prefixLen: number;
+  first: string;
+  last: string;
+  size: string;
+}
+
+export interface IpamFreeSpace {
+  prefixId: string;
+  cidr: string;
+  version: IpVersion;
+  totalFree: string;
+  truncated: boolean;
+  blocks: IpamFreeBlock[];
+}
+
+export interface IpamNextSubnet {
+  prefixId: string;
+  prefixLen: number;
+  available: boolean;
+  cidr: string | null;
+  first: string | null;
+  last: string | null;
+  size: string | null;
+}
+
+export interface SplitPrefixInput {
+  prefixLen: number;
+  role?: IpamPrefixRole;
+  status?: IpamPrefixStatus;
+  description?: string | null;
+  maxCount?: number;
+}
+
+export interface SplitPrefixResult {
+  created: number;
+  truncated: boolean;
+  cidrs: string[];
+}
+
+// ── Reconciliação IPAM ↔ rede real ──────────────────────────────────────────
+export type ObservationSource =
+  | 'RADIUS'
+  | 'CONTRACT'
+  | 'EQUIPMENT'
+  | 'MIKROTIK_ARP'
+  | 'MIKROTIK_DHCP';
+
+export type FindingKind = 'UNDOCUMENTED' | 'NO_PREFIX' | 'OWNER_MISMATCH' | 'ORPHANED';
+
+export interface ReconcileFinding {
+  kind: FindingKind;
+  ip: string;
+  version: 4 | 6;
+  sources: ObservationSource[];
+  prefixId: string | null;
+  prefixCidr: string | null;
+  addressId: string | null;
+  observedContractId: string | null;
+  observedEquipmentId: string | null;
+  observedCustomerId: string | null;
+  macAddress: string | null;
+  hostname: string | null;
+  detail: string | null;
+  suggestion: string;
+}
+
+export interface ReconcileWarning {
+  equipmentId: string;
+  equipmentName: string;
+  message: string;
+}
+
+export interface ReconcileResult {
+  scannedAt: string;
+  durationMs: number;
+  liveEquipmentIds: string[];
+  observedCount: number;
+  documentedCount: number;
+  bySource: Record<string, number>;
+  byKind: Record<string, number>;
+  warnings: ReconcileWarning[];
+  findings: ReconcileFinding[];
+}
+
+/** Equipamento que pode ser lido ao vivo (ARP/DHCP via RouterOS). */
+export interface ReconcileTarget {
+  id: string;
+  name: string;
+  ipAddress: string;
+  /** Sem credencial de API cadastrada não dá pra consultar. */
+  ready: boolean;
+  lastReachableAt: string | null;
+}
+
+export interface ImportFindingInput {
+  ip: string;
+  prefixId?: string | null;
+  contractId?: string | null;
+  customerId?: string | null;
+  equipmentId?: string | null;
+  macAddress?: string | null;
+  hostname?: string | null;
+  description?: string | null;
+}
+
+export interface ImportFindingsResult {
+  imported: number;
+  skipped: { ip: string; reason: string }[];
+  addresses: string[];
 }
 
 export interface IpamAddress {
@@ -213,7 +346,28 @@ export const ipamApi = {
     const s = qs.toString();
     return api.get<IpamPrefix[]>(`/v1/ipam/prefixes${s ? `?${s}` : ''}`);
   },
+  treePrefixes: (params?: { role?: string; q?: string; vrfId?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.role) qs.set('role', params.role);
+    if (params?.q) qs.set('q', params.q);
+    if (params?.vrfId) qs.set('vrfId', params.vrfId);
+    const s = qs.toString();
+    return api.get<IpamPrefixNode[]>(`/v1/ipam/prefixes/tree${s ? `?${s}` : ''}`);
+  },
   getPrefix: (id: string) => api.get<IpamPrefix>(`/v1/ipam/prefixes/${id}`),
+  freeSpace: (id: string, limit?: number) =>
+    api.get<IpamFreeSpace>(`/v1/ipam/prefixes/${id}/free${limit ? `?limit=${limit}` : ''}`),
+  nextSubnet: (id: string, len: number) =>
+    api.get<IpamNextSubnet>(`/v1/ipam/prefixes/${id}/next?len=${len}`),
+  splitPrefix: (id: string, body: SplitPrefixInput) =>
+    api.post<SplitPrefixResult>(`/v1/ipam/prefixes/${id}/split`, body),
+
+  // Reconciliação
+  reconcileTargets: () => api.get<ReconcileTarget[]>('/v1/ipam/reconcile/targets'),
+  reconcileScan: (equipmentIds?: string[]) =>
+    api.post<ReconcileResult>('/v1/ipam/reconcile/scan', { equipmentIds }),
+  reconcileImport: (items: ImportFindingInput[]) =>
+    api.post<ImportFindingsResult>('/v1/ipam/reconcile/import', { items }),
   createPrefix: (body: CreatePrefixInput) => api.post<IpamPrefix>('/v1/ipam/prefixes', body),
   updatePrefix: (id: string, body: Partial<CreatePrefixInput>) =>
     api.patch<IpamPrefix>(`/v1/ipam/prefixes/${id}`, body),

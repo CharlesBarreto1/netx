@@ -19,6 +19,9 @@ import {
   CreateIpamPoolRequestSchema,
   CreateIpamPrefixRequestSchema,
   CreateIpamVrfRequestSchema,
+  ImportIpamFindingsRequestSchema,
+  ReconcileScanRequestSchema,
+  SplitIpamPrefixRequestSchema,
   UpdateIpamAddressRequestSchema,
   UpdateIpamCgnatPlanRequestSchema,
   UpdateIpamPoolRequestSchema,
@@ -32,6 +35,9 @@ import {
   type CreateIpamPoolRequest,
   type CreateIpamPrefixRequest,
   type CreateIpamVrfRequest,
+  type ImportIpamFindingsRequest,
+  type ReconcileScanRequest,
+  type SplitIpamPrefixRequest,
   type UpdateIpamAddressRequest,
   type UpdateIpamCgnatPlanRequest,
   type UpdateIpamPoolRequest,
@@ -46,6 +52,7 @@ import { IpamCgnatService } from './cgnat.service';
 import { IpamLookupService } from './lookup.service';
 import { IpamPoolsService } from './pools.service';
 import { IpamPrefixesService } from './prefixes.service';
+import { IpamReconcileService } from './reconcile.service';
 import { IpamSyncService } from './ipam-sync.service';
 import { IpamVrfsService } from './vrfs.service';
 
@@ -60,6 +67,7 @@ export class IpamController {
     private readonly pools: IpamPoolsService,
     private readonly cgnat: IpamCgnatService,
     private readonly lookupSvc: IpamLookupService,
+    private readonly reconcile: IpamReconcileService,
     private readonly sync: IpamSyncService,
   ) {}
 
@@ -111,6 +119,18 @@ export class IpamController {
     return this.prefixes.list(u.tenantId, { vrfId, role, q });
   }
 
+  /** Mesma listagem, aninhada por parentId — a visão de árvore do IPAM. */
+  @Get('prefixes/tree')
+  @RequirePermissions('ipam.read')
+  treePrefixes(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Query('vrfId') vrfId?: string,
+    @Query('role') role?: string,
+    @Query('q') q?: string,
+  ) {
+    return this.prefixes.tree(u.tenantId, { vrfId, role, q });
+  }
+
   @Get('prefixes/:id')
   @RequirePermissions('ipam.read')
   getPrefix(
@@ -118,6 +138,39 @@ export class IpamController {
     @Param('id', new ParseUUIDPipe()) id: string,
   ) {
     return this.prefixes.findById(u.tenantId, id);
+  }
+
+  /** Blocos CIDR ainda não alocados dentro do prefixo. */
+  @Get('prefixes/:id/free')
+  @RequirePermissions('ipam.read')
+  freePrefix(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.prefixes.freeOf(u.tenantId, id, limit ? Number(limit) : 256);
+  }
+
+  /** Próxima subrede /len livre (first-fit). */
+  @Get('prefixes/:id/next')
+  @RequirePermissions('ipam.read')
+  nextPrefix(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Query('len') len: string,
+  ) {
+    return this.prefixes.nextAvailable(u.tenantId, id, Number(len));
+  }
+
+  /** Fatia o prefixo em subredes de tamanho fixo, pulando o já alocado. */
+  @Post('prefixes/:id/split')
+  @RequirePermissions('ipam.write')
+  splitPrefix(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @ZodBody(SplitIpamPrefixRequestSchema) body: SplitIpamPrefixRequest,
+  ) {
+    return this.prefixes.split(u.tenantId, u.sub, id, body);
   }
 
   @Post('prefixes')
@@ -368,6 +421,39 @@ export class IpamController {
   ) {
     const fmt: CgnatExportFormat = CgnatExportFormatEnum.catch('csv').parse(format);
     return this.cgnat.export(u.tenantId, id, fmt);
+  }
+
+  // ── Reconciliação IPAM ↔ rede real ────────────────────────────────────────
+  /** Equipamentos elegíveis pra coleta ao vivo (ARP/DHCP via RouterOS). */
+  @Get('reconcile/targets')
+  @RequirePermissions('ipam.read')
+  reconcileTargets(@CurrentUser() u: AuthenticatedPrincipal) {
+    return this.reconcile.liveTargets(u.tenantId);
+  }
+
+  /**
+   * Varre as fontes e devolve as divergências. Somente leitura — nada é escrito
+   * no IPAM aqui, nem mesmo pros achados óbvios.
+   */
+  @Post('reconcile/scan')
+  @HttpCode(200)
+  @RequirePermissions('ipam.read')
+  reconcileScan(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @ZodBody(ReconcileScanRequestSchema) body: ReconcileScanRequest,
+  ) {
+    return this.reconcile.scan(u.tenantId, body);
+  }
+
+  /** Importa pro IPAM os achados escolhidos pelo operador. */
+  @Post('reconcile/import')
+  @HttpCode(200)
+  @RequirePermissions('ipam.write')
+  reconcileImport(
+    @CurrentUser() u: AuthenticatedPrincipal,
+    @ZodBody(ImportIpamFindingsRequestSchema) body: ImportIpamFindingsRequest,
+  ) {
+    return this.reconcile.importFindings(u.tenantId, u.sub, body);
   }
 
   // ── Busca reversa (Marco Civil) ──────────────────────────────────────────────

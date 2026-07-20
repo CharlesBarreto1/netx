@@ -1,12 +1,15 @@
 import { Module } from '@nestjs/common';
 
 import { AuditModule } from '../audit/audit.module';
+import { CryptoModule } from '../crypto/crypto.module';
 import { IpamAddressesService } from './addresses.service';
 import { IpamCgnatService } from './cgnat.service';
 import { IpamController } from './ipam.controller';
 import { IpamLookupService } from './lookup.service';
 import { IpamPoolsService } from './pools.service';
 import { IpamPrefixesService } from './prefixes.service';
+import { IpamReconcileService } from './reconcile.service';
+import { MikrotikIpCollector } from './mikrotik.collector';
 import { IpamSyncService } from './ipam-sync.service';
 import { IpamVrfsService } from './vrfs.service';
 
@@ -16,7 +19,7 @@ import { IpamVrfsService } from './vrfs.service';
  * automaticamente os IPs fixos/gerência no IPAM.
  */
 @Module({
-  imports: [AuditModule],
+  imports: [AuditModule, CryptoModule],
   controllers: [IpamController],
   providers: [
     IpamVrfsService,
@@ -26,6 +29,8 @@ import { IpamVrfsService } from './vrfs.service';
     IpamCgnatService,
     IpamLookupService,
     IpamSyncService,
+    IpamReconcileService,
+    MikrotikIpCollector,
   ],
   exports: [IpamSyncService, IpamAddressesService],
 })
