@@ -6,6 +6,7 @@ import {
 import { Prisma } from '@prisma/client';
 
 import { AuditService } from '../audit/audit.service';
+import { FibermapElementsService } from '../fibermap/elements.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface CreatePopInput {
@@ -42,6 +43,8 @@ export class NetworkPopsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    // Costura planta → FiberMap: o POP nasce já presente no mapa.
+    private readonly fibermapElements: FibermapElementsService,
   ) {}
 
   async list(tenantId: string) {
@@ -64,7 +67,8 @@ export class NetworkPopsService {
 
   async create(tenantId: string, actorUserId: string, input: CreatePopInput) {
     try {
-      const pop = await this.prisma.networkPop.create({
+      const pop = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.networkPop.create({
         data: {
           tenantId,
           name: input.name.trim(),
@@ -79,6 +83,16 @@ export class NetworkPopsService {
           createdById: actorUserId,
           updatedById: actorUserId,
         },
+      });
+
+      // O POP nasce JÁ presente na planta óptica. Era isto que faltava: até
+      // aqui cadastrar um POP em Técnico não fazia nada aparecer no FiberMap,
+      // e o operador tinha que desenhá-lo de novo lá — os dois cadastros
+      // divergindo desde o primeiro dia. Mesma transação de propósito: se o
+      // elemento não puder ser criado, o POP também não é.
+      await this.fibermapElements.ensureElementForPop(tx, tenantId, actorUserId, created);
+
+      return created;
       });
       await this.audit.log({
         tenantId,
@@ -105,7 +119,8 @@ export class NetworkPopsService {
   ) {
     const before = await this.findById(tenantId, id);
     try {
-      const pop = await this.prisma.networkPop.update({
+      const pop = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.networkPop.update({
         where: { id: before.id },
         data: {
           name: input.name?.trim(),
@@ -121,6 +136,14 @@ export class NetworkPopsService {
           isActive: input.isActive,
           updatedById: actorUserId,
         },
+      });
+
+      // Mantém o espelho na planta óptica em dia. Também cobre o POP legado
+      // (sem coordenada) que acabou de GANHAR uma: nesse update ele finalmente
+      // passa a existir no mapa, sem precisar de backfill.
+      await this.fibermapElements.ensureElementForPop(tx, tenantId, actorUserId, updated);
+
+      return updated;
       });
       await this.audit.log({
         tenantId,

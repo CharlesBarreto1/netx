@@ -20,10 +20,16 @@ export const CreateNetworkPopRequestSchema = z.object({
   city: optionalNullableString(120),
   state: optionalNullableString(120),
   address: optionalNullableString(255),
-  // Coordenadas pro mapa de Rede (módulo Mapeamento → Rede). Nullable
-  // pra POPs antigos. Bounds globais; admin marca no LocationPicker.
-  latitude: z.coerce.number().min(-90).max(90).nullish(),
-  longitude: z.coerce.number().min(-180).max(180).nullish(),
+  // Coordenadas pro mapa de Rede (módulo Mapeamento → Rede) E pro FiberMap:
+  // ao cadastrar o POP, um elemento é criado na planta óptica no mesmo passo,
+  // e lá latitude/longitude são obrigatórias. Por isso são exigidas na
+  // CRIAÇÃO — sem elas o POP nasceria sem lugar no mapa, que é justamente o
+  // recadastro que este módulo existe pra eliminar.
+  //
+  // No update seguem opcionais e a coluna segue nullable: POPs cadastrados
+  // antes desta regra continuam válidos e editáveis sem forçar visita a campo.
+  latitude: z.coerce.number().min(-90).max(90),
+  longitude: z.coerce.number().min(-180).max(180),
   notes: optionalNullableString(2000),
   isActive: z.coerce.boolean().default(true),
 });

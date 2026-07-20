@@ -672,26 +672,6 @@ const messages = {
     graceBody: 'La licencia de NetX está en período de tolerancia. Regularizá para evitar el bloqueo del panel.',
     graceBodyWithDate: 'La licencia de NetX venció y está en período de tolerancia (hasta {date}). Regularizá para evitar el bloqueo del panel.',
   },
-  oidc: {
-    cancel: 'Cancelar',
-    emailLabel: 'Correo electrónico',
-    expired: 'Esta solicitud de acceso expiró o ya fue usada. Volvé a la aplicación e intentá entrar de nuevo.',
-    expiredTitle: 'Solicitud de acceso inválida',
-    genericError: 'No se pudo completar. Intentá de nuevo.',
-    hidePassword: 'Ocultar contraseña',
-    invalidCredentials: 'Correo o contraseña incorrectos.',
-    loading: 'Cargando…',
-    mfaHint: 'Código de 6 dígitos de tu app de autenticación.',
-    mfaInvalid: 'Código inválido. Intentá de nuevo.',
-    mfaLabel: 'Código de verificación',
-    passwordLabel: 'Contraseña',
-    scopesNotice: 'La aplicación va a recibir tu nombre, correo y grupos.',
-    showPassword: 'Mostrar contraseña',
-    submit: 'Entrar',
-    submitting: 'Entrando…',
-    subtitle: 'Estás entrando en {app} con tu cuenta de {tenant}.',
-    title: 'Autorizar acceso',
-  },
   nav: {
     dashboard: 'Tablero',
     copilot: 'Copiloto IA',
@@ -3207,6 +3187,8 @@ const messages = {
       address: 'Dirección',
       mapLocation: 'Ubicación en el mapa',
       mapHelp: 'Clic en el mapa para fijar el POP, o usa "Mi ubicación" si estás físicamente en el sitio.',
+      mapHelpRequired:
+        'Clic en el mapa para fijar el POP, o usá "Mi ubicación" si estás en el sitio. El POP se crea en el FiberMap automáticamente en esta posición — por eso la coordenada es obligatoria.',
       namePlaceholder: 'ej.: POP Centro Asunción',
       editTitle: 'Editar {name}',
       deleteTitle: 'Eliminar POP',
@@ -3218,6 +3200,7 @@ const messages = {
       },
       errors: {
         nameRequired: 'Nombre obligatorio',
+        locationRequired: 'Marcá la ubicación en el mapa — el POP se crea en el FiberMap en esta posición.',
       },
     },
     equipment: {

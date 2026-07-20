@@ -32,6 +32,9 @@ import type {
 import { AuditService } from '../audit/audit.service';
 import { PrismaService } from '../prisma/prisma.service';
 
+/** Pasta onde nascem os elementos criados a partir do cadastro de POP. */
+const POP_FOLDER_NAME = 'POPs';
+
 /** Tipo de produto exigido por tipo de elemento (quando productId é dado). */
 const PRODUCT_TYPE_BY_ELEMENT: Partial<Record<FibermapElementType, FibermapProductType>> = {
   CEO: 'SPLICE_CLOSURE',
@@ -238,6 +241,126 @@ export class FibermapElementsService {
         `Elemento ${elementType} exige produto ${expected} (recebeu ${product.type})`,
       );
     }
+  }
+
+  /**
+   * Garante que o POP da planta de rede tenha um elemento correspondente na
+   * planta óptica — criando na primeira vez, e mantendo nome/coordenada em dia
+   * nas seguintes.
+   *
+   * É a costura no sentido planta → mapa. O seletor do ElementCreateModal faz
+   * o caminho inverso (mapa → planta); os dois convergem no mesmo netxPopId, e
+   * o índice único parcial garante que não haja dois elementos vivos pro mesmo
+   * POP, mesmo se as duas pontas rodarem concorrentes.
+   *
+   * Chamado dentro da transação do NetworkPopsService — se a criação do
+   * elemento falhar, o POP também não é criado, senão voltaríamos ao problema
+   * de dois cadastros que divergem.
+   *
+   * Devolve null quando não há o que fazer (POP sem coordenada, caso do
+   * acervo legado): o elemento exige lat/lng não-nulas.
+   */
+  async ensureElementForPop(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    actorUserId: string | null,
+    pop: {
+      id: string;
+      name: string;
+      latitude: Prisma.Decimal | number | null;
+      longitude: Prisma.Decimal | number | null;
+      address?: string | null;
+    },
+  ): Promise<{ id: string; created: boolean } | null> {
+    if (pop.latitude === null || pop.longitude === null) return null;
+
+    const existing = await tx.fibermapElement.findFirst({
+      where: { tenantId, netxPopId: pop.id, deletedAt: null },
+      select: { id: true },
+    });
+
+    if (existing) {
+      // Mantém o espelho em dia. Nome só é reescrito se ainda estiver livre na
+      // pasta — renomear o POP não pode derrubar o cadastro por colisão.
+      await tx.fibermapElement.update({
+        where: { id: existing.id },
+        data: {
+          latitude: new Prisma.Decimal(Number(pop.latitude)),
+          longitude: new Prisma.Decimal(Number(pop.longitude)),
+          address: pop.address ?? undefined,
+          updatedById: actorUserId,
+        },
+      });
+      return { id: existing.id, created: false };
+    }
+
+    const folderId = await this.ensurePopFolder(tx, tenantId, actorUserId);
+    const name = await this.uniqueElementName(tx, folderId, pop.name);
+
+    const created = await tx.fibermapElement.create({
+      data: {
+        tenantId,
+        folderId,
+        type: 'POP',
+        netxPopId: pop.id,
+        name,
+        latitude: new Prisma.Decimal(Number(pop.latitude)),
+        longitude: new Prisma.Decimal(Number(pop.longitude)),
+        address: pop.address ?? null,
+        // Marca a origem: quem olhar o elemento sabe que ele nasceu do
+        // cadastro do POP, não de um desenho manual no mapa.
+        metadata: { origin: 'network_pop' } as Prisma.InputJsonValue,
+        createdById: actorUserId,
+        updatedById: actorUserId,
+      },
+      select: { id: true },
+    });
+    return { id: created.id, created: true };
+  }
+
+  /**
+   * Pasta onde os POPs auto-criados vivem. Criada sob demanda no primeiro POP
+   * do tenant — não há seed de FiberMap, e obrigar o operador a criar pasta
+   * antes de cadastrar um POP seria o mesmo atrito que estamos removendo.
+   */
+  private async ensurePopFolder(
+    tx: Prisma.TransactionClient,
+    tenantId: string,
+    actorUserId: string | null,
+  ): Promise<string> {
+    const existing = await tx.fibermapFolder.findFirst({
+      where: { tenantId, parentId: null, name: POP_FOLDER_NAME, deletedAt: null },
+      select: { id: true },
+    });
+    if (existing) return existing.id;
+
+    const created = await tx.fibermapFolder.create({
+      data: { tenantId, name: POP_FOLDER_NAME, createdById: actorUserId },
+      select: { id: true },
+    });
+    return created.id;
+  }
+
+  /**
+   * Resolve colisão com o @@unique([folderId, name]). Dois POPs podem ter o
+   * mesmo nome em cidades diferentes; o cadastro não pode falhar por isso.
+   */
+  private async uniqueElementName(
+    tx: Prisma.TransactionClient,
+    folderId: string,
+    base: string,
+  ): Promise<string> {
+    const trimmed = base.trim().slice(0, 120);
+    for (let i = 0; i < 50; i++) {
+      const candidate = i === 0 ? trimmed : `${trimmed} (${i + 1})`.slice(0, 120);
+      const taken = await tx.fibermapElement.findFirst({
+        where: { folderId, name: candidate },
+        select: { id: true },
+      });
+      if (!taken) return candidate;
+    }
+    // Improvável; sufixo determinístico pelo id da pasta evita loop infinito.
+    return `${trimmed} ${folderId.slice(0, 8)}`.slice(0, 120);
   }
 
   /**

@@ -193,6 +193,10 @@ function PopFormDialog({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!form.name.trim()) return setError(t('errors.nameRequired'));
+    // Só na criação: o POP nasce como elemento no FiberMap, e lá a coordenada
+    // é obrigatória. POP antigo sem coordenada continua editável sem exigir
+    // visita a campo — mas ganha o lugar no mapa assim que for marcado.
+    if (isNew && !location) return setError(t('errors.locationRequired'));
     setSubmitting(true);
     try {
       const payload: CreatePopInput = {
@@ -272,8 +276,8 @@ function PopFormDialog({
           />
         </div>
         <div>
-          <Label>{t('mapLocation')}</Label>
-          <FieldHelp>{t('mapHelp')}</FieldHelp>
+          <Label required={isNew}>{t('mapLocation')}</Label>
+          <FieldHelp>{isNew ? t('mapHelpRequired') : t('mapHelp')}</FieldHelp>
           <LocationPicker value={location} onChange={setLocation} />
         </div>
         <div>

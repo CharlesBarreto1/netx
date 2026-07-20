@@ -672,26 +672,6 @@ const messages = {
     graceBody: 'The NetX license is in its grace period. Renew it to avoid the panel being blocked.',
     graceBodyWithDate: 'The NetX license expired and is in its grace period (until {date}). Renew it to avoid the panel being blocked.',
   },
-  oidc: {
-    cancel: 'Cancel',
-    emailLabel: 'Email',
-    expired: 'This access request expired or was already used. Go back to the app and sign in again.',
-    expiredTitle: 'Invalid access request',
-    genericError: 'Could not complete. Please try again.',
-    hidePassword: 'Hide password',
-    invalidCredentials: 'Incorrect email or password.',
-    loading: 'Loading…',
-    mfaHint: '6-digit code from your authenticator app.',
-    mfaInvalid: 'Invalid code. Please try again.',
-    mfaLabel: 'Verification code',
-    passwordLabel: 'Password',
-    scopesNotice: 'The app will receive your name, email and groups.',
-    showPassword: 'Show password',
-    submit: 'Sign in',
-    submitting: 'Signing in…',
-    subtitle: 'You are signing in to {app} with your {tenant} account.',
-    title: 'Authorize access',
-  },
   nav: {
     dashboard: 'Dashboard',
     copilot: 'AI Copilot',
@@ -3185,6 +3165,8 @@ const messages = {
       address: 'Address',
       mapLocation: 'Location on map',
       mapHelp: 'Click on the map to pin the POP, or use "My location" if you are physically on site.',
+      mapHelpRequired:
+        'Click on the map to pin the POP, or use "My location" if you are on site. The POP is created in FiberMap automatically at this position — that is why the coordinate is required.',
       namePlaceholder: 'e.g.: POP Downtown Asunción',
       editTitle: 'Edit {name}',
       deleteTitle: 'Delete POP',
@@ -3196,6 +3178,7 @@ const messages = {
       },
       errors: {
         nameRequired: 'Name is required',
+        locationRequired: 'Pin the location on the map — the POP is created in FiberMap at this position.',
       },
     },
     equipment: {
