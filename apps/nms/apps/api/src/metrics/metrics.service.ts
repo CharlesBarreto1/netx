@@ -29,9 +29,24 @@ export class MetricsService {
     private readonly devices: DevicesService,
   ) {}
 
+  /**
+   * As tabelas de `metrics.*` são criadas pelo TELEGRAF na primeira escrita — não por
+   * migration. Logo, device recém-cadastrado (ou vendor cujo perfil nunca coletou) não tem
+   * tabela nenhuma, e a query estoura `42P01 relation does not exist` → 500 na tela.
+   * "Ainda não coletou" é estado normal, não erro: quem não existe devolve vazio.
+   */
+  private async metricsTableExists(table: string): Promise<boolean> {
+    const rows = await this.prisma.$queryRawUnsafe<{ existe: boolean }[]>(
+      `SELECT to_regclass($1) IS NOT NULL AS existe`,
+      `metrics.${table}`,
+    );
+    return rows[0]?.existe ?? false;
+  }
+
   /** Taxa atual por interface (bps), calculada a partir das duas últimas amostras de contadores. */
   async interfaceRates(deviceId: string): Promise<InterfaceRate[]> {
     await this.devices.findOne(deviceId);
+    if (!(await this.metricsTableExists('snmp_interface'))) return [];
     return this.prisma.$queryRawUnsafe<InterfaceRate[]>(
       `WITH recent AS (
          SELECT "ifName", time, "ifHCInOctets", "ifHCOutOctets", "ifInErrors", "ifOutErrors",
@@ -71,6 +86,7 @@ export class MetricsService {
     // centésimos de dBm (ver opticalCisco).
     if (device.vendor === 'cisco_iosxe') return this.opticalCisco(deviceId);
     const table = device.vendor === 'mikrotik' ? 'snmp_mikrotik_optical' : 'snmp_optical';
+    if (!(await this.metricsTableExists(table))) return [];
     return this.prisma.$queryRawUnsafe<OpticalReading[]>(
       `SELECT DISTINCT ON ("ifName")
          "ifName",
@@ -95,6 +111,7 @@ export class MetricsService {
    * é fixa em centésimos de dBm).
    */
   private async opticalCisco(deviceId: string): Promise<OpticalReading[]> {
+    if (!(await this.metricsTableExists('snmp_cisco_sensor'))) return [];
     const rows = await this.prisma.$queryRawUnsafe<
       { name: string; value: number | null; precision: number | null; type: number | null }[]
     >(
@@ -135,6 +152,7 @@ export class MetricsService {
     const device = await this.devices.findOne(deviceId);
     if (device.vendor === 'mikrotik') return this.systemMikrotik(deviceId);
     if (device.vendor === 'cisco_iosxe') return this.systemCisco(deviceId);
+    if (!(await this.metricsTableExists('snmp_juniper_operating'))) return [];
     return this.prisma.$queryRawUnsafe<SystemReading[]>(
       `SELECT DISTINCT ON ("jnxOperatingDescr")
          "jnxOperatingDescr" AS component,
@@ -152,6 +170,13 @@ export class MetricsService {
    * (HOST-RESOURCES hrProcessorLoad, média dos núcleos). Monta as linhas no TS.
    */
   private async systemMikrotik(deviceId: string): Promise<SystemReading[]> {
+    // As duas tabelas entram na MESMA query (subselects), então basta uma faltar para
+    // derrubar tudo — checa as duas antes.
+    const [temHealth, temCpu] = await Promise.all([
+      this.metricsTableExists('snmp_mikrotik_health'),
+      this.metricsTableExists('snmp_host_resources'),
+    ]);
+    if (!temHealth || !temCpu) return [];
     const rows = await this.prisma.$queryRawUnsafe<
       { boardTempC: number | null; cpuTempC: number | null; cpuPct: number | null }[]
     >(
@@ -184,9 +209,18 @@ export class MetricsService {
    * saúde com uma linha por SFP. CPU vem da CISCO-PROCESS-MIB (média de 5 min).
    */
   private async systemCisco(deviceId: string): Promise<SystemReading[]> {
-    const temps = await this.prisma.$queryRawUnsafe<
-      { component: string; value: number | null; precision: number | null }[]
-    >(
+    // Sensores e CPU são tabelas separadas: cada uma pode existir sem a outra
+    // (ex.: SNMP coletando a CPU mas o chassi sem sensor exposto).
+    const [temSensor, temCpu] = await Promise.all([
+      this.metricsTableExists('snmp_cisco_sensor'),
+      this.metricsTableExists('snmp_cisco_cpu'),
+    ]);
+    if (!temSensor && !temCpu) return [];
+    const temps = !temSensor
+      ? []
+      : await this.prisma.$queryRawUnsafe<
+          { component: string; value: number | null; precision: number | null }[]
+        >(
       `SELECT DISTINCT ON ("entPhysicalName")
          "entPhysicalName" AS component,
          "entSensorValue"::float8 AS value,
@@ -196,14 +230,16 @@ export class MetricsService {
          AND "entSensorType"::int = 8 AND "entSensorStatus"::int = 1
          AND "entPhysicalName" NOT ILIKE '%Transceiver%'
        ORDER BY "entPhysicalName", time DESC`,
-      deviceId,
-    );
-    const cpuRows = await this.prisma.$queryRawUnsafe<{ cpuPct: number | null }[]>(
-      `SELECT round(avg("cpmCPUTotal5minRev"))::float8 AS "cpuPct"
+          deviceId,
+        );
+    const cpuRows = !temCpu
+      ? []
+      : await this.prisma.$queryRawUnsafe<{ cpuPct: number | null }[]>(
+          `SELECT round(avg("cpmCPUTotal5minRev"))::float8 AS "cpuPct"
          FROM metrics.snmp_cisco_cpu
         WHERE device_id = $1 AND time > now() - interval '15 minutes'`,
-      deviceId,
-    );
+          deviceId,
+        );
     const cpuPct = cpuRows[0]?.cpuPct ?? null;
     const out: SystemReading[] = temps.map((t) => ({
       component: t.component,

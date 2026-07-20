@@ -56,7 +56,12 @@ export class CredentialsService {
     }
     const enc = result.data;
 
-    await this.prisma.deviceCredential.upsert({
+    // O DTO aceita segredos PARCIAIS ("informe ao menos um"), então no update só
+    // sobrescrevemos o que veio. Antes era `?? null` nos três, e re-salvar apenas
+    // usuário+senha apagava a community — o sync seguinte removia o perfil do Telegraf
+    // e o device simplesmente parava de ser coletado, sem erro em lugar nenhum.
+    // Como o DTO exige string não-vazia, "omitido" nunca significa "limpar".
+    const saved = await this.prisma.deviceCredential.upsert({
       where: { deviceId },
       create: {
         deviceId,
@@ -67,9 +72,9 @@ export class CredentialsService {
       },
       update: {
         username: enc.username,
-        passwordEnc: enc.passwordEnc ?? null,
-        sshKeyEnc: enc.sshKeyEnc ?? null,
-        snmpCommunityEnc: enc.snmpCommunityEnc ?? null,
+        ...(enc.passwordEnc ? { passwordEnc: enc.passwordEnc } : {}),
+        ...(enc.sshKeyEnc ? { sshKeyEnc: enc.sshKeyEnc } : {}),
+        ...(enc.snmpCommunityEnc ? { snmpCommunityEnc: enc.snmpCommunityEnc } : {}),
       },
     });
 
@@ -83,12 +88,14 @@ export class CredentialsService {
     // Sincroniza a config SNMP do Telegraf (community pode ter mudado). Não bloqueia a resposta.
     await this.snmpConfig.syncDeviceQuietly(deviceId, actor);
 
+    // Reflete o que ficou PERSISTIDO, não só o que veio no request — senão um update
+    // parcial reportaria hasSnmpCommunity=false com a community intacta no banco.
     return {
       deviceId,
-      username: enc.username,
-      hasPassword: Boolean(enc.passwordEnc),
-      hasSshKey: Boolean(enc.sshKeyEnc),
-      hasSnmpCommunity: Boolean(enc.snmpCommunityEnc),
+      username: saved.username,
+      hasPassword: Boolean(saved.passwordEnc),
+      hasSshKey: Boolean(saved.sshKeyEnc),
+      hasSnmpCommunity: Boolean(saved.snmpCommunityEnc),
     };
   }
 }

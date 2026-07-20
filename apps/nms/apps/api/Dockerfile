@@ -27,8 +27,11 @@ RUN pnpm --filter @netx-nms/shared build \
 # ── Runtime ──────────────────────────────────────────────────────────────────
 FROM node:22-bookworm-slim AS runtime
 ENV NODE_ENV=production
+# `git` NÃO é opcional: o backup de config versiona cada snapshot num repo git
+# (backup-git.ts). Sem o binário, todo backup morre com `spawn git ENOENT` DEPOIS
+# de já ter puxado a config do equipamento — o job parece ter dado certo e nada é salvo.
 RUN corepack enable && apt-get update \
-  && apt-get install -y --no-install-recommends openssl ca-certificates wget \
+  && apt-get install -y --no-install-recommends openssl ca-certificates wget git \
   && rm -rf /var/lib/apt/lists/*
 WORKDIR /repo
 # Copia o workspace já instalado e compilado (inclui o Prisma Client gerado).
