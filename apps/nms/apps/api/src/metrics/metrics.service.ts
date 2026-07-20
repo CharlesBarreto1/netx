@@ -22,6 +22,15 @@ export interface SystemReading {
   cpuPct: number | null;
 }
 
+// Sensores ópticos da CISCO-ENTITY-SENSOR-MIB: o IOS-XE escreve o papel do sensor de
+// duas formas conforme a plataforma — "Rx/Tx Power" (ASR1001-X) e "Receive/Transmit
+// Power" (Catalyst/Nexus). Casar só uma delas deixa a aba de óptica VAZIA sem erro nenhum.
+const RX_POWER_RE = /\b(?:rx|receive)\s+power/i;
+const TX_POWER_RE = /\b(?:tx|transmit)\s+power/i;
+/** Sufixo que identifica o PAPEL do sensor — removido para sobrar o nome da porta. */
+const SENSOR_ROLE_SUFFIX_RE =
+  /\s*(?:(?:rx|tx|receive|transmit)\s+power|temperature)\s+sensor\s*$/i;
+
 @Injectable()
 export class MetricsService {
   constructor(
@@ -102,13 +111,16 @@ export class MetricsService {
 
   /**
    * Óptica Cisco IOS-XE: o DOM não é indexado por ifIndex — vem da CISCO-ENTITY-SENSOR-MIB,
-   * um sensor por entidade física, com nome do tipo "Te0/0/2 Transceiver Receive Power Sensor".
-   * Então aqui agrupamos por interface (o pedaço antes de "Transceiver") e pivotamos
-   * Receive/Transmit/Temperature numa linha só.
+   * um sensor por entidade física. Agrupamos os sensores da MESMA porta (Rx, Tx e temperatura
+   * do módulo) tirando o sufixo do papel do rótulo, e pivotamos numa linha só.
    *
-   * Escala: o valor real é entSensorValue / 10^entSensorPrecision — a precisão varia por
-   * plataforma, por isso ela é coletada junto e aplicada aqui (nos outros vendors a escala
-   * é fixa em centésimos de dBm).
+   * Escala: o valor real é entSensorValue / 10^entSensorPrecision. A precisão varia por
+   * SENSOR, não só por plataforma — num mesmo ASR1001-X medimos 0 (temp do chassi),
+   * 1 (dBm óptico) e 3 (temp do módulo). Por isso ela é coletada junto e aplicada aqui, em
+   * vez do divisor fixo que os outros vendors usam.
+   *
+   * Limitação conhecida: o rótulo é o da entidade física ("subslot 0/0 transceiver 0"), não o
+   * nome da interface — casar com ifName exigiria o entAliasMappingIdentifier da ENTITY-MIB.
    */
   private async opticalCisco(deviceId: string): Promise<OpticalReading[]> {
     if (!(await this.metricsTableExists('snmp_cisco_sensor'))) return [];
@@ -123,7 +135,8 @@ export class MetricsService {
        FROM metrics.snmp_cisco_sensor
        WHERE device_id = $1 AND time > now() - interval '60 minutes'
          AND "entSensorStatus"::int = 1
-         AND "entPhysicalName" ILIKE '%Transceiver%'
+         AND ("entSensorType"::int = 14
+              OR ("entSensorType"::int = 8 AND "entPhysicalName" ILIKE '%transceiver%'))
        ORDER BY "entPhysicalName", time DESC`,
       deviceId,
     );
@@ -133,13 +146,20 @@ export class MetricsService {
 
     const byIf = new Map<string, OpticalReading>();
     for (const r of rows) {
-      const ifName = r.name.split(/\s+Transceiver\s+/i)[0]?.trim();
+      // O rótulo do sensor muda por plataforma: o ASR1001-X escreve
+      // "subslot 0/0 transceiver 0 Rx Power Sensor"; Catalyst/Nexus escrevem
+      // "Te0/0/2 Transceiver Receive Power Sensor". Tirando o sufixo do papel (e um
+      // "Transceiver" solto no fim) sobra a mesma chave para Rx, Tx e temperatura do módulo.
+      const ifName = r.name
+        .replace(SENSOR_ROLE_SUFFIX_RE, '')
+        .replace(/\s*transceiver\s*$/i, '')
+        .trim();
       if (!ifName) continue;
       const value = scale(r.value, r.precision);
       const entry = byIf.get(ifName) ?? { ifName, rxDbm: null, txDbm: null, moduleTempC: null };
       const dbm = value == null ? null : Math.round(value * 100) / 100;
-      if (/receive power/i.test(r.name)) entry.rxDbm = dbm;
-      else if (/transmit power/i.test(r.name)) entry.txDbm = dbm;
+      if (RX_POWER_RE.test(r.name)) entry.rxDbm = dbm;
+      else if (TX_POWER_RE.test(r.name)) entry.txDbm = dbm;
       else if (r.type === 8) entry.moduleTempC = value == null ? null : Math.round(value);
       byIf.set(ifName, entry);
     }
