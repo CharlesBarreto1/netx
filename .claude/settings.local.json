@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(grep -E \"\\\\.\\(ts|js\\)$\")",
-      "Bash(ls \"C:\\\\Users\\\\Administrator\\\\Documents\\\\GitHub\\\\netx\\\\\" | head -20)",
-      "Bash(grep -rn \"uploadMbps\\\\|planId\" /mnt/c/Users/Administrator/Documents/GitHub/netx/apps/core-service/src --include=\"*.ts\" | grep -i contract | head -15)"
-    ]
-  }
-}

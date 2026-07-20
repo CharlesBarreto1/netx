@@ -56,6 +56,11 @@ desktop.ini
 *.pem
 *.key
 
+# --- Editor / agente (config LOCAL de máquina — não versionar) ----------------
+# settings.local.json acumula grants de permissão por máquina/usuário; o
+# launch.json (compartilhado) continua versionado.
+.claude/settings.local.json
+
 # --- Logs ---------------------------------------------------------------------
 *.log
 npm-debug.log*
