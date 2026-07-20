@@ -1,54 +1,128 @@
-# NetX — Briefing & Pendências (atualizado 2026-06-23)
+# NetX — Briefing & Pendências (atualizado 2026-07-20)
 
 > **Comece por aqui.** Resumo do que foi construído e instruções para tocar as
 > pendências. Detalhes profundos em `docs/ecosystem/ECOSYSTEM-MODULAR-PLAN.md`
-> (plano) e `docs/ecosystem/INTEGRATION-RUNBOOK.md` (passos de infra/go-live).
+> (plano), `docs/ecosystem/INTEGRATION-RUNBOOK.md` (infra/go-live) e
+> `FIBERMAP-SPEC.md` / `FIBERMAP-STATUS.md` (planta externa).
 >
-> Estado do git: tudo está na **`main`** local (`b7ff177`), **35 commits à frente
-> de `origin/main`** (que estava só no Wi-Fi). Falta `git push origin main`.
-> Build: `nx run-many -t build` → **10/10 verde**.
+> Estado do git: **`main`** local em `0c00a0c` (equipamento da planta espelhado
+> no NMS), **1 commit à frente** de `origin/main` (`eda5a33`). Falta um
+> `git push origin main`. O grosso do trabalho de jun/jul já está no GitHub.
 
 ---
 
-## 1. O que foi feito
+## 1. O que foi feito desde 23/06
 
-### 1.1 Ecossistema modular (Core fino + módulos plugáveis)
-Transformar NetX + NMS + Hub num ecossistema de módulos vendáveis por licença.
-NetX é o **tronco** (monorepo Nx); NMS e Hub vieram pra dentro via `git subtree`.
+Um mês de evolução pesada (~180 commits, 42 migrations novas, ~12 módulos novos
+no core-service). Por tema:
 
-- **Fase 0** — NMS e Hub importados (`apps/nms`, `apps/hub`) via subtree `--squash`,
-  **isolados** dos workspaces npm (`!apps/nms`/`!apps/hub`) e do grafo Nx (`.nxignore`).
-  Não entram em runtime. *Dormentes.*
-- **Fase 1** — Contrato de licença com **entitlement por módulo**: claim `modules[]`
-  no token (Hub emite, NetX verifica offline). Enforcement via `@RequiresModule`
-  + `ModuleEntitlementGuard` **default-permissivo** (sem claim ⇒ tudo liberado).
-  Catálogo em `packages/shared/src/licensing/modules.ts`.
-- **Fase 2** — `@netx/core-sdk` (`packages/core-sdk`): fachada de licensing +
-  **manifesto de módulo** (`apiPrefixes`/`ownedTables`/`emits`) + **envelope de
-  evento** (estilo CloudEvents) + porta `EventPublisher`.
-- **Fase 3** — **Event bus** (`apps/core-service/src/modules/events/`): publisher
-  resiliente + consumidor idempotente sobre RabbitMQ, **DESLIGADO por default**.
-  Costuras já publicando: `netx-erp.contract.{created,suspended,reactivated,
-  plan-changed,cancelled,installed}`, `netx-erp.invoice.paid`, `netx-cpe.ont.swapped`.
-- Endpoint `GET /v1/license/modules` (catálogo + `entitled` + manifesto).
-- **Fase 4 (schema por módulo)** — **adiada** de propósito (só quando vender módulo
-  standalone).
+### 1.1 FiberMap — planta externa OSP v2 (FM-0 → FM-8)
+Módulo de documentação de planta óptica georreferenciada (estilo Tomodat):
+PostGIS, estúdio MapLibre em tela cheia (`(fullscreen)/fibermap`), editor de
+emendas SVG (Ponto de Acesso), grafo de conectividade com trace de capilar,
+**power budget** com calibração, **localizador OTDR** (distância → coordenada +
+raio de incerteza) e **import/export KML** (migração Tomodat). FM-8 fez a
+"costura" assinante↔planta (`contracts.fibermap_port_id`) e **aposentou o OSP
+v1** (módulo `optical`, estúdio `/mapa`) com migração de dados. Cadastrar POP
+cria o elemento no FiberMap; OLT do inventário vincula ao device da planta.
+Entitlement `netx-fibermap` no catálogo. Ver `FIBERMAP-STATUS.md`.
 
-### 1.2 Redesign do shell (design_handoff_netx_shell)
-Front (`apps/web`) redesenhado em 5 fases:
-- **Fundação** — fontes Geist, tokens dark do handoff, **tema escuro por default**.
-- **Upsell** — módulo não-licenciado vira "Disponível · ativar" na sidebar.
-- **NEXUS** — rail direito do copiloto de IA "Conselheira" (violeta; `idle→confirm→
-  done`; nunca age sozinha). *Antes "Copilot", renomeado p/ evitar marca Microsoft.*
-- **Dashboard cockpit** — 3 lentes (Operador/NOC/Financeiro) + KPIs + gráficos.
-- **Command palette** — busca clientes/contratos/OLTs + navegação por RBAC.
+### 1.2 IA — motor central + copiloto Nexus agêntico
+- **`@netx/ai`**: motor por tenant — Ollama self-hosted (default
+  `qwen2.5:3b-instruct`) + fallback opcional Anthropic, redação de PII.
+- **Copiloto agêntico (tool-using)**: integra ERP + rede (NMS) + financeiro,
+  dispara **testes ativos** (ping/traceroute com polling), analytics de negócio
+  (panorama + previsão), métricas de domínio (OS, estoque, frota, vendas, caixa,
+  RH). Princípio mantido: **conselheira read-only, nunca age sozinha**.
+- **Proatividade**: detectores + `ai_insights` empurrados ao rail do Nexus
+  (scan on-demand ao abrir + polling 60s). O feed mock por timer morreu.
+- **Nexus via WhatsApp**: linha dedicada (purpose SUPPORT/NEXUS) com pareamento
+  de operadores por código.
+- IA conselheira também no atendimento WhatsApp (sugestões no idioma do cliente).
 
-### 1.3 Outros
-- **Wi-Fi no cadastro do contrato** (SSID+senha na venda; install/O.S herdam).
-- **Fix do jest** (pin `jest-mock@30.4.1` na raiz — conflito com RN do mobile).
-- **OLT Zyxel ZyNOS** — driver SSH/CLI + perfis de provisionamento (+2 migrations).
-- **Fix do instalador** — `netx-update` faz deploy de qualquer branch
-  (`reset --hard FETCH_HEAD`, não `origin/<branch>`).
+### 1.3 Atendimento (Call/WhatsApp) — Evolution → WAHA + Meta Cloud
+Canal QR agora é **WAHA** (auto-configurado pelo installer; Evolution saiu).
+Chatbot híbrido menu + IA, **multi-idioma (PT/ES/EN) por DDI**, painel do
+cliente no atendimento, transferência entre operadores, grupos do WhatsApp
+(inclusive grupos NOC), notas de voz + **transcrição local (whisper.cpp)**,
+quick replies, templates Meta com variáveis, outbound por telefone, lembrete de
+cobrança no vencimento, inbox redesenhado (Andamento/Espera/Automação) e
+**sino global de notificações**.
+
+### 1.4 NMS — de "builda em dev" para operação real
+- **Multi-vendor**: Mikrotik + Juniper + **Cisco IOS-XE** (ASR 920/1000).
+- **Device-gateway em Python** completo (drivers, playbooks, safety, backup,
+  SNMP via Telegraf, terminal, network-test).
+- Pipeline de apply de config com verify automático + persistência de
+  ConfigChange; backup de config via git.
+- **Integração no shell**: painel nativo (`/nms/devices`), CRUD de equipamentos
+  na web, dashboard **NOC com telemetria real** e "Saúde da rede" na lente
+  Operador.
+- **Loop bidirecional de eventos**: NMS publica no bus, NetX consome; faults do
+  NMS viram alarme no NOC em tempo real.
+- `netx-update` **orquestra a stack NMS** do ecossistema (Docker/GHCR, :3300).
+- Último commit (`0c00a0c`): equipamento da planta espelhado como device no NMS
+  (opt-in por driver juniper/mikrotik/cisco_iosxe; colunas `nms_*` em
+  `network_equipment`).
+
+### 1.5 IPAM + CGNAT
+IPAM estilo NetBox (VRFs, prefixos, endereços, pools), **CGNAT determinístico**,
+busca reversa, árvore de subredes com espaço livre e mapa visual,
+**reconciliação com a rede real**, sync bidirecional com MikroTik, aba IPAM no
+detalhe do cliente. Rota `/network/ipam`.
+
+### 1.6 TR-069 / ACS (cwmp-server)
+Perfis por modelo: **ZTE F670L** (piloto PY, walk real), **VSOL/Realtek**
+(paths CT-COM, Wi-Fi invertido), **Zyxel PX3321-T1**. Catálogo de **firmware
+com upload e rollout** por modelo/seriais. Wi-Fi: exige senha forte,
+**WiFi-Opt** (otimização de canal, fast-path via event bus), cobertura.
+Trocar PPPoE no contrato empurra a credencial pro CPE. Diagnóstico por modelo.
+Telas em `(protected)/tr069/*`.
+
+### 1.7 Fiscal BR — NFCom (modelo 62)
+NetX como **emissor direto ao SVRS** (não agregador): builder de XML, assinatura
+digital (cert .pfx cifrado por tenant), cliente SOAP, ciclo
+DRAFT→SIGNED→SENT→AUTHORIZED/REJECTED/CANCELLED com retry. Transmissor plugável
+(SVRS_DIRECT hoje; NUVEM_FISCAL/FOCUS_NFE previstos). XSDs de referência em
+`PL_NFCOM_1.00_NT2026.002 RTC_1.00/`. Telas em `fiscal/nfcom` e
+`settings/nfcom`.
+
+### 1.8 Hubsoft — migração de provedores (read-only)
+Integração de leitura com a API Hubsoft: listar e importar clientes/contratos/
+financeiro por seleção, sync 4x/dia, filtro por cidade, reimpressão de
+boleto/Pix do Hubsoft, nº do contrato herda código do cliente.
+Tela `settings/hubsoft`.
+
+### 1.9 Core como OIDC Provider
+`/v1/oidc/<tenant-slug>` com chaves **RS256 por tenant**, adapter Prisma,
+telas de interaction (fecha o fluxo de ponta a ponta com MFA). Base para SSO
+dos apps satélites (NMS, Field, etc.).
+
+### 1.10 NetX Field — app mobile do técnico
+`apps/mobile` (`@netx/mobile`): **Expo SDK 52 + RN 0.76 + expo-router 4**,
+offline-first (WatermelonDB). Entregues: pacotes F0–F10 do backend (BFF `field`
+no core-service, consumidor puro) + **Fase 0 do app** (auth, scaffolding,
+servidor escolhido no login — um APK, várias bases, device pairing, fotos via
+presigned URL/MinIO). No web também nasceu o grupo `(technician-app)` (lista e
+execução de O.S. com picker de porta FiberMap).
+
+### 1.11 Outros
+- **Estoque ↔ Rede**: bem próprio instalado na rede (IN_USE), equipamento nasce
+  do estoque, código de patrimônio na entrada, deploy-to-network.
+- **Endereços BR**: cadastro-mestre (cidades IBGE, bairros, logradouros/CEP,
+  ViaCEP), seed IBGE automático no install/update. Gated por país.
+- **Central de Alarmes**: `alarm_events` + `incidents` correlacionados por
+  escopo (ONT/PON/CTO/CABLE/OLT/GEO), SSE pro NOC, resumo/root-cause por IA.
+- **Contratos**: derivar coordenada de link do Google Maps; billing BR por
+  contrato via dispatcher `br-billing` (Efi/BTG).
+- **Testes**: harness de integração com banco real + job no CI.
+- **UI/UX**: **tema claro voltou a ser o padrão**, login moderno, logo oficial,
+  menus reestruturados em 3 níveis, i18n de ~30 telas (PT/ES/EN), fix do donut
+  de saúde e tokens faltantes.
+- **Installer**: DR backup/restore **cifrado com age** (`netx-dr-backup` /
+  `netx-restore`, cobre core + NMS/TimescaleDB + segredos), Traccar (frota GPS)
+  habilitado por padrão, WAHA provisionado, PostGIS antes do migrate,
+  `netx-update` ressincroniza units systemd e re-executa a si mesmo pós-pull.
 
 ---
 
@@ -56,96 +130,93 @@ Front (`apps/web`) redesenhado em 5 fases:
 
 | Peça | Estado |
 |---|---|
-| Core-SDK, manifestos, entitlement | ✅ no código, builda. Guard **fail-open** (não bloqueia nada até o Hub emitir token com `modules`). |
-| Event bus | ✅ no código, **OFF por default** (`EVENTBUS_ENABLED`/`EVENTBUS_CONSUME`). Publica no-op até ligar. |
-| Gating de UI (upsell) | ✅ fail-open. Só aparece quando há módulo travado (= Hub emitindo token restritivo). |
-| NMS | ✅ **vivo** (2026-06-23): builda via `nx build nms` (pnpm), 4 canais ligados (SSO/entitlement/eventos/HTTP `/nms`), schema próprio `nms`, **single-tenant**, **dev/compose-profile** (fora dos 4 units de prod). Eventos OFF + entitlement fail-open por default. Falta device-gateway Python, web/WS atrás do gateway, prod. Ver runbook §A. |
-| Hub | ⚠️ importado, **dormente** (não builda/roda). |
-| Redesign (NEXUS, dark, cockpit, palette) | ✅ pronto. **Dashboard usa dados MOCK.** Feed do NEXUS é timer mock. |
-| RabbitMQ | ✅ provisionado pelo instalador (APT). |
-
-**Produção não é afetada** pelo merge: tudo aditivo e no estado seguro (bus off,
-licença fail-open). EXCETO o redesign, que muda o visual (dark default) e o
-**dashboard fica mock** — ver §3.4.
+| Dashboard cockpit (3 lentes) | ✅ **híbrido real**: KPIs, aging, MRR-12m, churn e telemetria NMS reais; o que resta de mock é marcado com `<MockBadge>` (latência média, uptime 30d, algumas sparklines). |
+| Nexus / Copiloto | ✅ real: chat `POST /v1/copilot/ask`, insights proativos, testes ativos, linha WhatsApp. |
+| Event bus | ✅ com **handlers reais** (NmsEventsHandler → NOC, FeedHandler → SSE, WifiOptEventsHandler), mas segue **OFF por default** (`EVENTBUS_ENABLED`/`EVENTBUS_CONSUME`). |
+| Entitlement / licença | ⚠️ **fail-open** e chave pública de produção **ainda é a de DEV** (`packages/shared/src/licensing/public-key.ts`). Catálogo agora tem 9 módulos (novo: `netx-fibermap`). |
+| Hub | ✅ **implementado** (signing Ed25519, instances/heartbeat, billing + trust-unlock, payments Efi, admin, portal, wiki, web Next.js) — mas **não está no ar**. |
+| NMS | ✅ vivo e integrado (ver §1.4); deploy orquestrado pelo `netx-update`. |
+| FiberMap | ✅ FM-0..FM-8 entregues e validadas (`FIBERMAP-STATUS.md` de 06/07); OSP v1 removido. Conferir se a prod já recebeu `netx-update` pós-FM. |
+| Mobile Field | ⏳ backend (F0–F10) ✅ ; app na **Fase 0** — fases seguintes em §3.4. |
+| RabbitMQ / WAHA / Traccar / PostGIS | ✅ provisionados pelo installer. |
 
 ---
 
 ## 3. Pendências + como tocar (por ordem de impacto)
 
-### 3.1 🔑 Hub no ar — o desbloqueio principal
-Sem o Hub emitindo token com `modules[]`, o entitlement fica **permanentemente
-fail-open** (todos os módulos ligados) — gating/`@RequiresModule`/upsell não
-gateiam nada. É o que faz "vender módulo a módulo" existir.
-
-**Passos** (detalhe em `INTEGRATION-RUNBOOK.md` §B — dependem de segredos de prod):
-1. Trocar a **chave pública de produção** em `packages/shared/src/licensing/public-key.ts`
-   (`LICENSE_PUBLIC_KEY_SPKI_B64`) — pegar do cofre do Hub.
+### 3.1 🔑 Hub no ar — segue sendo o desbloqueio principal
+Sem o Hub emitindo token com `modules[]`, o entitlement fica permanentemente
+fail-open — gating/`@RequiresModule`/upsell não gateiam nada.
+Passos (detalhe em `INTEGRATION-RUNBOOK.md` §B e `docs/licensing.md`):
+1. Trocar a **chave pública de produção** em
+   `packages/shared/src/licensing/public-key.ts` (hoje é a chave DEV de 10/06).
 2. Segredos do Hub no cofre/env (chave privada cifrada, DB, OAuth BTG Id).
 3. `prisma migrate deploy` do Hub (`apps/hub/prisma`).
-4. Cadastrar o licenciado de prod (NetX) com `modules` = catálogo cheio (mantém
-   tudo ligado; só clientes novos sem um módulo recebem token restritivo).
+4. Cadastrar o licenciado de prod (NetX) com `modules` = catálogo cheio.
 5. Testar EFI + hardening (rate-limit do /sign, expiração/replay do heartbeat).
-> Verificação cruzada já existe: `cd apps/hub && npm run test:signing`.
+> Verificação cruzada: `cd apps/hub && npm run test:signing`.
 
-### 3.2 📡 Ligar o event bus (trivial — dá pra testar já)
-RabbitMQ já está provisionado. No `/etc/netx/.env`:
+### 3.2 📤 Publicar e atualizar produção
+```bash
+git push origin main   # 1 commit: espelhamento equipamento→NMS (0c00a0c)
+sudo netx-update       # na VPS — leva FiberMap, IA, TR-069, IPAM, NMS etc.
 ```
-EVENTBUS_ENABLED=true     # publica de verdade
-EVENTBUS_CONSUME=true     # consome (fecha o round-trip)
+O bloqueio antigo ("dashboard mock, não atualizar prod") **caiu** — o cockpit
+usa dados reais. Branches remotos já mesclados podem ser limpos:
+`git push origin --delete feat/ipam-tree feat/nexus-whatsapp feat/dr-backup-restore fix/nms-tooling fix/netx-update-refresh-systemd-units feat/contract-geo-from-maps-url fix/nms-snmp-profile-cleanup`
+
+### 3.3 📡 Ligar o event bus (trivial)
+No `/etc/netx/.env`:
 ```
-`systemctl restart netx-core-service`. Eventos passam a fluir na exchange topic
-`netx.events`. **Handlers de negócio reais** entram no `dispatch()` de
-`apps/core-service/src/modules/events/event-consumer.ts` (hoje só loga) — registre
-um provider `{ provide: EVENT_HANDLERS, useClass: SeuHandler, multi: true }`.
+EVENTBUS_ENABLED=true
+EVENTBUS_CONSUME=true
+```
+`systemctl restart netx-core-service`. Agora com handlers reais, ligar o bus
+ativa: faults NMS → alarmes NOC, feed SSE (Nexus/Field) e fast-path do WiFi-Opt.
 
-### 3.3 🔌 NMS rodando de verdade — ✅ FEITO (2026-06-23); Hub ainda falta
-- **NMS**: concluído (Parte A do runbook). Sub-build pnpm orquestrado por Nx,
-  schema próprio `nms`, 4 canais ligados (SSO via `CORE_JWT_SECRET`, entitlement
-  fail-open no gateway, eventos OFF por default, HTTP `/api/v1/nms/*`). Como rodar
-  em dev e follow-ups (device-gateway Python, web/WS no gateway, prod):
-  `INTEGRATION-RUNBOOK.md` §A.
-- **Hub**: ainda dormente — replicar os mesmos passos (é npm, caminho mais curto
-  que o NMS) + go-live da Parte B.
+### 3.4 📱 NetX Field — próximas fases
+F0 (auth + scaffolding) ✅. Roadmap do app: Fase 1 (execução de O.S. + fotos +
+GPS), Fase 2 (estoque pessoal do técnico), Fase 3 (provisioning ZTP), Fase 4
+(push notifications). Enquanto isso o fluxo do técnico existe no web em
+`(technician-app)`.
 
-### 3.4 Follow-ups do redesign (antes de atualizar PRODUÇÃO)
-- **Dashboard com dados reais**: `apps/web/src/app/(protected)/dashboard/page.tsx`
-  está mock. Re-cabear nas APIs (os KPIs de Operador — clientes/contratos/
-  inadimplência/online — existiam no dashboard antigo; ver histórico do arquivo).
-  **Não rodar `netx-update` em produção antes disso** (clientes veriam KPIs falsos).
-- **Feed do NEXUS via SSE**: trocar o timer em `CopilotRail.tsx` por SSE/WebSocket
-  assinando `netx.events` (envelope.type → chip, occurredAt → timestamp).
-- **Busca de faturas no palette**: falta `?search=` no backend de `contract-invoices`.
-- **Fronteira do módulo `network`**: deixado sem `@RequiresModule` (infra/POPs) —
-  decidir se é base/NMS/maps antes de gatear.
+### 3.5 🧹 Débitos menores
+- `AGENTS.md`: conteúdo atualizado (jul/2026) mas o cabeçalho ainda diz
+  "Atualizado: 2026-05-23" — corrigir na próxima edição.
+- Fronteira do módulo `network` (sem `@RequiresModule`): decidir se é
+  base/NMS/maps antes de gatear.
+- `docs/deploy-contracts.md` e `docs/architecture/osp-network.md` são
+  históricos (PM2/OSP v1) — marcar como superados ou arquivar.
+- SSO por convite (invite flow) e D4Sign seguem pendentes da Fase 1.
 
 ---
 
 ## 4. Deploy & operação
 
-### 4.1 Publicar
-```bash
-git push origin main          # 35 commits — leva ecossistema+redesign+OLT pro GitHub
-```
-Remotas antigas podem ser limpas: `git push origin --delete feat/shell-redesign feat/wifi-no-cadastro fix/jest-mock-hoist-conflict`
-
-### 4.2 Instalar/atualizar VPS
+### 4.1 Instalar/atualizar VPS
 - **VPS zerada (Debian 13, root):**
   `NETX_REPO_BRANCH=main NETX_ADMIN_EMAIL=… NETX_ADMIN_PASSWORD=… NETX_SKIP_WIZARD=1 sudo -E bash infra/installer/install.sh`
-- **Atualizar** instância existente: `sudo netx-update` (default `main`); outro branch:
+- **Atualizar**: `sudo netx-update` (default `main`); outro branch:
   `sudo env NETX_REPO_BRANCH=<branch> netx-update`.
+- O installer agora provisiona também: **WAHA**, **Traccar**, **PostGIS**,
+  seed IBGE, stack NMS (Docker/GHCR) e o par DR (`netx-dr-backup`/`netx-restore`,
+  cifrado com age).
 - Licença e bus entram **OFF** (estado de teste seguro).
 
-### 4.3 SSL / HTTPS
-O instalador roda `certbot --nginx` **se** o DNS do domínio apontar pra VPS. Se não:
-```bash
-# A record netx.<dominio> -> IP da VPS, portas 80/443 abertas, depois:
-sudo certbot --nginx -d netx.<dominio> -m EMAIL --agree-tos --redirect
-```
+### 4.2 SSL / HTTPS
+O instalador roda `certbot --nginx` **se** o DNS do domínio apontar pra VPS.
+Senão: `sudo certbot --nginx -d netx.<dominio> -m EMAIL --agree-tos --redirect`.
+
+### 4.3 Disaster Recovery
+`docs/dr.md` — bundle único cifrado (core + NMS/TimescaleDB + segredos).
 
 ---
 
 ## 5. Referências
-- `docs/ecosystem/ECOSYSTEM-MODULAR-PLAN.md` — plano completo, invariantes, log de fases.
-- `docs/ecosystem/INTEGRATION-RUNBOOK.md` — passos de NMS/Hub + go-live do Hub.
-- `design_handoff_netx_shell/README.md` — spec do redesign (tokens, telas).
 - `AGENTS.md` (raiz) — guia operacional autoritativo do NetX.
+- `FIBERMAP-SPEC.md` / `FIBERMAP-STATUS.md` — planta externa OSP v2.
+- `docs/ecosystem/ECOSYSTEM-MODULAR-PLAN.md` — plano do ecossistema modular.
+- `docs/ecosystem/INTEGRATION-RUNBOOK.md` — passos de NMS/Hub + go-live.
+- `docs/licensing.md` — arquitetura de licenciamento (Hub, Ed25519, fail-open).
+- `docs/dr.md` — disaster recovery.
+- `docs/ROADMAP.md` — fases e entregas (sincronizado em 2026-07-20).

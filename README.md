@@ -4,7 +4,7 @@
 
 Sistema modular, multi-tenant e event-driven que integra as operações administrativas, técnicas, fiscais, comerciais e de atendimento de um ISP em um único ecossistema, com IA nativa.
 
-> **Estado atual** — Fase 1 do MVP em produção. Já implementados: Core (auth + MFA TOTP, multi-tenant, RBAC, audit), CRM completo (clientes PF/PJ BR+PY, pipeline/deals, endereços, contatos, consentimentos LGPD), Contratos + faturas + RADIUS (PPPoE/IPoE, CoA), Financeiro (caixas, cobranças avulsas), Service Orders, Portal do Cliente, Estoque (produtos/compras/serial/comodato), Rede (POPs + equipamentos multi-vendor), WhatsApp (Evolution), SIFEN (PY), Backups. Detalhes em `docs/ROADMAP.md`.
+> **Estado atual (jul/2026)** — Fases 1 e 2 substancialmente entregues, Fase 3 em andamento. Implementados: Core (auth + MFA TOTP, multi-tenant, RBAC, audit, **OIDC Provider**), CRM completo (PF/PJ BR+PY, pipeline/deals, LGPD), Contratos + faturas + RADIUS (PPPoE/IPoE, CoA), Financeiro (caixas, cobrança BR via Efi/BTG), Service Orders, Portal do Cliente, Estoque (integrado à rede/patrimônio), Rede (POPs, equipamentos multi-vendor, **IPAM + CGNAT**), **TR-069/ACS** (ZTE, VSOL, Zyxel, firmware rollout, WiFi-Opt), **FiberMap** (planta externa OSP georreferenciada, PostGIS + MapLibre, OTDR, KML), **NMS** (multi-vendor Mikrotik/Juniper/Cisco IOS-XE, telemetria real no NOC), **IA nativa** (motor `@netx/ai` Ollama + fallback nuvem, copiloto agêntico Nexus, insights proativos), Atendimento WhatsApp (WAHA + Meta Cloud, chatbot multi-idioma, transcrição local), Fiscal (**NFCom BR** emissor SVRS direto + SIFEN PY), Frota (Traccar), RH, app do técnico (**NetX Field**, Expo), Hubsoft (migração), Backups + DR cifrado. Detalhes em `BRIEFING.md` e `docs/ROADMAP.md`.
 
 > **Software proprietário** — Copyright © 2024-2026 **NETX DESENVOLVIMENTO E TECNOLOGIA LTDA**
 > CNPJ 57.118.236/0001-44 — Av. Paulista, 1471, Sala 511 — São Paulo / SP — Brasil
@@ -34,19 +34,31 @@ Sistema modular, multi-tenant e event-driven que integra as operações administ
 ```
 netx/
 ├── apps/
-│   ├── api-gateway/       # BFF + gateway (NestJS)
+│   ├── api-gateway/       # BFF + gateway (NestJS) — inclui proxy /nms
 │   ├── core-service/      # Backend principal (NestJS) — agrega todos os módulos
-│   │   └── src/modules/   # audit, auth, backups, contracts, crm, crypto,
-│   │                      # disconnect, finance, health, network, portal,
-│   │                      # prisma, radius, reports, roles, service-orders,
-│   │                      # sifen, stock, tenants, users, whatsapp
+│   │   └── src/modules/   # ai, alarms, audit, auth, backups, br-billing, btg,
+│   │                      # contracts, copilot, crm, crypto, disconnect, efi,
+│   │                      # events, fibermap, field, finance, fleet, health,
+│   │                      # hr, hubsoft, ipam, licensing, locations, mapping,
+│   │                      # mobile, network, nfcom, notifications, oidc,
+│   │                      # portal, prisma, provisioning, radius, reports,
+│   │                      # roles, service-orders, sifen, stock, storage,
+│   │                      # tenants, ufinet, users, whatsapp
+│   ├── nms/               # NMS (sub-monorepo): API NestJS + device-gateway
+│   │                      # Python (Mikrotik/Juniper/Cisco) + TimescaleDB
+│   ├── hub/               # Hub de licenciamento (assina tokens Ed25519)
+│   ├── mobile/            # NetX Field — app do técnico (Expo / React Native)
 │   └── web/               # Frontend operacional (Next.js 16 + App Router)
 │       └── src/app/
-│           ├── (protected)/   # dashboard, customers, contracts, deals,
-│           │                  # finance, invoices, stock, network,
-│           │                  # service-orders, reports, chat, settings
-│           ├── portal/        # portal self-service do cliente
-│           └── receipts/      # impressão (matricial, fatura, etc.)
+│           ├── (protected)/       # dashboard, customers, contracts, deals,
+│           │                      # finance, invoices, fiscal, stock, network,
+│           │                      # nms, olts, tr069, alarms, fibermap, fleet,
+│           │                      # hr, ipam, provisioning, subscriber360,
+│           │                      # service-orders, reports, chat, settings…
+│           ├── (fullscreen)/      # estúdio FiberMap (MapLibre)
+│           ├── (technician-app)/  # fluxo do técnico no web (O.S.)
+│           ├── portal/            # portal self-service do cliente
+│           └── receipts/          # impressão (matricial, fatura, etc.)
 ├── packages/
 │   ├── shared/            # DTOs, contratos, tipos compartilhados (Zod)
 │   ├── database/          # Prisma client centralizado
@@ -137,6 +149,11 @@ A plataforma é multi-tenant desde o dia um. A estratégia de isolamento default
 | `docs/CONVENTIONS-FRONTEND.md` | **Obrigatório** para qualquer mudança em `apps/web` — typedRoutes, callbacks, lockfile, env vars |
 | `docs/SECURITY.md` | Modelo de ameaças e práticas |
 | `docs/ROADMAP.md` | Fases e entregas |
+| `BRIEFING.md` | Estado atual + pendências (comece por aqui) |
+| `FIBERMAP-SPEC.md` / `FIBERMAP-STATUS.md` | Planta externa OSP v2 (spec + estado) |
+| `docs/licensing.md` | Licenciamento por módulo (Hub, Ed25519, fail-open) |
+| `docs/dr.md` | Disaster recovery (bundle cifrado core + NMS + segredos) |
+| `docs/ecosystem/` | Plano do ecossistema modular + runbook de integração |
 | `docs/modules/02-crm.md` | Documentação do Módulo 02 (CRM) |
 | `docs/adr/` | Architecture Decision Records |
 
