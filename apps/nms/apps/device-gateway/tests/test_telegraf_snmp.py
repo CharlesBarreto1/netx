@@ -1,5 +1,7 @@
 from device_gateway.telegraf_snmp import (
     config_path,
+    list_config_device_ids,
+    reconcile_snmp_configs,
     remove_snmp_config,
     render_snmp_config,
     write_snmp_config,
@@ -98,3 +100,59 @@ def test_render_parks_usa_oids_proprios_e_iftable_comum():
     assert "2636" not in cfg
     assert "14988" not in cfg
     assert "9.9.91" not in cfg
+
+
+OTHER = "22222222-2222-2222-2222-222222222222"
+
+
+def _write(d, device_id):
+    write_snmp_config(config_dir=d, device_id=device_id, mgmt_ip="10.0.0.1", community="c")
+
+
+def test_list_config_device_ids_ignora_outros_arquivos(tmp_path):
+    d = str(tmp_path)
+    _write(d, DEV)
+    (tmp_path / "telegraf.conf").write_text("# não é perfil de device", encoding="utf-8")
+    # Perfil posto à mão (nome não-UUID) não é nosso: fica de fora da varredura.
+    (tmp_path / "snmp-core-manual.conf").write_text("# feito à mão", encoding="utf-8")
+
+    assert list_config_device_ids(config_dir=d) == [DEV]
+
+    reconcile_snmp_configs(config_dir=d, known_device_ids=[DEV])
+    assert (tmp_path / "snmp-core-manual.conf").exists()
+
+
+def test_list_config_device_ids_diretorio_inexistente(tmp_path):
+    assert list_config_device_ids(config_dir=str(tmp_path / "nao-existe")) == []
+
+
+def test_reconcile_apaga_orfao_e_mantem_conhecido(tmp_path):
+    d = str(tmp_path)
+    _write(d, DEV)
+    _write(d, OTHER)
+
+    removed, kept = reconcile_snmp_configs(config_dir=d, known_device_ids=[DEV])
+
+    assert removed == [OTHER]
+    assert kept == 1
+    assert config_path(d, DEV).exists()
+    assert not config_path(d, OTHER).exists()
+
+
+def test_reconcile_e_idempotente(tmp_path):
+    d = str(tmp_path)
+    _write(d, DEV)
+    reconcile_snmp_configs(config_dir=d, known_device_ids=[DEV])
+    assert reconcile_snmp_configs(config_dir=d, known_device_ids=[DEV]) == ([], 1)
+
+
+def test_reconcile_com_lista_vazia_nao_apaga_nada(tmp_path):
+    # Banco vazio é indistinguível de falha de leitura — apagar tudo pararia a coleta.
+    d = str(tmp_path)
+    _write(d, DEV)
+
+    removed, kept = reconcile_snmp_configs(config_dir=d, known_device_ids=[])
+
+    assert removed == []
+    assert kept == 1
+    assert config_path(d, DEV).exists()

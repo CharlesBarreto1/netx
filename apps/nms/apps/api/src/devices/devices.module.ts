@@ -4,6 +4,7 @@ import { DevicesService } from './devices.service.js';
 import { CredentialsService } from './credentials.service.js';
 import { ConnectivityService } from './connectivity.service.js';
 import { SnmpConfigService } from './snmp-config.service.js';
+import { SnmpConfigReconciler } from './snmp-config.reconciler.js';
 import { DiscoveryService } from './discovery.service.js';
 
 @Module({
@@ -13,6 +14,7 @@ import { DiscoveryService } from './discovery.service.js';
     CredentialsService,
     ConnectivityService,
     SnmpConfigService,
+    SnmpConfigReconciler,
     DiscoveryService,
   ],
   exports: [DevicesService],

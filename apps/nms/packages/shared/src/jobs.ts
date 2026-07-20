@@ -166,6 +166,20 @@ export const NetworkTestJobSchema = DeviceJobBaseSchema.extend({
   }),
 });
 
+/**
+ * Manutenção do coletor — varre o `telegraf.d` e apaga os perfis SNMP cujo device não
+ * existe mais no banco. Cobre o que já vazou: device removido enquanto o gateway estava
+ * fora, ou instalado antes de o delete passar a limpar o perfil. Não é amarrado a um
+ * device — `deviceId` é o nil-uuid sentinela, como no `network-test` com source='host'.
+ */
+export const ReconcileSnmpConfigsJobSchema = DeviceJobBaseSchema.extend({
+  kind: z.literal('reconcile-snmp-configs'),
+  params: z.object({
+    /** Devices que EXISTEM no banco. Todo perfil fora desta lista é órfão e some. */
+    knownDeviceIds: z.array(z.string().uuid()),
+  }),
+});
+
 /** União discriminada de todos os tipos de job. Novos pilares adicionam membros aqui. */
 export const DeviceJobSchema = z.discriminatedUnion('kind', [
   ConnectivityTestJobSchema,
@@ -176,6 +190,7 @@ export const DeviceJobSchema = z.discriminatedUnion('kind', [
   NetworkTestJobSchema,
   ApplyConfigJobSchema,
   ConfirmCommitJobSchema,
+  ReconcileSnmpConfigsJobSchema,
 ]);
 
 /** Kinds inerentemente de ESCRITA — exigem approvedBy mesmo se accessMode vier 'read'. */
@@ -217,6 +232,13 @@ export const SyncSnmpConfigResultSchema = z.object({
   kind: z.literal('sync-snmp-config'),
   action: z.enum(['written', 'removed', 'noop']),
   file: z.string().nullable(),
+});
+
+/** Resultado da varredura: quais perfis órfãos sumiram e quantos ficaram de pé. */
+export const ReconcileSnmpConfigsResultSchema = z.object({
+  kind: z.literal('reconcile-snmp-configs'),
+  removed: z.array(z.string()),
+  kept: z.number().int().nonnegative(),
 });
 
 export const RunPlaybookResultSchema = z.object({
@@ -287,6 +309,7 @@ export const DeviceJobResultSchema = z.object({
       NetworkTestResultSchema,
       ApplyConfigResultSchema,
       ConfirmCommitResultSchema,
+      ReconcileSnmpConfigsResultSchema,
     ])
     .optional(),
   error: z.string().optional(),

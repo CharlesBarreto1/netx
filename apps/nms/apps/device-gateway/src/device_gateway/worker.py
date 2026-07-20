@@ -54,6 +54,8 @@ async def process_job(
         result_data = _handle_store_credential(data, crypto)
     elif kind == "sync-snmp-config":
         result_data = _handle_sync_snmp_config(data, crypto, telegraf_dir)
+    elif kind == "reconcile-snmp-configs":
+        result_data = _handle_reconcile_snmp_configs(data, telegraf_dir)
     elif kind == "run-playbook":
         result_data = await _handle_run_playbook(data, crypto)
     elif kind == "backup-config":
@@ -276,6 +278,17 @@ def _handle_sync_snmp_config(
         vendor=params.get("vendor"),
     )
     return {"kind": "sync-snmp-config", "action": "written", "file": path}
+
+
+def _handle_reconcile_snmp_configs(job: dict[str, Any], telegraf_dir: str) -> dict[str, Any]:
+    """Apaga perfis SNMP de devices que sumiram do banco (poll órfão + community vazada)."""
+    from .telegraf_snmp import reconcile_snmp_configs
+
+    known = job["params"]["knownDeviceIds"]
+    removed, kept = reconcile_snmp_configs(config_dir=telegraf_dir, known_device_ids=known)
+    if removed:
+        log.info("snmp_config_orphans_removed", count=len(removed), device_ids=removed)
+    return {"kind": "reconcile-snmp-configs", "removed": removed, "kept": kept}
 
 
 def build_worker(settings: Settings) -> Worker:

@@ -17,9 +17,13 @@ O `metrics.service.ts` lê a tabela certa conforme o vendor do device.
 
 from __future__ import annotations
 
+import re
+from collections.abc import Iterable
 from pathlib import Path
 
 _HEADER = "# GERADO pelo device-gateway (ADR 0003) — NÃO editar à mão.\n"
+
+_UUID_RE = re.compile(r"[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 
 
 def config_path(config_dir: str, device_id: str) -> Path:
@@ -353,3 +357,36 @@ def remove_snmp_config(*, config_dir: str, device_id: str) -> bool:
         path.unlink()
         return True
     return False
+
+
+def list_config_device_ids(*, config_dir: str) -> list[str]:
+    """device_ids com perfil materializado (deduz do nome `snmp-<device_id>.conf`).
+
+    Só reconhece nome de UUID: `write_snmp_config` nunca gera outra coisa, e qualquer
+    `snmp-*.conf` posto à mão no telegraf.d não é nosso para varrer.
+    """
+    directory = Path(config_dir)
+    if not directory.is_dir():
+        return []
+    prefix = len("snmp-")
+    ids = (p.stem[prefix:] for p in directory.glob("snmp-*.conf"))
+    return sorted(i for i in ids if _UUID_RE.fullmatch(i))
+
+
+def reconcile_snmp_configs(
+    *, config_dir: str, known_device_ids: Iterable[str]
+) -> tuple[list[str], int]:
+    """Apaga os perfis cujo device não existe mais no banco. Devolve (removidos, mantidos).
+
+    Guarda deliberada: lista de devices conhecidos VAZIA não apaga nada. O delete de
+    device já limpa o próprio perfil, então uma lista vazia aqui é quase sempre falha
+    de leitura do banco — e apagar tudo pararia a coleta do parque inteiro.
+    """
+    known = set(known_device_ids)
+    present = list_config_device_ids(config_dir=config_dir)
+    if not known:
+        return [], len(present)
+    orphans = [device_id for device_id in present if device_id not in known]
+    for device_id in orphans:
+        config_path(config_dir, device_id).unlink(missing_ok=True)
+    return orphans, len(present) - len(orphans)

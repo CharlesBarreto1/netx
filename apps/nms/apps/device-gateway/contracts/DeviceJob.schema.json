@@ -591,6 +591,58 @@
             "params"
           ],
           "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "jobId": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/jobId"
+            },
+            "deviceId": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/deviceId"
+            },
+            "requestedBy": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/requestedBy"
+            },
+            "requestedAt": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/requestedAt"
+            },
+            "accessMode": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/accessMode"
+            },
+            "approvedBy": {
+              "$ref": "#/definitions/DeviceJob/anyOf/0/properties/approvedBy"
+            },
+            "kind": {
+              "type": "string",
+              "const": "reconcile-snmp-configs"
+            },
+            "params": {
+              "type": "object",
+              "properties": {
+                "knownDeviceIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                }
+              },
+              "required": [
+                "knownDeviceIds"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "jobId",
+            "deviceId",
+            "requestedBy",
+            "requestedAt",
+            "kind",
+            "params"
+          ],
+          "additionalProperties": false
         }
       ]
     }

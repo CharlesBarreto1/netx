@@ -3,6 +3,7 @@ import type { Device } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { EventPublisherService } from '../events/event-publisher.service.js';
+import { SnmpConfigService } from './snmp-config.service.js';
 import type { CreateDeviceDto, UpdateDeviceDto, UpsertFromCoreDto } from './device.dto.js';
 
 @Injectable()
@@ -11,6 +12,7 @@ export class DevicesService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly events: EventPublisherService,
+    private readonly snmpConfig: SnmpConfigService,
   ) {}
 
   findAll(): Promise<Device[]> {
@@ -140,7 +142,7 @@ export class DevicesService {
   }
 
   async remove(id: string, actor: string): Promise<void> {
-    await this.findOne(id);
+    const device = await this.findOne(id);
     // Audita ANTES de deletar: o FK de AuditLog.deviceId vira null no delete (onDelete:SetNull),
     // por isso guardamos o id também no diff para não perder o rastro.
     await this.audit.record({
@@ -151,5 +153,10 @@ export class DevicesService {
       result: 'ok',
     });
     await this.prisma.device.delete({ where: { id } });
+    // Sem isto o perfil sobrevive em telegraf.d e o Telegraf segue pollando o IP para
+    // sempre — com a community antiga em claro. Depois do delete (só limpa o que de fato
+    // sumiu) e tolerante a falha (gateway fora do ar não pode travar a remoção); o que
+    // escapar é varrido pelo SnmpConfigReconciler no próximo boot.
+    await this.snmpConfig.removeDeviceQuietly(id, device.mgmtIp, actor);
   }
 }
