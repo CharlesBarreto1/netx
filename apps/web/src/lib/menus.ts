@@ -159,6 +159,10 @@ export const MENU_GROUPS: MenuGroup[] = [
     labelKey: 'group.nms',
     requiredModules: ['netx-nms'],
     items: [
+      // Painel primeiro: é a tela de plantão do NOC, o ponto de entrada
+      // natural do módulo. Serve o Core (/v1/nms-dashboard), não o NMS, porque
+      // agrega PPPoE/óptica/OLTs que só existem no banco do Core.
+      { key: 'nmsDashboard', href: '/nms/dashboard', labelKey: 'nmsDashboard', permission: 'network.read' },
       { key: 'nmsDevices', href: '/nms/devices', labelKey: 'nmsDevices', requiredModules: ['netx-nms'] },
     ],
   },

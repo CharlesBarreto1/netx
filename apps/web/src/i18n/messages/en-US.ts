@@ -746,6 +746,7 @@ const messages = {
     hrPayroll: 'Payroll',
     hrPosts: 'News',
     hrReports: 'HR reports',
+    nmsDashboard: 'NOC dashboard',
     nmsDevices: 'Routers',
     meHome: 'Home',
     meTimeclock: 'My timeclock',

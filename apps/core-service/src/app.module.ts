@@ -30,6 +30,7 @@ import { IdempotencyModule } from './common/idempotency.module';
 import { MobileModule } from './modules/mobile/mobile.module';
 import { ProvisioningModule } from './modules/provisioning/provisioning.module';
 import { AlarmsModule } from './modules/alarms/alarms.module';
+import { NmsDashboardModule } from './modules/nms-dashboard/nms-dashboard.module';
 import { AiModule } from './modules/ai/ai.module';
 import { CopilotModule } from './modules/copilot/copilot.module';
 import { RadiusModule } from './modules/radius/radius.module';
@@ -130,6 +131,7 @@ import { FieldModule } from './modules/field/field.module';
     UfinetModule,
     ProvisioningModule,
     AlarmsModule,
+    NmsDashboardModule,
     AiModule,
     CopilotModule,
     MobileModule,

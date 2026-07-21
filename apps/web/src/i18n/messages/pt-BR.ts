@@ -756,6 +756,7 @@ const messages = {
     hrPayroll: 'Folha de pagamento',
     hrPosts: 'Notícias',
     hrReports: 'Relatórios RH',
+    nmsDashboard: 'Painel do NOC',
     nmsDevices: 'Roteadores',
     meHome: 'Início',
     meTimeclock: 'Meu ponto',

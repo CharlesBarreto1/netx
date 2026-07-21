@@ -193,6 +193,8 @@ const ICON_BY_KEY: Record<string, ComponentType<{ className?: string }>> = {
   techNetworkPlant: Cable, // sub-árvore
   provisioningPending: Hourglass,
   olts: Server,
+  nmsDashboard: Gauge,
+  nmsDevices: Router,
   tr069Dashboard: Gauge,
   tr069Devices: Router,
   tr069Alerts: BellRing,

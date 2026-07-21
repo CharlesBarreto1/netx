@@ -26,6 +26,9 @@ import { IncidentCorrelator } from './incident-correlator.service';
     IncidentAiService,
     AlarmNotifier,
   ],
-  exports: [IncidentCorrelator, AlarmStream],
+  // AlarmsService sai pro NmsDashboardModule reusar `getPolicy` — os limiares
+  // ópticos (rxLow/rxHigh) precisam ser os MESMOS nos dois lugares, senão o
+  // painel e a central de alarmes discordam sobre o que é sinal ruim.
+  exports: [IncidentCorrelator, AlarmStream, AlarmsService],
 })
 export class AlarmsModule {}

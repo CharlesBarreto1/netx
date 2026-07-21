@@ -223,6 +223,9 @@ model Tenant {
   ipamCgnatPlans       IpamCgnatPlan[]
   ipamCgnatEntries     IpamCgnatEntry[]
 
+  // NMS (série temporal do painel — baseline dos alarmes de tendência)
+  networkSnapshots     NetworkSnapshot[]
+
   @@index([status])
   @@index([country])
   @@map("tenants")
@@ -1755,6 +1758,57 @@ model RadiusEvent {
   @@index([tenantId, contractId, createdAt])
   @@index([tenantId, status])
   @@map("radius_events")
+}
+
+// =============================================================================
+// NETWORK SNAPSHOT — série temporal do painel do NMS
+// =============================================================================
+// Amostra periódica de "como a rede estava" — sessões PPPoE/IPoE ativas e
+// tráfego agregado. Existe porque o painel precisa comparar o AGORA com um
+// baseline: sem histórico, "caiu vários PPPoE" e "queda/subida brusca de
+// tráfego" são indetectáveis (só dá pra mostrar o número atual).
+//
+// POR QUE NO CORE E NÃO NO NMS: a contagem de sessões só existe em
+// `radius.radacct`, que é banco do Core. O NMS não coleta PPPoE por nenhum
+// caminho — não há OID de sessão nos perfis SNMP do Telegraf nem suporte nos
+// drivers (mikrotik/juniper/cisco). Coletar do lado do NMS renderia um painel
+// vazio. O tráfego agregado vem do NMS via HTTP (mesma ponte do
+// NmsSyncService) e é carimbado aqui junto, pra que os dois sinais partilhem o
+// mesmo eixo de tempo — comparar séries de bancos diferentes com relógios
+// diferentes é o que faria o alarme disparar errado.
+//
+// Postgres puro, sem hypertable: o Core não tem a extensão TimescaleDB. O
+// volume é baixo por construção (1 linha por tenant a cada poucos minutos) e a
+// retenção poda o que passa da janela — ver NetworkSnapshotService.
+model NetworkSnapshot {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+
+  // Sessões RADIUS ativas (acctstoptime IS NULL) no instante da amostra.
+  activeSessions Int      @map("active_sessions")
+  // Contratos ACTIVE no mesmo instante — o denominador. Guardado junto porque
+  // muda com o tempo: sem ele, não dá pra distinguir "caíram 200 sessões" de
+  // "cancelaram 200 contratos" ao reler o histórico.
+  activeContracts Int     @map("active_contracts")
+
+  // Tráfego agregado da frota (bits/s) lido do NMS. Null quando o módulo
+  // netx-nms não está licenciado ou a coleta falhou — o alarme de tráfego
+  // simplesmente não avalia, em vez de tratar ausência como queda a zero.
+  totalInBps     BigInt?  @map("total_in_bps")
+  totalOutBps    BigInt?  @map("total_out_bps")
+
+  // Frota no instante da amostra (contexto pro painel e pra correlação:
+  // queda de sessões COM device offline é outra história que sem).
+  devicesOnline  Int?     @map("devices_online")
+  devicesTotal   Int?     @map("devices_total")
+
+  at             DateTime @default(now())
+
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Índice da leitura quente do painel: "últimas N amostras deste tenant".
+  @@index([tenantId, at])
+  @@map("network_snapshots")
 }
 
 // =============================================================================
