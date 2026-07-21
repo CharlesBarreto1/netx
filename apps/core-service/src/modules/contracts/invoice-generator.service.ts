@@ -275,7 +275,85 @@ export class InvoiceGeneratorService {
         `Geradas ${created} faturas futuras (lead=${InvoiceGeneratorService.LEAD_DAYS}d)`,
       );
     }
+    await this.warnUnbilledCycles(contracts, now);
     return created;
+  }
+
+  /**
+   * Alerta contratos que estão consumindo serviço sem fatura correspondente.
+   *
+   * O gerador confia em `prepaidUntil` como próximo vencimento. Se esse campo
+   * for adiantado sem que a fatura do ciclo tenha nascido, o mês é pulado em
+   * silêncio — o `continue` da janela LEAD_DAYS não distingue "ainda não
+   * chegou a hora" de "já passou e ninguém cobrou". Foi assim que a coorte de
+   * 19/06/2026 ficou sem a fatura de julho: um bug de pagamento (corrigido em
+   * b8c6f55) empurrou prepaidUntil 1 mês além, e o buraco só apareceu quando
+   * o cliente foi pagar no balcão.
+   *
+   * Aqui não corrigimos nada — só tornamos o buraco visível, porque o custo de
+   * uma cobrança perdida é assimétrico e o skip original não deixa rastro.
+   */
+  private async warnUnbilledCycles(contracts: Contract[], now: Date): Promise<void> {
+    const today = utcMidnight(now);
+    const prepaid = contracts.filter(
+      (c) => c.paymentMode === PaymentMode.PREPAID && c.prepaidUntil !== null,
+    );
+
+    const gaps: string[] = [];
+    if (prepaid.length > 0) {
+      // Cobertura real = maior periodEnd entre faturas cobráveis e não
+      // canceladas. Não dá pra reusar `c.invoices` do batch: ele traz só a
+      // última por dueDate e inclui CANCELLED, que mascararia justamente o
+      // buraco que procuramos.
+      const coverage = await this.prisma.contractInvoice.groupBy({
+        by: ['contractId'],
+        where: {
+          contractId: { in: prepaid.map((c) => c.id) },
+          kind: { in: [InvoiceKind.INITIAL, InvoiceKind.REGULAR] },
+          status: { not: InvoiceStatus.CANCELLED },
+        },
+        _max: { periodEnd: true },
+      });
+      const coveredUntilByContract = new Map(
+        coverage.map((row) => [row.contractId, row._max.periodEnd]),
+      );
+
+      for (const c of prepaid) {
+        const coveredUntil = coveredUntilByContract.get(c.id);
+        if (!coveredUntil) continue;
+        // prepaidUntil à frente da cobertura = ciclo creditado mas nunca faturado.
+        if (utcMidnight(c.prepaidUntil!) <= utcMidnight(coveredUntil)) continue;
+
+        gaps.push(
+          `${c.id} (prepaidUntil=${c.prepaidUntil!.toISOString().slice(0, 10)} > ` +
+            `últimoPeriodEnd=${coveredUntil.toISOString().slice(0, 10)})`,
+        );
+      }
+    }
+
+    // Vencido e sem nada em aberto: ninguém vai cobrar esse ciclo.
+    const staleUnbilled = await this.prisma.contract.count({
+      where: {
+        status: 'ACTIVE',
+        deletedAt: null,
+        paymentMode: PaymentMode.PREPAID,
+        prepaidUntil: { lt: today },
+        invoices: { none: { status: { in: [InvoiceStatus.OPEN, InvoiceStatus.OVERDUE] } } },
+      },
+    });
+
+    if (gaps.length > 0) {
+      this.logger.error(
+        `[generateUpcoming] ${gaps.length} contrato(s) PREPAID com ciclo não ` +
+          `faturado — receita em risco: ${gaps.join(', ')}`,
+      );
+    }
+    if (staleUnbilled > 0) {
+      this.logger.error(
+        `[generateUpcoming] ${staleUnbilled} contrato(s) PREPAID ativo(s) com ` +
+          `prepaidUntil vencido e nenhuma fatura em aberto`,
+      );
+    }
   }
 }
 
