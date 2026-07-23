@@ -230,7 +230,11 @@ export class OltDiscoveryService {
               codigo,
               servicoId,
               status,
-              cancelled: cancelado === 'sim' || /cancel/i.test(status),
+              // "cancelado" é do STATUS do serviço, NÃO da página de varredura: a
+              // lista cancelado=sim traz clientes com ALGUM serviço cancelado, mas
+              // o serviço específico desta ONT pode estar habilitado. A verdade é
+              // o status_prefixo (servico_cancelado/desativado).
+              cancelled: this.isCancelledStatus(status),
               rawSerial: this.str(svc.phy_addr),
               source: 'SERVICO',
             };
@@ -272,7 +276,7 @@ export class OltDiscoveryService {
             codigo,
             servicoId,
             status,
-            cancelled: /cancel/i.test(status),
+            cancelled: this.isCancelledStatus(status),
             rawSerial: serial,
             source: 'CPE',
           };
@@ -592,7 +596,7 @@ export class OltDiscoveryService {
             const servicoId = this.str(svc.id_cliente_servico);
             if (!login || !servicoId) continue;
             const status = this.str(svc.status_prefixo || svc.status);
-            index.set(login, { codigo, servicoId, status, cancelled: cancelado === 'sim' || /cancel/i.test(status) });
+            index.set(login, { codigo, servicoId, status, cancelled: this.isCancelledStatus(status) });
           }
         }
         if (clientes.length < PAGE) break;
@@ -604,6 +608,20 @@ export class OltDiscoveryService {
 
   private normLogin(v: unknown): string {
     return this.str(v).toLowerCase();
+  }
+
+  /**
+   * Um serviço está cancelado SÓ pelo seu status_prefixo (servico_cancelado/
+   * desativado) — NÃO por ter vindo da varredura cancelado=sim (essa lista traz
+   * clientes com ALGUM serviço cancelado; o serviço específico pode estar
+   * habilitado). `servico_habilitado`/`servico_bloqueado`/`suspenso` NÃO são
+   * cancelado. Isso corrige falsos CANCELLED_OWNER (ex. clientes 748, 773).
+   */
+  private isCancelledStatus(status: string): boolean {
+    const t = this.str(status).toLowerCase();
+    // servico_cancelado / servico_desabilitado_definitivo → cancelado.
+    // servico_habilitado / servico_bloqueado / suspenso → NÃO.
+    return /cancel|desabilitado_defin|desativad/.test(t);
   }
 
   /** Código do cliente a partir de um serviço de CPE (id_cliente direto ou do
