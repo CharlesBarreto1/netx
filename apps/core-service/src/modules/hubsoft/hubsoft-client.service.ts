@@ -14,6 +14,7 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import type {
   HubsoftCliente,
+  HubsoftCpe,
   HubsoftFatura,
   HubsoftProdutoVinculo,
   HubsoftResolvedConfig,
@@ -318,5 +319,25 @@ export class HubsoftClientService {
       )}?pagina=0&itens_por_pagina=100`,
     );
     return this.pickArray(json, ['produto_vinculo', 'vinculos', 'produtos']) as HubsoftProdutoVinculo[];
+  }
+
+  /**
+   * GET /api/v1/integracao/rede/cpe/todos — CPEs (ONTs) gerenciadas pelo ACS do
+   * Hubsoft, paginado. FONTE IMPORTANTE: cada CPE traz `phy_addr` (serial) e
+   * `servicos[]` com {id_cliente, cliente, login, id_cliente_servico, status}.
+   * Cobre clientes que o /cliente/todos OMITE (bug confirmado — /todos retorna
+   * menos clientes do que total_registros). `itens_por_pagina` mínimo 20.
+   */
+  async getCpesTodos(
+    cfg: HubsoftResolvedConfig,
+    params: { pagina: number; itensPorPagina?: number } = { pagina: 1 },
+  ): Promise<HubsoftCpe[]> {
+    const itens = Math.max(20, params.itensPorPagina ?? 500);
+    const json = await this.get(
+      cfg,
+      `/api/v1/integracao/rede/cpe/todos${this.qs({ pagina: params.pagina, itens_por_pagina: itens })}`,
+      BULK_TIMEOUT_MS,
+    );
+    return this.pickArray(json, ['cpes']) as HubsoftCpe[];
   }
 }

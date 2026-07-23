@@ -42,6 +42,7 @@ interface HubRef {
   status: string;
   cancelled: boolean;
   rawSerial: string;
+  source: 'SERVICO' | 'CPE';
 }
 
 /** Um sinal de dono coletado de uma fonte, para uma ONT. */
@@ -231,6 +232,7 @@ export class OltDiscoveryService {
               status,
               cancelled: cancelado === 'sim' || /cancel/i.test(status),
               rawSerial: this.str(svc.phy_addr),
+              source: 'SERVICO',
             };
             for (const k of ontSerialKeys(this.str(svc.phy_addr))) addKey(k, ref);
             const mac = this.macCanonical(svc.mac_addr);
@@ -241,7 +243,46 @@ export class OltDiscoveryService {
         pagina += 1;
       }
     }
-    this.logger.log(`[olt-reconcile] índice do serviço: ${index.size} chaves`);
+    const svcKeys = index.size;
+
+    // ── 1b) Índice do CPE (/rede/cpe/todos) — PREENCHE OS BURACOS do serviço ────
+    // O /cliente/todos do Hubsoft OMITE clientes (retorna menos do que
+    // total_registros; ex.: cliente 340 com serviço habilitado não aparece). O
+    // CPE gerenciado pelo ACS traz phy_addr(serial) + servicos[] com o dono, e
+    // cobre esses omitidos. Marcamos a fonte com um flag no ref (fromCpe) para
+    // a nota da reconciliação.
+    let cpePag = 1;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const cpes = await this.hubsoftClient.getCpesTodos(cfg, { pagina: cpePag, itensPorPagina: 500 });
+      if (cpes.length === 0) break;
+      for (const cpe of cpes) {
+        const serial = this.str(cpe.phy_addr);
+        if (!serial) continue;
+        for (const s of cpe.servicos ?? []) {
+          const servicoId = this.str(s.id_cliente_servico);
+          if (!servicoId) continue;
+          // código do cliente: vem em id_cliente OU no rótulo "(340) NOME - (INATIVO)".
+          const codigo = this.codigoFromCpeServico(s);
+          const status = this.str(s.status);
+          // "(INATIVO)" no rótulo = cliente inativo (contrato vencido) — não é
+          // cancelamento do serviço, mas sinaliza atenção. cancelled só se o
+          // status do serviço disser cancelado.
+          const ref: HubRef = {
+            codigo,
+            servicoId,
+            status,
+            cancelled: /cancel/i.test(status),
+            rawSerial: serial,
+            source: 'CPE',
+          };
+          for (const k of ontSerialKeys(serial)) addKey(k, ref);
+        }
+      }
+      if (cpes.length < 500) break;
+      cpePag += 1;
+    }
+    this.logger.log(`[olt-reconcile] índice: ${svcKeys} chaves do serviço + CPE → ${index.size} total`);
 
     // ── 2) Reconcilia cada ONT descoberta pendente ────────────────────────────
     const pend = await this.prisma.discoveredOnt.findMany({
@@ -289,13 +330,18 @@ export class OltDiscoveryService {
   ): Promise<void> {
     const signals: OntSignal[] = [];
 
-    // Fonte SERVICO (do índice): por qualquer forma do serial ou pelo MAC.
-    const svcRefs = new Map<string, HubRef>();
-    for (const k of ontSerialKeys(ont.serial)) for (const r of index.get(k) ?? []) svcRefs.set(r.servicoId, r);
+    // Fontes SERVICO e CPE (do índice): por qualquer forma do serial ou pelo MAC.
+    // Um serviço pode ter vindo de ambas — mantém a de maior confiança (SERVICO).
+    const refs = new Map<string, HubRef>();
+    const merge = (r: HubRef) => {
+      const cur = refs.get(r.servicoId);
+      if (!cur || (cur.source === 'CPE' && r.source === 'SERVICO')) refs.set(r.servicoId, r);
+    };
+    for (const k of ontSerialKeys(ont.serial)) for (const r of index.get(k) ?? []) merge(r);
     const ontMac = this.macCanonical(ont.macAddress);
-    if (ontMac) for (const r of index.get('MAC:' + ontMac) ?? []) svcRefs.set(r.servicoId, r);
-    for (const r of svcRefs.values()) {
-      signals.push({ source: 'SERVICO', codigo: r.codigo, servicoId: r.servicoId, status: r.status, cancelled: r.cancelled, rawSerial: r.rawSerial });
+    if (ontMac) for (const r of index.get('MAC:' + ontMac) ?? []) merge(r);
+    for (const r of refs.values()) {
+      signals.push({ source: r.source, codigo: r.codigo, servicoId: r.servicoId, status: r.status, cancelled: r.cancelled, rawSerial: r.rawSerial });
     }
 
     // Fonte COMODATO — só se o serviço NÃO resolveu (evita N chamadas). O
@@ -406,8 +452,29 @@ export class OltDiscoveryService {
   async reconcilePppoe(
     tenantId: string,
     opts: { limit?: number } = {},
-  ): Promise<{ processed: number; captured: number; matched: number; noLogin: number; skipped: number }> {
+  ): Promise<{ enqueued: number; processed: number; captured: number; matched: number; noLogin: number; skipped: number }> {
     const cfg = await this.hubsoftConfig.resolve(tenantId);
+
+    // 0) Garante que todo device adotado com snapshot tenha um GetParams de PPPoE
+    //    (deriva o path do snapshot). Cobre devices adotados antes desta lógica.
+    let enqueued = 0;
+    const adopted = await this.prisma.tr069Device.findMany({
+      where: { tenantId, ontId: { not: null } },
+      select: { id: true, deviceId: true, manufacturer: true, parametersSnapshot: true, tasks: { where: { action: 'GET_PARAMS', status: 'DONE' }, select: { id: true }, take: 1 } },
+      take: 2000,
+    });
+    for (const d of adopted) {
+      if (d.tasks.length > 0) continue; // já tem GetParams concluído
+      const paths = this.pppoeUsernamePathsFromSnapshot(d.parametersSnapshot);
+      if (paths.length === 0) continue;
+      // evita duplicar tarefa PENDING de pppoe-discovery
+      const pending = await this.prisma.tr069Task.count({ where: { deviceId: d.id, action: 'GET_PARAMS', status: 'PENDING' } });
+      if (pending > 0) continue;
+      await this.prisma.tr069Task.create({
+        data: { tenantId, deviceId: d.id, action: 'GET_PARAMS', status: 'PENDING', payload: { names: paths, purpose: 'pppoe-discovery' } as object },
+      });
+      enqueued += 1;
+    }
 
     // Tasks de PPPoE-discovery concluídas com resultado, ainda não consumidas.
     const tasks = await this.prisma.tr069Task.findMany({
@@ -421,7 +488,7 @@ export class OltDiscoveryService {
       include: { device: { select: { ont: { select: { snGpon: true } } } } },
     });
 
-    const res = { processed: 0, captured: 0, matched: 0, noLogin: 0, skipped: 0 };
+    const res = { enqueued, processed: 0, captured: 0, matched: 0, noLogin: 0, skipped: 0 };
     // Filtra só as de PPPoE-discovery com Username no resultado.
     const withPppoe: Array<{ taskId: string; serial: string; login: string; result: unknown }> = [];
     for (const t of tasks) {
@@ -537,6 +604,14 @@ export class OltDiscoveryService {
 
   private normLogin(v: unknown): string {
     return this.str(v).toLowerCase();
+  }
+
+  /** Código do cliente a partir de um serviço de CPE (id_cliente direto ou do
+   *  rótulo "(340) NOME - (INATIVO)"). Prefere o código entre parênteses. */
+  private codigoFromCpeServico(s: { id_cliente?: number | string; cliente?: string }): string {
+    const m = this.str(s.cliente).match(/\((\d+)\)/);
+    if (m) return m[1];
+    return this.str(s.id_cliente);
   }
 
   /** Recarrega os sinais de uma ONT do banco e re-decide o estado/dono. */
@@ -779,8 +854,9 @@ export class OltDiscoveryService {
     await this.prisma.tr069PendingDevice.delete({ where: { id: pend.id } }).catch(() => undefined);
     this.logger.log(`[tr069-adopt] ONT ${ont.snGpon} adotou device pendente ${pend.deviceId}`);
 
-    // Enfileira GetParams do PPPoE username — o path depende do vendor.
-    await this.enqueuePppoeGetParams(tenantId, device.id, pend.manufacturer, pend.deviceId).catch((e) =>
+    // Enfileira GetParams do PPPoE username — deriva o path do próprio snapshot
+    // que a ONT já mandou (à prova de vendor).
+    await this.enqueuePppoeGetParams(tenantId, device.id, pend.manufacturer, pend.deviceId, pend.parametersSnapshot).catch((e) =>
       this.logger.warn(`[tr069-adopt] GetParams PPPoE ${pend.deviceId}: ${(e as Error).message}`),
     );
   }
@@ -794,23 +870,34 @@ export class OltDiscoveryService {
   }
 
   /**
-   * Enfileira um GET_PARAMS À PROVA DE VENDOR para capturar o PPPoE username.
-   * Em vez de um path específico (que varia por vendor e dá Fault — ex.: a Parks
-   * não está no registry e caía no path Huawei), pede o PREFIXO da subárvore WAN
-   * terminado em `.`: o GetParameterValues do TR-069 retorna TODA a subárvore, de
-   * onde o reconciliador extrai o `...WANPPPConnection.*.Username`. Cobre também o
-   * TR-181 (Device.) — mandamos os dois prefixos raiz. O path do registry, quando
-   * conhecido, entra como dica extra (barato).
+   * Enfileira um GET_PARAMS para capturar o PPPoE username, com o PATH EXATO
+   * derivado do snapshot que a ONT já mandou no Inform (à prova de vendor: nem
+   * todo CPE aceita GetParameterValues por prefixo de subárvore — a Parks
+   * responde Fault 9005 "Invalid parameter name"; e o índice WANConnectionDevice/
+   * WANPPPConnection varia por modelo). Procuramos no snapshot um path
+   * `...WANPPPConnection.N.*` real e pedimos exatamente o `.Username` dele. Só se
+   * o snapshot não revelar nada caímos na dica do registry por vendor.
    */
-  private async enqueuePppoeGetParams(tenantId: string, deviceDbId: string, manufacturer: string | null, deviceId: string): Promise<void> {
-    const names = [
-      'InternetGatewayDevice.WANDevice.', // TR-098 (maioria das ONTs GPON)
-      'Device.PPP.', // TR-181 (data model novo)
-    ];
-    // Dica do registry (se o vendor for conhecido), sem substituir a descoberta.
-    const vendor = vendorFor(manufacturer, deviceId);
-    const hint = provisioningPathsFor(vendor)?.pppoeUsername;
-    if (hint) names.push(hint);
+  private async enqueuePppoeGetParams(
+    tenantId: string,
+    deviceDbId: string,
+    manufacturer: string | null,
+    deviceId: string,
+    snapshot: unknown,
+  ): Promise<void> {
+    const names: string[] = [];
+    const derived = this.pppoeUsernamePathsFromSnapshot(snapshot);
+    names.push(...derived);
+    if (names.length === 0) {
+      // Fallback: dica do registry (path específico do vendor conhecido).
+      const vendor = vendorFor(manufacturer, deviceId);
+      const hint = provisioningPathsFor(vendor)?.pppoeUsername;
+      if (hint) names.push(hint);
+    }
+    if (names.length === 0) {
+      this.logger.warn(`[tr069-adopt] sem path de PPPoE para device=${deviceId} (snapshot sem WANPPPConnection)`);
+      return;
+    }
     await this.prisma.tr069Task.create({
       data: {
         tenantId,
@@ -820,7 +907,25 @@ export class OltDiscoveryService {
         payload: { names, purpose: 'pppoe-discovery' } as object,
       },
     });
-    this.logger.log(`[tr069-adopt] GetParams PPPoE (subárvore WAN) enfileirado para device=${deviceId}`);
+    this.logger.log(`[tr069-adopt] GetParams PPPoE enfileirado (paths=${names.length}) para device=${deviceId}`);
+  }
+
+  /**
+   * Deriva os paths de `...WANPPPConnection.N.Username` a partir das CHAVES do
+   * snapshot do Inform. Ex.: se o snapshot tem
+   * `InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.MACAddress`,
+   * o path do Username é o mesmo prefixo + `.Username`.
+   */
+  private pppoeUsernamePathsFromSnapshot(snapshot: unknown): string[] {
+    if (!snapshot || typeof snapshot !== 'object') return [];
+    const prefixes = new Set<string>();
+    const re = /^(.*WANPPPConnection\.\d+)\./i;
+    const reTr181 = /^(.*\.PPP\.Interface\.\d+)\./i;
+    for (const key of Object.keys(snapshot as Record<string, unknown>)) {
+      const m = re.exec(key) ?? reTr181.exec(key);
+      if (m) prefixes.add(m[1]);
+    }
+    return [...prefixes].map((p) => `${p}.Username`);
   }
 
   /**

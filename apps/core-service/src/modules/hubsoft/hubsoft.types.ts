@@ -96,6 +96,26 @@ export interface HubsoftProdutoVinculo {
   patrimonios?: HubsoftPatrimonio[];
 }
 
+// -----------------------------------------------------------------------------
+// CPE — GET /api/v1/integracao/rede/cpe/todos
+// A ONT gerenciada pelo ACS: phy_addr (serial) + servicos[] com o dono.
+// -----------------------------------------------------------------------------
+export interface HubsoftCpeServico {
+  id_cliente?: number | string;
+  cliente?: string; // "(340) JUNIOR ANDRIOTTI - (INATIVO)"
+  cpf_cnpj?: string;
+  servico?: string;
+  status?: string; // "servico_habilitado" | ...
+  id_cliente_servico?: number | string;
+  login?: string;
+}
+export interface HubsoftCpe {
+  id_cpe?: number | string;
+  phy_addr?: string; // serial da ONT
+  data_ultima_atualizacao?: string;
+  servicos?: HubsoftCpeServico[];
+}
+
 export interface HubsoftPacote {
   id_pacote?: number | string;
   codigo?: string;
