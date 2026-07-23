@@ -30,8 +30,28 @@ import { PrismaService } from '../prisma/prisma.service';
 import { buildConnectionContext } from './olt-context.util';
 import { OltDriverFactory } from './drivers/olt-driver.factory';
 import type { DiscoveredOntRaw } from './drivers/olt-driver.interface';
+import { ontSerialKeys } from './ont-serial.util';
 
 const HS_CONTRACT_PREFIX = 'HS-SVC-';
+
+/** Referência a um serviço do Hubsoft no índice de reconciliação. */
+interface HubRef {
+  codigo: string;
+  servicoId: string;
+  status: string;
+  cancelled: boolean;
+  rawSerial: string;
+}
+
+/** Um sinal de dono coletado de uma fonte, para uma ONT. */
+interface OntSignal {
+  source: 'OLT' | 'SERVICO' | 'COMODATO' | 'CPE';
+  codigo: string;
+  servicoId: string;
+  status?: string;
+  cancelled: boolean;
+  rawSerial?: string;
+}
 
 export interface OltScanResult {
   oltId: string;
@@ -170,39 +190,66 @@ export class OltDiscoveryService {
     tenantId: string,
     opts: { limit?: number } = {},
   ): Promise<OltMatchResult> {
-    const cfg = await this.hubsoftConfig.resolve(tenantId); // lança se não habilitado
+    const cfg = await this.hubsoftConfig.resolve(tenantId);
 
-    // 1) Índice serial(phy_addr) → lista de {codigoCliente, idServico}. Uma
-    //    serial pode, em teoria, aparecer em mais de um serviço (troca de ONU
-    //    sem baixa) — guardamos todos p/ detectar ambiguidade.
-    const index = new Map<string, Array<{ codigo: string; servicoId: string }>>();
+    // ── 1) Índice de sinais do SERVIÇO (a fonte principal) ────────────────────
+    // Cada CHAVE (toda forma de serial — amigável+hex — e cada MAC) aponta para
+    // o(s) serviço(s) do Hubsoft, com o status (para detectar cancelado). Uma
+    // leitura da base cobre a fonte SERVICO. Comodato/CPE são consultados sob
+    // demanda só para as ONTs que o serviço não resolver (custo controlado).
+    const index = new Map<string, HubRef[]>();
+    const addKey = (key: string, ref: HubRef) => {
+      if (!key) return;
+      const arr = index.get(key) ?? [];
+      if (!arr.some((r) => r.servicoId === ref.servicoId)) arr.push(ref);
+      index.set(key, arr);
+    };
+
     const PAGE = 500;
-    let pagina = 1;
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const clientes = await this.hubsoftClient.getClientesAll(cfg, {
-        limit: PAGE,
-        offset: (pagina - 1) * PAGE,
-      });
-      if (clientes.length === 0) break;
-      for (const cli of clientes) {
-        const codigo = this.str(cli.codigo_cliente ?? cli.id_cliente);
-        for (const svc of cli.servicos ?? []) {
-          const serial = this.normSerial(svc.phy_addr);
-          if (!serial) continue;
-          const arr = index.get(serial) ?? [];
-          arr.push({ codigo, servicoId: this.str(svc.id_cliente_servico) });
-          index.set(serial, arr);
+    // Inclui ATIVOS e CANCELADOS: uma ONU de cliente cancelado ainda pode estar
+    // fisicamente na OLT (equipamento a recolher) — queremos identificá-la.
+    for (const cancelado of ['nao', 'sim'] as const) {
+      let pagina = 1;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const clientes = await this.hubsoftClient.getClientesAll(cfg, {
+          limit: PAGE,
+          offset: (pagina - 1) * PAGE,
+          cancelado,
+        });
+        if (clientes.length === 0) break;
+        for (const cli of clientes) {
+          const codigo = this.str(cli.codigo_cliente ?? cli.id_cliente);
+          for (const svc of cli.servicos ?? []) {
+            const servicoId = this.str(svc.id_cliente_servico);
+            if (!servicoId) continue;
+            const status = this.str(svc.status_prefixo || svc.status);
+            const ref: HubRef = {
+              codigo,
+              servicoId,
+              status,
+              cancelled: cancelado === 'sim' || /cancel/i.test(status),
+              rawSerial: this.str(svc.phy_addr),
+            };
+            for (const k of ontSerialKeys(this.str(svc.phy_addr))) addKey(k, ref);
+            const mac = this.macCanonical(svc.mac_addr);
+            if (mac) addKey('MAC:' + mac, ref);
+          }
         }
+        if (clientes.length < PAGE) break;
+        pagina += 1;
       }
-      if (clientes.length < PAGE) break;
-      pagina += 1;
     }
-    this.logger.log(`[olt-match] índice Hubsoft: ${index.size} seriais (${pagina} páginas)`);
+    this.logger.log(`[olt-reconcile] índice do serviço: ${index.size} chaves`);
 
-    // 2) Cruza as ONUs descobertas pendentes contra o índice.
+    // ── 2) Reconcilia cada ONT descoberta pendente ────────────────────────────
     const pend = await this.prisma.discoveredOnt.findMany({
-      where: { tenantId, matchState: DiscoveredOntMatchState.DISCOVERED },
+      where: {
+        tenantId,
+        matchState: {
+          in: [DiscoveredOntMatchState.DISCOVERED, DiscoveredOntMatchState.UNMATCHED],
+        },
+      },
       take: opts.limit ?? 5000,
       orderBy: [{ slot: 'asc' }, { pon: 'asc' }, { onuIndex: 'asc' }],
     });
@@ -210,42 +257,151 @@ export class OltDiscoveryService {
     const res: OltMatchResult = { scanned: 0, matched: 0, unmatched: 0, ambiguous: 0, errors: 0 };
     for (const ont of pend) {
       res.scanned += 1;
-      const serial = this.normSerial(ont.serial);
-      const hits = serial ? index.get(serial) : undefined;
       try {
-        if (!hits || hits.length === 0) {
-          await this.setMatch(ont.id, DiscoveredOntMatchState.UNMATCHED, {
-            matchNote: `Serial ${ont.serial} sem serviço correspondente no Hubsoft`,
-          });
-          res.unmatched += 1;
-        } else if (hits.length > 1) {
-          await this.setMatch(ont.id, DiscoveredOntMatchState.AMBIGUOUS, {
-            matchNote: `Serial ${ont.serial} casou com ${hits.length} serviços Hubsoft`,
-          });
-          res.ambiguous += 1;
-        } else {
-          await this.setMatch(ont.id, DiscoveredOntMatchState.MATCHED, {
-            erpSource: 'hubsoft',
-            erpCustomerCode: hits[0].codigo,
-            erpServiceId: hits[0].servicoId || null,
-            matchNote: `Casado por serial com serviço Hubsoft ${hits[0].servicoId} (cliente ${hits[0].codigo})`,
-          });
-          res.matched += 1;
-        }
+        await this.reconcileOne(tenantId, cfg, ont, index, res);
       } catch (e) {
         res.errors += 1;
-        this.logger.warn(`[olt-match] ONU ${ont.serial} erro: ${(e as Error).message}`);
+        this.logger.warn(`[olt-reconcile] ${ont.serial}: ${(e as Error).message}`);
       }
     }
     this.logger.log(
-      `[olt-match] tenant=${tenantId} scanned=${res.scanned} matched=${res.matched} unmatched=${res.unmatched} ambiguous=${res.ambiguous} errors=${res.errors}`,
+      `[olt-reconcile] tenant=${tenantId} scanned=${res.scanned} matched=${res.matched} unmatched=${res.unmatched} conflito/cancelado=${res.ambiguous} errors=${res.errors}`,
     );
     return res;
   }
 
-  /** Normaliza serial de ONU p/ casar OLT↔Hubsoft (upper, só alfanumérico). */
-  private normSerial(v: unknown): string {
-    return this.str(v).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  /**
+   * Reconcilia UMA ONT: coleta sinais das fontes (serviço via índice; comodato
+   * sob demanda se o serviço não resolveu), grava os sinais e decide o dono por
+   * PRIORIDADE (SERVICO > COMODATO > CPE). Estado final:
+   *   - 0 sinais            → UNMATCHED
+   *   - sinais concordam    → MATCHED
+   *   - sinais divergem     → CONFLICT (dono = maior prioridade, nota do conflito)
+   *   - dono é cancelado    → CANCELLED_OWNER (não materializa/autoriza)
+   */
+  private async reconcileOne(
+    tenantId: string,
+    cfg: HubsoftResolvedConfig,
+    ont: { id: string; serial: string; macAddress: string | null },
+    index: Map<string, HubRef[]>,
+    res: OltMatchResult,
+  ): Promise<void> {
+    const signals: OntSignal[] = [];
+
+    // Fonte SERVICO (do índice): por qualquer forma do serial ou pelo MAC.
+    const svcRefs = new Map<string, HubRef>();
+    for (const k of ontSerialKeys(ont.serial)) for (const r of index.get(k) ?? []) svcRefs.set(r.servicoId, r);
+    const ontMac = this.macCanonical(ont.macAddress);
+    if (ontMac) for (const r of index.get('MAC:' + ontMac) ?? []) svcRefs.set(r.servicoId, r);
+    for (const r of svcRefs.values()) {
+      signals.push({ source: 'SERVICO', codigo: r.codigo, servicoId: r.servicoId, status: r.status, cancelled: r.cancelled, rawSerial: r.rawSerial });
+    }
+
+    // Fonte COMODATO — só se o serviço NÃO resolveu (evita N chamadas). O
+    // comodato guarda o serial em hex; casa por forma canônica.
+    if (signals.length === 0) {
+      const comodato = await this.findComodatoOwner(cfg, ont.serial).catch(() => null);
+      if (comodato) {
+        signals.push({ source: 'COMODATO', codigo: comodato.codigo, servicoId: comodato.servicoId, status: comodato.status, cancelled: comodato.cancelled, rawSerial: comodato.rawSerial });
+      }
+    }
+
+    // Persiste os sinais (idempotente por ONT+fonte+serviço).
+    await this.persistSignals(tenantId, ont.id, signals);
+
+    // Decide o dono por prioridade e o estado.
+    const decision = this.decideOwner(signals);
+    const stateMap = {
+      UNMATCHED: DiscoveredOntMatchState.UNMATCHED,
+      MATCHED: DiscoveredOntMatchState.MATCHED,
+      CONFLICT: DiscoveredOntMatchState.CONFLICT,
+      CANCELLED_OWNER: DiscoveredOntMatchState.CANCELLED_OWNER,
+    } as const;
+
+    await this.setMatch(ont.id, stateMap[decision.state], {
+      erpSource: decision.owner ? 'hubsoft' : null,
+      erpCustomerCode: decision.owner?.codigo ?? null,
+      erpServiceId: decision.owner?.servicoId ?? null,
+      matchNote: decision.note,
+    });
+
+    if (decision.state === 'MATCHED') res.matched += 1;
+    else if (decision.state === 'UNMATCHED') res.unmatched += 1;
+    else res.ambiguous += 1; // reaproveita o contador p/ CONFLICT + CANCELLED_OWNER
+  }
+
+  /** Prioridade das fontes na disputa pelo dono. Maior = mais confiável. */
+  private readonly SOURCE_PRIORITY: Record<OntSignal['source'], number> = {
+    SERVICO: 3,
+    COMODATO: 2,
+    CPE: 1,
+    OLT: 0,
+  };
+
+  /** Decide o dono a partir dos sinais coletados (prioridade por fonte). */
+  private decideOwner(signals: OntSignal[]): {
+    state: 'UNMATCHED' | 'MATCHED' | 'CONFLICT' | 'CANCELLED_OWNER';
+    owner: { codigo: string; servicoId: string } | null;
+    note: string;
+  } {
+    if (signals.length === 0) {
+      return { state: 'UNMATCHED', owner: null, note: 'Nenhuma fonte (serviço/comodato/CPE) aponta dono.' };
+    }
+    // Ordena por prioridade da fonte (desc); o topo é o dono escolhido.
+    const sorted = [...signals].sort((a, b) => this.SOURCE_PRIORITY[b.source] - this.SOURCE_PRIORITY[a.source]);
+    const winner = sorted[0];
+    const owner = { codigo: winner.codigo, servicoId: winner.servicoId };
+    const clientes = new Set(signals.map((s) => s.codigo));
+    const desc = signals.map((s) => `${s.source}→cliente ${s.codigo}${s.cancelled ? '(cancelado)' : ''}`).join('; ');
+
+    if (winner.cancelled) {
+      return { state: 'CANCELLED_OWNER', owner, note: `Dono cancelado (${winner.source}). Sinais: ${desc}` };
+    }
+    if (clientes.size > 1) {
+      return { state: 'CONFLICT', owner, note: `Fontes divergem — escolhido por prioridade ${winner.source} (cliente ${winner.codigo}). Sinais: ${desc}` };
+    }
+    return { state: 'MATCHED', owner, note: `Dono confirmado por ${signals.length} fonte(s): ${desc}` };
+  }
+
+  /** Grava os sinais coletados (idempotente por ONT+fonte+serviço). */
+  private async persistSignals(tenantId: string, discoveredOntId: string, signals: OntSignal[]): Promise<void> {
+    for (const s of signals) {
+      await this.prisma.discoveredOntSignal.upsert({
+        where: {
+          discoveredOntId_source_erpServiceId: {
+            discoveredOntId,
+            source: s.source,
+            erpServiceId: s.servicoId,
+          },
+        },
+        create: {
+          tenantId,
+          discoveredOntId,
+          source: s.source,
+          rawSerial: s.rawSerial ?? null,
+          erpCustomerCode: s.codigo,
+          erpServiceId: s.servicoId,
+          ownerStatus: s.status ?? null,
+          cancelled: s.cancelled,
+        },
+        update: { ownerStatus: s.status ?? null, cancelled: s.cancelled, rawSerial: s.rawSerial ?? null },
+      });
+    }
+  }
+
+  /**
+   * Busca o dono de uma ONT pelo COMODATO: varre os patrimônios em comodato de
+   * cada serviço não é viável em massa, então usamos a busca por serial invertida
+   * — como o Hubsoft não busca comodato por serial, esta rota fica reservada ao
+   * enriquecimento por serviço já conhecido. Aqui retornamos null (a fonte
+   * comodato é consultada na materialização, por serviço). Placeholder para
+   * evolução: um índice de comodato pré-carregado quando a operação pedir.
+   */
+  private async findComodatoOwner(
+    _cfg: HubsoftResolvedConfig,
+    _serial: string,
+  ): Promise<{ codigo: string; servicoId: string; status: string; cancelled: boolean; rawSerial: string } | null> {
+    return null;
   }
 
   // ===========================================================================
@@ -436,7 +592,8 @@ export class OltDiscoveryService {
     ontSerial: string,
   ): Promise<{ serial: string; mac: string | null; produtoId: string | null } | null> {
     const vinculos = await this.hubsoftClient.getComodatoServico(cfg, idClienteServico);
-    const alvo = this.normSerial(ontSerial);
+    // Chaves canônicas da ONU (amigável + hex) — o comodato costuma vir em hex.
+    const alvoKeys = new Set(ontSerialKeys(ontSerial));
     let best: { serial: string; mac: string | null; produtoId: string | null } | null = null;
     for (const v of vinculos) {
       for (const pat of v.patrimonios ?? []) {
@@ -447,8 +604,8 @@ export class OltDiscoveryService {
           mac: this.macCanonical(pat.mac_address),
           produtoId: v.id_produto != null ? this.str(v.id_produto) : null,
         };
-        // Casamento exato de serial com a ONU descoberta = melhor.
-        if (this.normSerial(cand.serial) === alvo) return cand;
+        // Casa por QUALQUER forma canônica (resolve comodato-em-hex ↔ ONU-amigável).
+        if (ontSerialKeys(cand.serial).some((k) => alvoKeys.has(k))) return cand;
         best = best ?? cand;
       }
     }

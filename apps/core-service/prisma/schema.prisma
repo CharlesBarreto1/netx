@@ -160,6 +160,7 @@ model Tenant {
   olts                 Olt[]
   onts                 Ont[]
   discoveredOnts       DiscoveredOnt[]
+  discoveredOntSignals DiscoveredOntSignal[]
   oltProvisioningProfiles OltProvisioningProfile[]
   alarmEvents          AlarmEvent[]
   incidents            Incident[]
@@ -3996,12 +3997,28 @@ model Ont {
 // → materializa Contract + Ont. Nada de RADIUS automático — a ativação é um
 // passo revisado à parte.
 enum DiscoveredOntMatchState {
-  DISCOVERED   // recém-varrida da OLT, ainda não casada
-  MATCHED      // casada com um serviço/cliente do ERP (ver erpCustomerCode)
-  UNMATCHED    // varrida mas sem correspondência no ERP (MAC não encontrado)
-  AMBIGUOUS    // MAC casou com mais de um cliente — precisa de decisão humana
-  MATERIALIZED // já virou Contract + Ont no NetX
-  IGNORED      // marcada para ignorar (infra, ONU de teste, etc.)
+  DISCOVERED       // recém-varrida da OLT, ainda não reconciliada
+  MATCHED          // dono definido por reconciliação dos sinais (ver erpCustomerCode)
+  UNMATCHED        // varrida mas nenhum sinal (serviço/comodato/CPE) aponta dono
+  AMBIGUOUS        // sinais apontam clientes diferentes — ver signals[] (legado)
+  CONFLICT         // fontes divergem sobre o dono — escolhido por prioridade + nota
+  CANCELLED_OWNER  // dono identificado mas é cliente CANCELADO (ONU a recolher)
+  MATERIALIZED     // já virou Contract + Ont no NetX
+  IGNORED          // marcada para ignorar (infra, ONU de teste, etc.)
+}
+
+// De onde veio um sinal de dono para uma ONT — no Hubsoft a mesma ONT aparece
+// FRAGMENTADA em 3 lugares independentes que ele não reconcilia:
+//   SERVICO  = serial no serviço (provisionamento/OLT) — maior confiança
+//   COMODATO = equipamento em estoque (patrimônio) entregue ao cliente
+//   CPE      = cadastro de CPE no ACS/TR-069
+//   OLT      = o que a própria varredura leu (a identidade física de referência)
+// O NetX cadastra a ONT UMA vez e cruza esses sinais para achar o dono correto.
+enum DiscoveredOntSignalSource {
+  OLT
+  SERVICO
+  COMODATO
+  CPE
 }
 
 model DiscoveredOnt {
@@ -4047,6 +4064,9 @@ model DiscoveredOnt {
 
   tenant       Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   olt          Olt                     @relation(fields: [oltId], references: [id], onDelete: Cascade)
+  // Sinais de dono coletados das fontes do ERP (serviço/comodato/CPE). A ONT é
+  // a entidade única; cada sinal é uma "opinião" de uma fonte sobre quem é o dono.
+  signals      DiscoveredOntSignal[]
 
   // Idempotência da varredura: uma ONU (serial) por OLT.
   @@unique([oltId, serial])
@@ -4054,6 +4074,42 @@ model DiscoveredOnt {
   @@index([tenantId, macAddress])
   @@index([oltId, slot, pon])
   @@map("discovered_onts")
+}
+
+// Um sinal de dono para uma ONT descoberta, vindo de uma das fontes fragmentadas
+// do Hubsoft. Reconciliação tolerante: se as fontes concordam → alta confiança;
+// se só uma aponta → casa com aviso; se divergem → escolhe por prioridade
+// (SERVICO > COMODATO > CPE) e registra o conflito. Nunca quebra por regra rígida.
+model DiscoveredOntSignal {
+  id            String                    @id @default(uuid()) @db.Uuid
+  tenantId      String                    @map("tenant_id") @db.Uuid
+  discoveredOntId String                  @map("discovered_ont_id") @db.Uuid
+
+  source        DiscoveredOntSignalSource
+  // Serial como esta fonte o representa (ex.: comodato traz hex, serviço amigável).
+  // Guardado cru + a forma canônica que casou, para auditoria do "erro humano".
+  rawSerial     String?                   @map("raw_serial") @db.VarChar(64)
+  matchedKey    String?                   @map("matched_key") @db.VarChar(64)
+  macAddress    String?                   @map("mac_address") @db.VarChar(17)
+
+  // Dono que esta fonte aponta (código do cliente + id do serviço no ERP).
+  erpCustomerCode String?                 @map("erp_customer_code") @db.VarChar(64)
+  erpServiceId    String?                 @map("erp_service_id") @db.VarChar(64)
+  // Status do serviço/dono nessa fonte (ex.: "servico_habilitado", "cancelado").
+  ownerStatus     String?                 @map("owner_status") @db.VarChar(32)
+  // true se o dono apontado por esta fonte está cancelado (ONU a recolher).
+  cancelled       Boolean                 @default(false)
+  detail          String?                 @db.VarChar(500)
+
+  createdAt     DateTime                  @default(now()) @map("created_at")
+
+  tenant        Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  discoveredOnt DiscoveredOnt             @relation(fields: [discoveredOntId], references: [id], onDelete: Cascade)
+
+  // Um sinal por (ONT, fonte, serviço apontado) — re-reconciliar não duplica.
+  @@unique([discoveredOntId, source, erpServiceId])
+  @@index([tenantId, erpCustomerCode])
+  @@map("discovered_ont_signals")
 }
 
 // =============================================================================
