@@ -46,7 +46,7 @@ interface HubRef {
 
 /** Um sinal de dono coletado de uma fonte, para uma ONT. */
 interface OntSignal {
-  source: 'OLT' | 'SERVICO' | 'COMODATO' | 'CPE';
+  source: 'OLT' | 'SERVICO' | 'COMODATO' | 'CPE' | 'PPPOE';
   codigo: string;
   servicoId: string;
   status?: string;
@@ -331,8 +331,10 @@ export class OltDiscoveryService {
     else res.ambiguous += 1; // reaproveita o contador p/ CONFLICT + CANCELLED_OWNER
   }
 
-  /** Prioridade das fontes na disputa pelo dono. Maior = mais confiável. */
+  /** Prioridade das fontes na disputa pelo dono. Maior = mais confiável.
+   *  PPPOE (capturado do Inform TR-069) é a verdade física — vence todas. */
   private readonly SOURCE_PRIORITY: Record<OntSignal['source'], number> = {
+    PPPOE: 4,
     SERVICO: 3,
     COMODATO: 2,
     CPE: 1,
@@ -388,6 +390,181 @@ export class OltDiscoveryService {
         update: { ownerStatus: s.status ?? null, cancelled: s.cancelled, rawSerial: s.rawSerial ?? null },
       });
     }
+  }
+
+  // ===========================================================================
+  // PPPoE do Inform TR-069 — a FONTE DE VERDADE (o equipamento diz quem autentica)
+  // ===========================================================================
+  /**
+   * Processa as respostas de GET_PARAMS (purpose=pppoe-discovery) já concluídas:
+   * extrai o PPPoE username capturado da ONT, casa com o `login` do serviço no
+   * Hubsoft e grava um sinal PPPOE (prioridade máxima) no discovered_ont — depois
+   * re-decide o dono. Se o PPPoE aponta um serviço diferente do que serviço/
+   * comodato diziam, o PPPoE vence (é físico). Idempotente: marca a task como
+   * processada via result.pppoeConsumed.
+   */
+  async reconcilePppoe(
+    tenantId: string,
+    opts: { limit?: number } = {},
+  ): Promise<{ processed: number; captured: number; matched: number; noLogin: number; skipped: number }> {
+    const cfg = await this.hubsoftConfig.resolve(tenantId);
+
+    // Tasks de PPPoE-discovery concluídas com resultado, ainda não consumidas.
+    const tasks = await this.prisma.tr069Task.findMany({
+      where: {
+        tenantId,
+        action: 'GET_PARAMS',
+        status: 'DONE',
+      },
+      take: opts.limit ?? 500,
+      orderBy: { completedAt: 'desc' },
+      include: { device: { select: { ont: { select: { snGpon: true } } } } },
+    });
+
+    const res = { processed: 0, captured: 0, matched: 0, noLogin: 0, skipped: 0 };
+    // Filtra só as de PPPoE-discovery com Username no resultado.
+    const withPppoe: Array<{ taskId: string; serial: string; login: string; result: unknown }> = [];
+    for (const t of tasks) {
+      const payload = t.payload as { purpose?: string } | null;
+      if (payload?.purpose !== 'pppoe-discovery') continue;
+      const serial = t.device?.ont?.snGpon;
+      if (!serial) continue;
+      const login = this.extractPppoeUsername(t.result);
+      res.processed += 1;
+      if (!login) {
+        res.noLogin += 1;
+        continue;
+      }
+      res.captured += 1;
+      withPppoe.push({ taskId: t.id, serial, login, result: t.result });
+    }
+    if (withPppoe.length === 0) return res;
+
+    // Índice login(normalizado) → serviço do Hubsoft (ativos + cancelados).
+    const loginIndex = await this.buildLoginIndex(cfg);
+
+    for (const item of withPppoe) {
+      const key = this.normLogin(item.login);
+      const ref = loginIndex.get(key);
+      const disc = await this.prisma.discoveredOnt.findFirst({
+        where: { tenantId, serial: item.serial },
+        select: { id: true },
+      });
+      if (!disc) {
+        res.skipped += 1;
+        continue;
+      }
+      if (!ref) {
+        // PPPoE capturado mas sem serviço correspondente — registra na nota, não força.
+        await this.prisma.discoveredOnt.update({
+          where: { id: disc.id },
+          data: { matchNote: `PPPoE do Inform="${item.login}" sem serviço Hubsoft correspondente` },
+        });
+        continue;
+      }
+      // Grava o sinal PPPOE (prioridade máxima) e re-decide.
+      await this.prisma.discoveredOntSignal.upsert({
+        where: {
+          discoveredOntId_source_erpServiceId: {
+            discoveredOntId: disc.id,
+            source: 'PPPOE',
+            erpServiceId: ref.servicoId,
+          },
+        },
+        create: {
+          tenantId,
+          discoveredOntId: disc.id,
+          source: 'PPPOE',
+          rawSerial: item.serial,
+          erpCustomerCode: ref.codigo,
+          erpServiceId: ref.servicoId,
+          ownerStatus: ref.status,
+          cancelled: ref.cancelled,
+          detail: `PPPoE do Inform: ${item.login}`,
+        },
+        update: { ownerStatus: ref.status, cancelled: ref.cancelled, detail: `PPPoE do Inform: ${item.login}` },
+      });
+      await this.redecideFromSignals(tenantId, disc.id);
+      res.matched += 1;
+    }
+    this.logger.log(`[pppoe-reconcile] tenant=${tenantId} processed=${res.processed} captured=${res.captured} matched=${res.matched} noLogin=${res.noLogin}`);
+    return res;
+  }
+
+  /** Extrai um PPPoE username de um resultado de GET_PARAMS (result.params). */
+  private extractPppoeUsername(result: unknown): string | null {
+    const r = result as { params?: Record<string, string> } | null;
+    const params = r?.params;
+    if (!params) return null;
+    for (const [name, value] of Object.entries(params)) {
+      // qualquer path que termine em WANPPPConnection.*.Username com valor não-vazio
+      if (/WANPPPConnection\.\d+\.Username$/i.test(name) || /PPP\..*Username$/i.test(name)) {
+        const v = this.str(value);
+        if (v) return v;
+      }
+    }
+    return null;
+  }
+
+  /** Índice login(normalizado) → serviço do Hubsoft (ativos + cancelados). */
+  private async buildLoginIndex(
+    cfg: HubsoftResolvedConfig,
+  ): Promise<Map<string, { codigo: string; servicoId: string; status: string; cancelled: boolean }>> {
+    const index = new Map<string, { codigo: string; servicoId: string; status: string; cancelled: boolean }>();
+    const PAGE = 500;
+    for (const cancelado of ['nao', 'sim'] as const) {
+      let pagina = 1;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const clientes = await this.hubsoftClient.getClientesAll(cfg, { limit: PAGE, offset: (pagina - 1) * PAGE, cancelado });
+        if (clientes.length === 0) break;
+        for (const cli of clientes) {
+          const codigo = this.str(cli.codigo_cliente ?? cli.id_cliente);
+          for (const svc of cli.servicos ?? []) {
+            const login = this.normLogin(svc.login);
+            const servicoId = this.str(svc.id_cliente_servico);
+            if (!login || !servicoId) continue;
+            const status = this.str(svc.status_prefixo || svc.status);
+            index.set(login, { codigo, servicoId, status, cancelled: cancelado === 'sim' || /cancel/i.test(status) });
+          }
+        }
+        if (clientes.length < PAGE) break;
+        pagina += 1;
+      }
+    }
+    return index;
+  }
+
+  private normLogin(v: unknown): string {
+    return this.str(v).toLowerCase();
+  }
+
+  /** Recarrega os sinais de uma ONT do banco e re-decide o estado/dono. */
+  private async redecideFromSignals(tenantId: string, discoveredOntId: string): Promise<void> {
+    const rows = await this.prisma.discoveredOntSignal.findMany({ where: { tenantId, discoveredOntId } });
+    const signals: OntSignal[] = rows.map((r) => ({
+      source: r.source as OntSignal['source'],
+      codigo: this.str(r.erpCustomerCode),
+      servicoId: this.str(r.erpServiceId),
+      status: r.ownerStatus ?? undefined,
+      cancelled: r.cancelled,
+    }));
+    const decision = this.decideOwner(signals);
+    const stateMap = {
+      UNMATCHED: DiscoveredOntMatchState.UNMATCHED,
+      MATCHED: DiscoveredOntMatchState.MATCHED,
+      CONFLICT: DiscoveredOntMatchState.CONFLICT,
+      CANCELLED_OWNER: DiscoveredOntMatchState.CANCELLED_OWNER,
+    } as const;
+    // Não rebaixa uma ONT já MATERIALIZED (o dono virou contrato).
+    const cur = await this.prisma.discoveredOnt.findUnique({ where: { id: discoveredOntId }, select: { matchState: true } });
+    if (cur?.matchState === DiscoveredOntMatchState.MATERIALIZED) return;
+    await this.setMatch(discoveredOntId, stateMap[decision.state], {
+      erpSource: decision.owner ? 'hubsoft' : null,
+      erpCustomerCode: decision.owner?.codigo ?? null,
+      erpServiceId: decision.owner?.servicoId ?? null,
+      matchNote: decision.note,
+    });
   }
 
   /**
@@ -616,21 +793,34 @@ export class OltDiscoveryService {
     return s || null;
   }
 
-  /** Enfileira uma Tr069Task GET_PARAMS pedindo o PPPoE username (path por vendor). */
+  /**
+   * Enfileira um GET_PARAMS À PROVA DE VENDOR para capturar o PPPoE username.
+   * Em vez de um path específico (que varia por vendor e dá Fault — ex.: a Parks
+   * não está no registry e caía no path Huawei), pede o PREFIXO da subárvore WAN
+   * terminado em `.`: o GetParameterValues do TR-069 retorna TODA a subárvore, de
+   * onde o reconciliador extrai o `...WANPPPConnection.*.Username`. Cobre também o
+   * TR-181 (Device.) — mandamos os dois prefixos raiz. O path do registry, quando
+   * conhecido, entra como dica extra (barato).
+   */
   private async enqueuePppoeGetParams(tenantId: string, deviceDbId: string, manufacturer: string | null, deviceId: string): Promise<void> {
+    const names = [
+      'InternetGatewayDevice.WANDevice.', // TR-098 (maioria das ONTs GPON)
+      'Device.PPP.', // TR-181 (data model novo)
+    ];
+    // Dica do registry (se o vendor for conhecido), sem substituir a descoberta.
     const vendor = vendorFor(manufacturer, deviceId);
-    const paths = provisioningPathsFor(vendor);
-    if (!paths.pppoeUsername) return;
+    const hint = provisioningPathsFor(vendor)?.pppoeUsername;
+    if (hint) names.push(hint);
     await this.prisma.tr069Task.create({
       data: {
         tenantId,
         deviceId: deviceDbId,
         action: 'GET_PARAMS',
         status: 'PENDING',
-        payload: { names: [paths.pppoeUsername] } as object,
+        payload: { names, purpose: 'pppoe-discovery' } as object,
       },
     });
-    this.logger.log(`[tr069-adopt] GetParams PPPoE enfileirado (vendor=${vendor}) para device=${deviceId}`);
+    this.logger.log(`[tr069-adopt] GetParams PPPoE (subárvore WAN) enfileirado para device=${deviceId}`);
   }
 
   /**

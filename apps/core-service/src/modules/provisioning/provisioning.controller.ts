@@ -264,6 +264,17 @@ export class OltsController {
   applyComodato(@CurrentUser() user: AuthenticatedPrincipal) {
     return this.discovery.applyComodatoToMaterialized(user.tenantId);
   }
+
+  /**
+   * Consome o PPPoE capturado dos Informs TR-069 (GetParams concluídos) e o usa
+   * como sinal de dono de MÁXIMA prioridade na reconciliação (a verdade física).
+   */
+  @Post('discovery/reconcile-pppoe')
+  @HttpCode(200)
+  @RequirePermissions('olts.admin')
+  reconcilePppoe(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.discovery.reconcilePppoe(user.tenantId);
+  }
 }
 
 // =============================================================================

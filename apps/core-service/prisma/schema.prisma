@@ -4019,6 +4019,9 @@ enum DiscoveredOntSignalSource {
   SERVICO
   COMODATO
   CPE
+  // PPPoE capturado do Inform TR-069 (o equipamento dizendo qual login autentica).
+  // Fonte de MAIOR confiança — é físico, imune ao erro humano do cadastro.
+  PPPOE
 }
 
 model DiscoveredOnt {
