@@ -201,8 +201,23 @@ export class HubsoftClientService {
   }
 
   /**
-   * GET /api/v1/integracao/cliente/all — TODOS os clientes (cacheado no Hubsoft).
-   * O próprio Hubsoft recomenda usar poucas vezes ao dia.
+   * GET /api/v1/integracao/cliente/todos — TODOS os clientes (paginado).
+   *
+   * ⚠️ A rota antiga `/cliente/all` foi DESATIVADA pelo Hubsoft em 01/01/2023
+   * (responde 403 com instrução de migrar). A substituta é `/cliente/todos`, com
+   * um contrato de PAGINAÇÃO DIFERENTE:
+   *   - parâmetros obrigatórios `pagina` (1-based) + `itens_por_pagina`
+   *     (NÃO `limit`/`offset` como a antiga);
+   *   - resposta traz `{ status, msg, paginacao:{ total_registros, ultima_pagina,
+   *     pagina_atual, ... }, clientes:[...] }`.
+   * Mantemos a assinatura em `limit`/`offset` (o resto do código raciocina assim)
+   * e traduzimos para `pagina`/`itens_por_pagina` aqui dentro. `offset` precisa
+   * ser múltiplo de `limit` para casar numa página exata — os callers já varrem
+   * em passos de `limit`, então isso vale.
+   *
+   * O `servicos[]` já vem aninhado e rico (login/senha PPPoE, velocidade_*,
+   * ipv4/ipv6, mac_addr, vlan, status_prefixo). Endereço do cliente NÃO é
+   * exposto por esta rota nesta versão da API — cidade fica indisponível aqui.
    */
   async getClientesAll(
     cfg: HubsoftResolvedConfig,
@@ -211,15 +226,28 @@ export class HubsoftClientService {
       codigo_pacote?: string | number;
       limit?: number;
       offset?: number;
-      // CSV de objetos aninhados a embutir (default da API = "Nenhum"). Sem isto
-      // os endereços NÃO vêm — e o filtro/coluna de cidade fica vazio.
+      // Aceito por compat com os callers, mas ignorado: a rota /todos não embute
+      // endereços via `incluir` (testado — silenciosamente sem efeito).
       incluir?: string;
     } = {},
   ): Promise<HubsoftCliente[]> {
-    // /cliente/all pode trazer MUITO dado — timeout generoso (2 min).
+    const itensPorPagina = params.limit && params.limit > 0 ? params.limit : 200;
+    const offset = params.offset ?? 0;
+    // offset → pagina (1-based). Floor: se o caller passar um offset que não é
+    // múltiplo exato de limit, cai na página que contém aquele offset.
+    const pagina = Math.floor(offset / itensPorPagina) + 1;
+
+    const query: Record<string, string | number | undefined> = {
+      pagina,
+      itens_por_pagina: itensPorPagina,
+      cancelado: params.cancelado,
+      codigo_pacote: params.codigo_pacote,
+    };
+
+    // /cliente/todos pode trazer MUITO dado — timeout generoso (2 min).
     const json = await this.get(
       cfg,
-      `/api/v1/integracao/cliente/all${this.qs(params)}`,
+      `/api/v1/integracao/cliente/todos${this.qs(query)}`,
       BULK_TIMEOUT_MS,
     );
     return this.pickArray(json, ['clientes']) as HubsoftCliente[];

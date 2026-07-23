@@ -78,6 +78,16 @@ export interface HubsoftServico {
   tecnologia?: string;
   conectado?: string;
   ipv4?: string;
+  ipv6?: string;
+  // Campos técnicos ricos expostos pela rota /integracao/cliente/todos (base
+  // nova da API): velocidade já em número/rótulo ("512 Mbits"), MAC do CPE, VLAN
+  // do assinante. Preferidos sobre derivar do nome do plano quando presentes.
+  velocidade_download?: string | number;
+  velocidade_upload?: string | number;
+  mac_addr?: string;
+  phy_addr?: string;
+  vlan?: string | number;
+  vencimento?: string | number;
   equipamento_conexao?: unknown;
   interface?: unknown;
   endereco_instalacao?: HubsoftEndereco | string;

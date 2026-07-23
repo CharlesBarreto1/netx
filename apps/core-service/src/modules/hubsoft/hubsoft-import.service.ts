@@ -643,7 +643,7 @@ export class HubsoftImportService {
       planName: this.planName(svc) || null,
       pppoeUsername: this.str(svc.login) || null,
       monthlyValue: this.decimal(svc.valor),
-      bandwidthMbps: this.bandwidth(this.planName(svc)),
+      bandwidthMbps: this.svcBandwidth(svc, 'down'),
       status: this.mapContractStatus(this.serviceStatusText(svc)),
     };
   }
@@ -688,17 +688,33 @@ export class HubsoftImportService {
       this.enderecoStr(cli.endereco_cadastral) ||
       'Endereço não informado (Hubsoft)';
 
+    // IPv4 fixo declarado no serviço (quando houver) — vira Framed-IP-Address.
+    // Ignora 0.0.0.0/valores vazios que o Hubsoft às vezes devolve. É seguro:
+    // não há unique em framedIpAddress e ele só entra no radreply se preenchido.
+    const ipv4 = this.str(svc.ipv4);
+    const framedIp = /^\d{1,3}(\.\d{1,3}){3}$/.test(ipv4) && ipv4 !== '0.0.0.0' ? ipv4 : null;
+    const down = this.svcBandwidth(svc, 'down');
+    const up = this.svcBandwidth(svc, 'up');
+
+    // NOTA: `mac_addr`/`vlan` do Hubsoft NÃO são gravados no import em massa de
+    // propósito. macAddress e circuitId têm @@unique por tenant; o MAC do Hubsoft
+    // é frequentemente vazio, repetido (ONU antiga) ou lixo, e um MAC duplicado
+    // faria o contrato falhar a constraint. No modelo do NetX o PPPoE sobe por
+    // login/senha — MAC/VLAN entram no provisionamento técnico (ONT/porta), não
+    // na migração comercial. Enriquecer depois, com deduplicação, se necessário.
+
     const data = {
       code,
       externalRef,
       authMethod: login ? ContractAuthMethod.PPPOE : ContractAuthMethod.IPOE,
       pppoeUsername: login,
       pppoePassword: this.str(svc.senha) || null,
+      framedIpAddress: framedIp,
       installationAddress: installationAddress.slice(0, 500),
       planId,
       monthlyValue: this.decimal(svc.valor),
-      bandwidthMbps: this.bandwidth(this.planName(svc)),
-      uploadMbps: this.bandwidth(this.planName(svc)),
+      bandwidthMbps: down,
+      uploadMbps: up,
       dueDay: DEFAULT_DUE_DAY,
       status: this.mapContractStatus(this.serviceStatusText(svc)),
       notes: `Importado do Hubsoft (serviço ${svcId}).`,
@@ -736,14 +752,17 @@ export class HubsoftImportService {
   private async upsertPlan(tenantId: string, svc: HubsoftServico): Promise<string | null> {
     const name = this.planName(svc);
     if (!name) return null;
-    const mbps = this.bandwidth(name);
+    // Velocidade real do serviço (rota /todos) tem prioridade sobre o palpite
+    // pelo nome do plano.
+    const down = this.svcBandwidth(svc, 'down');
+    const up = this.svcBandwidth(svc, 'up');
     const plan = await this.prisma.plan.upsert({
       where: { tenantId_name: { tenantId, name: name.slice(0, 120) } },
       create: {
         tenantId,
         name: name.slice(0, 120),
-        downloadMbps: mbps,
-        uploadMbps: mbps,
+        downloadMbps: down,
+        uploadMbps: up,
         monthlyPrice: this.decimal(svc.valor),
         description: 'Plano importado do Hubsoft',
       },
@@ -921,6 +940,27 @@ export class HubsoftImportService {
   private bandwidth(planName: unknown): number {
     const m = this.str(planName).match(/\d+/);
     return m ? parseInt(m[0], 10) : 0;
+  }
+
+  /**
+   * Velocidade do SERVIÇO em Mbps. A rota /integracao/cliente/todos expõe
+   * `velocidade_download`/`velocidade_upload` (ex.: "512 Mbits", "1 Gbits" ou
+   * número). Preferimos esse valor real; se ausente, caímos no palpite pelo nome
+   * do plano (comportamento antigo). Converte Gbits→Mbps.
+   */
+  private svcBandwidth(svc: HubsoftServico, dir: 'down' | 'up'): number {
+    const raw = dir === 'down' ? svc.velocidade_download : svc.velocidade_upload;
+    const s = this.str(raw);
+    if (s) {
+      const m = s.match(/([\d.,]+)\s*(g|m)?/i);
+      if (m) {
+        const n = this.decimal(m[1]);
+        const unit = (m[2] || 'm').toLowerCase();
+        const mbps = unit === 'g' ? n * 1000 : n;
+        if (mbps > 0) return Math.round(mbps);
+      }
+    }
+    return this.bandwidth(this.planName(svc));
   }
 
   /**
