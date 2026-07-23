@@ -6,15 +6,18 @@ import { BrBillingModule } from '../br-billing/br-billing.module';
 import { ContractsModule } from '../contracts/contracts.module';
 import { CryptoModule } from '../crypto/crypto.module';
 import { FibermapModule } from '../fibermap/fibermap.module';
+import { HubsoftModule } from '../hubsoft/hubsoft.module';
 import { StockModule } from '../stock/stock.module';
 import { UfinetModule } from '../ufinet/ufinet.module';
 
+import { FiberhomeTelnetDriver } from './drivers/fiberhome-telnet.driver';
 import { HuaweiSshDriver } from './drivers/huawei-ssh.driver';
 import { MockOltDriver } from './drivers/mock-olt.driver';
 import { NoOpOltDriver } from './drivers/noop-olt.driver';
 import { OltDriverFactory } from './drivers/olt-driver.factory';
 import { UfinetOrchestratorDriver } from './drivers/ufinet.driver';
 import { ZyxelZynosDriver } from './drivers/zyxel-zynos.driver';
+import { OltDiscoveryService } from './olt-discovery.service';
 import { OltProvisioningProfilesService } from './olt-provisioning-profiles.service';
 import { OltSyslogCollector } from './olt-syslog.collector';
 import { OltsService } from './olts.service';
@@ -36,7 +39,7 @@ import { WifiOptRolloutService } from './wifi-opt-rollout.service';
 import { WifiOptService } from './wifi-opt.service';
 
 @Module({
-  imports: [AlarmsModule, AuditModule, BrBillingModule, CryptoModule, ContractsModule, FibermapModule, StockModule, UfinetModule],
+  imports: [AlarmsModule, AuditModule, BrBillingModule, CryptoModule, ContractsModule, FibermapModule, HubsoftModule, StockModule, UfinetModule],
   controllers: [
     ProvisioningController,
     OltsController,
@@ -51,9 +54,11 @@ import { WifiOptService } from './wifi-opt.service';
     UfinetOrchestratorDriver,
     HuaweiSshDriver,
     ZyxelZynosDriver,
+    FiberhomeTelnetDriver,
     OltDriverFactory,
     // Services
     OltsService,
+    OltDiscoveryService,
     OltProvisioningProfilesService,
     OltSyslogCollector,
     Tr069TasksService,
@@ -69,6 +74,7 @@ import { WifiOptService } from './wifi-opt.service';
   exports: [
     ProvisioningService,
     OltsService,
+    OltDiscoveryService,
     OltProvisioningProfilesService,
     Tr069TasksService,
     Tr069DiagnosticsService,

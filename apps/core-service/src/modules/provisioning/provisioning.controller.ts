@@ -102,6 +102,7 @@ const DeactivateInstallSchema = z.object({
   returnLocationId: z.string().uuid(),
 });
 
+import { OltDiscoveryService } from './olt-discovery.service';
 import { OltProvisioningProfilesService } from './olt-provisioning-profiles.service';
 import { OltsService } from './olts.service';
 import { ProvisioningService } from './provisioning.service';
@@ -119,7 +120,10 @@ import { Tr069TasksService } from './tr069-tasks.service';
 @RequiresModule('netx-cpe')
 @Controller('olts')
 export class OltsController {
-  constructor(private readonly svc: OltsService) {}
+  constructor(
+    private readonly svc: OltsService,
+    private readonly discovery: OltDiscoveryService,
+  ) {}
 
   @Get()
   @RequirePermissions('olts.admin')
@@ -191,6 +195,36 @@ export class OltsController {
     @ZodBody(MigrateOltOntsRequestSchema) body: MigrateOltOntsRequest,
   ) {
     return this.svc.migrateOnts(user.tenantId, user.sub, id, body.targetOltId);
+  }
+
+  // ── Descoberta de ONU (integrador técnico) ────────────────────────────────
+  /**
+   * Camada 1 — varre a OLT e grava as ONUs em staging (discovered_onts).
+   * Síncrono e gentil (1 PON por vez); pode levar minutos numa OLT cheia.
+   */
+  @Post(':id/scan-onts')
+  @HttpCode(200)
+  @RequirePermissions('olts.admin')
+  scanOnts(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return this.discovery.scan(user.tenantId, id);
+  }
+
+  /** Camada 2 — casa as ONUs descobertas (com MAC) contra o Hubsoft. */
+  @Post('discovery/match')
+  @HttpCode(200)
+  @RequirePermissions('olts.admin')
+  matchDiscovered(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.discovery.matchAgainstHubsoft(user.tenantId);
+  }
+
+  /** Lista o staging de ONUs descobertas (para revisão). */
+  @Get('discovery/onts')
+  @RequirePermissions('olts.admin')
+  listDiscovered(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.discovery.listDiscovered(user.tenantId);
   }
 }
 

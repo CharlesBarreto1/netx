@@ -10,6 +10,8 @@
  *   providerMode=ORCHESTRATOR + vendor=GENERIC   → MockOltDriver (dev/test)
  *   providerMode=DIRECT       + vendor=ZYXEL     → ZyxelZynosDriver (ZyNOS SSH)
  *   providerMode=DIRECT       + vendor=HUAWEI    → HuaweiSshDriver (futuro)
+ *   providerMode=DIRECT       + vendor=FIBERHOME → FiberhomeTelnetDriver (AN5516,
+ *                                                  telnet; descoberta de ONU)
  *   providerMode=DIRECT       + vendor=GENERIC   → MockOltDriver
  *   demais combinações                            → throw (pra forçar
  *                                                   implementação explícita)
@@ -19,6 +21,7 @@
 import { Injectable } from '@nestjs/common';
 import type { OltProviderMode, OltVendor } from '@netx/shared';
 
+import { FiberhomeTelnetDriver } from './fiberhome-telnet.driver';
 import { HuaweiSshDriver } from './huawei-ssh.driver';
 import { MockOltDriver } from './mock-olt.driver';
 import { NoOpOltDriver } from './noop-olt.driver';
@@ -34,6 +37,7 @@ export class OltDriverFactory {
     private readonly ufinet: UfinetOrchestratorDriver,
     private readonly huawei: HuaweiSshDriver,
     private readonly zyxel: ZyxelZynosDriver,
+    private readonly fiberhome: FiberhomeTelnetDriver,
   ) {}
 
   resolve(vendor: OltVendor, providerMode: OltProviderMode): OltDriver {
@@ -52,6 +56,7 @@ export class OltDriverFactory {
     // DIRECT
     if (vendor === 'ZYXEL') return this.zyxel;
     if (vendor === 'HUAWEI') return this.huawei;
+    if (vendor === 'FIBERHOME') return this.fiberhome;
     if (vendor === 'GENERIC') return this.mock;
     throw new Error(
       `Driver não implementado: providerMode=DIRECT vendor=${vendor}. ` +

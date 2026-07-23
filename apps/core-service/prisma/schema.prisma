@@ -159,6 +159,7 @@ model Tenant {
   // Provisionamento (Fase 1 — OLT/ONT + TR-069 ACS Fase 3)
   olts                 Olt[]
   onts                 Ont[]
+  discoveredOnts       DiscoveredOnt[]
   oltProvisioningProfiles OltProvisioningProfile[]
   alarmEvents          AlarmEvent[]
   incidents            Incident[]
@@ -3833,6 +3834,7 @@ model Olt {
   pop                 NetworkPop?     @relation(fields: [popId], references: [id], onDelete: SetNull)
   defaultProvisioningProfile OltProvisioningProfile? @relation("OltDefaultProfile", fields: [defaultProvisioningProfileId], references: [id], onDelete: SetNull)
   onts                Ont[]
+  discoveredOnts      DiscoveredOnt[]
   ponPorts            PonPort[]
   enclosures          OpticalEnclosure[]
   ufinetServices      UfinetService[]
@@ -3976,6 +3978,82 @@ model Ont {
   @@index([tenantId, status])
   @@index([tenantId, macAddress])
   @@map("onts")
+}
+
+// =============================================================================
+// DISCOVERED ONT — staging da descoberta de ONUs na OLT (integrador técnico)
+// =============================================================================
+// O NetX varre a OLT (ex.: Fiberhome AN5516 via telnet, `show authorization
+// slot all pon all`) e grava CADA ONU crua AQUI, antes de casar com o ERP e
+// materializar em Ont/Contract. É uma tabela de STAGING desacoplada, por 3
+// razões: (1) descoberta e materialização rodam em camadas independentes e
+// retomáveis (a varredura de uma OLT de produção é lenta e gentil, 1 PON por
+// vez); (2) dá pra auditar/revisar o que foi descoberto ANTES de criar contrato
+// ou tocar no RADIUS; (3) o casamento com o ERP (Hubsoft, por MAC) pode falhar
+// ou ficar ambíguo, e isso não deve sujar a Ont "de verdade".
+//
+// Fluxo: DISCOVERED → (casa MAC no ERP) → MATCHED/UNMATCHED → (revisão humana)
+// → materializa Contract + Ont. Nada de RADIUS automático — a ativação é um
+// passo revisado à parte.
+enum DiscoveredOntMatchState {
+  DISCOVERED   // recém-varrida da OLT, ainda não casada
+  MATCHED      // casada com um serviço/cliente do ERP (ver erpCustomerCode)
+  UNMATCHED    // varrida mas sem correspondência no ERP (MAC não encontrado)
+  AMBIGUOUS    // MAC casou com mais de um cliente — precisa de decisão humana
+  MATERIALIZED // já virou Contract + Ont no NetX
+  IGNORED      // marcada para ignorar (infra, ONU de teste, etc.)
+}
+
+model DiscoveredOnt {
+  id           String                  @id @default(uuid()) @db.Uuid
+  tenantId     String                  @map("tenant_id") @db.Uuid
+  oltId        String                  @map("olt_id") @db.Uuid
+
+  // Identidade física na OLT. `serial` = phy_id GPON (ex.: "HWTC24680caa",
+  // "PRKS00d25e05") — o prefixo denota o vendor da ONU. Slot/pon/onu são a
+  // coordenada LÓGICA reportada pela OLT (na Fiberhome o "slot" do show
+  // authorization é lógico, não o slot físico do chassi).
+  serial       String                  @map("serial") @db.VarChar(64)
+  slot         Int
+  pon          Int
+  onuIndex     Int                     @map("onu_index")
+  model        String?                 @db.VarChar(64)  // ex.: "HG260"
+  // Estado óptico/registro reportado pela OLT no momento da varredura (up/down/
+  // online/offline/los…), texto cru pra não perder informação por vendor.
+  onuState     String?                 @map("onu_state") @db.VarChar(32)
+  // MAC do CPE atrás da ONU — é a CHAVE de casamento com o ERP (Hubsoft
+  // `busca=mac`). Nem sempre disponível (depende da tabela MAC da OLT).
+  // Canonicalizado AA:BB:CC:DD:EE:FF.
+  macAddress   String?                 @map("mac_address") @db.VarChar(17)
+  vlan         Int?
+
+  matchState   DiscoveredOntMatchState @default(DISCOVERED) @map("match_state")
+  // Quando MATCHED: código/id do cliente e do serviço no ERP de origem.
+  erpSource        String?             @map("erp_source") @db.VarChar(16)   // ex.: "hubsoft"
+  erpCustomerCode  String?             @map("erp_customer_code") @db.VarChar(64)
+  erpServiceId     String?             @map("erp_service_id") @db.VarChar(64)
+  // Quando MATERIALIZED: aponta pro Contract/Ont criados.
+  contractId   String?                 @map("contract_id") @db.Uuid
+  matchNote    String?                 @map("match_note") @db.VarChar(500)
+
+  // Rastreio da varredura que produziu/atualizou esta linha (correlaciona com
+  // ProvisioningEvent). Cada re-scan atualiza a mesma linha (idempotente por
+  // olt+serial), não duplica.
+  firstSeenAt  DateTime                @default(now()) @map("first_seen_at")
+  lastSeenAt   DateTime                @default(now()) @map("last_seen_at")
+
+  createdAt    DateTime                @default(now()) @map("created_at")
+  updatedAt    DateTime                @updatedAt @map("updated_at")
+
+  tenant       Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  olt          Olt                     @relation(fields: [oltId], references: [id], onDelete: Cascade)
+
+  // Idempotência da varredura: uma ONU (serial) por OLT.
+  @@unique([oltId, serial])
+  @@index([tenantId, matchState])
+  @@index([tenantId, macAddress])
+  @@index([oltId, slot, pon])
+  @@map("discovered_onts")
 }
 
 // =============================================================================

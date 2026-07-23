@@ -24,6 +24,6 @@ import { HubsoftSyncService } from './hubsoft-sync.service';
     HubsoftImportService,
     HubsoftSyncService,
   ],
-  exports: [HubsoftConfigService, HubsoftImportService],
+  exports: [HubsoftConfigService, HubsoftImportService, HubsoftClientService],
 })
 export class HubsoftModule {}

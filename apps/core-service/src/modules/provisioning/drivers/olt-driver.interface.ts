@@ -115,6 +115,26 @@ export interface OntStatusResult {
 }
 
 /**
+ * Uma ONU descoberta na OLT durante uma varredura de inventário (listOnts).
+ * É o dado CRU que alimenta a tabela de staging `discovered_onts` — antes de
+ * casar com o ERP e materializar em Ont/Contract. Campos opcionais porque nem
+ * toda OLT expõe tudo num único comando (o MAC, por exemplo, costuma vir de um
+ * segundo comando por PON).
+ */
+export interface DiscoveredOntRaw {
+  /** SN GPON / phy-id — identidade física da ONU (ex.: "HWTC24680caa"). */
+  serial: string;
+  /** Coordenada lógica reportada pela OLT. */
+  slot: number;
+  pon: number;
+  onuIndex: number;
+  model?: string | null;       // ex.: "HG260"
+  onuState?: string | null;    // texto cru: up/down/online/offline/los…
+  macAddress?: string | null;  // canonicalizado AA:BB:CC:DD:EE:FF (chave p/ ERP)
+  vlan?: number | null;
+}
+
+/**
  * Baseline de gerência aplicado na OLT (Fase 3): aponta syslog + NTP do
  * equipamento pros endpoints do NetX, pra receber eventos de queda
  * (dying-gasp/LOS) em tempo real e manter o relógio sincronizado. Campos
@@ -166,6 +186,23 @@ export interface OltDriver {
     ctx: OltConnectionContext,
     input: ManagementBaselineInput,
   ): Promise<OltDriverResult<ManagementBaselineResult>>;
+
+  /**
+   * Opcional (integrador técnico): VARRE a OLT e retorna o inventário de ONUs
+   * autorizadas (serial, coordenada, estado e — quando possível — MAC). É a base
+   * da descoberta que alimenta `discovered_onts`. Só drivers que sabem listar
+   * (ex.: FiberhomeTelnetDriver) implementam. `onProgress` permite reportar
+   * andamento de uma varredura longa (uma PON por vez) sem acumular tudo em
+   * memória antes de gravar. Deve ser GENTIL com a OLT (pausas, 1 PON por vez).
+   */
+  listOnts?(
+    ctx: OltConnectionContext,
+    opts?: {
+      onProgress?: (batch: DiscoveredOntRaw[], meta: { slot: number; pon: number }) => Promise<void>;
+      /** Coletar MAC por PON (2º comando) — mais lento; default true. */
+      collectMac?: boolean;
+    },
+  ): Promise<OltDriverResult<{ onts: DiscoveredOntRaw[] }>>;
 }
 
 /**
