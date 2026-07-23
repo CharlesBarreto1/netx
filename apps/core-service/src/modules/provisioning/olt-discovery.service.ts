@@ -23,6 +23,7 @@ import { CryptoService } from '../crypto/crypto.service';
 import { HubsoftConfigService } from '../hubsoft/hubsoft-config.service';
 import { HubsoftClientService } from '../hubsoft/hubsoft-client.service';
 import { HubsoftImportService } from '../hubsoft/hubsoft-import.service';
+import type { HubsoftResolvedConfig } from '../hubsoft/hubsoft.types';
 import { RadiusSyncService } from '../contracts/radius-sync.service';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -270,6 +271,8 @@ export class OltDiscoveryService {
     errors: Array<{ serial: string; message: string }>;
   }> {
     const enqueueRadius = opts.enqueueRadius ?? true;
+    // cfg do Hubsoft resolvido uma vez (para buscar comodato por serviço).
+    const cfg = await this.hubsoftConfig.resolve(tenantId);
     const rows = await this.prisma.discoveredOnt.findMany({
       where: {
         tenantId,
@@ -318,6 +321,18 @@ export class OltDiscoveryService {
         // 3) Cria/atualiza o Ont (vínculo físico↔contrato). Idempotente por
         //    contractId (unique) e por olt+serial.
         await this.upsertOnt(tenantId, ont.oltId, contract.id, ont);
+
+        // 3b) COMODATO — busca o equipamento em comodato do serviço no Hubsoft e
+        //     enriquece o Ont (modelo + MAC + flag comodato). É a MESMA ONU que
+        //     descobrimos na OLT (o serial do comodato bate com o phy_id), então
+        //     não duplicamos — confirmamos e completamos o registro. Best-effort:
+        //     falha aqui não derruba a materialização.
+        try {
+          const comodato = await this.resolveComodato(cfg, svcId, ont.serial);
+          if (comodato) await this.enrichOntWithComodato(tenantId, contract.id, comodato);
+        } catch (e) {
+          this.logger.warn(`[olt-materialize] comodato ${ont.serial}: ${(e as Error).message}`);
+        }
 
         // 4) RADIUS conforme status (AUTHORIZE só se ACTIVE — enqueueSync deriva
         //    a ação do status; suspenso/cancelado nunca sobe autorizado).
@@ -375,6 +390,70 @@ export class OltDiscoveryService {
     } else {
       await this.prisma.ont.create({ data: { tenantId, contractId, oltId, ...data } });
     }
+  }
+
+  /**
+   * Resolve o equipamento em comodato de um serviço no Hubsoft: o produto
+   * vinculado cujo patrimônio tem status `comodato`. Prefere o patrimônio cujo
+   * serial bate com a ONU descoberta (validação cruzada OLT↔Hubsoft); senão o
+   * primeiro em comodato. Retorna {serial, mac, modelo?} ou null.
+   */
+  private async resolveComodato(
+    cfg: HubsoftResolvedConfig,
+    idClienteServico: string,
+    ontSerial: string,
+  ): Promise<{ serial: string; mac: string | null; produtoId: string | null } | null> {
+    const vinculos = await this.hubsoftClient.getComodatoServico(cfg, idClienteServico);
+    const alvo = this.normSerial(ontSerial);
+    let best: { serial: string; mac: string | null; produtoId: string | null } | null = null;
+    for (const v of vinculos) {
+      for (const pat of v.patrimonios ?? []) {
+        const isComodato = /comodato/i.test(this.str(pat.produto_item_status?.prefixo ?? pat.produto_item_status?.descricao));
+        if (!isComodato || !pat.numero_serie) continue;
+        const cand = {
+          serial: this.str(pat.numero_serie),
+          mac: this.macCanonical(pat.mac_address),
+          produtoId: v.id_produto != null ? this.str(v.id_produto) : null,
+        };
+        // Casamento exato de serial com a ONU descoberta = melhor.
+        if (this.normSerial(cand.serial) === alvo) return cand;
+        best = best ?? cand;
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Enriquece o Ont do contrato com os dados do comodato (MAC se ausente, e
+   * registra em notas que é comodato + serial do patrimônio). Não sobrescreve o
+   * snGpon (a identidade física vem da OLT) nem cria estoque paralelo — o Ont é
+   * o mesmo equipamento.
+   */
+  private async enrichOntWithComodato(
+    tenantId: string,
+    contractId: string,
+    comodato: { serial: string; mac: string | null; produtoId: string | null },
+  ): Promise<void> {
+    const ont = await this.prisma.ont.findFirst({ where: { tenantId, contractId }, select: { id: true, macAddress: true, serialPhysical: true, notes: true } });
+    if (!ont) return;
+    const note = `Comodato Hubsoft: serial patrimônio ${comodato.serial}${comodato.produtoId ? ` (produto ${comodato.produtoId})` : ''}.`;
+    await this.prisma.ont.update({
+      where: { id: ont.id },
+      data: {
+        // MAC do comodato só se o Ont ainda não tem (o da OLT tem prioridade).
+        macAddress: ont.macAddress ?? comodato.mac,
+        // serialPhysical = serial de etiqueta do patrimônio (confirma a ONU).
+        serialPhysical: ont.serialPhysical ?? comodato.serial,
+        notes: ont.notes ? `${ont.notes}\n${note}` : note,
+      },
+    });
+  }
+
+  /** Canonicaliza MAC "aabb.ccdd.eeff"/"AA-BB-.." → "AA:BB:CC:DD:EE:FF" ou null. */
+  private macCanonical(v: unknown): string | null {
+    const hex = this.str(v).replace(/[^0-9a-fA-F]/g, '');
+    if (hex.length !== 12) return null;
+    return (hex.match(/.{2}/g) as string[]).join(':').toUpperCase();
   }
 
   private async setMatch(

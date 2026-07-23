@@ -15,6 +15,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import type {
   HubsoftCliente,
   HubsoftFatura,
+  HubsoftProdutoVinculo,
   HubsoftResolvedConfig,
   HubsoftTokenResponse,
 } from './hubsoft.types';
@@ -297,5 +298,25 @@ export class HubsoftClientService {
       })}`,
     );
     return this.pickArray(json, ['financeiro', 'faturas']) as HubsoftFatura[];
+  }
+
+  /**
+   * GET /api/v1/integracao/estoque/produto_vinculo/cliente_servico/:id — produtos
+   * vinculados ao serviço. O equipamento em COMODATO é o vínculo cujo
+   * `patrimonios[].produto_item_status.prefixo === 'comodato'` (traz numero_serie
+   * e mac_address). Consumíveis (conector, cabo) vêm juntos mas sem patrimônio de
+   * comodato — o chamador filtra.
+   */
+  async getComodatoServico(
+    cfg: HubsoftResolvedConfig,
+    idClienteServico: number | string,
+  ): Promise<HubsoftProdutoVinculo[]> {
+    const json = await this.get(
+      cfg,
+      `/api/v1/integracao/estoque/produto_vinculo/cliente_servico/${encodeURIComponent(
+        String(idClienteServico),
+      )}?pagina=0&itens_por_pagina=100`,
+    );
+    return this.pickArray(json, ['produto_vinculo', 'vinculos', 'produtos']) as HubsoftProdutoVinculo[];
   }
 }

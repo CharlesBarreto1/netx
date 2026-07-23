@@ -65,6 +65,37 @@ export interface HubsoftEquipamento {
   ipv6?: string | null;
 }
 
+// -----------------------------------------------------------------------------
+// Comodato — GET /api/v1/integracao/estoque/produto_vinculo/cliente_servico/:id
+// Produtos vinculados ao serviço; o equipamento em comodato é o produto com
+// `controle_patrimonial=true`, cujos `patrimonios[]` trazem serial/MAC/status.
+// -----------------------------------------------------------------------------
+export interface HubsoftPatrimonio {
+  id_produto_item?: number | string;
+  codigo_item?: number | string;
+  numero_serie?: string;
+  mac_address?: string | null;
+  identificador_proprio?: string | null;
+  recondicionado?: boolean;
+  observacoes?: string | null;
+  produto_item_status?: {
+    id_produto_item_status?: number | string;
+    descricao?: string; // "Comodato"
+    prefixo?: string; // "comodato"
+  };
+}
+
+export interface HubsoftProdutoVinculo {
+  id_cliente_servico?: number | string;
+  id_produto?: number | string;
+  id_produto_item_status?: number | string;
+  quantidade?: number | string;
+  // Nome/modelo do produto — só quando pedimos o produto separado; no vínculo cru
+  // vem só o id. `patrimonios[]` traz os itens individuais (com serial) do produto
+  // patrimonial.
+  patrimonios?: HubsoftPatrimonio[];
+}
+
 export interface HubsoftPacote {
   id_pacote?: number | string;
   codigo?: string;
