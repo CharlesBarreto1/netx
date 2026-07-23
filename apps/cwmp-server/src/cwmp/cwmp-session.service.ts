@@ -49,6 +49,7 @@ import {
   type ParsedCwmpMessage,
 } from './cwmp-soap';
 import { buildRpcForTask, detectFault, isResponseForTask } from './cwmp-rpc';
+import { ontSerialKeys } from './ont-serial';
 import {
   extractDiagnostics,
   isTxPowerAbnormal,
@@ -330,23 +331,59 @@ export class CwmpSessionService {
    *      o MAC deve começar com o OUI reportado e o match precisa ser ÚNICO
    *      no banco — ambiguidade = ignora (não adota CPE pra tenant errado).
    */
+  /** Sufixo hex do serial (após o vendor de 4 chars amigável ou 8 hex). É igual
+   * nos dois formatos, então serve para pré-filtrar candidatos sem varrer tudo. */
+  private serialSuffix(serial: string): string | null {
+    const s = (serial ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (/^[A-Z]{4}/.test(s)) return s.slice(4) || null; // amigável: tira 4 letras
+    if (/^[0-9A-F]{8}/.test(s)) return s.slice(8) || null; // hex: tira 8 hex do vendor
+    return s || null;
+  }
+
   private async resolveOntBySerial(inform: InformPayload): Promise<{
     id: string;
     tenantId: string;
+    snGpon: string;
     tr069Device: { id: string } | null;
   } | null> {
     if (!inform.serialNumber) return null;
     const select = {
       id: true,
       tenantId: true,
+      snGpon: true,
       tr069Device: { select: { id: true } },
     } as const;
 
+    // Match por serial tolerante a formato: a ONT pode informar o SN em hex
+    // (Huawei: 48575443...) enquanto o Ont.snGpon está amigável (HWTC...), ou
+    // vice-versa. Comparamos por forma CANÔNICA (amigável+hex) — não literal.
+    const informKeys = new Set(ontSerialKeys(inform.serialNumber));
+    // 1ª tentativa: match literal (rápido, cobre o caso comum).
     const exact = await this.prisma.ont.findFirst({
       where: { snGpon: { equals: inform.serialNumber, mode: 'insensitive' } },
       select,
     });
     if (exact) return exact;
+    // 2ª: busca candidatos por prefixo de vendor e casa por forma canônica. O
+    // sufixo hex (após o vendor) é o mesmo nos dois formatos, então filtramos por
+    // ele para não varrer a tabela toda.
+    const suffixHex = this.serialSuffix(inform.serialNumber);
+    if (suffixHex) {
+      const cands = await this.prisma.ont.findMany({
+        where: { snGpon: { endsWith: suffixHex, mode: 'insensitive' } },
+        select,
+        take: 5,
+      });
+      const matches = cands.filter((o) => ontSerialKeys(o.snGpon).some((k) => informKeys.has(k)));
+      if (matches.length === 1) {
+        this.logger.log(`[CWMP] match por forma canônica de serial — device=${inform.deviceId}`);
+        return matches[0];
+      }
+      if (matches.length > 1) {
+        this.logger.warn(`[CWMP] serial casa >1 ONT (ambíguo) — device=${inform.deviceId}`);
+        return null;
+      }
+    }
 
     const VSOL_SERIAL_RE = /^12345([0-9A-F]{12})$/i;
     const m = VSOL_SERIAL_RE.exec(inform.serialNumber);

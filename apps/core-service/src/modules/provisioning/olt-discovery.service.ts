@@ -31,6 +31,7 @@ import { buildConnectionContext } from './olt-context.util';
 import { OltDriverFactory } from './drivers/olt-driver.factory';
 import type { DiscoveredOntRaw } from './drivers/olt-driver.interface';
 import { ontSerialKeys } from './ont-serial.util';
+import { provisioningPathsFor, vendorFor } from './tr069-paths.registry';
 
 const HS_CONTRACT_PREFIX = 'HS-SVC-';
 
@@ -490,6 +491,16 @@ export class OltDiscoveryService {
           this.logger.warn(`[olt-materialize] comodato ${ont.serial}: ${(e as Error).message}`);
         }
 
+        // 3c) ADOÇÃO TR-069 — se alguma ONT já informou (Tr069PendingDevice) com
+        //     este serial (forma canônica), adota: vincula o Tr069Device ao Ont
+        //     recém-criado e dispara GetParams do PPPoE (fonte de verdade do dono).
+        //     Best-effort.
+        try {
+          await this.adoptPendingTr069(tenantId, contract.id, ont.serial);
+        } catch (e) {
+          this.logger.warn(`[olt-materialize] adoção TR-069 ${ont.serial}: ${(e as Error).message}`);
+        }
+
         // 4) RADIUS conforme status (AUTHORIZE só se ACTIVE — enqueueSync deriva
         //    a ação do status; suspenso/cancelado nunca sobe autorizado).
         if (enqueueRadius && contract.pppoeUsername) {
@@ -550,6 +561,76 @@ export class OltDiscoveryService {
     }
     this.logger.log(`[comodato-backfill] tenant=${tenantId} processed=${res.processed} enriched=${res.enriched} noComodato=${res.noComodato} failed=${res.failed}`);
     return res;
+  }
+
+  /**
+   * Adoção de TR-069: procura na caixa de Informs órfãos (Tr069PendingDevice) um
+   * device cujo serial (forma canônica, amigável↔hex) case com o Ont recém-criado
+   * e o ADOTA — cria o Tr069Device vinculado ao Ont e remove o pending. Em
+   * seguida enfileira um GetParams do PPPoE username (a fonte de verdade do dono:
+   * o próprio equipamento diz qual login autentica). Idempotente.
+   */
+  private async adoptPendingTr069(tenantId: string, contractId: string, ontSerial: string): Promise<void> {
+    const ont = await this.prisma.ont.findFirst({ where: { tenantId, contractId }, select: { id: true, snGpon: true, tr069Device: { select: { id: true } } } });
+    if (!ont || ont.tr069Device) return; // já tem device ou sem ont
+
+    const wanted = new Set(ontSerialKeys(ont.snGpon));
+    // Pré-filtra por sufixo (igual nos dois formatos) e casa por forma canônica.
+    const suffix = this.serialSuffixHex(ont.snGpon);
+    const pendings = await this.prisma.tr069PendingDevice.findMany({
+      where: suffix ? { serialNumber: { endsWith: suffix, mode: 'insensitive' } } : { serialNumber: { equals: ontSerial, mode: 'insensitive' } },
+      take: 10,
+    });
+    const pend = pendings.find((p) => p.serialNumber && ontSerialKeys(p.serialNumber).some((k) => wanted.has(k)));
+    if (!pend) return;
+
+    // Cria o Tr069Device ligado ao Ont (tira da caixa de pending).
+    const device = await this.prisma.tr069Device.create({
+      data: {
+        tenantId,
+        ontId: ont.id,
+        deviceId: pend.deviceId,
+        manufacturer: pend.manufacturer,
+        oui: pend.oui,
+        productClass: pend.productClass,
+        connectionRequestUrl: pend.connectionRequestUrl,
+        parametersSnapshot: (pend.parametersSnapshot ?? undefined) as object | undefined,
+        status: 'ONLINE',
+        lastInformAt: pend.lastSeenAt,
+      },
+    });
+    await this.prisma.tr069PendingDevice.delete({ where: { id: pend.id } }).catch(() => undefined);
+    this.logger.log(`[tr069-adopt] ONT ${ont.snGpon} adotou device pendente ${pend.deviceId}`);
+
+    // Enfileira GetParams do PPPoE username — o path depende do vendor.
+    await this.enqueuePppoeGetParams(tenantId, device.id, pend.manufacturer, pend.deviceId).catch((e) =>
+      this.logger.warn(`[tr069-adopt] GetParams PPPoE ${pend.deviceId}: ${(e as Error).message}`),
+    );
+  }
+
+  /** Sufixo hex do serial (após o vendor) — igual em ambos os formatos. */
+  private serialSuffixHex(serial: string): string | null {
+    const s = this.str(serial).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (/^[A-Z]{4}/.test(s)) return s.slice(4) || null;
+    if (/^[0-9A-F]{8}/.test(s)) return s.slice(8) || null;
+    return s || null;
+  }
+
+  /** Enfileira uma Tr069Task GET_PARAMS pedindo o PPPoE username (path por vendor). */
+  private async enqueuePppoeGetParams(tenantId: string, deviceDbId: string, manufacturer: string | null, deviceId: string): Promise<void> {
+    const vendor = vendorFor(manufacturer, deviceId);
+    const paths = provisioningPathsFor(vendor);
+    if (!paths.pppoeUsername) return;
+    await this.prisma.tr069Task.create({
+      data: {
+        tenantId,
+        deviceId: deviceDbId,
+        action: 'GET_PARAMS',
+        status: 'PENDING',
+        payload: { names: [paths.pppoeUsername] } as object,
+      },
+    });
+    this.logger.log(`[tr069-adopt] GetParams PPPoE enfileirado (vendor=${vendor}) para device=${deviceId}`);
   }
 
   /**
