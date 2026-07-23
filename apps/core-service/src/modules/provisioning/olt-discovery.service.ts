@@ -292,10 +292,12 @@ export class OltDiscoveryService {
         continue;
       }
       try {
-        // 1) Importa o cliente casado do Hubsoft (cria Customer+Contract reais).
+        // 1) Importa o cliente casado do Hubsoft (Customer+Contract com endereço/
+        //    coordenadas via relacoes) E o financeiro (faturas/boleto/Pix). O
+        //    cron do Hubsoft (4x/dia) mantém a sincronia das faturas depois.
         await this.hubsoftImport.run(tenantId, actorUserId, {
           codigos: [codigo],
-          entities: ['customers'],
+          entities: ['customers', 'financeiro'],
           dryRun: false,
         });
 

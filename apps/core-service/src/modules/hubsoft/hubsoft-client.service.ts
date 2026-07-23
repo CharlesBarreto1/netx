@@ -21,8 +21,14 @@ import type {
 
 const TOKEN_TIMEOUT_MS = 15_000;
 const API_TIMEOUT_MS = 30_000;
-const BULK_TIMEOUT_MS = 120_000; // /cliente/all pode ser pesado
+const BULK_TIMEOUT_MS = 120_000; // /cliente/todos com relações pode ser pesado
 const TOKEN_SKEW_MS = 60_000;
+
+// Relações embutidas por padrão no /cliente/todos (param `relacoes`). Traz o
+// endereço de instalação (+ coordenadas/ibge_cidade) e o equipamento de conexão
+// (o BNG) dentro de cada serviço — é o que o import completo usa.
+const HS_DEFAULT_RELACOES =
+  'endereco_instalacao,endereco_cadastral,equipamento_conexao,equipamento_roteamento';
 
 export class HubsoftApiError extends Error {
   constructor(
@@ -191,12 +197,24 @@ export class HubsoftClientService {
   // ---------------------------------------------------------------------------
   // Rotas de leitura
   // ---------------------------------------------------------------------------
-  /** GET /api/v1/integracao/cliente — consulta paginável de clientes (+ servicos[]). */
+  /**
+   * GET /api/v1/integracao/cliente — consulta paginável de clientes (+ servicos[]).
+   * Aceita `relacoes` para embutir endereço de instalação + coordenadas e
+   * equipamento por serviço (mesmo param do /cliente/todos). Default: as relações
+   * do import completo — assim a busca por código já traz tudo.
+   */
   async getClientes(
     cfg: HubsoftResolvedConfig,
-    params: { busca?: string; termo_busca?: string; limit?: number; cancelado?: 'sim' | 'nao' } = {},
+    params: {
+      busca?: string;
+      termo_busca?: string | number;
+      limit?: number;
+      cancelado?: 'sim' | 'nao';
+      relacoes?: string;
+    } = {},
   ): Promise<HubsoftCliente[]> {
-    const json = await this.get(cfg, `/api/v1/integracao/cliente${this.qs(params)}`);
+    const q = { relacoes: HS_DEFAULT_RELACOES, ...params };
+    const json = await this.get(cfg, `/api/v1/integracao/cliente${this.qs(q)}`);
     return this.pickArray(json, ['clientes']) as HubsoftCliente[];
   }
 
@@ -216,8 +234,11 @@ export class HubsoftClientService {
    * em passos de `limit`, então isso vale.
    *
    * O `servicos[]` já vem aninhado e rico (login/senha PPPoE, velocidade_*,
-   * ipv4/ipv6, mac_addr, vlan, status_prefixo). Endereço do cliente NÃO é
-   * exposto por esta rota nesta versão da API — cidade fica indisponível aqui.
+   * ipv4/ipv6, mac_addr, vlan, status_prefixo). O ENDEREÇO + COORDENADAS de
+   * instalação vêm dentro de cada serviço (`servicos[].endereco_instalacao`,
+   * com `coordenadas:{latitude,longitude}` e `ibge_cidade`) quando pedimos o
+   * parâmetro `relacoes` — que é o nome correto (NÃO `incluir`). Passamos por
+   * padrão as relações que o import usa (endereço + equipamento de conexão).
    */
   async getClientesAll(
     cfg: HubsoftResolvedConfig,
@@ -226,9 +247,11 @@ export class HubsoftClientService {
       codigo_pacote?: string | number;
       limit?: number;
       offset?: number;
-      // Aceito por compat com os callers, mas ignorado: a rota /todos não embute
-      // endereços via `incluir` (testado — silenciosamente sem efeito).
+      // Aceito por compat com callers antigos; hoje o que traz endereço é `relacoes`.
       incluir?: string;
+      // CSV de relações a embutir na resposta (endereço, equipamento, etc.).
+      // Default: endereço de instalação + equipamento de conexão (o BNG).
+      relacoes?: string;
     } = {},
   ): Promise<HubsoftCliente[]> {
     const itensPorPagina = params.limit && params.limit > 0 ? params.limit : 200;
@@ -242,6 +265,7 @@ export class HubsoftClientService {
       itens_por_pagina: itensPorPagina,
       cancelado: params.cancelado,
       codigo_pacote: params.codigo_pacote,
+      relacoes: params.relacoes ?? HS_DEFAULT_RELACOES,
     };
 
     // /cliente/todos pode trazer MUITO dado — timeout generoso (2 min).

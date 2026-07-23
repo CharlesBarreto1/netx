@@ -43,13 +43,26 @@ export interface HubsoftEndereco {
   logradouro?: string;
   numero?: string;
   complemento?: string;
+  referencia?: string;
   bairro?: string;
   cidade?: string;
+  ibge_cidade?: string | number;
   uf?: string;
   estado?: string;
+  pais?: string;
   cep?: string;
+  // Coordenadas modernas vêm aninhadas em `coordenadas:{latitude,longitude}`.
+  // Mantemos também os campos soltos por compat com versões antigas do payload.
+  coordenadas?: { latitude?: string | number | null; longitude?: string | number | null };
   latitude?: string | number;
   longitude?: string | number;
+}
+
+/** Equipamento (BNG/roteador) que o Hubsoft anexa ao serviço via `relacoes`. */
+export interface HubsoftEquipamento {
+  nome?: string;
+  ipv4?: string;
+  ipv6?: string | null;
 }
 
 export interface HubsoftPacote {
@@ -88,7 +101,8 @@ export interface HubsoftServico {
   phy_addr?: string;
   vlan?: string | number;
   vencimento?: string | number;
-  equipamento_conexao?: unknown;
+  equipamento_conexao?: HubsoftEquipamento | unknown;
+  equipamento_roteamento?: HubsoftEquipamento | unknown;
   interface?: unknown;
   endereco_instalacao?: HubsoftEndereco | string;
 }

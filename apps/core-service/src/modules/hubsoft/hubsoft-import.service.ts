@@ -632,6 +632,16 @@ export class HubsoftImportService {
         hubsoftId: this.str(cli.id_cliente) || null,
         hubsoftCodigo: codigo,
         importedFrom: 'hubsoft',
+        // Contatos e documentos extras — preservados em metadata (as colunas do
+        // Customer só têm o primário; os secundários viram CustomerContact numa
+        // fase posterior, mas não podem se perder no import).
+        phones: [cli.telefone_primario, cli.telefone_secundario, cli.telefone_terciario]
+          .map((p) => this.str(p))
+          .filter(Boolean),
+        emails: [cli.email_principal, cli.email_secundario]
+          .map((e) => this.str(e).toLowerCase())
+          .filter(Boolean),
+        rg: this.str(cli.rg) || null,
       },
     };
   }
@@ -696,6 +706,12 @@ export class HubsoftImportService {
     const down = this.svcBandwidth(svc, 'down');
     const up = this.svcBandwidth(svc, 'up');
 
+    // Coordenadas de instalação — vêm em servicos[].endereco_instalacao.coordenadas
+    // (via `relacoes`). Guardadas no contrato p/ o módulo de mapeamento.
+    const coord = this.coordsFrom(svc.endereco_instalacao, cli.endereco_instalacao);
+    // Dia de vencimento real do serviço (1..28); fallback no default.
+    const dueDay = this.dueDayFrom(svc.vencimento) ?? DEFAULT_DUE_DAY;
+
     // NOTA: `mac_addr`/`vlan` do Hubsoft NÃO são gravados no import em massa de
     // propósito. macAddress e circuitId têm @@unique por tenant; o MAC do Hubsoft
     // é frequentemente vazio, repetido (ONU antiga) ou lixo, e um MAC duplicado
@@ -711,11 +727,13 @@ export class HubsoftImportService {
       pppoePassword: this.str(svc.senha) || null,
       framedIpAddress: framedIp,
       installationAddress: installationAddress.slice(0, 500),
+      latitude: coord?.lat ?? null,
+      longitude: coord?.lng ?? null,
       planId,
       monthlyValue: this.decimal(svc.valor),
       bandwidthMbps: down,
       uploadMbps: up,
-      dueDay: DEFAULT_DUE_DAY,
+      dueDay,
       status: this.mapContractStatus(this.serviceStatusText(svc)),
       notes: `Importado do Hubsoft (serviço ${svcId}).`,
     };
@@ -961,6 +979,38 @@ export class HubsoftImportService {
       }
     }
     return this.bandwidth(this.planName(svc));
+  }
+
+  /**
+   * Extrai latitude/longitude do endereço de instalação (formato moderno
+   * `coordenadas:{latitude,longitude}` ou campos soltos legados). Retorna null
+   * se não houver par válido — não grava (0,0) nem coordenada parcial.
+   */
+  private coordsFrom(
+    ...cands: Array<HubsoftEndereco | string | undefined>
+  ): { lat: number; lng: number } | null {
+    for (const e of cands) {
+      if (!e || typeof e !== 'object') continue;
+      const lat = this.num(e.coordenadas?.latitude ?? e.latitude);
+      const lng = this.num(e.coordenadas?.longitude ?? e.longitude);
+      if (lat !== null && lng !== null && (lat !== 0 || lng !== 0)) return { lat, lng };
+    }
+    return null;
+  }
+
+  /** number válido ou null (aceita "-24.10", -24.10; rejeita "", null, NaN). */
+  private num(v: unknown): number | null {
+    if (v == null || v === '') return null;
+    const n = typeof v === 'number' ? v : Number(String(v).replace(',', '.'));
+    return Number.isFinite(n) ? n : null;
+  }
+
+  /** Dia de vencimento (1..28) a partir do campo `vencimento` do serviço. */
+  private dueDayFrom(v: unknown): number | null {
+    const n = this.num(v);
+    if (n === null) return null;
+    const d = Math.trunc(n);
+    return d >= 1 && d <= 28 ? d : null;
   }
 
   /**
