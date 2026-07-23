@@ -62,7 +62,7 @@ export class OltDiscoveryService {
   async scan(
     tenantId: string,
     oltId: string,
-    opts: { collectMac?: boolean } = {},
+    opts: { collectMac?: boolean; scope?: { slot: number; pon: number } } = {},
   ): Promise<OltScanResult> {
     const startedAt = Date.now();
     const olt = await this.prisma.olt.findFirst({ where: { id: oltId, tenantId, deletedAt: null } });
@@ -80,7 +80,8 @@ export class OltDiscoveryService {
     // onProgress grava cada PON assim que o driver a entrega — persistência
     // incremental, resiliente a queda no meio de uma varredura longa.
     const result = await driver.listOnts(ctx, {
-      collectMac: opts.collectMac ?? true,
+      collectMac: opts.collectMac ?? false,
+      scope: opts.scope,
       onProgress: async (batch, meta) => {
         const saved = await this.persistBatch(tenantId, oltId, batch);
         discovered += saved.count;

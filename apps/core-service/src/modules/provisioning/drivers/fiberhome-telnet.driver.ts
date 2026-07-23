@@ -76,6 +76,7 @@ export class FiberhomeTelnetDriver implements OltDriver {
     opts?: {
       onProgress?: (batch: DiscoveredOntRaw[], meta: { slot: number; pon: number }) => Promise<void>;
       collectMac?: boolean;
+      scope?: { slot: number; pon: number };
     },
   ): Promise<OltDriverResult<{ onts: DiscoveredOntRaw[] }>> {
     // MAC desligado por padrão: nesta OLT o `show mac-address` não atribui
@@ -87,9 +88,11 @@ export class FiberhomeTelnetDriver implements OltDriver {
         await cli.connect();
         await cli.exec('cd onu', 8_000);
 
-        // Varredura em uma tacada: `slot all pon all`. A saída já traz todas as
-        // ONUs autorizadas de todas as placas GPON. Parseamos linha a linha.
-        const raw = await cli.exec('show authorization slot all pon all', 120_000);
+        // Escopo: 1 PON (piloto controlado) ou a OLT inteira (slot all pon all).
+        const target = opts?.scope
+          ? `slot ${opts.scope.slot} pon ${opts.scope.pon}`
+          : 'slot all pon all';
+        const raw = await cli.exec(`show authorization ${target}`, 120_000);
         const onts = this.parseAuthorizationTable(raw);
 
         // Enriquecimento de MAC: um comando por (slot,pon) distinto — GENTIL,

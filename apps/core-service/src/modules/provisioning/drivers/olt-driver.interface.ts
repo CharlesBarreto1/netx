@@ -199,8 +199,13 @@ export interface OltDriver {
     ctx: OltConnectionContext,
     opts?: {
       onProgress?: (batch: DiscoveredOntRaw[], meta: { slot: number; pon: number }) => Promise<void>;
-      /** Coletar MAC por PON (2º comando) — mais lento; default true. */
+      /** Coletar MAC por PON (2º comando) — mais lento; default false. */
       collectMac?: boolean;
+      /**
+       * Limita a varredura a UM slot/pon (piloto controlado). Sem escopo, varre
+       * a OLT inteira (slot all pon all). Útil pra testar 1 PON antes do lote.
+       */
+      scope?: { slot: number; pon: number };
     },
   ): Promise<OltDriverResult<{ onts: DiscoveredOntRaw[] }>>;
 }

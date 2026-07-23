@@ -208,8 +208,16 @@ export class OltsController {
   scanOnts(
     @CurrentUser() user: AuthenticatedPrincipal,
     @Param('id', new ParseUUIDPipe()) id: string,
+    @Query('slot') slot?: string,
+    @Query('pon') pon?: string,
   ) {
-    return this.discovery.scan(user.tenantId, id);
+    // Piloto controlado: ?slot=X&pon=Y limita a varredura a uma PON. Sem params,
+    // varre a OLT inteira.
+    const scope =
+      slot !== undefined && pon !== undefined
+        ? { slot: Number(slot), pon: Number(pon) }
+        : undefined;
+    return this.discovery.scan(user.tenantId, id, { scope });
   }
 
   /** Camada 2 — casa as ONUs descobertas (com MAC) contra o Hubsoft. */
