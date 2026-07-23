@@ -37,8 +37,14 @@ import {
   zyxelDiagnosticParamNames,
   zyxelNotificationAttributes,
 } from './tr069-paths.zyxel';
+import {
+  parksDiagnosticParamNames,
+  parksFamilyFor,
+  parksNotificationAttributes,
+  parksProvisioningPaths,
+} from './tr069-paths.parks';
 
-export type Tr069Vendor = 'HUAWEI' | 'ZYXEL' | 'VSOL' | 'ZTE';
+export type Tr069Vendor = 'HUAWEI' | 'ZYXEL' | 'VSOL' | 'ZTE' | 'PARKS';
 
 /** Casa fabricante por substring case-insensitive (device reporta "ZYXEL"). */
 export function isZyxel(manufacturer?: string | null): boolean {
@@ -56,6 +62,16 @@ export function isZte(manufacturer?: string | null): boolean {
 }
 
 /**
+ * Parks reporta manufacturer "PARKS" (ou "PRKS"), OUI 000416, modelos
+ * Fiberlink*. ⚠️ NÃO confundir com Stavix: o serial "MKPG"/manufacturer
+ * "MKTECH" (MP-X4410A) NÃO é Parks apesar do "MK". A família (5xx gSOAP vs 6xx
+ * easycwmp) é discriminada por productClass em parksFamilyFor().
+ */
+export function isParks(manufacturer?: string | null): boolean {
+  return /^p(a)?rks$/i.test((manufacturer ?? '').trim());
+}
+
+/**
  * Vendor efetivo do device. `manufacturer` (reportado no Inform) tem
  * prioridade; sem ele (placeholder pré-Inform), infere pelo prefixo do SN
  * GPON ("ZTEG..." = ZTE, "GPON..." = VSOL, "HWTC..." = Huawei). Fallback
@@ -68,10 +84,12 @@ export function vendorFor(
   if (isZyxel(manufacturer)) return 'ZYXEL';
   if (isVsol(manufacturer)) return 'VSOL';
   if (isZte(manufacturer)) return 'ZTE';
+  if (isParks(manufacturer)) return 'PARKS';
   if (manufacturer) return 'HUAWEI';
   const sn = (snGpon ?? '').toUpperCase();
   if (sn.startsWith('GPON')) return 'VSOL';
   if (sn.startsWith('ZTEG')) return 'ZTE';
+  if (sn.startsWith('PRKS')) return 'PARKS';
   return 'HUAWEI';
 }
 
@@ -103,6 +121,17 @@ export function placeholderIdentityFor(
       vendor,
     };
   }
+  if (vendor === 'PARKS') {
+    // OUI Parks = 000416, mas o Inform reporta "416" (sem zero-pad) → o
+    // deviceId real é "416-<serial>". O ACS regrava no primeiro Inform e casa
+    // por sufixo de serial (como VSOL/Realtek).
+    return {
+      deviceId: `416-${snGpon.toUpperCase()}`,
+      manufacturer: 'PARKS',
+      oui: '416',
+      vendor,
+    };
+  }
   return {
     deviceId: `00259E-${snGpon.toUpperCase()}`,
     manufacturer: 'Huawei',
@@ -129,7 +158,15 @@ export interface ProvisioningPaths {
   pppoeVlan: string;
 }
 
-export function provisioningPathsFor(vendor: Tr069Vendor): ProvisioningPaths {
+export function provisioningPathsFor(
+  vendor: Tr069Vendor,
+  productClass?: string | null,
+): ProvisioningPaths {
+  if (vendor === 'PARKS') {
+    // A família (5xx X_RTK vs 6xx X_SKYW) muda WAN, VLAN e índices de WLAN — o
+    // productClass discrimina. pppoeVlan vem "" no 6xx (VLAN é do preset OLT).
+    return parksProvisioningPaths(parksFamilyFor(productClass));
+  }
   if (vendor === 'VSOL') {
     return {
       ssid24: VSOL_PATHS.ssid24,
@@ -187,15 +224,18 @@ export function diagnosticParamNamesFor(
   if (isZyxel(manufacturer)) return zyxelDiagnosticParamNames();
   if (isVsol(manufacturer)) return vsolDiagnosticParamNames();
   if (isZte(manufacturer)) return zteDiagnosticParamNames();
+  if (isParks(manufacturer)) return parksDiagnosticParamNames(parksFamilyFor(productClass));
   return huaweiDiagnosticParamNames(productClass);
 }
 
 /** Atributos de notificação (SetParameterAttributes) para o fabricante. */
 export function notificationAttributesFor(
   manufacturer?: string | null,
+  productClass?: string | null,
 ): Array<{ name: string; notification: 0 | 1 | 2 }> {
   if (isZyxel(manufacturer)) return zyxelNotificationAttributes();
   if (isVsol(manufacturer)) return vsolNotificationAttributes();
   if (isZte(manufacturer)) return zteNotificationAttributes();
+  if (isParks(manufacturer)) return parksNotificationAttributes(parksFamilyFor(productClass));
   return huaweiNotificationAttributes();
 }

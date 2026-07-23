@@ -250,3 +250,58 @@ describe('extractDiagnostics — Huawei segue intocado', () => {
     expect(d.rxPower).toBe(-18);
   });
 });
+
+// Parks Fiberlink 5xx (gSOAP/X_RTK) — SEM óptico via TR-069, WLAN 1-5=5G e
+// 6-10=2.4G (invertido vs Huawei). Valores do dump/walk ao vivo (416-D92205,
+// 2026-07-23). O parser tem que: reportar opticalHealth UNKNOWN sem óptico,
+// mapear a banda pela WLAN 6 (2.4G), e ler recursos TR-098 padrão.
+describe('extractDiagnostics — Parks Fiberlink 5xx (X_RTK, sem óptico)', () => {
+  const WLAN_5G = 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1'; // 5G
+  const WLAN_24 = 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.6'; // 2.4G
+  const PPP = 'InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1';
+  const params: Record<string, string> = {
+    // sinal do 5xx: extensão Realtek de VLAN + agregação da WLAN 6
+    [`${PPP}.X_RTK_VlanMuxID`]: '1010',
+    [`${PPP}.ConnectionStatus`]: 'Connected',
+    [`${WLAN_24}.TotalAssociations`]: '2',
+    [`${WLAN_5G}.TotalAssociations`]: '1',
+    [`${WLAN_24}.Channel`]: '6',
+    [`${WLAN_5G}.Channel`]: '44',
+    // um cliente Wi-Fi na 2.4G (WLAN 6) — por índice explícito, sem RSSI
+    [`${WLAN_24}.AssociatedDevice.1.AssociatedDeviceMACAddress`]: 'AA:BB:CC:11:22:33',
+    [`${WLAN_24}.AssociatedDevice.1.AssociatedDeviceIPAddress`]: '192.168.1.50',
+    // recursos TR-098 padrão
+    'InternetGatewayDevice.DeviceInfo.ProcessStatus.CPUUsage': '4',
+    'InternetGatewayDevice.DeviceInfo.MemoryStatus.Total': '69052',
+    'InternetGatewayDevice.DeviceInfo.MemoryStatus.Free': '19500',
+  };
+
+  it('SEM óptico: hasOptical=false e opticalHealth=UNKNOWN (não abre alerta falso)', () => {
+    const d = extractDiagnostics(params);
+    expect(d.hasOptical).toBe(false);
+    expect(d.rxPower).toBeNull();
+    expect(d.txPower).toBeNull();
+    expect(d.opticalHealth).toBe('UNKNOWN');
+  });
+
+  it('Wi-Fi agregado sai da WLAN 6 (2.4G) e WLAN 1 (5G)', () => {
+    const d = extractDiagnostics(params);
+    expect(d.wifiClients24).toBe(2);
+    expect(d.wifiClients5).toBe(1);
+    expect(d.wifiChannel24).toBe(6);
+    expect(d.wifiChannel5).toBe(44);
+  });
+
+  it('cliente Wi-Fi da WLAN 6 é rotulado como 2.4GHz (mapa 5xx: 1=5G, 6=2.4G)', () => {
+    const d = extractDiagnostics(params);
+    const c = d.wifiClients.find((x) => x.mac === 'AA:BB:CC:11:22:33');
+    expect(c?.band).toBe('2.4GHz');
+    expect(c?.rssi).toBeNull(); // firmware não expõe RSSI (como VSOL)
+  });
+
+  it('recursos TR-098 padrão: CPU direto e memória de Total/Free', () => {
+    const d = extractDiagnostics(params);
+    expect(d.cpuUsage).toBe(4);
+    expect(d.memUsage).toBe(Math.round((1 - 19500 / 69052) * 100));
+  });
+});

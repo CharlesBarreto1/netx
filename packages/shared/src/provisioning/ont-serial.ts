@@ -15,7 +15,9 @@
  *
  * Vendor IDs GPON conhecidos (4 chars ASCII → 8 hex):
  *   HWTC=48575443 (Huawei), ZTEG=5A544547 (ZTE), FHTT=46485454 (Fiberhome),
- *   PRKS=50524B53 (Parks), DACM=4441434D (Datacom), MKPG=4D4B5047 (Parks/MKPG),
+ *   PRKS=50524B53 (Parks — OUI 000416, manufacturer "PARKS", modelos Fiberlink*),
+ *   DACM=4441434D (Datacom), MKPG=4D4B5047 (Stavix — OUI 0CF0B4, manufacturer
+ *   "MKTECH", modelo MP-X4410A; NÃO é Parks apesar do "MK"),
  *   ALCL=414C434C (Nokia), CXNK=43584E4B (…). A conversão é genérica: qualquer
  *   prefixo de 8 hex que decodifique para 4 chars ASCII imprimíveis vira letras.
  */

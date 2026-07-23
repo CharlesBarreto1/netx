@@ -67,8 +67,10 @@ O mesmo serial GPON aparece em dois formatos: **amigável** (`HWTC6BA990AA` — 
 letras ASCII do vendor + sufixo) e **hex puro** (`485754436BA990AA` —
 `48575443` = "HWTC"). São o mesmo equipamento. `ontSerialForms` gera as duas
 formas e casa por interseção (`packages/shared/.../ont-serial.ts`, com cópia
-local no cwmp-server). Ex. de vendor: `HWTC`=Huawei, `ZTEG`=ZTE, `PRKS`/`MKPG`=
-Parks, `DACM`=Datacom, `ALCL`=Nokia.
+local no cwmp-server). Ex. de vendor: `HWTC`=Huawei, `ZTEG`=ZTE, `PRKS`=Parks
+(OUI 000416, manufacturer "PARKS", modelos Fiberlink\*), `MKPG`=Stavix (OUI
+0CF0B4, manufacturer "MKTECH", modelo MP-X4410A — **não** é Parks), `DACM`=
+Datacom, `ALCL`=Nokia.
 
 ### Camada 3 — Materialização (`MATCHED` → Contract + Ont + RADIUS)
 

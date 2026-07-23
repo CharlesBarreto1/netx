@@ -98,7 +98,8 @@ export class Tr069TasksService {
 
     // Paths por vendor: manufacturer real (se já houve Inform) > prefixo do SN.
     const vendor = vendorFor(existing?.manufacturer, snGpon);
-    const P = provisioningPathsFor(vendor);
+    // productClass discrimina a família Parks (5xx X_RTK vs 6xx X_SKYW).
+    const P = provisioningPathsFor(vendor, existing?.productClass);
 
     const bothBands = input.bothBands ?? true;
     type ParamType = 'xsd:string' | 'xsd:unsignedInt' | 'xsd:boolean';

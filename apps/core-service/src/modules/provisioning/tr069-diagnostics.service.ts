@@ -177,14 +177,16 @@ export class Tr069DiagnosticsService {
   async enqueueArmNotifications(tenantId: string, deviceDbId: string): Promise<{ taskId: string }> {
     const device = await this.prisma.tr069Device.findUnique({
       where: { id: deviceDbId },
-      select: { manufacturer: true },
+      select: { manufacturer: true, productClass: true },
     });
     const task = await this.prisma.tr069Task.create({
       data: {
         tenantId,
         deviceId: deviceDbId,
         action: 'SET_ATTRIBUTES',
-        payload: { attributes: notificationAttributesFor(device?.manufacturer) },
+        payload: {
+          attributes: notificationAttributesFor(device?.manufacturer, device?.productClass),
+        },
         status: 'PENDING',
       },
     });

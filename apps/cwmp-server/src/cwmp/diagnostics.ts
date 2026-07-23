@@ -103,9 +103,25 @@ const VSOL_WIFI_PATHS = {
   channel5: `${WLAN_24}.Channel`,
 };
 
-/** Banda por índice de WLAN, por vendor (VSOL é invertido). */
+// ── Parks Fiberlink (espelha tr069-paths.parks.ts do core-service) ───────────
+// Duas famílias, layout de WLAN DIFERENTE (confirmado por dump completo, jul/
+// 2026): 5xx (gSOAP/X_RTK) usa WLAN 1-5=5GHz e 6-10=2.4GHz; 6xx (easycwmp/
+// X_SKYW) usa 1-4=2.4GHz e 5-8=5GHz (convenção Huawei). ⚠️ NENHUMA família expõe
+// óptico via TR-069 — só Wi-Fi/PPPoE/recursos (TR-098 padrão). O agregado do
+// 5xx sai na WLAN 6 (2.4G) e WLAN 1 (5G); o do 6xx na WLAN 1 (2.4G) e 5 (5G).
+const WLAN_60 = 'InternetGatewayDevice.LANDevice.1.WLANConfiguration.6';
+const PARKS_5XX_WIFI_PATHS = {
+  clients24: `${WLAN_60}.TotalAssociations`,
+  clients5: `${WLAN_24}.TotalAssociations`,
+  channel24: `${WLAN_60}.Channel`,
+  channel5: `${WLAN_24}.Channel`,
+};
+
+/** Banda por índice de WLAN, por vendor (VSOL e Parks-5xx são invertidos). */
 const HUAWEI_BAND_BY_WLAN: Record<string, string> = { '1': '2.4GHz', '5': '5GHz' };
 const VSOL_BAND_BY_WLAN: Record<string, string> = { '1': '5GHz', '5': '2.4GHz' };
+// Parks 5xx: 1-5=5G, 6-10=2.4G. Parks 6xx segue a convenção Huawei (1/5).
+const PARKS_5XX_BAND_BY_WLAN: Record<string, string> = { '1': '5GHz', '6': '2.4GHz' };
 
 /**
  * Potência DDM (unidade 0.1µW, SFF-8472) → dBm. Ex.: 19078 → +2.81 dBm.
@@ -597,14 +613,39 @@ export function extractDiagnostics(params: Record<string, string>): ExtractedDia
     !vsolOptical &&
     !(OPTICAL_PATHS.rxPower in params) &&
     Object.keys(params).some((k) => k.startsWith(`${ZTE_PON_IFACE}.`));
+  // Parks 5xx (gSOAP/X_RTK): SEM óptico, WLAN 1-5=5G e 6-10=2.4G (invertido vs
+  // Huawei). Detecta pela extensão Realtek (X_RTK_ na WAN) OU pela agregação da
+  // WLAN 6 (rádio 2.4G do 5xx). A Parks 6xx (X_SKYW) segue a convenção Huawei
+  // 1/5 — cai no default sem tratamento especial. NÃO mexe nos vendors ópticos.
+  const parks5xx =
+    !zyxelOptical &&
+    !vsolOptical &&
+    !zteOptical &&
+    !(OPTICAL_PATHS.rxPower in params) &&
+    (Object.keys(params).some((k) => /\.X_RTK_Vlan/.test(k)) ||
+      PARKS_5XX_WIFI_PATHS.clients24 in params ||
+      PARKS_5XX_WIFI_PATHS.channel24 in params);
   // Wi-Fi: na VSOL o mapa índice→banda é invertido (WLAN 1=5G, 5=2.4G); a ZTE
-  // segue a convenção 1/5 do Huawei (índice 5G ajustável por env).
+  // segue a convenção 1/5 do Huawei (índice 5G ajustável por env); a Parks 5xx
+  // é 1=5G/6=2.4G.
   const { clients: wifiClients, worstRssi: wifiWorstRssi, avgRssi: wifiAvgRssi } =
     extractWifiClients(
       params,
-      vsolOptical ? VSOL_BAND_BY_WLAN : zteOptical ? ZTE_BAND_BY_WLAN : HUAWEI_BAND_BY_WLAN,
+      vsolOptical
+        ? VSOL_BAND_BY_WLAN
+        : zteOptical
+          ? ZTE_BAND_BY_WLAN
+          : parks5xx
+            ? PARKS_5XX_BAND_BY_WLAN
+            : HUAWEI_BAND_BY_WLAN,
     );
-  const wifiPaths = vsolOptical ? VSOL_WIFI_PATHS : zteOptical ? ZTE_WIFI_PATHS : WIFI_PATHS;
+  const wifiPaths = vsolOptical
+    ? VSOL_WIFI_PATHS
+    : zteOptical
+      ? ZTE_WIFI_PATHS
+      : parks5xx
+        ? PARKS_5XX_WIFI_PATHS
+        : WIFI_PATHS;
   const hosts = extractLanHosts(params);
   const rxPower = vsolOptical
     ? vsolDdmPowerToDbm(params[VSOL_PATHS.rxPower])

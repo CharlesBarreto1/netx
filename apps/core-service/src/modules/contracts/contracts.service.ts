@@ -815,7 +815,7 @@ export class ContractsService {
       select: {
         id: true,
         snGpon: true,
-        tr069Device: { select: { id: true, manufacturer: true } },
+        tr069Device: { select: { id: true, manufacturer: true, productClass: true } },
       },
     });
     if (!ont) return;
@@ -841,7 +841,7 @@ export class ContractsService {
     }
 
     const vendor = vendorFor(ont.tr069Device?.manufacturer, ont.snGpon);
-    const P = provisioningPathsFor(vendor);
+    const P = provisioningPathsFor(vendor, ont.tr069Device?.productClass);
     const task = await this.prisma.tr069Task.create({
       data: {
         tenantId,
@@ -2010,7 +2010,7 @@ export class ContractsService {
 
     // Paths por vendor: manufacturer real (se já houve Inform) > prefixo do SN.
     const wifiVendor = vendorFor(contract.ont.tr069Device?.manufacturer, contract.ont.snGpon);
-    const P = provisioningPathsFor(wifiVendor);
+    const P = provisioningPathsFor(wifiVendor, contract.ont.tr069Device?.productClass);
 
     // Persiste SSID em plaintext + senha encrypted no Contract. `updatedById`
     // só quando o ator é um User (operador) — no portal não há User pra FK.
