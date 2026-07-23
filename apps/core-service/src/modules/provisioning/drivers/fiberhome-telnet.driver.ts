@@ -15,11 +15,11 @@
  * O phy_id é o SN GPON; o prefixo denota o vendor da ONU (HWTC=Huawei,
  * PRKS/MKPG=Parks, DACM=Datacom).
  *
- * MAC (chave de casamento com o ERP): vem de um 2º comando por PON,
- *   show mac-address port 1/<slot>/<pon>
- * cuja saída é a MAC forwarding table (INDEX MAC PORT ONU SVLAN CVLAN UVLAN).
- * Como o MAC ali repete por VLAN e a coluna ONU costuma vir vazia, o casamento
- * por MAC é feito com cautela na camada de matching (não aqui).
+ * Casamento com o ERP: a serial (phy_id) é a CHAVE. O Hubsoft expõe a serial da
+ * ONU no serviço (campo `phy_addr`), então casa-se serial↔serial em memória —
+ * não dependemos do MAC. (O `show mac-address port 1/s/p` desta OLT retorna a
+ * coluna ONU vazia, logo não atribui MAC↔ONU de forma confiável; o MAC fica
+ * como enriquecimento best-effort opcional, desligado por padrão.)
  */
 import { Injectable, Logger } from '@nestjs/common';
 
@@ -78,7 +78,9 @@ export class FiberhomeTelnetDriver implements OltDriver {
       collectMac?: boolean;
     },
   ): Promise<OltDriverResult<{ onts: DiscoveredOntRaw[] }>> {
-    const collectMac = opts?.collectMac ?? true;
+    // MAC desligado por padrão: nesta OLT o `show mac-address` não atribui
+    // MAC↔ONU (coluna ONU vazia). O casamento com o ERP é por SERIAL (phy_id).
+    const collectMac = opts?.collectMac ?? false;
     return runDriverCall(async () => {
       const cli = this.makeClient(ctx);
       try {

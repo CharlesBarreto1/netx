@@ -151,67 +151,93 @@ export class OltDiscoveryService {
   }
 
   // ===========================================================================
-  // Camada 2 — MATCH: discovered_onts (com MAC) → cliente no Hubsoft
+  // Camada 2 — MATCH: discovered_onts → cliente no Hubsoft, por SERIAL.
   // ===========================================================================
+  // A chave é a SERIAL da ONU (phy_id). O Hubsoft expõe a serial no serviço
+  // (campo `phy_addr`), mas NÃO permite busca reversa por serial — então
+  // importamos a base (/cliente/todos, paginada) UMA vez, montamos um índice
+  // serial→{cliente,serviço} em memória e cruzamos com as ONUs descobertas.
+  // 1 varredura da OLT + 1 leitura do ERP, cruzadas localmente (não N buscas).
   async matchAgainstHubsoft(
     tenantId: string,
     opts: { limit?: number } = {},
   ): Promise<OltMatchResult> {
     const cfg = await this.hubsoftConfig.resolve(tenantId); // lança se não habilitado
+
+    // 1) Índice serial(phy_addr) → lista de {codigoCliente, idServico}. Uma
+    //    serial pode, em teoria, aparecer em mais de um serviço (troca de ONU
+    //    sem baixa) — guardamos todos p/ detectar ambiguidade.
+    const index = new Map<string, Array<{ codigo: string; servicoId: string }>>();
+    const PAGE = 500;
+    let pagina = 1;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const clientes = await this.hubsoftClient.getClientesAll(cfg, {
+        limit: PAGE,
+        offset: (pagina - 1) * PAGE,
+      });
+      if (clientes.length === 0) break;
+      for (const cli of clientes) {
+        const codigo = this.str(cli.codigo_cliente ?? cli.id_cliente);
+        for (const svc of cli.servicos ?? []) {
+          const serial = this.normSerial(svc.phy_addr);
+          if (!serial) continue;
+          const arr = index.get(serial) ?? [];
+          arr.push({ codigo, servicoId: this.str(svc.id_cliente_servico) });
+          index.set(serial, arr);
+        }
+      }
+      if (clientes.length < PAGE) break;
+      pagina += 1;
+    }
+    this.logger.log(`[olt-match] índice Hubsoft: ${index.size} seriais (${pagina} páginas)`);
+
+    // 2) Cruza as ONUs descobertas pendentes contra o índice.
     const pend = await this.prisma.discoveredOnt.findMany({
-      where: {
-        tenantId,
-        matchState: DiscoveredOntMatchState.DISCOVERED,
-        macAddress: { not: null },
-      },
-      take: opts.limit ?? 500,
-      orderBy: { firstSeenAt: 'asc' },
+      where: { tenantId, matchState: DiscoveredOntMatchState.DISCOVERED },
+      take: opts.limit ?? 5000,
+      orderBy: [{ slot: 'asc' }, { pon: 'asc' }, { onuIndex: 'asc' }],
     });
 
     const res: OltMatchResult = { scanned: 0, matched: 0, unmatched: 0, ambiguous: 0, errors: 0 };
     for (const ont of pend) {
       res.scanned += 1;
-      const mac = ont.macAddress!;
+      const serial = this.normSerial(ont.serial);
+      const hits = serial ? index.get(serial) : undefined;
       try {
-        // Busca reversa por MAC (validado: busca=mac funciona na wifire).
-        const clientes = await this.hubsoftClient.getClientes(cfg, {
-          busca: 'mac',
-          termo_busca: mac,
-        });
-        const matches = clientes.filter((c) => this.str(c.codigo_cliente ?? c.id_cliente));
-
-        if (matches.length === 0) {
+        if (!hits || hits.length === 0) {
           await this.setMatch(ont.id, DiscoveredOntMatchState.UNMATCHED, {
-            matchNote: `MAC ${mac} não encontrado no Hubsoft`,
+            matchNote: `Serial ${ont.serial} sem serviço correspondente no Hubsoft`,
           });
           res.unmatched += 1;
-        } else if (matches.length > 1) {
+        } else if (hits.length > 1) {
           await this.setMatch(ont.id, DiscoveredOntMatchState.AMBIGUOUS, {
-            matchNote: `MAC ${mac} casou com ${matches.length} clientes`,
+            matchNote: `Serial ${ont.serial} casou com ${hits.length} serviços Hubsoft`,
           });
           res.ambiguous += 1;
         } else {
-          const cli = matches[0];
-          const codigo = this.str(cli.codigo_cliente ?? cli.id_cliente);
-          const svc = (cli.servicos ?? []).find((s) => this.macEq(s.mac_addr, mac))
-            ?? (cli.servicos ?? [])[0];
           await this.setMatch(ont.id, DiscoveredOntMatchState.MATCHED, {
             erpSource: 'hubsoft',
-            erpCustomerCode: codigo,
-            erpServiceId: svc ? this.str(svc.id_cliente_servico) : null,
-            matchNote: `Casado por MAC com cliente Hubsoft ${codigo}`,
+            erpCustomerCode: hits[0].codigo,
+            erpServiceId: hits[0].servicoId || null,
+            matchNote: `Casado por serial com serviço Hubsoft ${hits[0].servicoId} (cliente ${hits[0].codigo})`,
           });
           res.matched += 1;
         }
       } catch (e) {
         res.errors += 1;
-        this.logger.warn(`[olt-match] ONU ${ont.serial} mac=${mac} erro: ${(e as Error).message}`);
+        this.logger.warn(`[olt-match] ONU ${ont.serial} erro: ${(e as Error).message}`);
       }
     }
     this.logger.log(
       `[olt-match] tenant=${tenantId} scanned=${res.scanned} matched=${res.matched} unmatched=${res.unmatched} ambiguous=${res.ambiguous} errors=${res.errors}`,
     );
     return res;
+  }
+
+  /** Normaliza serial de ONU p/ casar OLT↔Hubsoft (upper, só alfanumérico). */
+  private normSerial(v: unknown): string {
+    return this.str(v).toUpperCase().replace(/[^A-Z0-9]/g, '');
   }
 
   private async setMatch(
@@ -276,11 +302,5 @@ export class OltDiscoveryService {
 
   private str(v: unknown): string {
     return v == null ? '' : String(v).trim();
-  }
-
-  private macEq(a: unknown, b: string): boolean {
-    const na = this.str(a).replace(/[^0-9a-fA-F]/g, '').toUpperCase();
-    const nb = b.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
-    return !!na && na === nb;
   }
 }
