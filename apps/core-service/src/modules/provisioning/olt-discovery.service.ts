@@ -22,11 +22,15 @@ import { DiscoveredOntMatchState, Prisma } from '@prisma/client';
 import { CryptoService } from '../crypto/crypto.service';
 import { HubsoftConfigService } from '../hubsoft/hubsoft-config.service';
 import { HubsoftClientService } from '../hubsoft/hubsoft-client.service';
+import { HubsoftImportService } from '../hubsoft/hubsoft-import.service';
+import { RadiusSyncService } from '../contracts/radius-sync.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { buildConnectionContext } from './olt-context.util';
 import { OltDriverFactory } from './drivers/olt-driver.factory';
 import type { DiscoveredOntRaw } from './drivers/olt-driver.interface';
+
+const HS_CONTRACT_PREFIX = 'HS-SVC-';
 
 export interface OltScanResult {
   oltId: string;
@@ -54,6 +58,8 @@ export class OltDiscoveryService {
     private readonly drivers: OltDriverFactory,
     private readonly hubsoftConfig: HubsoftConfigService,
     private readonly hubsoftClient: HubsoftClientService,
+    private readonly hubsoftImport: HubsoftImportService,
+    private readonly radiusSync: RadiusSyncService,
   ) {}
 
   // ===========================================================================
@@ -239,6 +245,134 @@ export class OltDiscoveryService {
   /** Normaliza serial de ONU p/ casar OLT↔Hubsoft (upper, só alfanumérico). */
   private normSerial(v: unknown): string {
     return this.str(v).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  }
+
+  // ===========================================================================
+  // Camada 3 — MATERIALIZE: MATCHED → Customer + Contract + Ont (+ RADIUS)
+  // ===========================================================================
+  // Para cada ONU MATCHED: (1) importa o cliente do Hubsoft por código (reusa
+  // o HubsoftImportService — cria Customer+Contract com PPPoE/velocidade/valor
+  // reais); (2) acha o Contract do serviço casado (externalRef HS-SVC-<id>);
+  // (3) cria/atualiza o Ont ligando a ONU física ao contrato; (4) enfileira o
+  // RADIUS conforme o STATUS do contrato (AUTHORIZE só se ativo — bloqueado/
+  // cancelado enfileiram BLOCK/CANCEL, nunca sobem autorizados por engano);
+  // (5) marca o DiscoveredOnt como MATERIALIZED.
+  async materialize(
+    tenantId: string,
+    actorUserId: string,
+    opts: { ids?: string[]; enqueueRadius?: boolean; limit?: number } = {},
+  ): Promise<{
+    processed: number;
+    materialized: number;
+    radiusEnqueued: number;
+    skipped: number;
+    failed: number;
+    errors: Array<{ serial: string; message: string }>;
+  }> {
+    const enqueueRadius = opts.enqueueRadius ?? true;
+    const rows = await this.prisma.discoveredOnt.findMany({
+      where: {
+        tenantId,
+        matchState: DiscoveredOntMatchState.MATCHED,
+        ...(opts.ids?.length ? { id: { in: opts.ids } } : {}),
+      },
+      take: opts.limit ?? 1000,
+      orderBy: [{ slot: 'asc' }, { pon: 'asc' }, { onuIndex: 'asc' }],
+    });
+
+    const res = { processed: 0, materialized: 0, radiusEnqueued: 0, skipped: 0, failed: 0, errors: [] as Array<{ serial: string; message: string }> };
+
+    for (const ont of rows) {
+      res.processed += 1;
+      const codigo = this.str(ont.erpCustomerCode);
+      const svcId = this.str(ont.erpServiceId);
+      if (!codigo || !svcId) {
+        res.skipped += 1;
+        res.errors.push({ serial: ont.serial, message: 'MATCHED sem erpCustomerCode/erpServiceId' });
+        continue;
+      }
+      try {
+        // 1) Importa o cliente casado do Hubsoft (cria Customer+Contract reais).
+        await this.hubsoftImport.run(tenantId, actorUserId, {
+          codigos: [codigo],
+          entities: ['customers'],
+          dryRun: false,
+        });
+
+        // 2) Acha o Contract do serviço exato (identidade estável do Hubsoft).
+        const contract = await this.prisma.contract.findFirst({
+          where: { tenantId, externalRef: `${HS_CONTRACT_PREFIX}${svcId}` },
+          select: {
+            id: true, tenantId: true, authMethod: true, pppoeUsername: true,
+            circuitId: true, macAddress: true, status: true,
+          },
+        });
+        if (!contract) {
+          res.failed += 1;
+          res.errors.push({ serial: ont.serial, message: `Contract HS-SVC-${svcId} não encontrado após import` });
+          continue;
+        }
+
+        // 3) Cria/atualiza o Ont (vínculo físico↔contrato). Idempotente por
+        //    contractId (unique) e por olt+serial.
+        await this.upsertOnt(tenantId, ont.oltId, contract.id, ont);
+
+        // 4) RADIUS conforme status (AUTHORIZE só se ACTIVE — enqueueSync deriva
+        //    a ação do status; suspenso/cancelado nunca sobe autorizado).
+        if (enqueueRadius && contract.pppoeUsername) {
+          await this.radiusSync.enqueueSync(contract, 'Materializado da descoberta de ONU');
+          res.radiusEnqueued += 1;
+        }
+
+        // 5) Marca MATERIALIZED.
+        await this.prisma.discoveredOnt.update({
+          where: { id: ont.id },
+          data: {
+            matchState: DiscoveredOntMatchState.MATERIALIZED,
+            contractId: contract.id,
+            matchNote: `Materializado: contrato ${contract.id}`,
+          },
+        });
+        res.materialized += 1;
+      } catch (e) {
+        res.failed += 1;
+        res.errors.push({ serial: ont.serial, message: e instanceof Error ? e.message : String(e) });
+        this.logger.warn(`[olt-materialize] ONU ${ont.serial} falhou: ${(e as Error).message}`);
+      }
+    }
+
+    this.logger.log(
+      `[olt-materialize] tenant=${tenantId} processed=${res.processed} materialized=${res.materialized} radius=${res.radiusEnqueued} skipped=${res.skipped} failed=${res.failed}`,
+    );
+    return res;
+  }
+
+  /**
+   * Upsert do Ont. A ONU física (serial) casa 1:1 com o contrato. Guardas:
+   * um contrato só tem 1 Ont (contractId unique) e uma OLT não repete serial.
+   */
+  private async upsertOnt(
+    tenantId: string,
+    oltId: string,
+    contractId: string,
+    ont: { serial: string; slot: number; pon: number; onuIndex: number; macAddress: string | null },
+  ): Promise<void> {
+    const existing = await this.prisma.ont.findFirst({
+      where: { OR: [{ contractId }, { oltId, snGpon: ont.serial }] },
+      select: { id: true },
+    });
+    const data = {
+      snGpon: ont.serial,
+      macAddress: ont.macAddress,
+      ponSlot: ont.slot,
+      ponOnuIndex: ont.onuIndex,
+      ponFrame: ont.pon, // a coordenada "pon" da Fiberhome mapeia no ponFrame do modelo
+    };
+    if (existing) {
+      await this.prisma.ont.update({ where: { id: existing.id }, data: { oltId, ...data } });
+    } else {
+      await this.prisma.ont.create({ data: { tenantId, contractId, oltId, ...data } });
+    }
   }
 
   private async setMatch(

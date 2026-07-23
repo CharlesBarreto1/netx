@@ -234,6 +234,25 @@ export class OltsController {
   listDiscovered(@CurrentUser() user: AuthenticatedPrincipal) {
     return this.discovery.listDiscovered(user.tenantId);
   }
+
+  /**
+   * Camada 3 — materializa os MATCHED em Customer+Contract+Ont (reusa o import
+   * Hubsoft) e enfileira RADIUS conforme o status. `?noRadius=1` materializa sem
+   * tocar RADIUS; `ids` no body materializa só os selecionados (default: todos).
+   */
+  @Post('discovery/materialize')
+  @HttpCode(200)
+  @RequirePermissions('olts.admin')
+  materialize(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Query('noRadius') noRadius?: string,
+    @Body() body?: { ids?: string[] },
+  ) {
+    return this.discovery.materialize(user.tenantId, user.sub, {
+      ids: body?.ids,
+      enqueueRadius: noRadius !== '1' && noRadius !== 'true',
+    });
+  }
 }
 
 // =============================================================================
