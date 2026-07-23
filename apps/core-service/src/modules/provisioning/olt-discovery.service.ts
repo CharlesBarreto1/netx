@@ -348,12 +348,16 @@ export class OltDiscoveryService {
       signals.push({ source: r.source, codigo: r.codigo, servicoId: r.servicoId, status: r.status, cancelled: r.cancelled, rawSerial: r.rawSerial });
     }
 
-    // Fonte COMODATO — só se o serviço NÃO resolveu (evita N chamadas). O
-    // comodato guarda o serial em hex; casa por forma canônica.
+    // Fonte PATRIMÔNIO/COMODATO — só se as fontes em massa NÃO resolveram (evita
+    // N chamadas). Consulta o estoque pelo SERIAL (produto_item/consultar): o
+    // patrimônio indexa pela serial GPON REAL e diz em qual cliente_servico está
+    // alocado — resolve os casos em que o Hubsoft guardou o MAC no phy_addr do
+    // serviço (ex.: clientes 5145, 6097). Tenta as formas canônicas do serial
+    // (amigável + hex Huawei 48575443...).
     if (signals.length === 0) {
-      const comodato = await this.findComodatoOwner(cfg, ont.serial).catch(() => null);
-      if (comodato) {
-        signals.push({ source: 'COMODATO', codigo: comodato.codigo, servicoId: comodato.servicoId, status: comodato.status, cancelled: comodato.cancelled, rawSerial: comodato.rawSerial });
+      const pat = await this.findOwnerByPatrimonio(cfg, ont.serial).catch(() => null);
+      if (pat) {
+        signals.push({ source: 'COMODATO', codigo: pat.codigo, servicoId: pat.servicoId, status: pat.status, cancelled: pat.cancelled, rawSerial: pat.rawSerial });
       }
     }
 
@@ -661,17 +665,35 @@ export class OltDiscoveryService {
   }
 
   /**
-   * Busca o dono de uma ONT pelo COMODATO: varre os patrimônios em comodato de
-   * cada serviço não é viável em massa, então usamos a busca por serial invertida
-   * — como o Hubsoft não busca comodato por serial, esta rota fica reservada ao
-   * enriquecimento por serviço já conhecido. Aqui retornamos null (a fonte
-   * comodato é consultada na materialização, por serviço). Placeholder para
-   * evolução: um índice de comodato pré-carregado quando a operação pedir.
+   * Busca o dono de uma ONT consultando o PATRIMÔNIO por SERIAL
+   * (produto_item/consultar?busca=numero_serie). Resolve os casos em que o
+   * serviço guardou o MAC no phy_addr — o estoque indexa pela serial GPON real e
+   * aponta o cliente_servico alocado. Tenta as formas canônicas (amigável + hex).
    */
-  private async findComodatoOwner(
-    _cfg: HubsoftResolvedConfig,
-    _serial: string,
+  private async findOwnerByPatrimonio(
+    cfg: HubsoftResolvedConfig,
+    serial: string,
   ): Promise<{ codigo: string; servicoId: string; status: string; cancelled: boolean; rawSerial: string } | null> {
+    // Tenta cada forma do serial (a Huawei pode estar em hex 48575443... no estoque).
+    for (const form of ontSerialKeys(serial)) {
+      const itens = await this.hubsoftClient.getPatrimonioBySerial(cfg, form).catch(() => []);
+      for (const it of itens) {
+        const cs = it.cliente_servico;
+        const servicoId = cs ? this.str(cs.id_cliente_servico) : '';
+        const codigo = cs?.cliente ? this.str(cs.cliente.codigo_cliente ?? cs.cliente.id_cliente) : '';
+        if (!servicoId || !codigo) continue; // item em estoque, não alocado a cliente
+        const status = this.str(it.produto_item_status?.prefixo ?? it.produto_item_status?.descricao);
+        return {
+          codigo,
+          servicoId,
+          status,
+          // "comodato"/"instalado" NÃO é cancelamento; só marca cancelled se o
+          // status do item disser cancelado/baixado.
+          cancelled: this.isCancelledStatus(status),
+          rawSerial: this.str(it.numero_serie) || form,
+        };
+      }
+    }
     return null;
   }
 

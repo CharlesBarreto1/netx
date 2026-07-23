@@ -116,6 +116,29 @@ export interface HubsoftCpe {
   servicos?: HubsoftCpeServico[];
 }
 
+// -----------------------------------------------------------------------------
+// Patrimônio (item de estoque) — GET /estoque/produto_item/consultar
+// Consulta pela SERIAL; diz em qual cliente_servico o item está alocado.
+// -----------------------------------------------------------------------------
+export interface HubsoftProdutoItem {
+  id_produto_item?: number | string;
+  numero_serie?: string;
+  mac_address?: string | null;
+  produto?: { id_produto?: number | string; nome?: string; controle_patrimonial?: boolean };
+  produto_item_status?: { descricao?: string; prefixo?: string };
+  // Alocação: quando o item está em comodato/instalado, aponta o serviço/cliente.
+  cliente_servico?: {
+    id_cliente_servico?: number | string;
+    servico?: string;
+    display?: string;
+    cliente?: {
+      id_cliente?: number | string;
+      codigo_cliente?: number | string;
+      nome_razaosocial?: string;
+    };
+  } | null;
+}
+
 export interface HubsoftPacote {
   id_pacote?: number | string;
   codigo?: string;

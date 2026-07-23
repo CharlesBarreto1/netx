@@ -16,6 +16,7 @@ import type {
   HubsoftCliente,
   HubsoftCpe,
   HubsoftFatura,
+  HubsoftProdutoItem,
   HubsoftProdutoVinculo,
   HubsoftResolvedConfig,
   HubsoftTokenResponse,
@@ -339,5 +340,26 @@ export class HubsoftClientService {
       BULK_TIMEOUT_MS,
     );
     return this.pickArray(json, ['cpes']) as HubsoftCpe[];
+  }
+
+  /**
+   * GET /api/v1/integracao/estoque/produto_item/consultar?busca=numero_serie —
+   * consulta de PATRIMÔNIO pelo SERIAL. Resolve os casos em que o Hubsoft guardou
+   * o MAC no phy_addr do serviço (não a serial GPON): o estoque indexa pela serial
+   * física e diz em qual `cliente_servico` o item está alocado. 1 chamada por
+   * serial — usar como fallback para ONTs que nenhuma outra fonte resolveu.
+   */
+  async getPatrimonioBySerial(
+    cfg: HubsoftResolvedConfig,
+    serial: string,
+  ): Promise<HubsoftProdutoItem[]> {
+    const json = await this.get(
+      cfg,
+      `/api/v1/integracao/estoque/produto_item/consultar${this.qs({
+        busca: 'numero_serie',
+        termo_busca: serial,
+      })}`,
+    );
+    return this.pickArray(json, ['produto_item', 'itens', 'patrimonios']) as HubsoftProdutoItem[];
   }
 }
