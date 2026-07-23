@@ -18,6 +18,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import useSWR from 'swr';
 
+import { OntDiscoveryPanel } from '@/components/olts/OntDiscoveryPanel';
 import { Badge } from '@/components/ui/Badge';
 import { PageLoader } from '@/components/ui/Spinner';
 import type { Olt } from '@/lib/olts-api';
@@ -92,6 +93,9 @@ export default function OltDetailPage() {
           </Link>
         </div>
       </section>
+
+      {/* Descoberta de ONU — só p/ OLTs que o driver sabe varrer (Fiberhome hoje) */}
+      {olt.vendor === 'FIBERHOME' && oltId && <OntDiscoveryPanel oltId={oltId} />}
     </div>
   );
 }

@@ -56,6 +56,65 @@ function qs(p: ListOltsParams = {}): string {
   return s ? `?${s}` : '';
 }
 
+// =============================================================================
+// Descoberta de ONU (integrador técnico) — staging discovered_onts
+// =============================================================================
+export type DiscoveredOntMatchState =
+  | 'DISCOVERED'
+  | 'MATCHED'
+  | 'UNMATCHED'
+  | 'AMBIGUOUS'
+  | 'MATERIALIZED'
+  | 'IGNORED';
+
+export interface DiscoveredOnt {
+  id: string;
+  oltId: string;
+  serial: string;
+  slot: number;
+  pon: number;
+  onuIndex: number;
+  model: string | null;
+  onuState: string | null;
+  macAddress: string | null;
+  vlan: number | null;
+  matchState: DiscoveredOntMatchState;
+  erpCustomerCode: string | null;
+  matchNote: string | null;
+  lastSeenAt: string;
+}
+
+export interface DiscoveredOntList {
+  total: number;
+  byState: Record<string, number>;
+  items: DiscoveredOnt[];
+}
+
+export interface OltScanResult {
+  oltId: string;
+  discovered: number;
+  withMac: number;
+  durationMs: number;
+  error?: string;
+}
+
+export interface OltMatchResult {
+  scanned: number;
+  matched: number;
+  unmatched: number;
+  ambiguous: number;
+  errors: number;
+}
+
+export interface OltMaterializeResult {
+  processed: number;
+  materialized: number;
+  radiusEnqueued: number;
+  skipped: number;
+  failed: number;
+  errors: Array<{ serial: string; message: string }>;
+}
+
 export const oltsApi = {
   listPath: (p: ListOltsParams = {}) => `/v1/olts${qs(p)}`,
   list: (p: ListOltsParams = {}) => api.get<Paginated<Olt>>(`/v1/olts${qs(p)}`),
@@ -63,4 +122,23 @@ export const oltsApi = {
   /** Vincula/desvincula POP. popId=null pra desvincular. */
   setPop: (oltId: string, popId: string | null) =>
     api.patch<Olt>(`/v1/olts/${oltId}`, { popId }),
+
+  // ── Descoberta de ONU ──────────────────────────────────────────────────────
+  /** Varre a OLT (opcionalmente 1 PON via slot/pon) e grava no staging. */
+  scanOnts: (oltId: string, scope?: { slot: number; pon: number }) => {
+    const q =
+      scope !== undefined ? `?slot=${scope.slot}&pon=${scope.pon}` : '';
+    return api.post<OltScanResult>(`/v1/olts/${oltId}/scan-onts${q}`);
+  },
+  /** Casa as ONUs descobertas contra o Hubsoft (por serial). */
+  matchDiscovered: () => api.post<OltMatchResult>('/v1/olts/discovery/match'),
+  /** Materializa os MATCHED em Contract+Ont (+RADIUS salvo noRadius). */
+  materialize: (opts?: { ids?: string[]; noRadius?: boolean }) =>
+    api.post<OltMaterializeResult>(
+      `/v1/olts/discovery/materialize${opts?.noRadius ? '?noRadius=1' : ''}`,
+      opts?.ids?.length ? { ids: opts.ids } : undefined,
+    ),
+  /** Lista o staging (para revisão). */
+  listDiscovered: () => api.get<DiscoveredOntList>('/v1/olts/discovery/onts'),
+  discoveredPath: () => '/v1/olts/discovery/onts',
 };
