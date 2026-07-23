@@ -365,6 +365,38 @@ export class OltDiscoveryService {
   }
 
   /**
+   * Aplica (ou re-aplica) o comodato do Hubsoft aos Onts já MATERIALIZED — útil
+   * para contratos materializados ANTES do import de comodato existir. Percorre
+   * os discovered_onts MATERIALIZED, busca o comodato do serviço e enriquece o
+   * Ont. Idempotente.
+   */
+  async applyComodatoToMaterialized(
+    tenantId: string,
+    opts: { limit?: number } = {},
+  ): Promise<{ processed: number; enriched: number; noComodato: number; failed: number }> {
+    const cfg = await this.hubsoftConfig.resolve(tenantId);
+    const rows = await this.prisma.discoveredOnt.findMany({
+      where: { tenantId, matchState: DiscoveredOntMatchState.MATERIALIZED, contractId: { not: null }, erpServiceId: { not: null } },
+      take: opts.limit ?? 2000,
+    });
+    const res = { processed: 0, enriched: 0, noComodato: 0, failed: 0 };
+    for (const ont of rows) {
+      res.processed += 1;
+      try {
+        const comodato = await this.resolveComodato(cfg, this.str(ont.erpServiceId), ont.serial);
+        if (!comodato) { res.noComodato += 1; continue; }
+        await this.enrichOntWithComodato(tenantId, ont.contractId!, comodato);
+        res.enriched += 1;
+      } catch (e) {
+        res.failed += 1;
+        this.logger.warn(`[comodato-backfill] ${ont.serial}: ${(e as Error).message}`);
+      }
+    }
+    this.logger.log(`[comodato-backfill] tenant=${tenantId} processed=${res.processed} enriched=${res.enriched} noComodato=${res.noComodato} failed=${res.failed}`);
+    return res;
+  }
+
+  /**
    * Upsert do Ont. A ONU física (serial) casa 1:1 com o contrato. Guardas:
    * um contrato só tem 1 Ont (contractId unique) e uma OLT não repete serial.
    */

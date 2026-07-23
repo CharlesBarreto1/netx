@@ -253,6 +253,17 @@ export class OltsController {
       enqueueRadius: noRadius !== '1' && noRadius !== 'true',
     });
   }
+
+  /**
+   * Aplica o comodato do Hubsoft aos Onts já materializados (backfill) — para
+   * contratos materializados antes do import de comodato existir.
+   */
+  @Post('discovery/apply-comodato')
+  @HttpCode(200)
+  @RequirePermissions('olts.admin')
+  applyComodato(@CurrentUser() user: AuthenticatedPrincipal) {
+    return this.discovery.applyComodatoToMaterialized(user.tenantId);
+  }
 }
 
 // =============================================================================
