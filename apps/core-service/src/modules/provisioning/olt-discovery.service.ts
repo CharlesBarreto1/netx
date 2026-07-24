@@ -17,6 +17,7 @@
  * é um passo revisado à parte; nada de RADIUS automático.
  */
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { DiscoveredOntMatchState, Prisma } from '@prisma/client';
 
 import { CryptoService } from '../crypto/crypto.service';
@@ -25,6 +26,7 @@ import { HubsoftClientService } from '../hubsoft/hubsoft-client.service';
 import { HubsoftImportService } from '../hubsoft/hubsoft-import.service';
 import type { HubsoftResolvedConfig } from '../hubsoft/hubsoft.types';
 import { RadiusSyncService } from '../contracts/radius-sync.service';
+import { ComodatoService } from '../stock/comodato.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 import { buildConnectionContext } from './olt-context.util';
@@ -83,6 +85,7 @@ export class OltDiscoveryService {
     private readonly hubsoftClient: HubsoftClientService,
     private readonly hubsoftImport: HubsoftImportService,
     private readonly radiusSync: RadiusSyncService,
+    private readonly comodato: ComodatoService,
   ) {}
 
   // ===========================================================================
@@ -137,6 +140,135 @@ export class OltDiscoveryService {
       this.logger.warn(`[olt-scan] olt=${olt.name} FALHOU: ${result.error}`);
     }
     return out;
+  }
+
+  // ===========================================================================
+  // POLL ÓPTICO — OLT → onts.last_rx_power/tx (sinal para ONUs SEM TR-069)
+  // ===========================================================================
+  /**
+   * Lê a potência óptica de todas as ONUs pela OLT e grava em onts.last_rx_power/
+   * last_tx_power. É a ÚNICA fonte de sinal para ONUs cujo CPE não fala TR-069
+   * com o ACS (ex.: Parks) — complementa o caminho TR-069, NÃO o substitui. O
+   * casamento é por coordenada (slot,pon,onu) da OLT: discovered_ont(coord) →
+   * contractId → Ont. Varre as PONs que a descoberta já conhece (uma leitura por
+   * PON cobre ~todas as ONUs). NÃO sobrescreve sinal mais fresco do TR-069 se o
+   * Ont foi visto há pouco por lá — o TR-069 tem prioridade quando presente.
+   */
+  async pollOpticalFromOlt(
+    tenantId: string,
+    oltId: string,
+    opts: { scope?: { slot: number; pon: number }; onlyMissing?: boolean } = {},
+  ): Promise<{ pons: number; read: number; updated: number; noMatch: number; error?: string }> {
+    const olt = await this.prisma.olt.findFirst({ where: { id: oltId, tenantId, deletedAt: null } });
+    if (!olt) throw new NotFoundException('OLT não encontrada');
+    const driver = this.drivers.resolve(olt.vendor, olt.providerMode);
+    if (!driver.listOntOptical) {
+      throw new Error(`Driver ${driver.name} não lê óptico pela OLT (listOntOptical).`);
+    }
+
+    // PONs a varrer: o escopo pedido, ou as PONs distintas já descobertas nesta OLT.
+    let pons: Array<{ slot: number; pon: number }>;
+    if (opts.scope) {
+      pons = [opts.scope];
+    } else {
+      const grouped = await this.prisma.discoveredOnt.groupBy({
+        by: ['slot', 'pon'],
+        where: { tenantId, oltId },
+      });
+      pons = grouped.map((g) => ({ slot: g.slot, pon: g.pon }));
+    }
+    if (pons.length === 0) return { pons: 0, read: 0, updated: 0, noMatch: 0 };
+
+    const ctx = buildConnectionContext(olt, this.crypto);
+    const res = { pons: pons.length, read: 0, updated: 0, noMatch: 0 } as {
+      pons: number; read: number; updated: number; noMatch: number; error?: string;
+    };
+
+    const result = await driver.listOntOptical(ctx, {
+      pons,
+      onProgress: async (batch) => {
+        for (const r of batch) {
+          res.read += 1;
+          if (r.rxPower === null && r.txPower === null) continue; // ONU down: sem sinal
+          const updated = await this.applyOpticalReading(tenantId, oltId, r, opts.onlyMissing ?? false);
+          if (updated === 'updated') res.updated += 1;
+          else if (updated === 'nomatch') res.noMatch += 1;
+        }
+      },
+    });
+
+    await this.prisma.olt.update({
+      where: { id: oltId },
+      data: { lastSeenAt: new Date(), lastError: result.success ? null : result.error },
+    });
+    if (!result.success) res.error = result.error;
+    this.logger.log(
+      `[olt-optical] olt=${olt.name} pons=${res.pons} read=${res.read} updated=${res.updated} noMatch=${res.noMatch}`,
+    );
+    return res;
+  }
+
+  /**
+   * Aplica uma leitura óptica ao Ont casado pela coordenada (slot,pon,onu). Passo
+   * a passo: discovered_ont(coord)→contractId→Ont. Grava rx/tx + lastSeenAt.
+   * `onlyMissing`: só grava se o Ont ainda não tem sinal (não sobrescreve o que
+   * o TR-069 já preencheu). Retorna 'updated' | 'nomatch' | 'skip'.
+   */
+  private async applyOpticalReading(
+    tenantId: string,
+    oltId: string,
+    r: { slot: number; pon: number; onuIndex: number; rxPower: number | null; txPower: number | null },
+    onlyMissing: boolean,
+  ): Promise<'updated' | 'nomatch' | 'skip'> {
+    // discovered_ont pela coordenada exata nesta OLT (materializado tem contractId).
+    const disc = await this.prisma.discoveredOnt.findFirst({
+      where: { tenantId, oltId, slot: r.slot, pon: r.pon, onuIndex: r.onuIndex },
+      select: { contractId: true },
+    });
+    if (!disc?.contractId) return 'nomatch';
+    const ont = await this.prisma.ont.findFirst({
+      where: { tenantId, contractId: disc.contractId },
+      select: { id: true, lastRxPower: true },
+    });
+    if (!ont) return 'nomatch';
+    if (onlyMissing && ont.lastRxPower !== null) return 'skip';
+    await this.prisma.ont.update({
+      where: { id: ont.id },
+      data: {
+        ...(r.rxPower !== null ? { lastRxPower: r.rxPower } : {}),
+        ...(r.txPower !== null ? { lastTxPower: r.txPower } : {}),
+        lastSeenAt: new Date(),
+      },
+    });
+    return 'updated';
+  }
+
+  /**
+   * CRON — poll óptico periódico das OLTs que sabem ler óptico. É GENTIL (1
+   * comando por PON, pausa entre PONs) e INFREQUENTE (óptico varia devagar; a
+   * cada 4h por padrão, ≠ dos 5min do TR-069), pra não sobrecarregar a OLT de
+   * produção. Mantém o sinal fresco das ONUs SEM TR-069 (Parks etc.). Guardado
+   * por env NETX_OLT_OPTICAL_POLL_ENABLED (default on) e serializado por OLT.
+   * Erros por OLT são engolidos (uma OLT offline não trava as outras).
+   */
+  @Cron(process.env.NETX_OLT_OPTICAL_POLL_CRON ?? CronExpression.EVERY_4_HOURS)
+  async pollOpticalCron(): Promise<void> {
+    if ((process.env.NETX_OLT_OPTICAL_POLL_ENABLED ?? '1') === '0') return;
+    const olts = await this.prisma.olt.findMany({
+      where: { deletedAt: null, providerMode: 'DIRECT' },
+      select: { id: true, tenantId: true, vendor: true, providerMode: true, name: true },
+    });
+    for (const olt of olts) {
+      // Só varre OLT cujo driver lê óptico (ex.: Fiberhome). Silencioso p/ o resto.
+      const driver = this.drivers.resolve(olt.vendor, olt.providerMode);
+      if (!driver.listOntOptical) continue;
+      try {
+        const res = await this.pollOpticalFromOlt(olt.tenantId, olt.id);
+        this.logger.log(`[olt-optical-cron] olt=${olt.name} updated=${res.updated}/${res.read}`);
+      } catch (e) {
+        this.logger.warn(`[olt-optical-cron] olt=${olt.name} falhou: ${(e as Error).message}`);
+      }
+    }
   }
 
   /** Upsert idempotente de um lote de ONUs cruas (chave olt+serial). */
@@ -778,7 +910,12 @@ export class OltDiscoveryService {
         //     falha aqui não derruba a materialização.
         try {
           const comodato = await this.resolveComodato(cfg, svcId, ont.serial);
-          if (comodato) await this.enrichOntWithComodato(tenantId, contract.id, comodato);
+          if (comodato) {
+            await this.enrichOntWithComodato(tenantId, contract.id, comodato);
+            // ESTOQUE: materializa o comodato como SerialItem PATRIMONIAL alocado
+            // ao contrato (bem já instalado — descoberto, não comprado). Best-effort.
+            await this.materializeComodatoStock(tenantId, actorUserId, contract.id, ont, comodato);
+          }
         } catch (e) {
           this.logger.warn(`[olt-materialize] comodato ${ont.serial}: ${(e as Error).message}`);
         }
@@ -831,28 +968,65 @@ export class OltDiscoveryService {
    */
   async applyComodatoToMaterialized(
     tenantId: string,
+    actorUserId: string,
     opts: { limit?: number } = {},
-  ): Promise<{ processed: number; enriched: number; noComodato: number; failed: number }> {
+  ): Promise<{ processed: number; enriched: number; stockCreated: number; noComodato: number; failed: number }> {
     const cfg = await this.hubsoftConfig.resolve(tenantId);
     const rows = await this.prisma.discoveredOnt.findMany({
       where: { tenantId, matchState: DiscoveredOntMatchState.MATERIALIZED, contractId: { not: null }, erpServiceId: { not: null } },
       take: opts.limit ?? 2000,
     });
-    const res = { processed: 0, enriched: 0, noComodato: 0, failed: 0 };
+    const res = { processed: 0, enriched: 0, stockCreated: 0, noComodato: 0, failed: 0 };
     for (const ont of rows) {
       res.processed += 1;
       try {
         const comodato = await this.resolveComodato(cfg, this.str(ont.erpServiceId), ont.serial);
         if (!comodato) { res.noComodato += 1; continue; }
         await this.enrichOntWithComodato(tenantId, ont.contractId!, comodato);
+        const stock = await this.materializeComodatoStock(tenantId, actorUserId, ont.contractId!, ont, comodato);
+        if (stock?.created) res.stockCreated += 1;
         res.enriched += 1;
       } catch (e) {
         res.failed += 1;
         this.logger.warn(`[comodato-backfill] ${ont.serial}: ${(e as Error).message}`);
       }
     }
-    this.logger.log(`[comodato-backfill] tenant=${tenantId} processed=${res.processed} enriched=${res.enriched} noComodato=${res.noComodato} failed=${res.failed}`);
+    this.logger.log(`[comodato-backfill] tenant=${tenantId} processed=${res.processed} enriched=${res.enriched} stock=${res.stockCreated} noComodato=${res.noComodato} failed=${res.failed}`);
     return res;
+  }
+
+  /**
+   * Materializa o comodato como PATRIMÔNIO (SerialItem ALLOCATED ao contrato).
+   * Deriva vendor do prefixo do serial da ONU e modelo do que a OLT reportou.
+   * Delega a idempotência/criação ao ComodatoService. Best-effort — não derruba
+   * a materialização se o estoque falhar.
+   */
+  private async materializeComodatoStock(
+    tenantId: string,
+    actorUserId: string,
+    contractId: string,
+    ont: { serial: string; model: string | null },
+    comodato: { serial: string; mac: string | null; produtoId: string | null },
+  ): Promise<{ serialItemId: string; created: boolean } | null> {
+    // Serial do patrimônio (etiqueta) é a identidade do bem; cai no serial da
+    // OLT se o comodato não trouxe. Vendor = OUI de 4 letras do serial GPON
+    // (ALCL/MKPG/PRKS/HWTC/ZTEG/DACM); o resto é hex e NÃO faz parte do vendor.
+    const serial = this.str(comodato.serial) || this.str(ont.serial);
+    if (!serial) return null;
+    const vendor = (this.str(ont.serial).match(/^[A-Za-z]{4}/)?.[0] ?? '').toUpperCase() || null;
+    try {
+      return await this.comodato.materializeAsFoundComodato(tenantId, actorUserId, {
+        contractId,
+        serial,
+        macAddress: comodato.mac,
+        hubsoftProdutoId: comodato.produtoId,
+        vendor,
+        model: ont.model,
+      });
+    } catch (e) {
+      this.logger.warn(`[comodato-stock] ${serial}: ${(e as Error).message}`);
+      return null;
+    }
   }
 
   /**

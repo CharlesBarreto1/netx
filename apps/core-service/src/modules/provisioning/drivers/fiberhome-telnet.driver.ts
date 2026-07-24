@@ -31,6 +31,7 @@ import {
   type OltConnectionContext,
   type OltDriver,
   type OltDriverResult,
+  type OntOpticalReading,
   type OntStatusResult,
 } from './olt-driver.interface';
 import { FiberhomeTelnetClient } from './fiberhome-telnet.client';
@@ -191,6 +192,94 @@ export class FiberhomeTelnetDriver implements OltDriver {
     const hex = v.replace(/[^0-9a-fA-F]/g, '');
     if (hex.length !== 12) return null;
     return (hex.match(/.{2}/g) as string[]).join(':').toUpperCase();
+  }
+
+  /**
+   * Lê a POTÊNCIA ÓPTICA de todas as ONUs, varrendo por PON com o comando
+   * (validado na OLT-CPM-01 da Zux):
+   *   cd onu → show onu optical-info slot <s> pon <p> onu all
+   * A tabela traz, por ONU: OST(up/dn) RxPower TxPower OLT_RxPower Temperature
+   * Voltage Current Distance — RX/TX já em dBm. É a fonte de sinal para ONUs sem
+   * TR-069 (ex.: Parks). GENTIL: 1 comando por PON, pausa entre PONs.
+   */
+  async listOntOptical(
+    ctx: OltConnectionContext,
+    opts?: {
+      onProgress?: (batch: OntOpticalReading[], meta: { slot: number; pon: number }) => Promise<void>;
+      scope?: { slot: number; pon: number };
+      pons?: Array<{ slot: number; pon: number }>;
+    },
+  ): Promise<OltDriverResult<{ readings: OntOpticalReading[] }>> {
+    return runDriverCall(async () => {
+      const cli = this.makeClient(ctx);
+      const all: OntOpticalReading[] = [];
+      try {
+        await cli.connect();
+        await cli.exec('cd onu', 8_000);
+        const targets = opts?.scope
+          ? [opts.scope]
+          : opts?.pons && opts.pons.length > 0
+            ? opts.pons
+            : [];
+        if (targets.length === 0) {
+          throw new Error('listOntOptical exige scope ou lista de PONs (a OLT lê óptico por PON).');
+        }
+        for (const { slot, pon } of targets) {
+          try {
+            const raw = await cli.exec(`show onu optical-info slot ${slot} pon ${pon} onu all`, 45_000);
+            const batch = this.parseOpticalTable(raw, slot, pon);
+            all.push(...batch);
+            if (opts?.onProgress) await opts.onProgress(batch, { slot, pon });
+          } catch (e) {
+            this.logger.warn(`óptico slot ${slot} pon ${pon} falhou: ${(e as Error).message}`);
+          }
+          await this.sleep(600); // gentileza com a OLT de produção
+        }
+        return { readings: all };
+      } finally {
+        await cli.close();
+      }
+    });
+  }
+
+  /**
+   * Parseia a tabela de `show onu optical-info`. Colunas (por espaço):
+   *   SLOT PON ONU OST RxPower TxPower OLT_Rx Temperature Voltage Current Distance
+   * ONU em `dn` traz "-" em tudo → null. Ignora cabeçalho/separador/rodapé.
+   */
+  private parseOpticalTable(raw: string, slot: number, pon: number): OntOpticalReading[] {
+    const out: OntOpticalReading[] = [];
+    const num = (v: string): number | null => {
+      if (v === '-' || v === '' || v == null) return null;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : null;
+    };
+    for (const line of raw.split('\n')) {
+      const t = line.trim();
+      if (!t) continue;
+      // slot pon onu ost rx tx oltrx temp volt curr dist
+      const m = t.match(
+        /^(\d+)\s+(\d+)\s+(\d+)\s+(up|dn)\s+(-|-?\d+(?:\.\d+)?)\s+(-|-?\d+(?:\.\d+)?)\s+(-|-?\d+(?:\.\d+)?)\s+(-|-?\d+(?:\.\d+)?)\s+(-|-?\d+(?:\.\d+)?)\s+(-|-?\d+(?:\.\d+)?)\s+(-|-?\d+(?:\.\d+)?)\s*$/i,
+      );
+      if (!m) continue;
+      const [, s, p, onu, ost, rx, tx, oltrx, temp, volt, curr, dist] = m;
+      // Confere que a linha é da PON pedida (a OLT ecoa slot/pon na 1ª/2ª coluna).
+      if (Number(s) !== slot || Number(p) !== pon) continue;
+      out.push({
+        slot,
+        pon,
+        onuIndex: Number(onu),
+        up: /up/i.test(ost),
+        rxPower: num(rx),
+        txPower: num(tx),
+        oltRxPower: num(oltrx),
+        temperature: num(temp),
+        voltage: num(volt),
+        biasCurrent: num(curr),
+        distanceM: num(dist),
+      });
+    }
+    return out;
   }
 
   private sleep(ms: number): Promise<void> {

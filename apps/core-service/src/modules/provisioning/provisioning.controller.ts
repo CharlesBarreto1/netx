@@ -220,6 +220,32 @@ export class OltsController {
     return this.discovery.scan(user.tenantId, id, { scope });
   }
 
+  /**
+   * Lê a POTÊNCIA ÓPTICA das ONUs pela OLT e grava em onts.last_rx_power/tx — a
+   * fonte de sinal para ONUs SEM TR-069 (ex.: Parks). `?slot=X&pon=Y` limita a
+   * uma PON; `?onlyMissing=1` só preenche quem ainda não tem sinal (não
+   * sobrescreve o do TR-069).
+   */
+  @Post(':id/poll-optical')
+  @HttpCode(200)
+  @RequirePermissions('olts.admin')
+  pollOptical(
+    @CurrentUser() user: AuthenticatedPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Query('slot') slot?: string,
+    @Query('pon') pon?: string,
+    @Query('onlyMissing') onlyMissing?: string,
+  ) {
+    const scope =
+      slot !== undefined && pon !== undefined
+        ? { slot: Number(slot), pon: Number(pon) }
+        : undefined;
+    return this.discovery.pollOpticalFromOlt(user.tenantId, id, {
+      scope,
+      onlyMissing: onlyMissing === '1' || onlyMissing === 'true',
+    });
+  }
+
   /** Camada 2 — casa as ONUs descobertas (com MAC) contra o Hubsoft. */
   @Post('discovery/match')
   @HttpCode(200)
@@ -262,7 +288,7 @@ export class OltsController {
   @HttpCode(200)
   @RequirePermissions('olts.admin')
   applyComodato(@CurrentUser() user: AuthenticatedPrincipal) {
-    return this.discovery.applyComodatoToMaterialized(user.tenantId);
+    return this.discovery.applyComodatoToMaterialized(user.tenantId, user.sub);
   }
 
   /**

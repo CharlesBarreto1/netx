@@ -115,6 +115,29 @@ export interface OntStatusResult {
 }
 
 /**
+ * Leitura de potência óptica de UMA ONU pela OLT (não pelo CPE/TR-069). É a
+ * ÚNICA fonte de sinal para ONUs cujo CPE não fala TR-069 com o ACS do NetX
+ * (ex.: Parks, que não expõe óptico via TR-069). Coordenada + níveis em dBm.
+ */
+export interface OntOpticalReading {
+  slot: number;
+  pon: number;
+  onuIndex: number;
+  /** Estado do enlace na OLT (up/dn). */
+  up: boolean;
+  /** Potência RX na ONU (dBm) — null se a ONU está down. */
+  rxPower: number | null;
+  /** Potência TX da ONU (dBm). */
+  txPower: number | null;
+  /** Potência que a OLT RECEBE da ONU (dBm) — visão do lado OLT. */
+  oltRxPower: number | null;
+  temperature: number | null;
+  voltage: number | null;
+  biasCurrent: number | null;
+  distanceM: number | null;
+}
+
+/**
  * Uma ONU descoberta na OLT durante uma varredura de inventário (listOnts).
  * É o dado CRU que alimenta a tabela de staging `discovered_onts` — antes de
  * casar com o ERP e materializar em Ont/Contract. Campos opcionais porque nem
@@ -208,6 +231,23 @@ export interface OltDriver {
       scope?: { slot: number; pon: number };
     },
   ): Promise<OltDriverResult<{ onts: DiscoveredOntRaw[] }>>;
+
+  /**
+   * Opcional (integrador técnico): lê a POTÊNCIA ÓPTICA de todas as ONUs pela
+   * OLT — a fonte de sinal para ONUs sem TR-069. Varre por PON (um comando por
+   * PON cobre ~todas as ONUs da PON), gentil com a OLT. `onProgress` reporta por
+   * PON. Só drivers que sabem ler óptico (ex.: FiberhomeTelnetDriver) implementam.
+   */
+  listOntOptical?(
+    ctx: OltConnectionContext,
+    opts?: {
+      onProgress?: (batch: OntOpticalReading[], meta: { slot: number; pon: number }) => Promise<void>;
+      /** Limita a UM slot/pon; sem escopo, varre os slots/pons conhecidos. */
+      scope?: { slot: number; pon: number };
+      /** PONs a varrer quando sem escopo específico (default: as descobertas). */
+      pons?: Array<{ slot: number; pon: number }>;
+    },
+  ): Promise<OltDriverResult<{ readings: OntOpticalReading[] }>>;
 }
 
 /**

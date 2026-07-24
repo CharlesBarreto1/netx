@@ -131,8 +131,45 @@ export class Tr069DiagnosticsService {
   // ---------------------------------------------------------------------------
 
   /**
-   * Enfileira um GET_PARAMS de diagnóstico se ainda não houver um pendente/rodando
-   * pro device. Retorna o id da task (existente ou nova).
+   * Um path é ÓPTICO (níveis de fibra: potência/temp/tensão/corrente/status do
+   * transceiver GPON) — o dado de SINAL que a operação mais precisa. Casa o
+   * objeto GPON de qualquer vendor (typo Huawei "X_GponInterafceConfig",
+   * grafia correta, extensões X_CT-COM_/X_ALU-COM_/X_ZYXEL_EXT.Optical).
+   * ⚠️ Exclui `.Stats.` do óptico (FEC/HEC/Drop/ErrorRate): são contadores que
+   * NEM todo firmware expõe (o MP-X4410A não tem) e, se entrarem no MESMO GET/
+   * arme do rx/tx, o Fault 9005 atômico derruba o SINAL junto. Vão no grupo REST.
+   */
+  private isOpticalPath(name: string): boolean {
+    if (/\.Stats\./i.test(name)) return false;
+    return /GponInter[af]{2}ceConfig|GponInterfaceConfig|GPON_INTERFACE|_EXT\.Optical|OntOpticalParam/i.test(
+      name,
+    );
+  }
+
+  /**
+   * Colapsa folhas ópticas explícitas para o PATH PARCIAL do objeto (termina em
+   * ".") — ex.: `...X_GponInterafceConfig.RXPower` → `...X_GponInterafceConfig.`.
+   * O GET por subárvore é a forma MAIS COMPATÍVEL: alguns firmwares (MP-X4410A)
+   * dão Fault 9005 no GET da FOLHA explícita `.RXPower` mas respondem o objeto
+   * inteiro pelo parcial (confirmado ao vivo). O parser (ACS) casa as folhas por
+   * nome completo, então a resposta da subárvore é lida igual. Dedup por objeto.
+   */
+  private opticalSubtreePaths(opticalLeaves: string[]): string[] {
+    const objects = new Set<string>();
+    for (const leaf of opticalLeaves) {
+      const dot = leaf.lastIndexOf('.');
+      if (dot > 0) objects.add(leaf.slice(0, dot + 1)); // inclui o "." final
+    }
+    return [...objects];
+  }
+
+  /**
+   * Enfileira o diagnóstico do device. ⚠️ Fault 9005 é ATÔMICO: um único path
+   * inexistente derruba o GET inteiro — e com ele o SINAL óptico. Por isso
+   * PARTICIONAMOS em dois GETs isolados: (1) só óptico (rx/tx/temp/tensão/status)
+   * e (2) o RESTO (PPP, Wi-Fi, clientes, hosts, recursos). Assim uma folha
+   * ausente de Wi-Fi/host não faz mais perder o sinal. Idempotente: se já há
+   * GET pendente/rodando, não duplica. Retorna o id do GET óptico (o essencial).
    */
   async enqueueDiagnostics(tenantId: string, deviceDbId: string): Promise<{ taskId: string }> {
     const inflight = await this.prisma.tr069Task.findFirst({
@@ -141,60 +178,102 @@ export class Tr069DiagnosticsService {
         deviceId: deviceDbId,
         action: 'GET_PARAMS',
         status: { in: ['PENDING', 'RUNNING'] },
+        payload: { path: ['purpose'], equals: 'DIAGNOSTICS' },
       },
       select: { id: true },
     });
     if (inflight) return { taskId: inflight.id };
 
     // Lista de params do diagnóstico depende do fabricante (Zyxel ≠ Huawei) E
-    // do modelo (V5 não tem sensor de temperatura) — senão o CPE devolve
-    // Fault 9005 no GET inteiro.
+    // do modelo (V5 não tem sensor de temperatura).
     const device = await this.prisma.tr069Device.findUnique({
       where: { id: deviceDbId },
       select: { manufacturer: true, productClass: true },
     });
-    const task = await this.prisma.tr069Task.create({
-      data: {
-        tenantId,
-        deviceId: deviceDbId,
-        action: 'GET_PARAMS',
-        payload: {
-          names: diagnosticParamNamesFor(device?.manufacturer, device?.productClass),
-          purpose: 'DIAGNOSTICS',
+    const names = diagnosticParamNamesFor(device?.manufacturer, device?.productClass);
+    const opticalLeaves = names.filter((n) => this.isOpticalPath(n));
+    const rest = names.filter((n) => !this.isOpticalPath(n));
+    // GET óptico por PATH PARCIAL (subárvore) — mais compatível que folha
+    // explícita (evita 9005 do MP-X4410A no `.RXPower`). Fallback nas folhas.
+    const opticalNames =
+      this.opticalSubtreePaths(opticalLeaves).length > 0
+        ? this.opticalSubtreePaths(opticalLeaves)
+        : opticalLeaves;
+
+    // Óptico PRIMEIRO e ISOLADO — é o sinal; não pode ser derrubado pelo resto.
+    let opticalTaskId: string | null = null;
+    if (opticalNames.length > 0) {
+      const t = await this.prisma.tr069Task.create({
+        data: {
+          tenantId,
+          deviceId: deviceDbId,
+          action: 'GET_PARAMS',
+          payload: { names: opticalNames, purpose: 'DIAGNOSTICS', group: 'OPTICAL' },
+          status: 'PENDING',
         },
-        status: 'PENDING',
-      },
-    });
-    return { taskId: task.id };
+      });
+      opticalTaskId = t.id;
+    }
+    // Resto (best-effort): Wi-Fi/hosts/recursos. Se der 9005, o óptico já foi.
+    let restTaskId: string | null = null;
+    if (rest.length > 0) {
+      const t = await this.prisma.tr069Task.create({
+        data: {
+          tenantId,
+          deviceId: deviceDbId,
+          action: 'GET_PARAMS',
+          payload: { names: rest, purpose: 'DIAGNOSTICS', group: 'REST' },
+          status: 'PENDING',
+        },
+      });
+      restTaskId = t.id;
+    }
+    return { taskId: opticalTaskId ?? restTaskId ?? '' };
   }
 
   /**
    * Arma as notificações (SetParameterAttributes) no CPE: Status ativo + níveis
    * ópticos passivos. Depois disso os ópticos chegam de carona no Inform — sem
-   * GET. Marca notificationsArmedAt (otimista) pra não rearmar toda hora; o
-   * polling segue como fallback caso o arme falhe.
+   * GET. ⚠️ MESMA armadilha do 9005 atômico: um alvo de notificação inválido
+   * derruba o arme inteiro. Particiona igual ao diagnóstico — óptico ISOLADO do
+   * resto — pra o sinal ser armado mesmo que o firmware recuse um contador.
+   * `notificationsArmedAt` só é gravado se HOUVE algo pra armar (senão o cron
+   * re-tenta). O flag é otimista (não espera o DONE) — mas com o óptico isolado
+   * o arme dele quase sempre passa; o cron `rearmFailedOptical` cobre o resto.
    */
   async enqueueArmNotifications(tenantId: string, deviceDbId: string): Promise<{ taskId: string }> {
     const device = await this.prisma.tr069Device.findUnique({
       where: { id: deviceDbId },
       select: { manufacturer: true, productClass: true },
     });
-    const task = await this.prisma.tr069Task.create({
-      data: {
-        tenantId,
-        deviceId: deviceDbId,
-        action: 'SET_ATTRIBUTES',
-        payload: {
-          attributes: notificationAttributesFor(device?.manufacturer, device?.productClass),
+    const attrs = notificationAttributesFor(device?.manufacturer, device?.productClass);
+    const optical = attrs.filter((a) => this.isOpticalPath(a.name));
+    const rest = attrs.filter((a) => !this.isOpticalPath(a.name));
+
+    let firstTaskId: string | null = null;
+    for (const [group, list] of [
+      ['OPTICAL', optical],
+      ['REST', rest],
+    ] as const) {
+      if (list.length === 0) continue;
+      const t = await this.prisma.tr069Task.create({
+        data: {
+          tenantId,
+          deviceId: deviceDbId,
+          action: 'SET_ATTRIBUTES',
+          payload: { attributes: list, purpose: 'ARM', group },
+          status: 'PENDING',
         },
-        status: 'PENDING',
-      },
-    });
-    await this.prisma.tr069Device.update({
-      where: { id: deviceDbId },
-      data: { notificationsArmedAt: new Date() },
-    });
-    return { taskId: task.id };
+      });
+      firstTaskId ??= t.id;
+    }
+    if (firstTaskId) {
+      await this.prisma.tr069Device.update({
+        where: { id: deviceDbId },
+        data: { notificationsArmedAt: new Date() },
+      });
+    }
+    return { taskId: firstTaskId ?? '' };
   }
 
   /**
@@ -1459,6 +1538,56 @@ export class Tr069DiagnosticsService {
       }
     }
     if (armed > 0) this.logger.log(`[TR-069] notificações armadas em ${armed} device(s)`);
+  }
+
+  /**
+   * RE-ARME dos ópticos que falharam. Devices marcados como "armados" mas cujo
+   * arme óptico morreu de Fault 9005 (arme antigo mandava óptico+Stats+Wi-Fi
+   * numa RPC só; a folha ausente derrubava tudo, e o flag otimista impedia nova
+   * tentativa) — nunca mais receberam sinal. Este cron acha ONLINE armados que
+   * NÃO têm arme óptico DONE e re-enfileira o arme (agora particionado: óptico
+   * isolado). Roda até o óptico armar; depois o device tem arme OPTICAL DONE e
+   * sai da fila. Sem isso, todo device armado antes do fix ficaria sem sinal.
+   */
+  @Cron(CronExpression.EVERY_5_MINUTES)
+  async rearmFailedOptical(): Promise<void> {
+    if (!this.enabled) return;
+    const armed = await this.prisma.tr069Device.findMany({
+      where: { status: 'ONLINE', notificationsArmedAt: { not: null } },
+      select: { id: true, tenantId: true },
+      take: CRON_BATCH,
+    });
+    let rearmed = 0;
+    for (const d of armed) {
+      try {
+        // Já tem arme óptico concluído? então está ok — pula.
+        const opticalDone = await this.prisma.tr069Task.count({
+          where: {
+            deviceId: d.id,
+            action: 'SET_ATTRIBUTES',
+            status: 'DONE',
+            payload: { path: ['group'], equals: 'OPTICAL' },
+          },
+        });
+        if (opticalDone > 0) continue;
+        // Já tem arme óptico pendente/rodando? não duplica.
+        const opticalInflight = await this.prisma.tr069Task.count({
+          where: {
+            deviceId: d.id,
+            action: 'SET_ATTRIBUTES',
+            status: { in: ['PENDING', 'RUNNING'] },
+            payload: { path: ['group'], equals: 'OPTICAL' },
+          },
+        });
+        if (opticalInflight > 0) continue;
+        // Re-arma (particionado). enqueueArmNotifications regrava armedAt.
+        await this.enqueueArmNotifications(d.tenantId, d.id);
+        rearmed += 1;
+      } catch (err) {
+        this.logger.error(`[TR-069] re-arme óptico falhou device=${d.id}: ${String(err)}`);
+      }
+    }
+    if (rearmed > 0) this.logger.log(`[TR-069] re-arme óptico enfileirado em ${rearmed} device(s)`);
   }
 
   /** Retenção: apaga diagnósticos antigos (a série cresce a cada Inform). */

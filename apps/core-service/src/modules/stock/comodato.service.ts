@@ -243,6 +243,139 @@ export class ComodatoService {
   }
 
   /**
+   * Materializa como PATRIMÔNIO um equipamento em comodato JÁ INSTALADO no
+   * cliente, descoberto pela integração (OLT + Hubsoft) — NÃO passou pelo
+   * estoque do NetX. Diferente de `allocate()` (que exige um SerialItem IN_STOCK
+   * pré-existente num local), aqui o bem é criado "como-encontrado" direto em
+   * ALLOCATED, vinculado ao contrato, sem local físico. Idempotente por
+   * (tenant, produto, serial): re-rodar a materialização não duplica.
+   *
+   * Product: 1 por (vendor, modelo) da ONU — SKU estável `ONU-<VENDOR>-<MODELO>`
+   * (ou `ONU-COMODATO-HS<idProduto>` quando não há modelo), type PATRIMONIAL.
+   * O `id_produto` do Hubsoft fica na descrição pra rastreio. Não inventamos
+   * custo (acquisitionCost null) — é bem herdado, não comprado pelo NetX.
+   */
+  async materializeAsFoundComodato(
+    tenantId: string,
+    actorUserId: string,
+    input: {
+      contractId: string;
+      serial: string;
+      macAddress?: string | null;
+      hubsoftProdutoId?: string | null;
+      vendor?: string | null; // prefixo/fabricante da ONU (ex.: "PARKS", "NOKIA")
+      model?: string | null; // modelo reportado pela OLT (ex.: "HG260")
+    },
+  ): Promise<{ serialItemId: string; created: boolean }> {
+    const serial = input.serial.trim();
+    if (!serial) throw new BadRequestException('Serial vazio');
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1) Produto (idempotente por SKU). Identidade estável por vendor+modelo.
+      const vendor = (input.vendor ?? '').trim().toUpperCase() || 'ONU';
+      const model = (input.model ?? '').trim().toUpperCase();
+      const sku = model
+        ? `ONU-${vendor}-${model}`.slice(0, 64)
+        : `ONU-COMODATO-HS${(input.hubsoftProdutoId ?? 'NA').toString().trim()}`.slice(0, 64);
+      const name = model ? `ONU ${vendor} ${model}` : `ONU ${vendor} (comodato Hubsoft)`;
+
+      let product = await tx.product.findFirst({
+        where: { tenantId, sku },
+        select: { id: true },
+      });
+      if (!product) {
+        product = await tx.product.create({
+          data: {
+            tenantId,
+            sku,
+            name: name.slice(0, 255),
+            brand: vendor.slice(0, 120),
+            model: model ? model.slice(0, 120) : null,
+            type: 'PATRIMONIAL',
+            description: input.hubsoftProdutoId
+              ? `Materializado do comodato Hubsoft (id_produto ${input.hubsoftProdutoId}).`
+              : 'Materializado do comodato Hubsoft.',
+          },
+          select: { id: true },
+        });
+      }
+
+      // 2) SerialItem (idempotente por tenant+produto+serial). Se já existe,
+      //    garante o vínculo com o contrato (sem quebrar um vínculo pré-existente
+      //    a OUTRO contrato — nesse caso não mexe, deixa pra revisão manual).
+      const existing = await tx.serialItem.findFirst({
+        where: { tenantId, productId: product.id, serial },
+        select: { id: true, status: true, contractId: true },
+      });
+      if (existing) {
+        if (existing.contractId && existing.contractId !== input.contractId) {
+          // Conflito real — outro contrato já reivindica este serial. Não força.
+          return { serialItemId: existing.id, created: false };
+        }
+        if (existing.status !== 'ALLOCATED' || existing.contractId !== input.contractId) {
+          await tx.serialItem.update({
+            where: { id: existing.id },
+            data: {
+              status: 'ALLOCATED',
+              contractId: input.contractId,
+              locationId: null,
+              allocatedAt: existing.contractId ? undefined : new Date(),
+            },
+          });
+        }
+        return { serialItemId: existing.id, created: false };
+      }
+
+      const created = await tx.serialItem.create({
+        data: {
+          tenantId,
+          productId: product.id,
+          serial,
+          status: 'ALLOCATED',
+          contractId: input.contractId,
+          locationId: null,
+          allocatedAt: new Date(),
+          notes:
+            'Comodato materializado da descoberta OLT↔Hubsoft (equipamento já ' +
+            'instalado no cliente — não passou pelo estoque do NetX).' +
+            (input.macAddress ? ` MAC ${input.macAddress}.` : ''),
+        },
+        select: { id: true },
+      });
+
+      // 3) Movimento COMODATO_OUT "como-encontrado" (from/to null: não saiu de
+      //    local físico do NetX). Custo 0 — bem herdado, não comprado.
+      await tx.stockMovement.create({
+        data: {
+          tenantId,
+          type: 'COMODATO_OUT',
+          productId: product.id,
+          serialItemId: created.id,
+          fromLocationId: null,
+          toLocationId: null,
+          quantity: 1,
+          unitCost: 0,
+          totalCost: 0,
+          contractId: input.contractId,
+          notes: 'Materialização de comodato existente (descoberta OLT↔Hubsoft).',
+          createdById: actorUserId,
+        },
+      });
+
+      await this.audit.log({
+        tenantId,
+        userId: actorUserId,
+        action: 'comodato.materialized',
+        resource: 'serial_items',
+        resourceId: created.id,
+        afterState: { serial, contractId: input.contractId, productSku: sku },
+      });
+
+      return { serialItemId: created.id, created: true };
+    });
+  }
+
+  /**
    * Devolve um serial alocado — volta pra estoque no local especificado.
    * O operador precisa ter acesso de escrita no `toLocationId`.
    */
