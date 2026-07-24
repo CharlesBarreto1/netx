@@ -117,11 +117,68 @@ const PARKS_5XX_WIFI_PATHS = {
   channel5: `${WLAN_24}.Channel`,
 };
 
+// ── Stavix / Datacom MP-X4410A (espelha tr069-paths.stavix.ts do core-service) ─
+// Stavix e Datacom são o MESMO HW (chipset Realtek) rebrandado. ⚠️ Óptico no
+// MESMO objeto (e typo) do Huawei — `X_GponInterafceConfig` — MAS com valores em
+// unidade HUMANA direta (RXPower "-21" dBm, TXPower "2" dBm, SupplyVoltage "3298"
+// mV, BiasCurrent "9" mA; grafia "SupplyVoltage" CORRETA, ≠ typo "Vottage" da
+// VSOL). Como compartilha o prefixo óptico com o Huawei, o óptico já é lido pelo
+// branch DEFAULT (normalizePower/normalizeVoltage) — NÃO precisa de leitor
+// próprio. O que DIVERGE do Huawei é o layout de WLAN: INVERTIDO como VSOL/Parks-
+// 5xx (1-5=5GHz, 6-10=2.4GHz), então detectamos a Stavix pra corrigir SÓ o mapa
+// de banda e os paths de agregado Wi-Fi. Distingue-se da Parks-5xx (que NÃO tem
+// óptico) pela presença do X_GponInterafceConfig; distingue-se do Huawei genuíno
+// (layout 1/5) pela extensão X_CT-COM_ na WANPPPConnection (VLANMode/VLANIDMark).
+// SEM RSSI por cliente (AssociatedDevice só traz MAC/IP) — cobertura por cliente
+// null, como VSOL/Parks. Recursos TR-098 padrão. Fallback — demais intocados.
+const STAVIX_CT_COM_MARKERS = [
+  `${PPP_PREFIX}.X_CT-COM_VLANIDMark`,
+  `${PPP_PREFIX}.X_CT-COM_VLANMode`,
+  `${ZYXEL_PPP_PREFIX}.X_CT-COM_VLANIDMark`,
+  `${ZYXEL_PPP_PREFIX}.X_CT-COM_VLANMode`,
+];
+// Stavix reusa o layout invertido da Parks-5xx (1=5G/6=2.4G) — mesmos paths de
+// agregado. O óptico continua saindo pelo branch Huawei/default. (PARKS_5XX_WIFI_
+// PATHS já está declarado acima; o mapa de banda vai junto do STAVIX_BAND_BY_WLAN
+// abaixo, perto dos demais *_BAND_BY_WLAN.)
+const STAVIX_WIFI_PATHS = PARKS_5XX_WIFI_PATHS;
+
+// ── Nokia G-1426G-A / AX3000 (espelha tr069-paths.nokia.ts do core-service) ──
+// Óptico no objeto GLOBAL X_ALU_OntOpticalParam (NÃO sob WANDevice). ⚠️
+// "SupplyVottage" com o MESMO typo da VSOL. Unidades a normalizar (o dump de
+// GetParameterNames não trouxe valores) — heurística sign-aware como a ZTE, com
+// override fixo via NOKIA_OPTICAL_DIVISOR quando o probe ao vivo confirmar a
+// escala. PPPoE/WAN stats usam os MESMOS paths padrão da WAN 1 (já cobertos
+// pelos keys Zyxel — WANConnectionDevice.1). Wi-Fi segue a convenção 1/5 do
+// Huawei (1-4=2.4G, 5-8=5G). RSSI/SignalStrength por cliente EXISTEM (como a
+// Huawei) — a cobertura por cliente funciona. Fallback — demais vendors intocados.
+const NOKIA_OPTICAL = {
+  rxPower: 'InternetGatewayDevice.X_ALU_OntOpticalParam.RXPower',
+  txPower: 'InternetGatewayDevice.X_ALU_OntOpticalParam.TXPower',
+  temperature: 'InternetGatewayDevice.X_ALU_OntOpticalParam.TransceiverTemperature',
+  voltage: 'InternetGatewayDevice.X_ALU_OntOpticalParam.SupplyVottage',
+  biasCurrent: 'InternetGatewayDevice.X_ALU_OntOpticalParam.BiasCurrent',
+  status: 'InternetGatewayDevice.X_ALU_OntOpticalParam.Status',
+};
+
+const NOKIA_WLAN5_IDX = process.env.NOKIA_WLAN_5G_INDEX ?? '5';
+const NOKIA_WLAN_50 = `InternetGatewayDevice.LANDevice.1.WLANConfiguration.${NOKIA_WLAN5_IDX}`;
+const NOKIA_WIFI_PATHS = {
+  clients24: `${WLAN_24}.TotalAssociations`,
+  clients5: `${NOKIA_WLAN_50}.TotalAssociations`,
+  channel24: `${WLAN_24}.Channel`,
+  channel5: `${NOKIA_WLAN_50}.Channel`,
+};
+
 /** Banda por índice de WLAN, por vendor (VSOL e Parks-5xx são invertidos). */
 const HUAWEI_BAND_BY_WLAN: Record<string, string> = { '1': '2.4GHz', '5': '5GHz' };
 const VSOL_BAND_BY_WLAN: Record<string, string> = { '1': '5GHz', '5': '2.4GHz' };
 // Parks 5xx: 1-5=5G, 6-10=2.4G. Parks 6xx segue a convenção Huawei (1/5).
 const PARKS_5XX_BAND_BY_WLAN: Record<string, string> = { '1': '5GHz', '6': '2.4GHz' };
+// Stavix/Datacom: MESMO layout invertido da Parks-5xx (1=5G, 6=2.4G).
+const STAVIX_BAND_BY_WLAN = PARKS_5XX_BAND_BY_WLAN;
+// Nokia: 1-4=2.4G, 5-8=5G (convenção Huawei). Índice 5G ajustável por env.
+const NOKIA_BAND_BY_WLAN: Record<string, string> = { '1': '2.4GHz', [NOKIA_WLAN5_IDX]: '5GHz' };
 
 /**
  * Potência DDM (unidade 0.1µW, SFF-8472) → dBm. Ex.: 19078 → +2.81 dBm.
@@ -135,6 +192,62 @@ function vsolDdmPowerToDbm(raw: string | undefined): number | null {
   if (n === null || n <= 0) return null;
   const dbm = round2(10 * Math.log10(n / 10000)); // n × 0.1µW → mW
   return dbm < -30 ? null : dbm;
+}
+
+/**
+ * Potência óptica Nokia (X_ALU_OntOpticalParam) → dBm. ✅ CONFIRMADO AO VIVO
+ * (dump GET com valores, G-1426G-A SW 3TN00383HJKK99, base ZUX-PR 2026-07-24):
+ * RX/TX vêm em **dBm DIRETO** como float string ("-19.746941", "2.225604"). O
+ * caminho normal é passar direto (round2). Mantemos um fallback de escala
+ * (deci/centi/DDM) só como salvaguarda pra firmwares divergentes, atrás do
+ * override NOKIA_OPTICAL_DIVISOR. RX abaixo de -30 dBm com enlace Up é lixo de
+ * sensor → null (mesma guarda de VSOL/ZTE, evita alarme CRITICAL falso).
+ */
+function nokiaPowerToDbm(raw: string | undefined, kind: 'rx' | 'tx'): number | null {
+  const n = numOrNull(raw);
+  if (n === null || n === 0) return null;
+  const forced = process.env.NOKIA_OPTICAL_DIVISOR;
+  if (forced) {
+    const d = Number(forced);
+    return d > 0 ? round2(n / d) : round2(n);
+  }
+  if (kind === 'rx') {
+    // dBm direto (confirmado): negativo na faixa física. Positivo só seria DDM cru.
+    if (n > 0) {
+      const dbm = round2(10 * Math.log10(n / 10000));
+      return dbm < -30 ? null : dbm;
+    }
+    const abs = Math.abs(n);
+    const dbm = abs <= 60 ? n : abs <= 600 ? n / 10 : n / 100;
+    return dbm < -30 ? null : round2(dbm);
+  }
+  // TX: dBm direto (confirmado, 0..+7). Escalas maiores = salvaguarda.
+  const abs = Math.abs(n);
+  if (abs <= 10) return round2(n);
+  if (abs <= 70) return round2(n / 10);
+  if (abs <= 700) return round2(n / 100);
+  return n > 0 ? round2(10 * Math.log10(n / 10000)) : null;
+}
+
+/**
+ * Tensão de alimentação Nokia → V. ✅ CONFIRMADO: vem em **VOLT DIRETO**
+ * ("3.289000"), NÃO em mV nem 100µV (ao contrário de VSOL/ZTE). Passa direto.
+ */
+function nokiaVoltage(raw: string | undefined): number | null {
+  const n = numOrNull(raw);
+  return n === null ? null : round2(n);
+}
+
+/**
+ * Corrente de bias Nokia → mA. ✅ CONFIRMADO: vem em **µA** ("9000.000000" =
+ * 9 mA), então ÷1000. ⚠️ NÃO reusar zteBiasCurrent (que divide por 500, dando
+ * 18 mA errado). Valores já pequenos (<50) são tratados como mA direto —
+ * salvaguarda pra firmware que reporte em mA.
+ */
+function nokiaBiasCurrent(raw: string | undefined): number | null {
+  const n = numOrNull(raw);
+  if (n === null) return null;
+  return Math.abs(n) <= 50 ? round2(n) : round2(n / 1000);
 }
 
 // ── ZTE F670L (espelha tr069-paths.zte.ts do core-service) ───────────────────
@@ -555,8 +668,13 @@ export function extractWifiClients(
       byKey.set(key, c);
     }
     if (/MACAddress/i.test(field)) c.mac = value || null;
-    else if (/RSSI|SignalStrength/i.test(field)) c.rssi = numOrNull(value);
-    else if (/TxRate/i.test(field)) c.txRate = numOrNull(value);
+    // RSSI Wi-Fi é SEMPRE negativo em dBm; 0 (ou positivo) = "não medido" — vários
+    // firmwares (ex.: Nokia G-1426G-A) expõem o campo mas o zeram. Tratar como
+    // null pra não poluir worst/avg com uma cobertura "0 dBm" fisicamente irreal.
+    else if (/RSSI|SignalStrength/i.test(field)) {
+      const r = numOrNull(value);
+      c.rssi = r !== null && r < 0 ? r : null;
+    } else if (/TxRate/i.test(field)) c.txRate = numOrNull(value);
     else if (/RxRate/i.test(field)) c.rxRate = numOrNull(value);
   }
   // Só conta como cliente real se identificamos MAC ou RSSI.
@@ -625,9 +743,42 @@ export function extractDiagnostics(params: Record<string, string>): ExtractedDia
     (Object.keys(params).some((k) => /\.X_RTK_Vlan/.test(k)) ||
       PARKS_5XX_WIFI_PATHS.clients24 in params ||
       PARKS_5XX_WIFI_PATHS.channel24 in params);
+  // Nokia (X_ALU_OntOpticalParam): QUALQUER folha óptica ALU ativa o branch — o
+  // Inform passivo ("4 VALUE CHANGE") traz só o que mudou (ex.: RXPower sem
+  // TXPower); exigir um key específico descartaria a leitura. Óptico Nokia é o
+  // objeto GLOBAL X_ALU_OntOpticalParam (não conflita com os prefixos dos outros
+  // vendors). Precede nenhum vendor óptico anterior (todos mutuamente exclusivos).
+  const nokiaOptical =
+    !zyxelOptical &&
+    !vsolOptical &&
+    !zteOptical &&
+    !(OPTICAL_PATHS.rxPower in params) &&
+    [
+      NOKIA_OPTICAL.rxPower,
+      NOKIA_OPTICAL.txPower,
+      NOKIA_OPTICAL.temperature,
+      NOKIA_OPTICAL.voltage,
+      NOKIA_OPTICAL.biasCurrent,
+    ].some((k) => k in params);
+  // Stavix/Datacom: compartilha o objeto óptico X_GponInterafceConfig com o
+  // Huawei (por isso o óptico é lido pelo branch DEFAULT — NÃO é um branch óptico
+  // próprio), mas o layout de WLAN é INVERTIDO (1=5G/6=2.4G). Detectamos SÓ pra
+  // trocar o mapa de banda/agregado Wi-Fi. Sinais: extensão X_CT-COM_ na
+  // WANPPPConnection (VLANMode/VLANIDMark — o Huawei genuíno não tem) OU o
+  // agregado da WLAN 6 (rádio 2.4G do layout invertido). Precede parks5xx só na
+  // presença do óptico Huawei (que zera parks5xx), então são exclusivos. NÃO
+  // afeta rxPower/txPower/etc. — esses seguem o default (normalizePower).
+  const stavix =
+    !zyxelOptical &&
+    !vsolOptical &&
+    !zteOptical &&
+    !nokiaOptical &&
+    (STAVIX_CT_COM_MARKERS.some((k) => k in params) ||
+      (OPTICAL_PATHS.rxPower in params &&
+        (STAVIX_WIFI_PATHS.clients24 in params || STAVIX_WIFI_PATHS.channel24 in params)));
   // Wi-Fi: na VSOL o mapa índice→banda é invertido (WLAN 1=5G, 5=2.4G); a ZTE
-  // segue a convenção 1/5 do Huawei (índice 5G ajustável por env); a Parks 5xx
-  // é 1=5G/6=2.4G.
+  // segue a convenção 1/5 do Huawei (índice 5G ajustável por env); a Parks 5xx e
+  // a Stavix/Datacom são 1=5G/6=2.4G.
   const { clients: wifiClients, worstRssi: wifiWorstRssi, avgRssi: wifiAvgRssi } =
     extractWifiClients(
       params,
@@ -637,7 +788,11 @@ export function extractDiagnostics(params: Record<string, string>): ExtractedDia
           ? ZTE_BAND_BY_WLAN
           : parks5xx
             ? PARKS_5XX_BAND_BY_WLAN
-            : HUAWEI_BAND_BY_WLAN,
+            : nokiaOptical
+              ? NOKIA_BAND_BY_WLAN
+              : stavix
+                ? STAVIX_BAND_BY_WLAN
+                : HUAWEI_BAND_BY_WLAN,
     );
   const wifiPaths = vsolOptical
     ? VSOL_WIFI_PATHS
@@ -645,39 +800,53 @@ export function extractDiagnostics(params: Record<string, string>): ExtractedDia
       ? ZTE_WIFI_PATHS
       : parks5xx
         ? PARKS_5XX_WIFI_PATHS
-        : WIFI_PATHS;
+        : nokiaOptical
+          ? NOKIA_WIFI_PATHS
+          : stavix
+            ? STAVIX_WIFI_PATHS
+            : WIFI_PATHS;
   const hosts = extractLanHosts(params);
   const rxPower = vsolOptical
     ? vsolDdmPowerToDbm(params[VSOL_PATHS.rxPower])
     : zteOptical
       ? ztePowerToDbm(zteIfaceParam(params, /^rxpower$/i), 'rx')
-      : zyxelOptical
-        ? numOrNull(params[ZYXEL_PATHS.rxPower])
-        : normalizePower(params[OPTICAL_PATHS.rxPower]);
+      : nokiaOptical
+        ? nokiaPowerToDbm(params[NOKIA_OPTICAL.rxPower], 'rx')
+        : zyxelOptical
+          ? numOrNull(params[ZYXEL_PATHS.rxPower])
+          : normalizePower(params[OPTICAL_PATHS.rxPower]);
   const txPower = vsolOptical
     ? vsolDdmPowerToDbm(params[VSOL_PATHS.txPower])
     : zteOptical
       ? ztePowerToDbm(zteIfaceParam(params, /^txpower$/i), 'tx')
-      : zyxelOptical
-        ? numOrNull(params[ZYXEL_PATHS.txPower])
-        : normalizePower(params[OPTICAL_PATHS.txPower]);
+      : nokiaOptical
+        ? nokiaPowerToDbm(params[NOKIA_OPTICAL.txPower], 'tx')
+        : zyxelOptical
+          ? numOrNull(params[ZYXEL_PATHS.txPower])
+          : normalizePower(params[OPTICAL_PATHS.txPower]);
   const temperature = vsolOptical
     ? round2Null(numOrNull(params[VSOL_PATHS.temperature]), 100) // 0.01°C → °C
     : zteOptical
       ? zteTemperature(zteIfaceParam(params, /^transceivertemperature$/i))
-      : numOrNull(params[OPTICAL_PATHS.temperature] ?? params[ZYXEL_PATHS.temperature]);
+      : nokiaOptical
+        ? zteTemperature(params[NOKIA_OPTICAL.temperature]) // °C direto ou centi-°C
+        : numOrNull(params[OPTICAL_PATHS.temperature] ?? params[ZYXEL_PATHS.temperature]);
   const voltage = vsolOptical
     ? round2Null(numOrNull(params[VSOL_PATHS.voltage]), 10000) // 100µV → V
     : zteOptical
       ? zteVoltage(zteIfaceParam(params, /^supply(voltage|vottage)$/i))
-      : zyxelOptical
-        ? numOrNull(params[ZYXEL_PATHS.voltage])
-        : normalizeVoltage(params[OPTICAL_PATHS.voltage]);
+      : nokiaOptical
+        ? nokiaVoltage(params[NOKIA_OPTICAL.voltage]) // V direto (confirmado)
+        : zyxelOptical
+          ? numOrNull(params[ZYXEL_PATHS.voltage])
+          : normalizeVoltage(params[OPTICAL_PATHS.voltage]);
   const biasCurrent = vsolOptical
     ? round2Null(numOrNull(params[VSOL_PATHS.biasCurrent]), 500) // 2µA → mA
     : zteOptical
       ? zteBiasCurrent(zteIfaceParam(params, /^biascurrent$/i))
-      : numOrNull(params[OPTICAL_PATHS.biasCurrent]);
+      : nokiaOptical
+        ? nokiaBiasCurrent(params[NOKIA_OPTICAL.biasCurrent]) // µA → mA (confirmado)
+        : numOrNull(params[OPTICAL_PATHS.biasCurrent]);
 
   const hasOptical =
     rxPower !== null ||
@@ -697,6 +866,7 @@ export function extractDiagnostics(params: Record<string, string>): ExtractedDia
       params[STATS_PATHS.status] ||
       params[VSOL_PATHS.status] ||
       zteIfaceParam(params, /^status$/i) ||
+      params[NOKIA_OPTICAL.status] ||
       null,
     fecErrors: intOrNull(
       params[STATS_PATHS.fecErrors] ??
