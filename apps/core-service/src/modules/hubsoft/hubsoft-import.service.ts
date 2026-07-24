@@ -53,6 +53,14 @@ const HS_CUSTOMER_PREFIX = 'HS-';
 const HS_CONTRACT_PREFIX = 'HS-SVC-';
 const HS_INVOICE_PREFIX = 'HS-FAT-';
 const DEFAULT_DUE_DAY = 10;
+/**
+ * Teto de faturas por cliente no GET /cliente/financeiro. ⚠️ A API do Hubsoft
+ * tem DEFAULT limit=20 (só as 20 mais ANTIGAS) — sem passar `limit` o import
+ * perdia todas as faturas recentes (ex.: cliente ativo desde 2022 vinha só até
+ * ~2024). 600 cobre 50 anos de mensalidade; a API respeita o limit e devolve o
+ * conjunto completo. Ver memória financeiro-materializado-padroes-erro.
+ */
+const HS_FINANCEIRO_LIMIT = 600;
 // /cliente/all NÃO embute endereços sem `incluir` (default "Nenhum") — sem isto
 // o filtro/coluna de cidade fica vazio.
 const HS_INCLUIR_ENDERECOS =
@@ -833,7 +841,27 @@ export class HubsoftImportService {
       }
       let faturas: HubsoftFatura[];
       try {
-        faturas = await this.client.getFinanceiroCliente(cfg, codigo);
+        // Busca as PAGAS+HISTÓRICO (apenas_pendente=nao) E as EM ABERTO
+        // (apenas_pendente=sim), ambas com limit alto — o default 20 da API
+        // truncava o histórico. Mescla dedup por id_fatura (a mesma fatura pode
+        // vir nos dois conjuntos dependendo do estado).
+        const [pagas, pendentes] = await Promise.all([
+          this.client.getFinanceiroCliente(cfg, codigo, {
+            apenasPendente: false,
+            limit: HS_FINANCEIRO_LIMIT,
+          }),
+          this.client.getFinanceiroCliente(cfg, codigo, {
+            apenasPendente: true,
+            limit: HS_FINANCEIRO_LIMIT,
+          }),
+        ]);
+        const byId = new Map<string, HubsoftFatura>();
+        for (const f of [...pagas, ...pendentes]) {
+          const id = this.str(f.id_fatura);
+          if (id) byId.set(id, f);
+          else byId.set(`__noid_${byId.size}`, f); // preserva fatura sem id
+        }
+        faturas = [...byId.values()];
       } catch (e) {
         res.failed += 1;
         res.errors.push({ ref: codigo, message: e instanceof Error ? e.message : String(e) });
