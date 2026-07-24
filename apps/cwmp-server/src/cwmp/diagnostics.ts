@@ -735,19 +735,15 @@ export function extractDiagnostics(params: Record<string, string>): ExtractedDia
   // Huawei). Detecta pela extensão Realtek (X_RTK_ na WAN) OU pela agregação da
   // WLAN 6 (rádio 2.4G do 5xx). A Parks 6xx (X_SKYW) segue a convenção Huawei
   // 1/5 — cai no default sem tratamento especial. NÃO mexe nos vendors ópticos.
-  const parks5xx =
-    !zyxelOptical &&
-    !vsolOptical &&
-    !zteOptical &&
-    !(OPTICAL_PATHS.rxPower in params) &&
-    (Object.keys(params).some((k) => /\.X_RTK_Vlan/.test(k)) ||
-      PARKS_5XX_WIFI_PATHS.clients24 in params ||
-      PARKS_5XX_WIFI_PATHS.channel24 in params);
   // Nokia (X_ALU_OntOpticalParam): QUALQUER folha óptica ALU ativa o branch — o
   // Inform passivo ("4 VALUE CHANGE") traz só o que mudou (ex.: RXPower sem
   // TXPower); exigir um key específico descartaria a leitura. Óptico Nokia é o
   // objeto GLOBAL X_ALU_OntOpticalParam (não conflita com os prefixos dos outros
-  // vendors). Precede nenhum vendor óptico anterior (todos mutuamente exclusivos).
+  // vendors). ⚠️ Avaliado ANTES do parks5xx: a Nokia tem 8 WLANs, então a
+  // WLAN 6 EXISTE e dispararia o marker do parks5xx (PARKS_5XX_WIFI_PATHS =
+  // WLAN.6.TotalAssociations) — mas a Nokia tem óptico e a Parks NÃO, então o
+  // óptico ALU desempata e o parks5xx exclui !nokiaOptical (confirmado ao vivo:
+  // sem essa ordem, o Wi-Fi da Nokia saía com o mapa invertido do Parks).
   const nokiaOptical =
     !zyxelOptical &&
     !vsolOptical &&
@@ -760,6 +756,15 @@ export function extractDiagnostics(params: Record<string, string>): ExtractedDia
       NOKIA_OPTICAL.voltage,
       NOKIA_OPTICAL.biasCurrent,
     ].some((k) => k in params);
+  const parks5xx =
+    !zyxelOptical &&
+    !vsolOptical &&
+    !zteOptical &&
+    !nokiaOptical &&
+    !(OPTICAL_PATHS.rxPower in params) &&
+    (Object.keys(params).some((k) => /\.X_RTK_Vlan/.test(k)) ||
+      PARKS_5XX_WIFI_PATHS.clients24 in params ||
+      PARKS_5XX_WIFI_PATHS.channel24 in params);
   // Stavix/Datacom: compartilha o objeto óptico X_GponInterafceConfig com o
   // Huawei (por isso o óptico é lido pelo branch DEFAULT — NÃO é um branch óptico
   // próprio), mas o layout de WLAN é INVERTIDO (1=5G/6=2.4G). Detectamos SÓ pra
